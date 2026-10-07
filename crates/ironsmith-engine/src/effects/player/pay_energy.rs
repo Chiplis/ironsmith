@@ -764,4 +764,69 @@ mod unsigned_energy_payment_public_contract_tests {
             "receipt must report actual unsigned removal without signed wrap"
         );
     }
+
+    // UNRUN: the energy instruction's result and chosen-number receipt remain
+    // nominal; owned child counts and energy pools retain physical removal.
+    #[test]
+    fn energy_payment_keeps_requested_and_chosen_quantities_separate_from_physical_count() {
+        struct ChooseThree;
+        impl crate::decision::DecisionMaker for ChooseThree {
+            fn decide_number(&mut self, _: &GameState, ctx: &crate::decisions::context::NumberContext) -> u32 {
+                assert_eq!((ctx.min, ctx.max), (3, 5));
+                3
+            }
+        }
+        for chosen in [false, true] {
+            for prevented in [false, true] {
+                let (mut game, source, alice) = seeded(5);
+                let action = if prevented { crate::replacement::ReplacementAction::Prevent }
+                    else { crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Subtract(1)) };
+                game.effect_store.replacement_effects.add_one_shot_effect(
+                    crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                        crate::events::counters::matchers::WouldRemovePlayerCountersMatcher::new(
+                            PlayerFilter::Specific(alice), Some(crate::CounterType::Energy)), action));
+                let effect = if chosen {
+                    Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(PlayerFilter::You), 3))
+                } else { Effect::new(PayEnergyEffect::new(3, ChooseSpec::Player(PlayerFilter::You))) };
+                let mut decisions = ChooseThree;
+                let mut ctx = EffectContext::new(source, alice, &mut decisions);
+                let outputs = crate::effects::execute_effect_with_outputs(&mut game, &effect, &mut ctx).unwrap();
+                let outcome = &outputs.outcome;
+                assert_eq!(outcome.requested_amount(), Some(3));
+                assert_eq!(outcome.instruction_result().count_or_zero(), 3);
+                assert_eq!(outcome.instruction_result().status, crate::effect::OutcomeStatus::Succeeded);
+                assert_eq!(outputs.shared.len(), 1);
+                assert_eq!(outputs.shared[0].outputs.outcome.instruction_result().count_or_zero(), if prevented { 0 } else { 2 });
+                ctx.store_outcome(EffectId(81), outcome.clone());
+                assert_eq!(crate::effects::helpers::resolve_value_wide(&game, &Value::EffectValue(EffectId(81)), &ctx).unwrap(), 3,
+                    "energy-paid consumers must keep the existing nominal quantity");
+                assert_eq!(game.player(alice).unwrap().energy_counters, if prevented { 5 } else { 3 });
+                if chosen { assert!(outcome.execution_facts().contains(&crate::effect::ExecutionFact::ChosenNumber(3))); }
+            }
+        }
+    }
+
+    #[test]
+    fn captured_energy_cost_keeps_nominal_result_and_physical_child_receipt() {
+        for prevented in [false, true] {
+            let (mut game, source, alice) = seeded(5);
+            let action = if prevented { crate::replacement::ReplacementAction::Prevent }
+                else { crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Subtract(1)) };
+            game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(source, alice,
+                    crate::events::counters::matchers::WouldRemovePlayerCountersMatcher::new(
+                        PlayerFilter::Specific(alice), Some(crate::CounterType::Energy)), action));
+            let cost = crate::costs::Cost::effect(PayEnergyEffect::new(3, ChooseSpec::Player(PlayerFilter::You)));
+            let mut decisions = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx = crate::costs::CostContext::new(source, alice, &mut decisions);
+            let receipt = cost.pay_with_outputs(&mut game, &mut ctx).unwrap();
+            assert_eq!(receipt.result, crate::costs::CostPaymentResult::Paid);
+            let outputs = receipt.outputs.unwrap();
+            assert_eq!(outputs.outcome.requested_amount(), Some(3));
+            assert_eq!(outputs.outcome.instruction_result().count_or_zero(), 3);
+            assert_eq!(outputs.shared.len(), 1);
+            assert_eq!(outputs.shared[0].outputs.outcome.instruction_result().count_or_zero(), if prevented { 0 } else { 2 });
+            assert_eq!(game.player(alice).unwrap().energy_counters, if prevented { 5 } else { 3 });
+        }
+    }
 }

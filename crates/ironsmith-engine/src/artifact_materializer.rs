@@ -500,6 +500,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RemoveAnyCountersAmongEffect" => {
             decode_as::<T, ironsmith_core::RemoveAnyCountersAmongEffect>(effect)
         }
+        "RemoveAnyCountersFromSourceEffect" => {
+            decode_as::<T, ironsmith_core::RemoveAnyCountersFromSourceEffect>(effect)
+        }
         "RemoveCountersEffect" => decode_as::<T, ironsmith_core::RemoveCountersEffect>(effect),
         "BecomeBlockedEffect" => decode_as::<T, ironsmith_core::BecomeBlockedEffect>(effect),
         "RemoveFromCombatEffect" => decode_as::<T, ironsmith_core::RemoveFromCombatEffect>(effect),
@@ -1503,6 +1506,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::RegisterManaSpendPermissionEffect,
             crate::effects::RegisterNextBatchEnterWithCountersEffect,
             crate::effects::RemoveAnyCountersAmongEffect,
+            crate::effects::RemoveAnyCountersFromSourceEffect,
             crate::effects::RemoveCountersEffect,
             crate::effects::RemoveUpToAnyCountersEffect,
             crate::effects::RenownEffect,

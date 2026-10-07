@@ -73,6 +73,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RemoveAnyCountersAmongEffect" => {
             decode_as::<ironsmith_core::RemoveAnyCountersAmongEffect>(payload).map(Some)
         }
+        "RemoveAnyCountersFromSourceEffect" => {
+            decode_as::<ironsmith_core::RemoveAnyCountersFromSourceEffect>(payload).map(Some)
+        }
         "RemoveCountersEffect" => {
             decode_as::<ironsmith_core::RemoveCountersEffect>(payload).map(Some)
         }
@@ -208,6 +211,10 @@ pub(super) fn map_card_ids(
         }
         "RemoveAnyCountersAmongEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RemoveAnyCountersAmongEffect,
+        >(payload, context)
+        .map(Some),
+        "RemoveAnyCountersFromSourceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RemoveAnyCountersFromSourceEffect,
         >(payload, context)
         .map(Some),
         "RemoveCountersEffect" => super::card_graph::map_payload_as::<

@@ -212,15 +212,51 @@ pub(crate) enum PreparedCounterCost {
     Finished(EffectOutcome),
     Originals {
         total: i64,
+        physical_count: bool,
         simultaneous: bool,
         resources: Vec<crate::effects::PaymentResourceClaim>,
         children: Vec<Box<dyn crate::effects::SimultaneousEffectProposal>>,
     },
 }
 
-fn counter_cost_outcome(total: i64, outcomes: Vec<EffectOutcome>) -> EffectOutcome {
-    EffectOutcome::aggregate_with_primary_result(EffectOutcome::count(total), outcomes)
-        .with_requested_amount(total as u64)
+fn counter_cost_outcome(
+    total: i64,
+    physical_count: bool,
+    outcomes: Vec<EffectOutcome>,
+) -> Result<EffectOutcome, ExecutionError> {
+    // Acceptance owns the nominal quantity, while "removed this way" owns
+    // the original physical actions. Replacement additions cannot contribute
+    // their unrelated counts to either quantity.
+    let mut removed = 0u64;
+    for outcome in &outcomes {
+        let count = u32::try_from(outcome.instruction_result().count_or_zero()).map_err(|_| {
+            ExecutionError::InternalError("counter payment has an invalid removal count".into())
+        })?;
+        removed = removed.checked_add(u64::from(count)).ok_or_else(|| {
+            ExecutionError::InternalError("counter payment removal total overflow".into())
+        })?;
+    }
+    let removed = i64::try_from(removed).map_err(|_| {
+        ExecutionError::InternalError("counter payment removal total exceeds outcome range".into())
+    })?;
+    let mut payment = EffectOutcome::aggregate(
+        outcomes.iter().map(|outcome| outcome.instruction_result().clone()),
+    );
+    payment.status = crate::effect::OutcomeStatus::Succeeded;
+    // Quantity-producing counter costs expose actual removals. Existing
+    // direct payment owners (notably energy paid) retain their nominal result;
+    // their complete physical child receipts remain owned by the composition.
+    payment.value = crate::effect::OutcomeValue::Count(if physical_count { removed } else { total });
+    // Child removals may be prevented or replaced while this cost is accepted.
+    // Their terminal facts stay in the complete observations and owned child
+    // packets, rather than becoming the payment instruction's acknowledgement.
+    payment.execution_facts.retain(|fact| !matches!(fact,
+        crate::effect::ExecutionFact::Declined | crate::effect::ExecutionFact::TargetInvalid
+        | crate::effect::ExecutionFact::Prevented | crate::effect::ExecutionFact::Protected
+        | crate::effect::ExecutionFact::Impossible | crate::effect::ExecutionFact::Replaced));
+    let payment = payment.with_execution_fact(crate::effect::ExecutionFact::Accepted);
+    Ok(payment.with_authoritative_observations(EffectOutcome::aggregate(outcomes))
+        .with_requested_amount(total as u64))
 }
 
 impl crate::effects::SimultaneousEffectProposal for PreparedCounterCost {
@@ -237,15 +273,15 @@ impl crate::effects::SimultaneousEffectProposal for PreparedCounterCost {
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
     {
-        let (total, children) = match *self {
+        let (total, physical_count, children) = match *self {
             Self::Finished(outcome) => {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
                     CompletedEffectOutputs::aggregate_only(outcome),
                 ));
             }
             Self::Originals {
-                total, children, ..
-            } => (total, children),
+                total, physical_count, children, ..
+            } => (total, physical_count, children),
         };
         let mut originals = Vec::new();
         for child in children {
@@ -256,11 +292,9 @@ impl crate::effects::SimultaneousEffectProposal for PreparedCounterCost {
                 ));
             }
         }
-        Ok(
-            crate::effects::composition::compose_original_commits_with_projection_outputs(
-                originals,
-                Box::new(move |outcomes| counter_cost_outcome(total, outcomes)),
-            ),
+        crate::effects::composition::compose_original_commits_with_fallible_projection_outputs(
+            originals,
+            Box::new(move |outcomes| counter_cost_outcome(total, physical_count, outcomes)),
         )
     }
 
@@ -301,6 +335,7 @@ pub(crate) fn prepare_counter_removal_cost(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     events: Vec<Event>,
+    physical_count: bool,
 ) -> Result<PreparedCounterCost, ExecutionError> {
     let Some((total, resources)) = counter_removal_cost_inputs(game, &events)? else {
         return Ok(PreparedCounterCost::Finished(EffectOutcome::impossible()));
@@ -314,6 +349,7 @@ pub(crate) fn prepare_counter_removal_cost(
     }
     Ok(PreparedCounterCost::Originals {
         total,
+        physical_count,
         simultaneous,
         resources,
         children,
@@ -342,7 +378,7 @@ impl EffectExecutor for CounterRemovalCost {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let plan = prepare_counter_removal_cost(game, ctx, self.0.clone())?;
+                let plan = prepare_counter_removal_cost(game, ctx, self.0.clone(), false)?;
                 let plan: Box<dyn crate::effects::SimultaneousEffectProposal> = match plan {
                     PreparedCounterCost::Finished(outcome) => {
                         return Ok(CompletedEffectOutputs::aggregate_only(outcome));

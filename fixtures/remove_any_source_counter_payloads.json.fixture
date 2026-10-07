@@ -1,0 +1,745 @@
+[
+  {
+    "name": "Arcbound Javelineer",
+    "oracle_id": "48e3f6dd-68ab-420a-ad4d-fe7ee39486d3",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Arcbound Javelineer"
+    ],
+    "text": "Mana cost: {W}\nType: Artifact Creature — Soldier\nFirst printed set: Modern Horizons 2\nPower/Toughness: 0/1\n{T}, Remove X +1/+1 counters from this creature: It deals X damage to target attacking or blocking creature.\nModular 1 (This creature enters with a +1/+1 counter on it. When it dies, you may put its +1/+1 counters on target artifact creature.)"
+  },
+  {
+    "name": "Ashiok, Nightmare Weaver",
+    "oracle_id": "b6f52260-9ad5-4024-acf9-d77f3c08c872",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Ashiok, Nightmare Weaver"
+    ],
+    "text": "Mana cost: {1}{U}{B}\nType: Legendary Planeswalker — Ashiok\nFirst printed set: Theros\nLoyalty: 3\n+2: Exile the top three cards of target opponent's library.\n−X: Put a creature card with mana value X exiled with Ashiok onto the battlefield under your control. That creature is a Nightmare in addition to its other types.\n−10: Exile all cards from all opponents' hands and graveyards."
+  },
+  {
+    "name": "Auntie Blyte, Bad Influence",
+    "oracle_id": "a5e9142e-76bf-40d4-aeaa-ffe197d38f25",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Auntie Blyte, Bad Influence"
+    ],
+    "text": "Mana cost: {2}{R}\nType: Legendary Creature — Devil Advisor\nFirst printed set: Jumpstart 2022\nPower/Toughness: 2/2\nFlying\nWhenever a source you control deals damage to you, put that many +1/+1 counters on Auntie Blyte.\n{1}{R}, {T}, Remove X +1/+1 counters from Auntie Blyte: It deals X damage to any target."
+  },
+  {
+    "name": "Black Mana Battery",
+    "oracle_id": "dc3b2bab-755d-4b2f-97c0-70a74d721a79",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Black Mana Battery"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Legends\n{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {B}, then add an additional {B} for each charge counter removed this way."
+  },
+  {
+    "name": "Blademane Baku",
+    "oracle_id": "9ca64b8e-e9d2-41b3-b229-6fcdc48a8371",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Blademane Baku"
+    ],
+    "text": "Mana cost: {1}{R}\nType: Creature — Spirit\nFirst printed set: Betrayers of Kamigawa\nPower/Toughness: 1/1\nWhenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, Remove X ki counters from this creature: For each counter removed, this creature gets +2/+0 until end of turn."
+  },
+  {
+    "name": "Blue Mana Battery",
+    "oracle_id": "79e91e8a-cee7-411b-b0a3-d3383c0d4a43",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Blue Mana Battery"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Legends\n{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {U}, then add an additional {U} for each charge counter removed this way."
+  },
+  {
+    "name": "Bottomless Vault",
+    "oracle_id": "e43413e4-be17-49af-978a-26210d05f52a",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Bottomless Vault"
+    ],
+    "text": "Type: Land\nFirst printed set: Fallen Empires\nThis land enters tapped.\nYou may choose not to untap this land during your untap step.\nAt the beginning of your upkeep, if this land is tapped, put a storage counter on it.\n{T}, Remove any number of storage counters from this land: Add {B} for each storage counter removed this way."
+  },
+  {
+    "name": "Brain in a Jar",
+    "oracle_id": "321dbd10-1d48-49fc-ba6a-1df241a53338",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Brain in a Jar"
+    ],
+    "text": "Mana cost: {2}\nType: Artifact\nFirst printed set: Shadows over Innistrad Promos\n{1}, {T}: Put a charge counter on this artifact, then you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost.\n{3}, {T}, Remove X charge counters from this artifact: Scry X."
+  },
+  {
+    "name": "Calciform Pools",
+    "oracle_id": "2031bc31-81cc-407a-8615-29832f586bbc",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Calciform Pools"
+    ],
+    "text": "Type: Land\nFirst printed set: Time Spiral\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{1}, Remove X storage counters from this land: Add X mana in any combination of {W} and/or {U}."
+  },
+  {
+    "name": "Catti-brie of Mithral Hall",
+    "oracle_id": "f44ffa35-bd88-4996-8b20-46329565df9b",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Catti-brie of Mithral Hall"
+    ],
+    "text": "Mana cost: {G}{W}\nType: Legendary Creature — Human Archer\nFirst printed set: Forgotten Realms Commander\nPower/Toughness: 2/2\nReach, first strike\nWhenever Catti-brie attacks, put a +1/+1 counter on it for each Equipment attached to it.\n{1}, Remove all +1/+1 counters from Catti-brie: It deals X damage to target attacking or blocking creature an opponent controls, where X is the number of counters removed this way."
+  },
+  {
+    "name": "Chamber Sentry",
+    "oracle_id": "65f8e726-be50-49ee-96fc-d3a2080d7b8c",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Chamber Sentry"
+    ],
+    "text": "Mana cost: {X}\nType: Artifact Creature — Construct\nFirst printed set: Guilds of Ravnica\nPower/Toughness: 0/0\nThis creature enters with a +1/+1 counter on it for each color of mana spent to cast it.\n{X}, {T}, Remove X +1/+1 counters from this creature: It deals X damage to any target.\n{W}{U}{B}{R}{G}: Return this card from your graveyard to your hand."
+  },
+  {
+    "name": "Chandra Nalaar",
+    "oracle_id": "f4da7a43-e9d5-47ea-b2f0-3cf55a156f4a",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Chandra Nalaar",
+      "Chandra Nalaar // Chandra Nalaar"
+    ],
+    "text": "Mana cost: {3}{R}{R}\nType: Legendary Planeswalker — Chandra\nFirst printed set: Lorwyn\nLoyalty: 6\n+1: Chandra Nalaar deals 1 damage to target player or planeswalker.\n−X: Chandra Nalaar deals X damage to target creature.\n−8: Chandra Nalaar deals 10 damage to target player or planeswalker and each creature that player or that planeswalker's controller controls."
+  },
+  {
+    "name": "Chandra, Awakened Inferno",
+    "oracle_id": "7b2a600b-d6c8-45ff-a7fc-06105d27111f",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Chandra, Awakened Inferno"
+    ],
+    "text": "Mana cost: {4}{R}{R}\nType: Legendary Planeswalker — Chandra\nFirst printed set: Core Set 2020\nLoyalty: 6\nThis spell can't be countered.\n+2: Each opponent gets an emblem with \"At the beginning of your upkeep, this emblem deals 1 damage to you.\"\n−3: Chandra deals 3 damage to each non-Elemental creature.\n−X: Chandra deals X damage to target creature or planeswalker. If a permanent dealt damage this way would die this turn, exile it instead."
+  },
+  {
+    "name": "Chandra, Flamecaller",
+    "oracle_id": "0c2a9131-f3d7-4f71-8bcc-3c169574b2e3",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Chandra, Flamecaller"
+    ],
+    "text": "Mana cost: {4}{R}{R}\nType: Legendary Planeswalker — Chandra\nFirst printed set: Oath of the Gatewatch\nLoyalty: 4\n+1: Create two 3/1 red Elemental creature tokens with haste. Exile them at the beginning of the next end step.\n0: Discard all the cards in your hand, then draw that many cards plus one.\n−X: Chandra deals X damage to each creature."
+  },
+  {
+    "name": "Chandra, Hope's Beacon",
+    "oracle_id": "53231b31-fb3c-4b30-bfe9-0ee8e754247b",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Chandra, Hope's Beacon"
+    ],
+    "text": "Mana cost: {4}{R}{R}\nType: Legendary Planeswalker — Chandra\nFirst printed set: March of the Machine\nLoyalty: 5\nWhenever you cast an instant or sorcery spell, copy it. You may choose new targets for the copy. This ability triggers only once each turn.\n+2: Add two mana in any combination of colors.\n+1: Exile the top five cards of your library. Until the end of your next turn, you may cast an instant or sorcery spell from among those exiled cards.\n−X: Chandra deals X damage to each of up to two targets."
+  },
+  {
+    "name": "Crucible of the Spirit Dragon",
+    "oracle_id": "ecfbebc9-7fc7-474e-8c59-8ede800e082e",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Crucible of the Spirit Dragon"
+    ],
+    "text": "Type: Land\nFirst printed set: Fate Reforged\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{T}, Remove X storage counters from this land: Add X mana in any combination of colors. Spend this mana only to cast Dragon spells or activate abilities of Dragons."
+  },
+  {
+    "name": "Cruel Sadist",
+    "oracle_id": "9fceca3c-fc10-4e46-a727-122aafcef349",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Cruel Sadist"
+    ],
+    "text": "Mana cost: {B}\nType: Creature — Human Assassin\nFirst printed set: Magic 2015\nPower/Toughness: 1/1\n{B}, {T}, Pay 1 life: Put a +1/+1 counter on this creature.\n{2}{B}, {T}, Remove X +1/+1 counters from this creature: It deals X damage to target creature."
+  },
+  {
+    "name": "Dreadship Reef",
+    "oracle_id": "130a8cf5-1354-4d17-91c8-c073642eb3db",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Dreadship Reef"
+    ],
+    "text": "Type: Land\nFirst printed set: Time Spiral\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{1}, Remove X storage counters from this land: Add X mana in any combination of {U} and/or {B}."
+  },
+  {
+    "name": "Dwarven Hold",
+    "oracle_id": "4a6625bd-3dd2-45f1-8dc9-034c833fa90c",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Dwarven Hold"
+    ],
+    "text": "Type: Land\nFirst printed set: Fallen Empires\nThis land enters tapped.\nYou may choose not to untap this land during your untap step.\nAt the beginning of your upkeep, if this land is tapped, put a storage counter on it.\n{T}, Remove any number of storage counters from this land: Add {R} for each storage counter removed this way."
+  },
+  {
+    "name": "Essence Bottle",
+    "oracle_id": "76f839b0-1d4c-4ad9-b44f-a8a13d6d109f",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "original_failure_prior_source_hold",
+    "prior_source_families": [
+      "paid-counter-and-actual-sacrifice-quantities"
+    ],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Essence Bottle"
+    ],
+    "text": "Mana cost: {2}\nType: Artifact\nFirst printed set: Tempest\n{3}, {T}: Put an elixir counter on this artifact.\n{T}, Remove all elixir counters from this artifact: You gain 2 life for each elixir counter removed this way."
+  },
+  {
+    "name": "Fountain of Cho",
+    "oracle_id": "0799df10-b489-4f79-bf98-7a0c500b46a1",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Fountain of Cho"
+    ],
+    "text": "Type: Land\nFirst printed set: Mercadian Masques\nThis land enters tapped.\n{T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {W} for each storage counter removed this way."
+  },
+  {
+    "name": "Fungal Reaches",
+    "oracle_id": "6f18ea44-3efa-4a45-abc6-86a0627e40f2",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Fungal Reaches"
+    ],
+    "text": "Type: Land\nFirst printed set: Time Spiral\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{1}, Remove X storage counters from this land: Add X mana in any combination of {R} and/or {G}."
+  },
+  {
+    "name": "Geistflame Reservoir",
+    "oracle_id": "143714b8-30ae-42c2-84d9-e58aed7dff5b",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Geistflame Reservoir"
+    ],
+    "text": "Mana cost: {2}{R}\nType: Artifact\nFirst printed set: Innistrad: Midnight Hunt\nWhenever you cast an instant or sorcery spell, put a charge counter on this artifact.\n{1}{R}, {T}, Remove any number of charge counters from this artifact: It deals that much damage to any target.\n{1}{R}, {T}: Exile the top card of your library. You may play that card this turn."
+  },
+  {
+    "name": "Geometric Nexus",
+    "oracle_id": "935bcf49-ec8b-4ad6-b12d-77dc7cccf1d4",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Geometric Nexus"
+    ],
+    "text": "Mana cost: {2}\nType: Artifact\nFirst printed set: Commander 2021\nWhenever a player casts an instant or sorcery spell, put a number of charge counters on this artifact equal to that spell's mana value.\n{6}, {T}, Remove all charge counters from this artifact: Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it, where X is the number of charge counters removed this way."
+  },
+  {
+    "name": "Green Mana Battery",
+    "oracle_id": "b953d19f-6ba7-4aee-b353-c60dc9572610",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Green Mana Battery"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Legends\n{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {G}, then add an additional {G} for each charge counter removed this way."
+  },
+  {
+    "name": "Haruspex",
+    "oracle_id": "2309436e-3442-46d7-8ffc-9dc4a2314ae9",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Haruspex"
+    ],
+    "text": "Mana cost: {3}{G}\nType: Creature — Tyranid\nFirst printed set: Warhammer 40,000 Commander\nPower/Toughness: 2/2\nRapacious Hunger — Whenever another creature dies, put a +1/+1 counter on this creature.\nDevouring Monster — {T}, Remove X +1/+1 counters from this creature: Add X mana of any one color."
+  },
+  {
+    "name": "Hollow Trees",
+    "oracle_id": "3348df85-e61c-47b5-857d-c79befb38a8a",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Hollow Trees"
+    ],
+    "text": "Type: Land\nFirst printed set: Fallen Empires\nThis land enters tapped.\nYou may choose not to untap this land during your untap step.\nAt the beginning of your upkeep, if this land is tapped, put a storage counter on it.\n{T}, Remove any number of storage counters from this land: Add {G} for each storage counter removed this way."
+  },
+  {
+    "name": "Hourglass of the Lost",
+    "oracle_id": "bf89bd6d-aa6c-4fd8-9278-151529ab0e62",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Hourglass of the Lost"
+    ],
+    "text": "Mana cost: {2}{W}\nType: Artifact\nFirst printed set: Modern Horizons 3 Commander\n{T}: Add {W}. Put a time counter on this artifact.\n{T}, Remove X time counters from this artifact and exile it: Return each nonland permanent card with mana value X from your graveyard to the battlefield. Activate only as a sorcery."
+  },
+  {
+    "name": "Huatli, Warrior Poet",
+    "oracle_id": "3ec889bc-f4d7-492a-91c3-d3691eb90eac",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Huatli, Warrior Poet"
+    ],
+    "text": "Mana cost: {3}{R}{W}\nType: Legendary Planeswalker — Huatli\nFirst printed set: Ixalan Promos\nLoyalty: 3\n+2: You gain life equal to the greatest power among creatures you control.\n0: Create a 3/3 green Dinosaur creature token with trample.\n−X: Huatli deals X damage divided as you choose among any number of target creatures. Creatures dealt damage this way can't block this turn."
+  },
+  {
+    "name": "Icatian Store",
+    "oracle_id": "87a0e0b9-6c2d-47a4-a3ed-7e0ae62fbffc",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Icatian Store"
+    ],
+    "text": "Type: Land\nFirst printed set: Fallen Empires\nThis land enters tapped.\nYou may choose not to untap this land during your untap step.\nAt the beginning of your upkeep, if this land is tapped, put a storage counter on it.\n{T}, Remove any number of storage counters from this land: Add {W} for each storage counter removed this way."
+  },
+  {
+    "name": "Infused Arrows",
+    "oracle_id": "942216f7-6803-4ab3-9239-463002590f6f",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Infused Arrows"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Fifth Dawn\nSunburst (This artifact enters with a charge counter on it for each color of mana spent to cast it.)\n{T}, Remove X charge counters from this artifact: Target creature gets -X/-X until end of turn."
+  },
+  {
+    "name": "Jar of Eyeballs",
+    "oracle_id": "3075dadd-240f-4455-9286-9f1d48f53a3f",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "original_failure_prior_source_hold",
+    "prior_source_families": [
+      "activation-counter-payment-receipts"
+    ],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Jar of Eyeballs"
+    ],
+    "text": "Mana cost: {3}\nType: Artifact\nFirst printed set: Dark Ascension\nWhenever a creature you control dies, put two eyeball counters on this artifact.\n{3}, {T}, Remove all eyeball counters from this artifact: Look at the top X cards of your library, where X is the number of eyeball counters removed this way. Put one of them into your hand and the rest on the bottom of your library in any order."
+  },
+  {
+    "name": "Kyren Toy",
+    "oracle_id": "f1a0d112-9e1b-4354-bd7f-0051bff8f904",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Kyren Toy"
+    ],
+    "text": "Mana cost: {3}\nType: Artifact\nFirst printed set: Mercadian Masques\n{1}, {T}: Put a charge counter on this artifact.\n{T}, Remove X charge counters from this artifact: Add an amount of {C} equal to X plus one."
+  },
+  {
+    "name": "Mage-Ring Network",
+    "oracle_id": "136596a0-b179-40be-b42d-c0b992621c95",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Mage-Ring Network"
+    ],
+    "text": "Type: Land\nFirst printed set: Magic Origins\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {C} for each storage counter removed this way."
+  },
+  {
+    "name": "Mercadian Bazaar",
+    "oracle_id": "b02ab3c7-fe4a-443c-b860-ba971d3301b0",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Mercadian Bazaar"
+    ],
+    "text": "Type: Land\nFirst printed set: Mercadian Masques\nThis land enters tapped.\n{T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {R} for each storage counter removed this way."
+  },
+  {
+    "name": "Mercadian Lift",
+    "oracle_id": "88c3bb73-c765-4e1c-b4b9-97eaab02182f",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Mercadian Lift"
+    ],
+    "text": "Mana cost: {2}\nType: Artifact\nFirst printed set: Mercadian Masques\n{1}, {T}: Put a winch counter on this artifact.\n{T}, Remove X winch counters from this artifact: You may put a creature card with mana value X from your hand onto the battlefield."
+  },
+  {
+    "name": "Molten Hydra",
+    "oracle_id": "cd5bc95d-4915-4c5a-9b57-2730adf69797",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Molten Hydra"
+    ],
+    "text": "Mana cost: {1}{R}\nType: Creature — Hydra\nFirst printed set: Urza's Legacy\nPower/Toughness: 1/1\n{1}{R}{R}: Put a +1/+1 counter on this creature.\n{T}, Remove all +1/+1 counters from this creature: It deals damage to any target equal to the number of +1/+1 counters removed this way."
+  },
+  {
+    "name": "Molten Slagheap",
+    "oracle_id": "33587cb2-0fd3-4e4c-bc5e-e7299cc9dab5",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Molten Slagheap"
+    ],
+    "text": "Type: Land\nFirst printed set: Time Spiral\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{1}, Remove X storage counters from this land: Add X mana in any combination of {B} and/or {R}."
+  },
+  {
+    "name": "Night Dealings",
+    "oracle_id": "9d52641e-b9ad-4781-a374-1d2868eb32a8",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Night Dealings"
+    ],
+    "text": "Mana cost: {2}{B}{B}\nType: Enchantment\nFirst printed set: Champions of Kamigawa\nWhenever a source you control deals damage to another player, put that many theft counters on this enchantment.\n{2}{B}{B}, Remove X theft counters from this enchantment: Search your library for a nonland card with mana value X, reveal it, put it into your hand, then shuffle."
+  },
+  {
+    "name": "Petalmane Baku",
+    "oracle_id": "f73f8eca-55fe-418f-a244-29ef82cfc47c",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Petalmane Baku"
+    ],
+    "text": "Mana cost: {1}{G}\nType: Creature — Spirit\nFirst printed set: Betrayers of Kamigawa\nPower/Toughness: 1/2\nWhenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, Remove X ki counters from this creature: Add X mana of any one color."
+  },
+  {
+    "name": "Quillmane Baku",
+    "oracle_id": "736168bb-0a5c-4b29-9f82-1319cd112873",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Quillmane Baku"
+    ],
+    "text": "Mana cost: {4}{U}\nType: Creature — Spirit\nFirst printed set: Betrayers of Kamigawa\nPower/Toughness: 3/3\nWhenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, {T}, Remove X ki counters from this creature: Return target creature with mana value X or less to its owner's hand."
+  },
+  {
+    "name": "Red Mana Battery",
+    "oracle_id": "8ceb295c-a611-4ac7-940b-557bf60f8a8b",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Red Mana Battery"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Legends\n{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {R}, then add an additional {R} for each charge counter removed this way."
+  },
+  {
+    "name": "Relic Amulet",
+    "oracle_id": "b3998d9c-56b1-486c-818c-a6882e999d54",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Relic Amulet"
+    ],
+    "text": "Mana cost: {2}\nType: Artifact\nFirst printed set: Zendikar Rising\nWhenever you cast an instant, sorcery, or Wizard spell, put a charge counter on this artifact.\n{2}, {T}, Remove all charge counters from this artifact: It deals that much damage to target creature."
+  },
+  {
+    "name": "Rushwood Grove",
+    "oracle_id": "ccb2f92e-69c0-415c-81cd-52c384b3b233",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Rushwood Grove"
+    ],
+    "text": "Type: Land\nFirst printed set: Mercadian Masques\nThis land enters tapped.\n{T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {G} for each storage counter removed this way."
+  },
+  {
+    "name": "Sage of Hours",
+    "oracle_id": "bdbf70da-af38-4827-9b8b-39f553ebd34a",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Sage of Hours"
+    ],
+    "text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nFirst printed set: Journey into Nyx\nPower/Toughness: 1/1\nHeroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on it.\nRemove all +1/+1 counters from this creature: For each five counters removed this way, take an extra turn after this one."
+  },
+  {
+    "name": "Saltcrusted Steppe",
+    "oracle_id": "021e4165-2f02-4bd4-86ca-cb7bf4c9e23d",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Saltcrusted Steppe"
+    ],
+    "text": "Type: Land\nFirst printed set: Time Spiral\n{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{1}, Remove X storage counters from this land: Add X mana in any combination of {G} and/or {W}."
+  },
+  {
+    "name": "Sand Silos",
+    "oracle_id": "48a830f1-8965-4f97-b3d8-ca98eab1ba33",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Sand Silos"
+    ],
+    "text": "Type: Land\nFirst printed set: Fallen Empires\nThis land enters tapped.\nYou may choose not to untap this land during your untap step.\nAt the beginning of your upkeep, if this land is tapped, put a storage counter on it.\n{T}, Remove any number of storage counters from this land: Add {U} for each storage counter removed this way."
+  },
+  {
+    "name": "Saprazzan Cove",
+    "oracle_id": "f7dda04a-c9c6-4952-9bbc-87e3c7480347",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Saprazzan Cove"
+    ],
+    "text": "Type: Land\nFirst printed set: Mercadian Masques\nThis land enters tapped.\n{T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {U} for each storage counter removed this way."
+  },
+  {
+    "name": "Skullmane Baku",
+    "oracle_id": "74466fa6-34d9-42f9-8590-c7f1fa672bf5",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Skullmane Baku"
+    ],
+    "text": "Mana cost: {3}{B}{B}\nType: Creature — Spirit\nFirst printed set: Betrayers of Kamigawa\nPower/Toughness: 2/1\nWhenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, {T}, Remove X ki counters from this creature: Target creature gets -X/-X until end of turn."
+  },
+  {
+    "name": "Sorin, Grim Nemesis",
+    "oracle_id": "0a01dd05-e289-489f-b3ad-88e15e157bd0",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "original_failure_prior_source_hold",
+    "prior_source_families": [
+      "dynamic-token-quantities"
+    ],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Sorin, Grim Nemesis"
+    ],
+    "text": "Mana cost: {4}{W}{B}\nType: Legendary Planeswalker — Sorin\nFirst printed set: Shadows over Innistrad Promos\nLoyalty: 6\n+1: Reveal the top card of your library and put that card into your hand. Each opponent loses life equal to its mana value.\n−X: Sorin deals X damage to target creature or planeswalker and you gain X life.\n−9: Create a number of 1/1 black Vampire Knight creature tokens with lifelink equal to the highest life total among all players."
+  },
+  {
+    "name": "Sorin, Vengeful Bloodlord",
+    "oracle_id": "cffb615c-2de0-4c65-9d0b-08a649ba0695",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Sorin, Vengeful Bloodlord"
+    ],
+    "text": "Mana cost: {2}{W}{B}\nType: Legendary Planeswalker — Sorin\nFirst printed set: War of the Spark Promos\nLoyalty: 4\nDuring your turn, creatures and planeswalkers you control have lifelink.\n+2: Sorin deals 1 damage to target player or planeswalker.\n−X: Return target creature card with mana value X from your graveyard to the battlefield. That creature is a Vampire in addition to its other types."
+  },
+  {
+    "name": "Subterranean Hangar",
+    "oracle_id": "0bbd5a04-c281-4afb-98a1-657b4eca102c",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Subterranean Hangar"
+    ],
+    "text": "Type: Land\nFirst printed set: Mercadian Masques\nThis land enters tapped.\n{T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {B} for each storage counter removed this way."
+  },
+  {
+    "name": "Talon of Pain",
+    "oracle_id": "0e4d2fbc-1b34-4501-9022-8ea800cb2d24",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Talon of Pain"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Darksteel\nWhenever a source you control other than this artifact deals damage to an opponent, put a charge counter on this artifact.\n{X}, {T}, Remove X charge counters from this artifact: It deals X damage to any target."
+  },
+  {
+    "name": "Tamiyo, Compleated Sage",
+    "oracle_id": "021b4745-4a15-462c-a6b0-2dee1dc9d196",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Tamiyo, Compleated Sage"
+    ],
+    "text": "Mana cost: {2}{G}{G/U/P}{U}\nType: Legendary Planeswalker — Tamiyo\nFirst printed set: Kamigawa: Neon Dynasty\nLoyalty: 5\nCompleated ({G/U/P} can be paid with {G}, {U}, or 2 life. If life was paid, this planeswalker enters with two fewer loyalty counters.)\n+1: Tap up to one target artifact or creature. It doesn't untap during its controller's next untap step.\n−X: Exile target nonland permanent card with mana value X from your graveyard. Create a token that's a copy of that card.\n−7: Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\""
+  },
+  {
+    "name": "Tezzeret the Seeker",
+    "oracle_id": "4aeafdf3-7828-4114-8c74-3bd46357caec",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Tezzeret the Seeker"
+    ],
+    "text": "Mana cost: {3}{U}{U}\nType: Legendary Planeswalker — Tezzeret\nFirst printed set: Shards of Alara\nLoyalty: 4\n+1: Untap up to two target artifacts.\n−X: Search your library for an artifact card with mana value X or less, put it onto the battlefield, then shuffle.\n−5: Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
+  },
+  {
+    "name": "The Astonishing Ant-Man",
+    "oracle_id": "6c7e4e51-099a-4398-a4b7-e2f0ddd36429",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "original_failure_prior_source_hold",
+    "prior_source_families": [
+      "activation-counter-payment-receipts"
+    ],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "The Astonishing Ant-Man"
+    ],
+    "text": "Mana cost: {G}{U}\nType: Legendary Creature — Human Scientist Hero\nFirst printed set: Marvel Super Heroes\nPower/Toughness: 1/1\nWhenever you draw a card, put a +1/+1 counter on The Astonishing Ant-Man.\n{2}{G}, {T}, Remove any number of +1/+1 counters from The Astonishing Ant-Man: Create that many 1/1 green Insect creature tokens."
+  },
+  {
+    "name": "Torture Chamber",
+    "oracle_id": "12436f2f-eaed-4b46-8570-81316ce15962",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Torture Chamber"
+    ],
+    "text": "Mana cost: {3}\nType: Artifact\nFirst printed set: Tempest\nAt the beginning of your upkeep, put a pain counter on this artifact.\nAt the beginning of your end step, this artifact deals damage to you equal to the number of pain counters on it.\n{1}, {T}, Remove all pain counters from this artifact: It deals damage to target creature equal to the number of pain counters removed this way."
+  },
+  {
+    "name": "Ugin, the Spirit Dragon",
+    "oracle_id": "eecb3047-a563-441a-9175-200421981ac3",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Ugin, the Spirit Dragon"
+    ],
+    "text": "Mana cost: {8}\nType: Legendary Planeswalker — Ugin\nFirst printed set: Ugin's Fate\nLoyalty: 7\n+2: Ugin deals 3 damage to any target.\n−X: Exile each permanent with mana value X or less that's one or more colors.\n−10: You gain 7 life, draw seven cards, then put up to seven permanent cards from your hand onto the battlefield."
+  },
+  {
+    "name": "Vish Kal, Blood Arbiter",
+    "oracle_id": "ba3bfe0c-2bd6-469c-802c-440b7caf7fb5",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "original_failure_prior_source_hold",
+    "prior_source_families": [
+      "paid-counter-and-actual-sacrifice-quantities"
+    ],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "Vish Kal, Blood Arbiter"
+    ],
+    "text": "Mana cost: {4}{W}{B}{B}\nType: Legendary Creature — Vampire\nFirst printed set: Commander 2011\nPower/Toughness: 5/5\nFlying, lifelink\nSacrifice a creature: Put X +1/+1 counters on Vish Kal, where X is the sacrificed creature's power.\nRemove all +1/+1 counters from Vish Kal: Target creature gets -1/-1 until end of turn for each +1/+1 counter removed this way."
+  },
+  {
+    "name": "Waxmane Baku",
+    "oracle_id": "bb23221a-f1d0-421d-9769-132e2b26b804",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "authored_graph_normalization",
+    "measured_entry_names": [
+      "Waxmane Baku"
+    ],
+    "text": "Mana cost: {2}{W}\nType: Creature — Spirit\nFirst printed set: Betrayers of Kamigawa\nPower/Toughness: 2/2\nWhenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, Remove X ki counters from this creature: Tap X target creatures."
+  },
+  {
+    "name": "White Mana Battery",
+    "oracle_id": "cf58682f-c305-4803-b54b-37f0841788e9",
+    "measurement_base": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "prior_status": "formerly_supported_regression",
+    "prior_source_families": [],
+    "measured_route": "runtime_conversion",
+    "measured_entry_names": [
+      "White Mana Battery"
+    ],
+    "text": "Mana cost: {4}\nType: Artifact\nFirst printed set: Legends\n{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {W}, then add an additional {W} for each charge counter removed this way."
+  }
+]

@@ -259,6 +259,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegisterNextBatchEnterWithCountersEffect" => Some(EffectFamily::StackEvent),
         "RegisterZoneReplacementEffect" => Some(EffectFamily::StackEvent),
         "RemoveAnyCountersAmongEffect" => Some(EffectFamily::Resources),
+        "RemoveAnyCountersFromSourceEffect" => Some(EffectFamily::Resources),
         "RemoveCountersEffect" => Some(EffectFamily::Resources),
         "BecomeBlockedEffect" => Some(EffectFamily::Combat),
         "RemoveFromCombatEffect" => Some(EffectFamily::Combat),
@@ -416,6 +417,39 @@ mod tests {
             Some(EffectFamily::CompositionMZ)
         );
         assert_eq!(family_for_kind("NotAnEffect"), None);
+    }
+
+    // UNRUN: source-only regression for the measured payload registration gap.
+    #[test]
+    fn source_counter_payload_decodes_and_normalizes_inside_owned_cost() {
+        use ironsmith_compiled_artifact::WireEffect;
+        use ironsmith_core::{Cost, CounterType, EffectId, RemoveAnyCountersFromSourceEffect, WithIdEffect};
+
+        let kind = "RemoveAnyCountersFromSourceEffect";
+        assert_eq!(family_for_kind(kind), Some(EffectFamily::Resources));
+        for counter_type in [None, Some(CounterType::Charge), Some(CounterType::Named("eyeball".into()))] {
+            for display_x in [false, true] {
+                for remove_all in [false, true] {
+                    let model = RemoveAnyCountersFromSourceEffect { counter_type, display_x, remove_all };
+                    let payload = serde_json::to_value(&model).unwrap();
+                    let decoded = super::decode(kind, payload.clone()).unwrap();
+                    assert_eq!(decoded.downcast_ref::<RemoveAnyCountersFromSourceEffect>(), Some(&model));
+
+                    let owned = WithIdEffect::new(EffectId(73), WireEffect::new(kind, payload));
+                    let cost = Cost::Effect(WireEffect::new("WithIdEffect", serde_json::to_value(owned).unwrap()));
+                    let mut bind = |_: u32| -> Result<u32, String> {
+                        panic!("source counter payload has no authored card IDs")
+                    };
+                    let (normalized, opaque) = super::authored_definition_graph(&cost, &mut bind, &[]).unwrap();
+                    assert!(!opaque);
+                    assert_eq!(normalized, serde_json::to_value(&cost).unwrap());
+                    assert_eq!(super::remap_card_ids(&cost, &mut bind).unwrap(), normalized);
+                }
+            }
+        }
+        assert!(super::decode(kind, serde_json::json!({
+            "counter_type": null, "display_x": "true", "remove_all": false,
+        })).is_err(), "registration must retain typed field validation");
     }
 }
 

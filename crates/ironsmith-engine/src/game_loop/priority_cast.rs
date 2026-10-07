@@ -6345,8 +6345,8 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             }
             let payment = match payment {
                 Ok(payment)
-                    if payment.instruction_result().count_or_zero() == i64::from(cost.count)
-                        && !payment.status.is_failure() =>
+                    if payment.requested_amount() == Some(u64::from(cost.count))
+                        && payment.instruction_result().status == crate::effect::OutcomeStatus::Succeeded =>
                 {
                     payment
                 }
@@ -7455,5 +7455,49 @@ mod counter_payment_error_bridge_tests {
         assert_eq!(game.next_object_id_counter(), before_id);
         assert!(game.take_pending_trigger_events().is_empty());
         assert!(game.stack.is_empty());
+    }
+
+    // UNRUN: the legacy activation caller must acknowledge the nominal cost,
+    // even when replacement leaves a smaller physical removal receipt.
+    #[test]
+    fn staged_counter_cost_accepts_prevented_and_modified_payment() {
+        for prevented in [false, true] {
+            let player = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Counter payment source")
+                .card_types(vec![crate::types::CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+            game.object_mut(source).unwrap().counters.insert(crate::CounterType::Charge, 3);
+            let action = if prevented { crate::replacement::ReplacementAction::Prevent }
+                else { crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Subtract(1)) };
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(source, player,
+                    crate::events::counters::matchers::WouldRemoveCountersMatcher::new(
+                        ObjectFilter::specific(source), Some(crate::CounterType::Charge)), action));
+            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+            let cost = crate::effects::RemoveAnyCountersAmongEffect::new(2, ObjectFilter::specific(source))
+                .with_counter_type(Some(crate::CounterType::Charge));
+            let mut pending = PendingActivation::new(
+                source, 0, None, player, Default::default(), ActivationStage::ProcessingCosts,
+                vec![crate::effect::Effect::gain_life(1)].into(), Vec::new(), None, Vec::new(), crate::costs::PaymentReason::ActivateAbility,
+                Vec::new(), vec![ActivationCostStep::Cost(crate::costs::Cost::effect(cost.clone()))],
+                Default::default(), 0, false, false, snapshot.stable_id, snapshot,
+                "Counter payment source".into(), None, false, false, Vec::new(), None, Vec::new(),
+            );
+            pending.pending_remove_counters_among = Some(PendingRemoveCountersAmongChoice {
+                cost, distribution_ready: true, allocations: Default::default(),
+                selected_removals: vec![(source, crate::CounterType::Charge, 2)], selected_total: 2,
+            });
+            let mut state = PriorityLoopState::new(2);
+            state.save_checkpoint(&game);
+            let mut queue = TriggerQueue::new();
+            continue_activation_remove_counters_among_payment(
+                &mut game, &mut queue, &mut state, pending, &mut crate::decision::SelectFirstDecisionMaker, None,
+            ).unwrap();
+            assert_eq!(game.counter_count(source, crate::CounterType::Charge), if prevented { 3 } else { 2 });
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+            assert_eq!(game.stack.len(), 1);
+            assert!(state.pending_activation.is_none());
+        }
     }
 }

@@ -834,6 +834,11 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RemoveAnyCountersFromSourceEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseCardTypeEffect>(&effect)
     {
         return Ok(converted);

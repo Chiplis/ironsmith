@@ -315,10 +315,57 @@ impl DiscardEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+/// Remove counters from the source permanent, including variable counter costs.
 pub struct RemoveAnyCountersFromSourceEffect {
+    /// Optional counter type restriction.
     pub counter_type: Option<crate::counter::CounterType>,
+    /// Whether display should use `X` instead of `any number`.
     pub display_x: bool,
+    /// Whether this cost must remove every available matching counter.
     pub remove_all: bool,
+}
+
+impl RemoveAnyCountersFromSourceEffect {
+    pub fn any_number(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+            remove_all: false,
+        }
+    }
+
+    pub fn x(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: true,
+            remove_all: false,
+        }
+    }
+
+    pub fn all(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+            remove_all: true,
+        }
+    }
+
+    pub fn cost_display(&self) -> String {
+        let amount_text = if self.remove_all {
+            "all"
+        } else if self.display_x {
+            "X"
+        } else {
+            "any number of"
+        };
+        match self.counter_type {
+            Some(counter_type) => format!(
+                "Remove {amount_text} {} counters from this source",
+                counter_type.description(),
+            ),
+            None => format!("Remove {amount_text} counters from this source"),
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
