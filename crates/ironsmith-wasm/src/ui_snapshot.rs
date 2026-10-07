@@ -6169,3 +6169,8 @@ mod scoped_revealed_hand_tests {
         }
     }
 }
+
+// Frozen whole-card source evidence; authored scenarios remain UNRUN.
+#[cfg(test)]
+#[path = "public_revealed_hand_source_tests.rs"]
+mod public_revealed_hand_source_tests;

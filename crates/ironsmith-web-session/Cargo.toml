@@ -40,6 +40,8 @@ shadow-continuous = ["ironsmith/shadow-continuous"]
 paranoid-invariants = ["ironsmith/paranoid-invariants"]
 
 [dev-dependencies]
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
+ironsmith-compiler-runtime = { path = "../ironsmith-compiler-runtime", default-features = false }
 ironsmith-card-catalog = { path = "../ironsmith-card-catalog", features = ["build"] }
 ironsmith-registry-test = { package = "ironsmith-registry", path = "../ironsmith-registry", default-features = false, features = ["handwritten-parse-support"] }
 ironsmith-tools = { path = "../ironsmith-tools", default-features = false }

@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+  "source_implementation_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
-    "additional_proposed_unique_cards": 1276,
-    "additional_proposed_compile_entries": 1281,
+    "additional_proposed_unique_cards": 1281,
+    "additional_proposed_compile_entries": 1286,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1276,
+    "source_proposals_excluding_identified_runtime_gaps": 1281,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 321,
+    "source_identities_until_majority_gate": 316,
     "current_base_owner_admission_blocked": true,
     "measurement_scope": "Current measurements are clean main5cc46c1. Source-card inventory remains the original frozen e8740178 failure scope; current-residual accounting, regressions and exclusions are explicit in current-residual-source-coverage.json.",
     "current_main_refresh_status": "completed_override_consumed",
@@ -33,7 +33,7 @@
     "current_residual_source_proposed_entries": 148,
     "current_reheld_previously_proposed_unique": 30,
     "current_reheld_previously_proposed_entries": 30,
-    "original_baseline_source_proposed_scope": "Source-reviewed 1276 IDs / 1281 entries: 1201 inherited supported + 25 restored inherited + 27 next01 original-body + 18 next02 original + 5 next03 new original. Residual intersection 67 IDs / 68 entries. Separate 79 regression proposals receive zero original credit.",
+    "original_baseline_source_proposed_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
     "historical_stack07_measurement": {
       "verified_unique_compile_recoveries": 40,
       "verified_unique_remaining": 3193
@@ -41,14 +41,14 @@
     "current_residual_source_coverage_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
     "broad_execution_gate": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "current_base_owner_admission_blocked_scope": "30 inherited re-holds / 30 entries remain; 15 IDs / 16 entries restored by independent NEXT03 source review. No execution admission.",
-    "execution_gate_scope": "Current clean-main measurement remains 2005 unresolved. Source-reviewed NEXT03 accounting: 1276 original eligible / 1281 entries, shortfall 321 to 1597/3193; 146 residual proposals / 148 entries (90 full-body, 56 shared-blocker), 79 regression proposals with zero original credit. All new-source execution remains closed.",
+    "execution_gate_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
     "current_regression_source_proposed_unique": 79,
     "current_regression_unaddressed_unique": 72,
-    "current_packet_total_touched_unique": 154,
-    "current_packet_scope_note": "Source-reviewed 146 residual source proposals / 148 entries plus 8 supported semantic corrections = 154 touched IDs / 156 entries. No new measured/runtime recovery.",
+    "current_packet_total_touched_unique": 159,
+    "current_packet_scope_note": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
     "next_series_02_held_candidates_excluded_unique": 12,
     "next_series_03_held_candidates_excluded_unique": 8,
-    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -66,8 +66,8 @@
       "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
     },
     "current_recovery_architecture": {
-      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
-      "note": "architecture/card-failure-next-series-03-compatibility.md",
+      "source_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "note": "architecture/card-failure-next-series-04-compatibility.md",
       "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
       "public_audit_checkpoint_version": 9,
       "public_audit_is_gameplay_restore": false,
@@ -75,10 +75,10 @@
       "signed_audit_protocol_version": 27,
       "manabrew_protocol_version": 3,
       "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
-      "validation": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
-      "semantic_migration_note": "architecture/card-failure-next-series-03-compatibility.md"
+      "validation": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-04-compatibility.md"
     },
-    "measurement_and_threshold_scope": "Current clean-main measurement remains 2005 unresolved. Source-reviewed NEXT03 accounting: 1276 original eligible / 1281 entries, shortfall 321 to 1597/3193; 146 residual proposals / 148 entries (90 full-body, 56 shared-blocker), 79 regression proposals with zero original credit. All new-source execution remains closed.",
+    "measurement_and_threshold_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
     "one_time_current_main_refresh": {
       "authorized_at": "2026-10-07T12:11Z",
       "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
@@ -97,8 +97,8 @@
       "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
       "threshold_denominator_unique_remaining": 3193,
       "majority_minimum_unique_remaining": 1597,
-      "reconciled_source_eligible_unique": 1276,
-      "source_eligible_shortfall_to_threshold": 321,
+      "reconciled_source_eligible_unique": 1281,
+      "source_eligible_shortfall_to_threshold": 316,
       "semantic_holds_count_as_coverage": false,
       "reheld_inherited_unique_excluded": 30,
       "reheld_inherited_entries_excluded": 30,
@@ -108,7 +108,7 @@
       "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
       "next_series_02_held_candidates_excluded_unique": 12,
       "next_series_03_held_candidates_excluded_unique": 8,
-      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     },
     "current_residual_prioritization": {
       "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
@@ -125,7 +125,7 @@
       "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
       "new_fixture_partials_excluded_from_residual_coverage": 13,
       "changes_original_execution_stopping_condition": false,
-      "note": "146/2005 residual source proposals: 90 full-body (including 25 restored) and 56 shared blocker repairs. Comparison-only 1003/857 has no execution authority; original source gate remains 1597/3193. NEXT03 source accounting cleared by independent bounded review. No new measured recovery.",
+      "note": "Unchanged 146/2005 residual source proposals: 90 full-body and 56 shared blocker; comparison-only 1003/857 has no execution authority. NEXT04 adds five supported evidence-only originals, zero residual credit. Original source gate 1597/3193 remains closed.",
       "reviewed_new_source_proposed_residual_entries": 148,
       "full_body_source_proposed_residual_unique": 90,
       "shared_blocker_repair_proposed_residual_unique": 56,
@@ -133,7 +133,7 @@
       "formerly_supported_regression_unaddressed_unique": 72,
       "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
       "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
-      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     }
   },
   "families": [
@@ -7118,6 +7118,137 @@
       "formerly_supported_regression_unique": 0,
       "formerly_supported_regression_original_baseline_credit": 0,
       "held_entries": []
+    },
+    {
+      "id": "chomanno-full-body",
+      "series": "next04",
+      "stage": 103,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/chomanno_full_body.json.fixture",
+      "fixture_sha256": "291da78c241875d7625ea3b92bff565b367cfe6f9ddda33b7eba8d47d0cda986",
+      "source_review_commit": "fd7106e0b75ce30ea6a57b6104b9c848edabfe44",
+      "source_review_tree": "ed95c8d4e419787a417125a133f3a7d15581a102",
+      "evidence": "reports/card-failure-campaign/chomanno-full-body-source-review.md",
+      "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Cho-Manno, Revolutionary"
+      ],
+      "baseline_entries": [
+        "Cho-Manno, Revolutionary"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2"
+      ],
+      "original_baseline_new_unique": 1,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
+    },
+    {
+      "id": "public-revealed-hand-bodies",
+      "series": "next04",
+      "stage": 103,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/public_revealed_hand_bodies.json.fixture",
+      "fixture_sha256": "1fa88b24b6a67e51d78f1943cbf2ad26ae6c95cd5cdb8abdda63ea6b9e00035e",
+      "source_review_commit": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+      "source_review_tree": "e51abba90655c9c1d163f6927fb2ee6786bec22c",
+      "evidence": "reports/public-revealed-hand-source-gate.md",
+      "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Revelation",
+        "Wandering Eye"
+      ],
+      "baseline_entries": [
+        "Revelation",
+        "Wandering Eye"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "251ff4e4-3be4-424e-8dd7-eb4ede7b415c",
+        "59015068-6868-4235-981b-96137123c685"
+      ],
+      "original_baseline_new_unique": 2,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "251ff4e4-3be4-424e-8dd7-eb4ede7b415c",
+        "59015068-6868-4235-981b-96137123c685"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
+    },
+    {
+      "id": "opponent-hand-library-top-bodies",
+      "series": "next04",
+      "stage": 103,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/opponent_hand_library_top_bodies.json.fixture",
+      "fixture_sha256": "8c1cc342bb8e750fa9930902c01cd326f7e261260a9f0ca891df52e6f3f7a553",
+      "source_review_commit": "25e628c833f406743df4c142af3bb4858c12b225",
+      "source_review_tree": "7db919cc0370c6482def5deee58f700451dd2e20",
+      "evidence": "reports/card-failure-campaign/library-top-full-bodies-source-review.md",
+      "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Chittering Rats",
+        "Chimney Imp"
+      ],
+      "baseline_entries": [
+        "Chittering Rats",
+        "Chimney Imp"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "08dfe42e-35c0-4be0-abba-57269792ff3d",
+        "3901bf30-b7c1-4977-a7b1-fcdafcc266cd"
+      ],
+      "original_baseline_new_unique": 2,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "08dfe42e-35c0-4be0-abba-57269792ff3d",
+        "3901bf30-b7c1-4977-a7b1-fcdafcc266cd"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
     }
   ],
   "cards": [
@@ -12215,8 +12346,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "opponent-hand-library-top-bodies"
+      ],
+      "previous_source_record_before_next04": {
+        "card_name": "Chimney Imp",
+        "oracle_ids": [
+          "3901bf30-b7c1-4977-a7b1-fcdafcc266cd"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "25e628c833f406743df4c142af3bb4858c12b225",
+      "current_source_admission": {
+        "series": "next04",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/library-top-full-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Chittering Rats",
@@ -12225,8 +12381,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "opponent-hand-library-top-bodies"
+      ],
+      "previous_source_record_before_next04": {
+        "card_name": "Chittering Rats",
+        "oracle_ids": [
+          "08dfe42e-35c0-4be0-abba-57269792ff3d"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "25e628c833f406743df4c142af3bb4858c12b225",
+      "current_source_admission": {
+        "series": "next04",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/library-top-full-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Cho-Manno, Revolutionary",
@@ -12235,8 +12416,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "chomanno-full-body"
+      ],
+      "previous_source_record_before_next04": {
+        "card_name": "Cho-Manno, Revolutionary",
+        "oracle_ids": [
+          "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "fd7106e0b75ce30ea6a57b6104b9c848edabfe44",
+      "current_source_admission": {
+        "series": "next04",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/chomanno-full-body-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Chocobo Kick",
@@ -33141,8 +33347,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "public-revealed-hand-bodies"
+      ],
+      "previous_source_record_before_next04": {
+        "card_name": "Revelation",
+        "oracle_ids": [
+          "251ff4e4-3be4-424e-8dd7-eb4ede7b415c"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+      "current_source_admission": {
+        "series": "next04",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/public-revealed-hand-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Revenant Patriarch",
@@ -43458,8 +43689,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "public-revealed-hand-bodies"
+      ],
+      "previous_source_record_before_next04": {
+        "card_name": "Wandering Eye",
+        "oracle_ids": [
+          "59015068-6868-4235-981b-96137123c685"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+      "current_source_admission": {
+        "series": "next04",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/public-revealed-hand-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Wandering Troubadour",
@@ -46522,7 +46778,7 @@
     "historical_record": true,
     "current_base_successor": "next_series_03_reconciliation"
   },
-  "current_source_admission": "next_series_03_reconciliation",
+  "current_source_admission": "next_series_04_reconciliation",
   "next_series_03_reconciliation": {
     "series": "next03",
     "stage": 102,
@@ -46976,5 +47232,718 @@
         "status": "source_review_clear_UNVALIDATED_UNRUN"
       }
     ]
+  },
+  "next_series_04_reconciliation": {
+    "series": "next04",
+    "stage": 103,
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+    "source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+    "evidence": "architecture/card-failure-next-series-04-source-admission.md",
+    "prior_admission": "next_series_03_reconciliation",
+    "fresh_full_body_unique": 5,
+    "fresh_full_body_entries": 5,
+    "fresh_original_baseline_credit": 5,
+    "fresh_current_residual_credit": 0,
+    "fresh_restored_original_unique": 0,
+    "fresh_regression_proposals_unique": 0,
+    "fresh_measured_recoveries": 0,
+    "current_base_proposed_unique": 1281,
+    "current_base_proposed_entries": 1286,
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_packet_total_touched_unique": 159,
+    "current_packet_total_touched_entries": 161,
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1281,
+      "source_eligible_shortfall_to_threshold": 316,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 146,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 857,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "Unchanged 146/2005 residual source proposals: 90 full-body and 56 shared blocker; comparison-only 1003/857 has no execution authority. NEXT04 adds five supported evidence-only originals, zero residual credit. Original source gate 1597/3193 remains closed.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "source_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+      "compatibility_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "family_source_review_commits": {
+        "chomanno-full-body": "fd7106e0b75ce30ea6a57b6104b9c848edabfe44",
+        "public-revealed-hand-bodies": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+        "opponent-hand-library-top-bodies": "25e628c833f406743df4c142af3bb4858c12b225"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_pr": 869,
+      "evidence": "architecture/card-failure-next-series-04-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Five evidence-only whole bodies; no production model or behavior change. Existing artifact 14/public 9/signed 27/Manabrew 3 boundary unchanged.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/chomanno-independent-review.md",
+          "sha256": "114b958d62e118c3374842359e9d40cd7c46cfd2d0620ff2deb711715e9def7b",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/hand-visibility-independent-review.md",
+          "sha256": "d57af39e5e3d05376bc92e4105bb9594469216514aa88958e02a6a7946b8e43d",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/library-top-independent-review.md",
+          "sha256": "2f285125db236eabd6e8db2c66f79ca0b6d11a4dc92e2fbff765454d4d6b50ce",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next04-combined-source-review.md",
+          "sha256": "4ba5a9b8d7535df5329a93f2b3ab2697dc52027d2510762a4944f917c0838fba",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    "current_recovery_architecture": {
+      "source_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+      "note": "architecture/card-failure-next-series-04-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-04-compatibility.md"
+    },
+    "identity_sets": {
+      "candidate_five": {
+        "unique": 5,
+        "sha256": "26295bd54a51b8de79d1426204b0fc588a3e93bec1cd472006085367e0cc4e24"
+      },
+      "eligible_before": {
+        "unique": 1276,
+        "sha256": "72cb8399a29c945b7b683f7885393cc8e2638630708e0f25e8c698b5e79c66e9"
+      },
+      "eligible_after_conditional": {
+        "unique": 1281,
+        "sha256": "2231d55e28730b03cf0be4e83c0fb8d06ec1aee44d21696d476c183aa7d63b72"
+      },
+      "unadmitted_before": {
+        "unique": 130,
+        "sha256": "0e76d7d3971093099408d02c375301687b82ab1161b1a29cb319f212b296bd9d"
+      },
+      "unadmitted_after_conditional": {
+        "unique": 125,
+        "sha256": "ad5dc3db5060e061f50bf4982788e842cf14b5ae2e534b1e0ec7fb554b1e3683"
+      },
+      "historical40": {
+        "unique": 40,
+        "sha256": "ce0f33459ff09de235622c1dce7480e3b0fc6fe24781c4e4a2688a88b9e1891f"
+      }
+    },
+    "family_ids": [
+      "chomanno-full-body",
+      "public-revealed-hand-bodies",
+      "opponent-hand-library-top-bodies"
+    ],
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/chomanno-independent-review.md",
+        "sha256": "114b958d62e118c3374842359e9d40cd7c46cfd2d0620ff2deb711715e9def7b",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/hand-visibility-independent-review.md",
+        "sha256": "d57af39e5e3d05376bc92e4105bb9594469216514aa88958e02a6a7946b8e43d",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/library-top-independent-review.md",
+        "sha256": "2f285125db236eabd6e8db2c66f79ca0b6d11a4dc92e2fbff765454d4d6b50ce",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next04-combined-source-review.md",
+        "sha256": "4ba5a9b8d7535df5329a93f2b3ab2697dc52027d2510762a4944f917c0838fba",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ],
+    "pre_admission_input_sha256": {
+      "source": "2b06d768d13a70f43c98a7c931567fda5b6ea276a6af58797bc1ea8d20ab7dc9",
+      "residual": "2a5b550e355094b252a43f81c7dc135f0b70fde7841e2b052b322bc33da2685e",
+      "baseline": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "comparison": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75",
+      "failures": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31",
+      "manifest": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+      "inventory": "823ecd1bb63e187d21bd5a7341e0150e76ce517dbebb719dcf1c59371cc2fd40"
+    },
+    "accounting": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
+    "already_supported_evidence_only": [
+      {
+        "oracle_id": "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2",
+        "names": [
+          "Cho-Manno, Revolutionary"
+        ],
+        "family_id": "chomanno-full-body",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "source_review_commit": "fd7106e0b75ce30ea6a57b6104b9c848edabfe44",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/chomanno-full-body-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Cho-Manno, Revolutionary",
+          "oracle_ids": [
+            "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Cho-Manno, Revolutionary",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "34072b5da247f0ad7f911e11c1b188dca3f1714de2e1c2c436492dc14ae87e8f",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Prevent all damage that would be dealt to Cho-Manno.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Prevent all damage that would be dealt to Cho-Manno.",
+          "parse_error": "unsupported complete object filter: cho-manno [rule-path=parse_prevent_all_damage_to_matching_permanents_line] [rule-path=static-line]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to Cho-Manno.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported complete object filter: cho-manno [rule-path=parse_prevent_all_damage_to_matching_permanents_line] [rule-path=static-line]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Prevent all damage that would be dealt to Cho-Manno.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported complete object filter: cho-manno [rule-path=parse_prevent_all_damage_to_matching_permanents_line] [rule-path=static-line]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to Cho-Manno.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Cho-Manno, Revolutionary"
+          ],
+          "oracle_id": "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Cho-Manno, Revolutionary"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Cho-Manno, Revolutionary",
+          "oracle_ids": [
+            "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "007b061e24a4998951281bb52d22beada614e89d5cae0a4d828e1e0bf33c0adb",
+            "canonical_sha256": "641300faaaf1fe26e37da0b6ea97f467c634b23ef48ff83d7106ea134c51a235"
+          },
+          "baseline": {
+            "sha256": "0ccb35161e4c5552d476c3bef075c6ecdb1c386e5b67d3e0c6d24a6933631a45",
+            "canonical_sha256": "d098671be91c6bd0883b02542104bcd270490e3f788d3345fcc95af6b414be0e"
+          },
+          "inventory": {
+            "sha256": "007b061e24a4998951281bb52d22beada614e89d5cae0a4d828e1e0bf33c0adb",
+            "canonical_sha256": "641300faaaf1fe26e37da0b6ea97f467c634b23ef48ff83d7106ea134c51a235"
+          },
+          "source_json_pointer": "/cards/425",
+          "baseline_index_zero_based": 4555,
+          "retained_recovery_index_zero_based": 795,
+          "inventory_index_zero_based": 21
+        }
+      },
+      {
+        "oracle_id": "251ff4e4-3be4-424e-8dd7-eb4ede7b415c",
+        "names": [
+          "Revelation"
+        ],
+        "family_id": "public-revealed-hand-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "source_review_commit": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/public-revealed-hand-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Revelation",
+          "oracle_ids": [
+            "251ff4e4-3be4-424e-8dd7-eb4ede7b415c"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Revelation",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "e1461c64a8e41414921d60613b5cbf78e1f287f7de77d6049f8c8b1066488b14",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Players play with their hands revealed.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Players play with their hands revealed.",
+          "parse_error": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Players play with their hands revealed.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Revelation"
+          ],
+          "oracle_id": "251ff4e4-3be4-424e-8dd7-eb4ede7b415c",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Revelation"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Revelation",
+          "oracle_ids": [
+            "251ff4e4-3be4-424e-8dd7-eb4ede7b415c"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "c738d0436c27e3c0ba24a90d9227fdc71ec5cf3cb58a4693fe49d4646bfbeb6d",
+            "canonical_sha256": "90731bde4be49e238426d2bb72dba6c733c2108428f55150460293763eef1987"
+          },
+          "baseline": {
+            "sha256": "24c73ae91a13447e6fbce78430f61811ad1c0f68d15154635a3952d7a6e4b1dc",
+            "canonical_sha256": "a9a5900d825514782ab1b0805cbb3b802f2fb869681b0dd7f02002368a0f2bdd"
+          },
+          "inventory": {
+            "sha256": "c738d0436c27e3c0ba24a90d9227fdc71ec5cf3cb58a4693fe49d4646bfbeb6d",
+            "canonical_sha256": "90731bde4be49e238426d2bb72dba6c733c2108428f55150460293763eef1987"
+          },
+          "source_json_pointer": "/cards/2202",
+          "baseline_index_zero_based": 22121,
+          "retained_recovery_index_zero_based": 212,
+          "inventory_index_zero_based": 92
+        }
+      },
+      {
+        "oracle_id": "59015068-6868-4235-981b-96137123c685",
+        "names": [
+          "Wandering Eye"
+        ],
+        "family_id": "public-revealed-hand-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "source_review_commit": "e7b17f36841df70ab85dfc9a0c5897252aeb705f",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/public-revealed-hand-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Wandering Eye",
+          "oracle_ids": [
+            "59015068-6868-4235-981b-96137123c685"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Wandering Eye",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "c38e431cca2baf77e440471f0e99b55bd64e15e61185fb242cf1dc934612323b",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Flying\nPlayers play with their hands revealed.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Flying\nPlayers play with their hands revealed.",
+          "parse_error": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Flying\nPlayers play with their hands revealed.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Players play with their hands revealed.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Wandering Eye"
+          ],
+          "oracle_id": "59015068-6868-4235-981b-96137123c685",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Wandering Eye"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Wandering Eye",
+          "oracle_ids": [
+            "59015068-6868-4235-981b-96137123c685"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "68be99c1678fdea3765bd2ece37ff0a5f92fc2bf6736ae097f8aeb6e5dd167df",
+            "canonical_sha256": "b74bef6e47ea3e1cd7f68265df64a49cee70b00b2feb329a66931c684f677865"
+          },
+          "baseline": {
+            "sha256": "912e1a0ad1e34d975c9185ecc10a138d3234e6f18ef70bc30653d72cca7d37f1",
+            "canonical_sha256": "530d253ce93ee0db4efe2ea4e09a8b92820982b1fe0ef0261e29b870f58dc5c4"
+          },
+          "inventory": {
+            "sha256": "68be99c1678fdea3765bd2ece37ff0a5f92fc2bf6736ae097f8aeb6e5dd167df",
+            "canonical_sha256": "b74bef6e47ea3e1cd7f68265df64a49cee70b00b2feb329a66931c684f677865"
+          },
+          "source_json_pointer": "/cards/3067",
+          "baseline_index_zero_based": 30840,
+          "retained_recovery_index_zero_based": 481,
+          "inventory_index_zero_based": 122
+        }
+      },
+      {
+        "oracle_id": "3901bf30-b7c1-4977-a7b1-fcdafcc266cd",
+        "names": [
+          "Chimney Imp"
+        ],
+        "family_id": "opponent-hand-library-top-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "source_review_commit": "25e628c833f406743df4c142af3bb4858c12b225",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/library-top-full-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Chimney Imp",
+          "oracle_ids": [
+            "3901bf30-b7c1-4977-a7b1-fcdafcc266cd"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Chimney Imp",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "f9bc780d46fa3fd8a9563145a889ed1e601acecefde629dd2e5be4ae62b8ee26",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Flying\nWhen this creature dies, target opponent puts a card from their hand on top of their library.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Flying\nWhen this creature dies, target opponent puts a card from their hand on top of their library.",
+          "parse_error": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false }); oracle-only fallback also failed: triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Flying\nWhen this creature dies, target opponent puts a card from their hand on top of their library.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Chimney Imp"
+          ],
+          "oracle_id": "3901bf30-b7c1-4977-a7b1-fcdafcc266cd",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Chimney Imp"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Chimney Imp",
+          "oracle_ids": [
+            "3901bf30-b7c1-4977-a7b1-fcdafcc266cd"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "d3d3d4b8e222f7d46250fd0c622e85b83e3b232dcb89a916ba38453358f6a642",
+            "canonical_sha256": "3fd3492ee58b152e74c09cb3f1060e144a350ea0257c9ad11ab171b49e31e4ac"
+          },
+          "baseline": {
+            "sha256": "4ea79a013487c52e0ad7824208dfb73e352ba6ea9b31d9c0e09531f2c0885884",
+            "canonical_sha256": "a12df2f432c0bac291b6e82916d259013a5088a0b7d7946b14005e6a2f0c5182"
+          },
+          "inventory": {
+            "sha256": "d3d3d4b8e222f7d46250fd0c622e85b83e3b232dcb89a916ba38453358f6a642",
+            "canonical_sha256": "3fd3492ee58b152e74c09cb3f1060e144a350ea0257c9ad11ab171b49e31e4ac"
+          },
+          "source_json_pointer": "/cards/423",
+          "baseline_index_zero_based": 4534,
+          "retained_recovery_index_zero_based": 312,
+          "inventory_index_zero_based": 19
+        }
+      },
+      {
+        "oracle_id": "08dfe42e-35c0-4be0-abba-57269792ff3d",
+        "names": [
+          "Chittering Rats"
+        ],
+        "family_id": "opponent-hand-library-top-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "source_review_commit": "25e628c833f406743df4c142af3bb4858c12b225",
+        "combined_source_review_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+        "combined_source_review_tree": "2146c272e585781fde1fa4d5ae16d8bed558916c",
+        "evidence": "reports/card-failure-campaign/library-top-full-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-04-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Chittering Rats",
+          "oracle_ids": [
+            "08dfe42e-35c0-4be0-abba-57269792ff3d"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Chittering Rats",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "be855136e7525ebf8fb99409310311eef74daddbd819b1f5eb0cbb5a1abcf7e1",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "When this creature enters, target opponent puts a card from their hand on top of their library.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "When this creature enters, target opponent puts a card from their hand on top of their library.",
+          "parse_error": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false }); oracle-only fallback also failed: triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "When this creature enters, target opponent puts a card from their hand on top of their library.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "triggered ability effects references PlayerFilter::IteratedPlayer without a trigger or loop that binds \"that player\": Effect(MoveToZoneEffect { target: WithCount(Object(ObjectFilter { zone: Some(Hand), match_current_state: false, controller: None, cast_by: None, excluded_cast_origin_zone: None, cast_this_turn: false, first_spell_cast_each_turn: false, spell_cast_ordinal_each_turn: None, spell_cast_minimum_each_turn: None, mana_from_source_spent_to_cast: None, owner: Some(IteratedPlayer), single_graveyard: false, targets_player: None, targets_object: None, targets_any_of: false, stack_kind: None, target_count: None, target_set_same_controller: false, target_set_different_controllers: false, target_set_shared_creature_type: false, target_set_aggregate_constraint: None, targets_only_player: None, targets_only_object: None, targets_only_any_of: false, could_be_targeted_by: None, not_targeted_by_ability_from: None, would_destroy_object: None, card_types: [], all_card_types: [], card_type_count: None, excluded_card_types: [], subtypes: [], all_subtypes: [], type_or_subtype_union: false, union_surface: ObjectFilterUnionSurface { connective: Or, subtype_before_card_type: false, terminal_noun_after_type_subtype_union: false, conjunctive_set_surface: false, serial_or_list: false, shared_indefinite_article: false, controller_after_qualifiers: false, enters_under_controller: false, iterated_actor_pronoun: false, played_by_opponent: None, except_during_controller_turn: false, trailing_candidate_ability_condition: false, chosen_type_this_way: false, equal_or_lesser_mana_value: false, one_or_more: false, explicit_branch_articles: false, one_of_tagged_set: false, plural_pronoun_reference: false, singular_pronoun_reference: false, set_quantifier: None, plural_object_noun: false, return_destination_first: false, explicit_card_noun: true, explicit_card_type_noun: None, counter_requirement_one_or_more: false, counter_requirement_plural_noun: false, counter_requirement_plural_subject: false, owner_before_zone: false, counter_requirement_after_zone: false, for_each_leading_then: false, counter_exclusion_plural_noun: false, counter_exclusion_plural_subject: false, relative_attachment_state: false, relative_characteristic_list: false, prior_effect_action: None, put_into_graveyard_this_way: false, additional_cost_object: None, same_name_antecedent: None, chosen_name_source: None, demonstrative_antecedent: None, graveyard_entry_history: None, global_characteristic_domain: None, entered_battlefield_explicit_surface: false, activation_source_battlefield_surface: false, player_puts_onto_battlefield_surface: false, you_had_entry_surface: false, mana_source_spent_trailing_if_surface: false, as_you_cast_this_turn_surface: false }, excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, required_colors: None, chosen_color: false, colors_chosen_while_drafting_named: None, name_noted_while_drafting_named: None, chosen_land_type: false, has_basic_land_type: false, has_nonbasic_land_type: false, chosen_creature_type: false, chosen_card_type: false, excluded_chosen_creature_type: false, excluded_any_chosen_creature_type: false, excluded_colors: ColorSet(0), colorless: false, multicolored: false, monocolored: false, all_colors: None, exactly_two_colors: None, color_count: None, historic: false, nonhistoric: false, modified: false, suspected: false, transformed: false, goaded: false, sticker: None, token: false, nontoken: false, face_down: None, foretold: false, other: false, tapped: false, untapped: false, attacking: false, attacking_alone: false, attacked_this_turn: false, ability_activated_this_turn: false, blocked_this_turn: false, didnt_attack_this_turn: false, could_have_attacked_this_turn: false, attacking_player_or_planeswalker_controlled_by: None, attacking_player_only: false, protected_by: None, attached_to_object: None, attached_to_player: None, with_attached_object: None, without_attached_object: None, could_enchant_object: None, controller_controls: None, nonattacking: false, enlist_eligible: false, blocking: false, nonblocking: false, blocked: false, blocked_by: None, blocked_by_source: false, crewed_by_source_this_turn: false, blocked_or_was_blocked_by_this_turn: None, unblocked: false, is_target_object: false, in_combat_with_source: false, attacking_same_defender_as_source: false, could_be_enchanted_by_source: false, in_combat_with: None, entered_since_your_last_turn_ended: false, controlled_continuously_since_turn_began: None, didnt_enter_battlefield_this_turn: false, entered_battlefield_this_turn: false, entered_battlefield_controller: None, put_onto_battlefield_with_source: false, put_onto_battlefield_with_source_surface: None, created_with_source: false, created_with_source_surface: None, entered_graveyard_this_turn: false, entered_graveyard_from_battlefield_this_turn: false, entered_graveyard_from_library_this_turn: false, surveilled_this_turn: false, fought_this_turn: false, attacking_battle: false, counters_put_on_this_turn: None, discarded_or_cycled_this_turn_by: None, was_dealt_damage_this_turn: false, dealt_damage_this_turn: false, dealt_damage_by_source_this_turn: None, was_dealt_damage_by_source_this_game: false, dealt_damage_to_player_this_turn: None, dealt_damage_to_player_this_turn_combat_only: false, drawn_this_turn: false, power: None, power_parity: None, power_reference: Effective, power_relative_to_source: None, power_greater_than_base_power: false, power_toughness_relation: None, toughness: None, toughness_reference: Effective, total_power_toughness: None, mana_value: None, mana_value_parity: None, mana_value_eq_counters_on_source: None, exact_mana_cost: None, has_mana_cost: false, has_phyrexian_mana_symbol: false, could_produce_mana: [], has_tap_activated_ability: false, has_non_mana_activated_ability: false, no_abilities: false, no_x_in_cost: false, has_x_in_cost: false, with_counter: None, without_counter: None, total_counters_parity: None, name: None, name_surface: LiteralNameSurface(None), excluded_name: None, excluded_name_surface: LiteralNameSurface(None), name_originally_printed_in_set: None, distinct_names: false, distinct_mana_values: false, distinct_powers: false, distinct_creature_types: false, shares_land_type: false, one_per_card_type: false, alternative_cast: None, static_abilities: [], excluded_static_abilities: [], ability_markers: [], excluded_ability_markers: [], no_shared_creature_types_with: [], characteristic_relations: [], shares_creature_type_with_source: false, is_commander: false, noncommander: false, tagged_constraints: [], specific: None, any_of: [], source: false, source_surface: None }), ChoiceCount { min: 1, max: Some(1), dynamic_x: false, up_to_x: false, random: false, explicit_exactly: false }), zone: Library, to_top: true, library_order: None, verb_surface: Put, target_plural_surface: false, target_reference_surface: None, remainder_surface: None, actor_surface: None, destination_player_surface: Some(IteratedPlayer), destination_player_reference_surface: Some(Pronoun), exiled_with_source_surface: None, battlefield_controller: Preserve, controller_surface_explicit: false, enters_with_counters: [], enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_face_down: false, enters_transformed: false, transfer_exiled_with_source_links: false })",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Chittering Rats"
+          ],
+          "oracle_id": "08dfe42e-35c0-4be0-abba-57269792ff3d",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Chittering Rats"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Chittering Rats",
+          "oracle_ids": [
+            "08dfe42e-35c0-4be0-abba-57269792ff3d"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "1f52680d9324f5bb6030a427947f7a0258cab2b8a19b73f07c745c6ec9b1bbd7",
+            "canonical_sha256": "b5ebd111592eacf5f97a7ad0b2022fac542df0e64db08df9733ed26d905eed84"
+          },
+          "baseline": {
+            "sha256": "35d51fc8d204ca6362e6f052664e3800d1ca8026d1639ea6bf06021b6ae43c13",
+            "canonical_sha256": "7eeb51591a10243bdb4ce9a741c38f342c0783ebe30e42c014f65280f3a52d9e"
+          },
+          "inventory": {
+            "sha256": "1f52680d9324f5bb6030a427947f7a0258cab2b8a19b73f07c745c6ec9b1bbd7",
+            "canonical_sha256": "b5ebd111592eacf5f97a7ad0b2022fac542df0e64db08df9733ed26d905eed84"
+          },
+          "source_json_pointer": "/cards/424",
+          "baseline_index_zero_based": 4545,
+          "retained_recovery_index_zero_based": 48,
+          "inventory_index_zero_based": 20
+        }
+      }
+    ],
+    "execution": "UNRUN. Metadata/source/JSON/hash/Git inspection only; no build, test, probe, formatter, corpus execution, codegen or remote write."
   }
 }

@@ -1407,6 +1407,29 @@
       "source_current_residual_proposed_unique": 124,
       "new_measured_recoveries": 0,
       "checks_note": "No executable checks were run for this packet; source clearance is not test validation. Publication receipt and later read-only parent verification retained."
+    },
+    {
+      "series": "20261007-next",
+      "batch": "next03-predicates-copy-dice-and-untap",
+      "branch": "fix/card-repair-next-03-predicates-copy-dice-and-untap",
+      "base": "fix/card-repair-next-02-repeat-static-and-durations",
+      "working_main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "source_integration_commit": "ff30f190c72b80b9c212d30056d402e94d4f2c86",
+      "remote_commit": "28a7c2e002b958dadf8f90d2065240c168e40913",
+      "tree": "e89516d340c0b67eb457c3f30ba7627a8c1b8cf4",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 869,
+      "draft": true,
+      "validation_status": "UNVALIDATED_source_reviewed_new_scenarios_UNRUN",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/869",
+      "verified_at": "2026-10-07T21:53:05Z",
+      "source_original_eligible_unique": 1276,
+      "source_current_residual_proposed_unique": 146,
+      "new_measured_recoveries": 0,
+      "checks_note": "Retained publication receipts establish remote draft and exact tree; no executable validation.",
+      "receipt_sha256": "fd8deac7518960cb7eab416504d7bb0276ca79c4f45d04900f02d6adff5dfaf8",
+      "tree_receipt_sha256": "489695f17abc2e1afba283ccb78d6b814f337f573959c0fcbfc1898603fc9b32"
     }
   ]
 }

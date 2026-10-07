@@ -1,0 +1,24 @@
+[
+  {
+    "name": "Chittering Rats",
+    "oracle_id": "08dfe42e-35c0-4be0-abba-57269792ff3d",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Creature — Rat",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "When this creature enters, target opponent puts a card from their hand on top of their library.",
+    "source": "fixtures/card-failure-campaign/cards-20261003.json.xz",
+    "status": "authored_unrun_no_admission_credit"
+  },
+  {
+    "name": "Chimney Imp",
+    "oracle_id": "3901bf30-b7c1-4977-a7b1-fcdafcc266cd",
+    "mana_cost": "{4}{B}",
+    "type_line": "Creature — Imp",
+    "power": "1",
+    "toughness": "2",
+    "oracle_text": "Flying\nWhen this creature dies, target opponent puts a card from their hand on top of their library.",
+    "source": "fixtures/card-failure-campaign/cards-20261003.json.xz",
+    "status": "authored_unrun_no_admission_credit"
+  }
+]
