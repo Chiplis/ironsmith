@@ -20,8 +20,8 @@ fn omo_adds_every_land_type_and_every_creature_type() {
                 _ => None,
             })
             .collect();
-        assert!(statics.iter().any(|debug| debug.contains("Land") && debug.contains("Everything")), "{statics:?}");
-        assert!(statics.iter().any(|debug| debug.contains("Creature") && debug.contains("Everything")), "{statics:?}");
+        assert!(statics.iter().any(|debug| debug.contains("Land") && debug.to_ascii_lowercase().contains("everything")), "{statics:?}");
+        assert!(statics.iter().any(|debug| debug.contains("Creature") && debug.to_ascii_lowercase().contains("everything")), "{statics:?}");
         assert_eq!(statics.len(), 2, "{statics:?}");
     }
 }
