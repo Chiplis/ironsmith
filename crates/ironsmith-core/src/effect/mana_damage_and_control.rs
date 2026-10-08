@@ -1153,6 +1153,9 @@ pub enum LinkedExileFollowUp {
     /// That exact exiled card becomes plotted (CR 702.170c), e.g. Lilah,
     /// Undefeated Slickshot.
     BecomePlotted,
+    /// If that exact exiled card doesn't have suspend, it gains suspend
+    /// (CR 702.62a), e.g. Gandalf of the Secret Fire.
+    GainSuspendIfMissing,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

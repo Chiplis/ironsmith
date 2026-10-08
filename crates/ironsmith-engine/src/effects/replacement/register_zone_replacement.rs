@@ -134,6 +134,20 @@ pub(crate) fn zone_replacement_action(
         };
     }
 
+    if let Some(ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing) = linked_exile_follow_up
+    {
+        // "exile that card with three time counters on it instead ... Then if
+        // the exiled card doesn't have suspend, it gains suspend" (Gandalf of
+        // the Secret Fire): the grant reaches the new exiled object only once
+        // the replacement has moved it (CR 400.7, 614.1a, 702.62a).
+        debug_assert_eq!(replacement_zone, Zone::Exile);
+        let effects = vec![gain_suspend_if_missing_follow_up()];
+        if counters.is_empty() {
+            return ReplacementAction::ExileWithSourceLinkThen(effects);
+        }
+        return ReplacementAction::ExileWithSourceLinkCountersThen { counters, effects };
+    }
+
     if !counters.is_empty() {
         return ReplacementAction::MoveToZoneWithCounters {
             zone: replacement_zone,
@@ -194,6 +208,85 @@ pub(crate) fn zone_replacement_action(
     }
 
     ReplacementAction::ChangeDestination(replacement_zone)
+}
+
+/// "If [the exiled card] doesn't have suspend, it gains suspend" applied to
+/// the object a zone replacement just exiled (tagged under
+/// [`crate::tag::ZONE_REPLACEMENT_OBJECT_TAG`]). The granted abilities are the
+/// two suspend triggers (CR 702.62a), the same pair the compiler lowers for a
+/// printed "it gains suspend" grant.
+fn gain_suspend_if_missing_follow_up() -> crate::effect::Effect {
+    let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
+    let has_suspend = ObjectFilter::default()
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend);
+    let mut abilities = granted_suspend_abilities().into_iter();
+    let (Some(upkeep), Some(last_counter)) = (abilities.next(), abilities.next()) else {
+        unreachable!("suspend grants exactly two triggered abilities");
+    };
+    let grant = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(tag.clone()),
+        crate::continuous::Modification::AddAbilityGeneric(upkeep),
+        crate::effect::Until::Forever,
+    )
+    .with_additional_modification(crate::continuous::Modification::AddAbilityGeneric(
+        last_counter,
+    ));
+    crate::effect::Effect::conditional(
+        crate::effect::Condition::Not(Box::new(crate::effect::Condition::TaggedObjectMatches(
+            tag,
+            has_suspend,
+        ))),
+        vec![crate::effect::Effect::new(grant)],
+        Vec::new(),
+    )
+}
+
+/// The two exile-zone suspend triggers a card gains with "it gains suspend"
+/// (CR 702.62a): remove a time counter each upkeep, and cast it without paying
+/// its mana cost when the last is removed.
+fn granted_suspend_abilities() -> Vec<crate::ability::Ability> {
+    use crate::ability::{
+        Ability, AbilityKind, PresentationKeyword, PresentationLabel, TriggeredAbility,
+    };
+    vec![
+        Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::remove_counters(CounterType::Time, 1, ChooseSpec::Source),
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::effect::Condition::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Time,
+                    count: 1,
+                    surface: crate::effect::SourceCounterThresholdSurface::SourceHas,
+                }),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
+            }),
+            functional_zones: vec![Zone::Exile],
+        },
+        Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: crate::triggers::Trigger::new(
+                    crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
+                        .counter_type(CounterType::Time)
+                        .last(),
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::may_single(crate::effect::Effect::new(
+                        crate::effects::CastSourceEffect::new()
+                            .without_paying_mana_cost()
+                            .require_exile()
+                            .cast_as_suspend(),
+                    )),
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::effect::Condition::SourceIsInZone(Zone::Exile)),
+                presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
+            }),
+            functional_zones: vec![Zone::Exile],
+        },
+    ]
 }
 
 impl EffectExecutor for RegisterZoneReplacementEffect {
@@ -372,6 +465,82 @@ mod tests {
             Zone::Exile
         );
         assert_eq!(game.counter_count(exiled_id, CounterType::Time), 3);
+    }
+
+    /// Gandalf of the Secret Fire: the replacement exiles with time counters
+    /// and only then grants suspend to the exiled card (CR 400.7, 702.62a).
+    #[test]
+    fn test_registered_zone_replacement_grants_suspend_after_exiling_with_counters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice, Zone::Battlefield);
+        let stable_id = game
+            .object(creature)
+            .expect("creature should exist")
+            .stable_id;
+
+        let effect = RegisterZoneReplacementEffect::new(
+            ChooseSpec::SpecificObject(creature),
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ReplacementApplyMode::OneShot,
+        )
+        .with_counters(vec![(CounterType::Time, 3)])
+        .with_linked_exile_follow_up(ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing);
+        assert!(matches!(
+            zone_replacement_action(
+                creature,
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                None,
+                false,
+                None,
+                vec![(CounterType::Time, 3)],
+                Some(ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing),
+            ),
+            ReplacementAction::ExileWithSourceLinkCountersThen { .. }
+        ));
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(creature, alice, &mut dm);
+        let _ = execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+            .expect("replacement registration should succeed");
+        let _ = execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(creature),
+                Zone::Graveyard,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve");
+
+        let exiled_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("creature should still be findable after replacement");
+        assert_eq!(game.object(exiled_id).unwrap().zone, Zone::Exile);
+        assert_eq!(game.counter_count(exiled_id, CounterType::Time), 3);
+        let chars = game
+            .current_characteristics(exiled_id)
+            .expect("exiled card has characteristics");
+        let suspend_triggers = chars
+            .abilities
+            .iter()
+            .filter(|ability| {
+                matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Triggered(triggered)
+                        if matches!(
+                            triggered.presentation_label,
+                            Some(crate::ability::PresentationLabel::Keyword(
+                                crate::ability::PresentationKeyword::Suspend
+                            ))
+                        )
+                )
+            })
+            .count();
+        assert_eq!(suspend_triggers, 2, "the exiled card gains suspend");
     }
 
     #[test]

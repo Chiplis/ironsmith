@@ -23,6 +23,12 @@ pub fn row(name: &str) -> serde_json::Value {
 pub fn definitions(name: &str) -> [CardDefinition; 2] {
     let row = row(name);
     let text = row["text"].as_str().unwrap();
+    definitions_for_text(name, text)
+}
+
+/// Same as [`definitions`] for a collateral card outside the package fixture,
+/// given its complete Oracle text (type line and body as the fixture stores it).
+pub fn definitions_for_text(name: &str, text: &str) -> [CardDefinition; 2] {
     let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| {
         ironsmith_compiler_runtime::compile_to_runtime_definition(name, text, false)
     });

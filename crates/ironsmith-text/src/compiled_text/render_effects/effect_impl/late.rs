@@ -4491,13 +4491,22 @@
             let with_counters = match register.counters.as_slice() {
                 [] => String::new(),
                 [(counter, 1)] => format!(" with a {} counter on it", counter.description()),
-                [(counter, count)] => format!(" with {count} {} counters on it", counter.description()),
+                [(counter, count)] => format!(
+                    " with {} {} counters on it",
+                    small_number_word(*count).unwrap_or_else(|| count.to_string()),
+                    counter.description()
+                ),
                 _ => String::new(),
             };
             match register.linked_exile_follow_up {
                 Some(ironsmith_core::LinkedExileFollowUp::BecomePlotted) => {
                     return format!(
                         "Exile that spell{with_counters} instead of putting it into your graveyard as it resolves. If you do, it becomes plotted"
+                    );
+                }
+                Some(ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing) => {
+                    return format!(
+                        "Exile that card{with_counters} instead of putting it into your graveyard as it resolves. Then if the exiled card doesn't have suspend, it gains suspend"
                     );
                 }
                 None if register.counters.len() <= 1 => {

@@ -24,3 +24,27 @@ fn lilah_plots_only_the_card_the_replacement_exiled() {
         assert!(text.contains("if you do, it becomes plotted"), "{text}");
     }
 }
+
+const GANDALF_OF_THE_SECRET_FIRE: &str = "Mana cost: {1}{U}{R}{W}\nType: Legendary Creature — Avatar Wizard\nPower/Toughness: 3/4\nWhenever you cast an instant or sorcery spell from your hand during an opponent's turn, exile that card with three time counters on it instead of putting it into your graveyard as it resolves. Then if the exiled card doesn't have suspend, it gains suspend. (At the beginning of your upkeep, remove a time counter. When the last is removed, you may play it without paying its mana cost.)";
+
+/// Collateral: the suspend grant is a follow-up of the replacement, so it
+/// reaches the exiled card (a new object, CR 400.7) rather than the spell on
+/// the stack at trigger resolution.
+#[test]
+fn gandalf_grants_suspend_only_to_the_card_the_replacement_exiled() {
+    for definition in
+        support::definitions_for_text("Gandalf of the Secret Fire", GANDALF_OF_THE_SECRET_FIRE)
+    {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("RegisterZoneReplacementEffect"), "{debug}");
+        assert!(debug.contains("GainSuspendIfMissing"), "{debug}");
+        assert!(debug.contains("Time"), "{debug}");
+        // No resolution-time conditional over the spell on the stack.
+        assert!(!debug.contains("ConditionalEffect"), "{debug}");
+        let text = support::rendered(&definition);
+        assert!(
+            text.contains("exile that card with three time counters on it instead of putting it into your graveyard as it resolves. then if the exiled card doesn't have suspend, it gains suspend"),
+            "{text}"
+        );
+    }
+}

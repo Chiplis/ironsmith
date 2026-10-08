@@ -118,6 +118,28 @@ pub fn is_if_you_do_it_becomes_plotted_shape(tokens: &[OwnedLexToken]) -> bool {
     matches_complete_sequence(tokens, &[IF_YOU_DO_IT_BECOMES_PLOTTED])
 }
 
+const THEN_IF_EXILED_CARD_LACKS_SUSPEND_IT_GAINS_SUSPEND: &[&[&str]] = &[
+    &[
+        "then", "if", "the", "exiled", "card", "doesn't", "have", "suspend", "it", "gains",
+        "suspend",
+    ],
+    &[
+        "if", "the", "exiled", "card", "doesn't", "have", "suspend", "it", "gains", "suspend",
+    ],
+    &["then", "if", "it", "doesn't", "have", "suspend", "it", "gains", "suspend"],
+    &["if", "it", "doesn't", "have", "suspend", "it", "gains", "suspend"],
+];
+
+/// "Then if the exiled card doesn't have suspend, it gains suspend." after a
+/// resolving-spell exile replacement (Gandalf of the Secret Fire): the card
+/// gains suspend only once the replacement has exiled it (CR 702.62a,
+/// 400.7 — the exiled card is a new object).
+pub fn is_then_if_exiled_card_lacks_suspend_it_gains_suspend_shape(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_complete_sequence(tokens, THEN_IF_EXILED_CARD_LACKS_SUSPEND_IT_GAINS_SUSPEND)
+}
+
 pub fn is_resolving_card_exile_then_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],
