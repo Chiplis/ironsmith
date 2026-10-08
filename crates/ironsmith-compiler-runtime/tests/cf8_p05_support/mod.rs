@@ -31,8 +31,21 @@ pub fn source_text(row: &serde_json::Value) -> String {
     {
         text.push_str(&format!("Power/Toughness: {power}/{toughness}\n"));
     }
+    if let Some(loyalty) = row["loyalty"].as_str() {
+        text.push_str(&format!("Loyalty: {loyalty}\n"));
+    }
     text.push_str(row["oracle_text"].as_str().unwrap());
     text
+}
+
+/// Assert each listed marker appears in the lowered definition's structure.
+pub fn assert_markers(cluster: &str, name: &str, markers: &[&str]) {
+    for definition in definitions(&row(cluster, name)) {
+        let debug = debug(&definition);
+        for marker in markers {
+            assert!(debug.contains(marker), "{name}: missing {marker}");
+        }
+    }
 }
 
 /// The complete frozen card compiled strictly on the direct route and on the

@@ -158,5 +158,160 @@
     "mana_cost": "{3}",
     "type_line": "Artifact",
     "oracle_text": "{T}: Add {C}.\n{3}, {T}: Venture into the dungeon. Activate only as a sorcery."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Raphael, Most Attitude",
+    "oracle_id": "eaf194a7-d95f-4738-9052-92ad00443a76",
+    "mana_cost": "{3}{R}",
+    "type_line": "Legendary Creature — Mutant Ninja Turtle",
+    "oracle_text": "Menace\nAlliance — Whenever another creature you control enters, you may exile the top card of your library.\nWhenever Raphael attacks, until end of turn, you may play a card exiled with Raphael.",
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Kayla's Music Box",
+    "oracle_id": "8110f15d-82db-4299-a959-09c22475daec",
+    "mana_cost": "{2}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "{W}, {T}: Look at the top card of your library, then exile it face down.\n{T}: Until end of turn, you may play cards you own exiled with Kayla's Music Box."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Gix, Yawgmoth Praetor",
+    "oracle_id": "928d977e-cff0-4e0e-83bb-16d73a754f35",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Legendary Creature — Phyrexian Praetor",
+    "oracle_text": "Whenever a creature deals combat damage to one of your opponents, its controller may pay 1 life. If they do, they draw a card.\n{4}{B}{B}{B}, Discard X cards: Exile the top X cards of target opponent's library. You may play lands and cast spells from among cards exiled this way without paying their mana costs.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Magus of the Mind",
+    "oracle_id": "b39d98c3-0173-4d7c-83d0-f80db82fc9ba",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "{U}, {T}, Sacrifice this creature: Shuffle your library, then exile the top X cards, where X is one plus the number of spells cast this turn. Until end of turn, you may play lands and cast spells from among cards exiled this way without paying their mana costs.",
+    "power": "4",
+    "toughness": "5"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Howltooth Hollow",
+    "oracle_id": "463fc699-f4fc-4112-a6b3-6dcb642203e6",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "Hideaway 4\nThis land enters tapped.\n{T}: Add {B}.\n{B}, {T}: You may play the exiled card without paying its mana cost if each player has no cards in hand."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Extract Power",
+    "oracle_id": "5c30a92b-2e88-4e66-b0a5-fa05304136e7",
+    "mana_cost": "{5}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top card of each player's library, then exile those cards face down. You may play them without paying their mana costs for as long as they remain exiled."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Elkin Bottle",
+    "oracle_id": "1e381361-7404-4654-bfb4-5ea65f6e4dce",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{3}, {T}: Exile the top card of your library. Until the beginning of your next upkeep, you may play that card."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Klaw, Master of Sound",
+    "oracle_id": "8eaa8833-ab9e-4bd8-92de-63e195b8d912",
+    "mana_cost": "{2}{B}",
+    "type_line": "Legendary Creature — Elemental Rogue Villain",
+    "oracle_text": "Deathtouch\nWhenever you play a card from exile, Klaw gains indestructible until end of turn.\nWhenever Klaw deals combat damage to a player, look at the top card of that player's library, then exile it face down. You may play it for as long as it remains exiled. Mana of any type can be spent to cast a spell this way.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Ruhan of the Fomori",
+    "oracle_id": "82d109ea-3421-46eb-9bbf-f7f28b548ea6",
+    "mana_cost": "{1}{U}{R}{W}",
+    "type_line": "Legendary Creature — Giant Warrior",
+    "oracle_text": "At the beginning of combat on your turn, choose an opponent at random. Ruhan attacks that player this combat if able.",
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Raving Dead",
+    "oracle_id": "30e5d70e-6547-483a-a4ab-4c2eed296543",
+    "mana_cost": "{4}{B}",
+    "type_line": "Creature — Zombie",
+    "oracle_text": "Deathtouch\nAt the beginning of combat on your turn, choose an opponent at random. This creature attacks that player this combat if able.\nWhenever this creature deals combat damage to a player, that player loses half their life, rounded down.",
+    "power": "2",
+    "toughness": "6"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Ursine Monstrosity",
+    "oracle_id": "647feda9-2876-4430-902f-10dc1f4f99a9",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Bear Mutant",
+    "oracle_text": "Trample\nAt the beginning of combat on your turn, mill a card and choose an opponent at random. This creature attacks that player this combat if able. Until end of turn, this creature gains indestructible and gets +1/+1 for each card type among cards in your graveyard.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Nahiri, the Unforgiving",
+    "oracle_id": "d71d42e0-cd56-4f53-95ff-ecab7f8c6552",
+    "mana_cost": "{1}{R}{R/W/P}{W}",
+    "type_line": "Legendary Planeswalker — Nahiri",
+    "oracle_text": "Compleated\n+1: Until your next turn, up to one target creature attacks a player each combat if able.\n+1: Discard a card, then draw a card.\n0: Exile target creature or Equipment card with mana value less than Nahiri's loyalty from your graveyard. Create a token that's a copy of it. That token gains haste. Exile it at the beginning of the next end step.",
+    "loyalty": "5"
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Vaan, Street Thief",
+    "oracle_id": "24fd1f47-bb15-45c6-a7b1-ba8eb3bb8b1d",
+    "mana_cost": "{2}{R}",
+    "type_line": "Legendary Creature — Human Scout",
+    "oracle_text": "Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.\nWhenever you cast a spell you don't own, put a +1/+1 counter on each Scout, Pirate, and Rogue you control.",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Oakhollow Village",
+    "oracle_id": "177b7fe4-8565-4631-b4d9-8b2b4282f3ac",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "{T}: Add {C}.\n{T}: Add {G}. Spend this mana only to cast a creature spell.\n{G}, {T}: Put a +1/+1 counter on each Frog, Rabbit, Raccoon, or Squirrel you control that entered the battlefield this turn."
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Mirkwood",
+    "oracle_id": "cd49aa99-bf84-4edd-aecc-6dae78b73412",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "This land enters tapped.\n{T}: Add {B} or {G}.\n{2}{B}{G}, {T}, Sacrifice this land: Put two +1/+1 counters on target Bear, Spider, or Wolf you control. Activate only as a sorcery."
+  },
+  {
+    "cluster": "face_up_effect_targets",
+    "name": "Ugin's Mastery",
+    "oracle_id": "d6158860-ada8-4e39-8156-23dee2f68f79",
+    "mana_cost": "{4}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you cast a colorless creature spell, manifest the top card of your library.\nWhenever you attack with creatures with total power 6 or greater, you may turn a face-down creature you control face up."
+  },
+  {
+    "cluster": "face_up_effect_targets",
+    "name": "Zimone, Mystery Unraveler",
+    "oracle_id": "75bf0f27-9df1-4ab4-97a8-94bb3223bdf9",
+    "mana_cost": "{2}{G}{U}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "Landfall — Whenever a land you control enters, manifest dread if this is the first time this ability has resolved this turn. Otherwise, you may turn a permanent you control face up.",
+    "power": "3",
+    "toughness": "3"
   }
 ]
