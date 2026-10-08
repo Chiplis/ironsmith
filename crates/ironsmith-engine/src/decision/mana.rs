@@ -149,6 +149,14 @@ fn shared_spell_characteristic_count(
                 .filter(|subtype| comparison.contains(subtype))
                 .count() as i32
         }
+        crate::ObjectCharacteristic::Color if intersection.against_source_chosen_colors => game
+            .current_colors(spell.id)
+            .unwrap_or_else(|| spell.colors())
+            .intersection(
+                game.chosen_colors(source)
+                    .unwrap_or(crate::color::ColorSet::COLORLESS),
+            )
+            .count() as i32,
         crate::ObjectCharacteristic::Color => {
             let comparison = comparison_objects.iter().fold(
                 crate::color::ColorSet::COLORLESS,

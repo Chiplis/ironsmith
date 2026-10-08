@@ -6284,6 +6284,22 @@ pub fn parse_choose_color_as_enters_line(
         return Ok(None);
     };
     let tail_words = LexedClause::new(tail_tokens).word_refs();
+    // "choose two colors" (Seal of the Guildpact, Tablet of the Guilds): that
+    // many different colors, recorded together.
+    if let ["choose", count, "colors"] = tail_words.as_slice()
+        && let Some(count) = match *count {
+            "two" => Some(2u32),
+            "three" => Some(3),
+            "four" => Some(4),
+            _ => None,
+        }
+    {
+        let display = format!(
+            "As {display_subject} enters, choose {} colors.",
+            tail_words[1]
+        );
+        return Ok(Some(StaticAbility::choose_colors_as_enters(count, display)));
+    }
     let Some((consumed, excluded_color_set)) = parse_choose_color_phrase_words(&tail_words)? else {
         return Ok(None);
     };

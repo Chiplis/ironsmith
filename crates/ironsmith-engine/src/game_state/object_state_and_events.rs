@@ -1989,6 +1989,7 @@ impl GameState {
         {
             let choices = self.choice_store_mut();
             choices.chosen_colors.remove(&id);
+            choices.chosen_color_sets.remove(&id);
             choices.chosen_basic_land_types.remove(&id);
             choices.chosen_land_types.remove(&id);
             choices.chosen_creature_types.remove(&id);
@@ -2394,6 +2395,27 @@ impl GameState {
     /// Get a chosen color for a permanent, if any.
     pub fn chosen_color(&self, permanent_id: ObjectId) -> Option<crate::color::Color> {
         self.choice_store.chosen_colors.get(&permanent_id).copied()
+    }
+
+    /// Record several chosen colors for a permanent ("choose two colors").
+    pub fn set_chosen_colors(&mut self, permanent_id: ObjectId, colors: crate::color::ColorSet) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_color_sets
+            .insert(permanent_id, colors);
+    }
+
+    /// Every color chosen for a permanent: a multi-color choice, or the single
+    /// chosen color as a one-color set.
+    pub fn chosen_colors(&self, permanent_id: ObjectId) -> Option<crate::color::ColorSet> {
+        let set = self.choice_store.chosen_color_sets.get(&permanent_id).copied();
+        let single = self
+            .chosen_color(permanent_id)
+            .map(crate::color::ColorSet::from_color);
+        match (set, single) {
+            (Some(set), Some(single)) => Some(set.union(single)),
+            (set, single) => set.or(single),
+        }
     }
 
     // === Chosen basic land type helpers ===

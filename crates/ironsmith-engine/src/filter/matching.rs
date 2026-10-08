@@ -742,10 +742,12 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.chosen_color {
-        let Some(chosen_color) = ctx.source.and_then(|source| game.chosen_color(source)) else {
+        // "of the chosen color" / "at least one of the chosen colors": a
+        // multi-color choice (Tablet of the Guilds) matches any chosen color.
+        let Some(chosen_colors) = ctx.source.and_then(|source| game.chosen_colors(source)) else {
             return false;
         };
-        if !object_colors.contains(chosen_color) {
+        if object_colors.intersection(chosen_colors).is_empty() {
             return false;
         }
     }

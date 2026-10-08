@@ -382,6 +382,21 @@ pub fn parse_optional_life_additional_cost_reduction_line(
 fn parse_cost_reduction_characteristic_intersection(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::CostReductionCharacteristicIntersection>, CardTextError> {
+    // "for each of the chosen colors it is" (Seal of the Guildpact): the
+    // spell's colors among the source's chosen colors.
+    if (0..tokens.len()).any(|start| {
+        crate::grammar::primitives::parse_prefix(
+            &tokens[start..],
+            crate::grammar::primitives::phrase(&[
+                "for", "each", "of", "the", "chosen", "colors", "it", "is",
+            ]),
+        )
+        .is_some()
+    }) {
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::source_chosen_colors(),
+        ));
+    }
     let characteristic_at = |start: usize| {
         if tokens.get(start).is_some_and(|token| token.is_word("card"))
             && tokens

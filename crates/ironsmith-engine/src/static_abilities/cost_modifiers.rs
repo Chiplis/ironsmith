@@ -1803,7 +1803,11 @@ impl StaticAbilityKind for CostReduction {
             describe_spell_filter(&self.filter),
             amount_text
         );
-        if let Some(intersection) = &self.characteristic_intersection {
+        if let Some(intersection) = &self.characteristic_intersection
+            && intersection.against_source_chosen_colors
+        {
+            line.push_str(" for each of the chosen colors it is");
+        } else if let Some(intersection) = &self.characteristic_intersection {
             let characteristic = intersection.characteristic.sharing_phrase();
             let characteristic = characteristic.strip_prefix("a ").unwrap_or(&characteristic);
             let comparison = intersection

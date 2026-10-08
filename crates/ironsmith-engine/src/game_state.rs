@@ -1201,6 +1201,10 @@ pub struct ChoiceStore {
     pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
     /// Chosen colors for permanents ("as this enters, choose a color").
     pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+    /// Several chosen colors for one permanent ("as this enters, choose two
+    /// colors", Seal of the Guildpact). Single-color readers keep using
+    /// `chosen_colors`; set readers union both.
+    pub chosen_color_sets: HashMap<ObjectId, crate::color::ColorSet>,
     /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
     pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen land types for permanents ("as this enters, choose a land type").

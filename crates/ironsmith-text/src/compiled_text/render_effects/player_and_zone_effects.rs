@@ -1415,6 +1415,8 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
                 None => format!("{basis} fewer than {bound}"),
             })
         }
+        // "for each of the chosen colors it is"
+        Value::ChosenColorsOf(_) => Some("of the chosen colors it is".to_string()),
         // "for each of that spell's colors"
         Value::ColorsOf(spec) => {
             let owner = if let ChooseSpec::Tagged(tag) = spec.base()

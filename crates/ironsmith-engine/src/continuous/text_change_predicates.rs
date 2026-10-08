@@ -293,7 +293,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
             *filter = rewrite_filter_words(filter, change)?;
         }
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
-        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::CountersOn(spec, _)
+        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::ChosenColorsOf(spec)
+        | Value::CountersOn(spec, _)
         | Value::ObjectVoteCount(spec) | Value::KicksPaidOf(spec) | Value::BasePowerOf(spec) => {
             **spec = rewrite_choose_spec_words(spec, change)?;
         }

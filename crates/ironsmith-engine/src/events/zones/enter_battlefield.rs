@@ -415,6 +415,9 @@ impl EnterBattlefieldEvent {
             if let Some(color) = choices.chosen_color {
                 prospective.set_chosen_color(self.object, color);
             }
+            if let Some(colors) = choices.chosen_color_set {
+                prospective.set_chosen_colors(self.object, colors);
+            }
             if let Some(subtype) = choices.chosen_basic_land_type {
                 prospective.set_chosen_basic_land_type(self.object, subtype);
             }

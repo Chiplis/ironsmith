@@ -1091,6 +1091,9 @@ impl GameState {
                 .chosen_colors
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_color_sets
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_basic_land_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices

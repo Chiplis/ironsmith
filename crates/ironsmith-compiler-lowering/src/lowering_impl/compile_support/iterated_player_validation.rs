@@ -231,6 +231,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
         Value::CreaturesDiedThisTurnControlledBy(player)
@@ -423,6 +424,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),
         Value::SpellsCastThisTurnMatching { filter, .. }

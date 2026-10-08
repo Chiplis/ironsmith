@@ -1370,6 +1370,8 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChooseColorAsEntersSpec {
     pub excluded: Option<crate::color::Color>,
+    /// Number of different colors chosen ("choose two colors").
+    pub count: u32,
 }
 
 /// Spec for "as this becomes attached, choose a color" abilities.
@@ -3913,6 +3915,11 @@ impl StaticAbility {
 
     pub fn choose_color_as_enters(excluded: Option<crate::color::Color>, display: String) -> Self {
         Self::new(ChooseColorAsEnters::new(excluded, display))
+    }
+
+    /// "As this enters, choose two colors." (Seal of the Guildpact).
+    pub fn choose_colors_as_enters(count: u32, display: String) -> Self {
+        Self::new(ChooseColorAsEnters::new(None, display).with_count(count))
     }
 
     pub fn choose_color_as_becomes_attached(display: String) -> Self {

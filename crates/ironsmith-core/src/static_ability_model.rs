@@ -1060,6 +1060,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ChooseColorAsEnters {
         excluded: Option<Color>,
         display: String,
+        /// How many different colors are chosen ("choose two colors", Seal
+        /// of the Guildpact); one for the ordinary "choose a color".
+        #[cfg_attr(feature = "serde", serde(default = "crate::static_ability_model::one_chosen_color"))]
+        count: u32,
     },
     ChoosePlayerAsEnters {
         filter: PlayerFilter,
@@ -2625,9 +2629,15 @@ where
                 ability_condition,
                 display,
             },
-            StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
-                StaticAbilityPayload::ChooseColorAsEnters { excluded, display }
-            }
+            StaticAbilityPayload::ChooseColorAsEnters {
+                excluded,
+                display,
+                count,
+            } => StaticAbilityPayload::ChooseColorAsEnters {
+                excluded,
+                display,
+                count,
+            },
             StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
                 StaticAbilityPayload::ChoosePlayerAsEnters { filter, display }
             }
@@ -6032,7 +6042,25 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseColorAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseColorAsEnters { excluded, display },
+            payload: StaticAbilityPayload::ChooseColorAsEnters {
+                excluded,
+                display,
+                count: 1,
+            },
+        }
+    }
+    /// "As this enters, choose two colors." (Seal of the Guildpact): `count`
+    /// different colors are chosen and recorded together.
+    pub fn choose_colors_as_enters(count: u32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseColorAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseColorAsEnters {
+                excluded: None,
+                display,
+                count,
+            },
         }
     }
     pub fn choose_color_as_becomes_attached(display: impl Into<String>) -> Self {
@@ -7921,4 +7949,10 @@ mod cast_timing_payload_tests {
             Some(crate::ThisSpellCastTiming::DuringDeclareBlockersStep)
         );
     }
+}
+
+/// Serde default for [`StaticAbilityPayload::ChooseColorAsEnters`]'s count:
+/// payloads written before multi-color choices choose one color.
+pub fn one_chosen_color() -> u32 {
+    1
 }

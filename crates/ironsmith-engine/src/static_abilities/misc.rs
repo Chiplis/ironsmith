@@ -2536,11 +2536,22 @@ impl StaticAbilityKind for DamageNotRemovedDuringCleanup {
 pub struct ChooseColorAsEnters {
     pub excluded: Option<Color>,
     pub display: String,
+    /// Number of different colors chosen ("choose two colors").
+    pub count: u32,
 }
 
 impl ChooseColorAsEnters {
     pub fn new(excluded: Option<Color>, display: String) -> Self {
-        Self { excluded, display }
+        Self {
+            excluded,
+            display,
+            count: 1,
+        }
+    }
+
+    pub fn with_count(mut self, count: u32) -> Self {
+        self.count = count.max(1);
+        self
     }
 }
 
@@ -2556,6 +2567,7 @@ impl StaticAbilityKind for ChooseColorAsEnters {
     fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         Some(ChooseColorAsEntersSpec {
             excluded: self.excluded,
+            count: self.count,
         })
     }
 }

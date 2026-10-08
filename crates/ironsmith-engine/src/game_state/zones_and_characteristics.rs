@@ -3,6 +3,8 @@ use super::*;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedEtbChoices {
     pub(crate) chosen_color: Option<crate::color::Color>,
+    /// "choose two colors": the chosen colors, recorded together.
+    pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
     pub(crate) chosen_basic_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
@@ -2306,7 +2308,41 @@ impl GameState {
                 if let Some(excluded) = spec.excluded {
                     options.retain(|color| *color != excluded);
                 }
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two colors" (Seal of the Guildpact): that many
+                    // different colors, recorded together.
+                    let choice_spec =
+                        crate::decisions::specs::ManaColorsSpec::restricted_different_colors(
+                            old_id,
+                            spec.count,
+                            options.clone(),
+                        );
+                    let chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let mut set = crate::color::ColorSet::COLORLESS;
+                    for color in chosen {
+                        if options.contains(&color) && set.count() < spec.count {
+                            set = set.with(color);
+                        }
+                    }
+                    // A short answer is completed with the first unchosen
+                    // options, keeping the choice at its required size.
+                    for color in &options {
+                        if set.count() >= spec.count {
+                            break;
+                        }
+                        set = set.with(*color);
+                    }
+                    choices.chosen_color_set = Some(set);
+                } else if !options.is_empty() {
                     let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
                         old_id,
                         1,
@@ -3270,6 +3306,9 @@ impl GameState {
             if let Some(color) = choice_store.chosen_colors.remove(&old_id) {
                 choice_store.chosen_colors.insert(new_id, color);
             }
+            if let Some(colors) = choice_store.chosen_color_sets.remove(&old_id) {
+                choice_store.chosen_color_sets.insert(new_id, colors);
+            }
             if let Some(land_type) = choice_store.chosen_land_types.remove(&old_id) {
                 choice_store.chosen_land_types.insert(new_id, land_type);
             }
@@ -3544,6 +3583,9 @@ impl GameState {
         // battlefield permanent whose mandatory entry choice is unresolved.
         if let Some(color) = choices.chosen_color {
             self.set_chosen_color(new_id, color);
+        }
+        if let Some(colors) = choices.chosen_color_set {
+            self.set_chosen_colors(new_id, colors);
         }
         if let Some(subtype) = choices.chosen_basic_land_type {
             self.set_chosen_basic_land_type(new_id, subtype);

@@ -432,6 +432,11 @@ pub struct CostReductionCharacteristicIntersection {
     /// Authored comparison-set surface, such as
     /// "cards exiled with this creature".
     pub comparison_surface: Option<String>,
+    /// The comparison set is the source's chosen colors instead of
+    /// `comparison` ("for each of the chosen colors it is", Seal of the
+    /// Guildpact).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub against_source_chosen_colors: bool,
 }
 
 impl CostReductionCharacteristicIntersection {
@@ -440,6 +445,17 @@ impl CostReductionCharacteristicIntersection {
             characteristic,
             comparison,
             comparison_surface: None,
+            against_source_chosen_colors: false,
+        }
+    }
+
+    /// Count the candidate spell's colors among the source's chosen colors.
+    pub fn source_chosen_colors() -> Self {
+        Self {
+            characteristic: crate::ObjectCharacteristic::Color,
+            comparison: ObjectFilter::default(),
+            comparison_surface: Some("the chosen colors".to_string()),
+            against_source_chosen_colors: true,
         }
     }
 

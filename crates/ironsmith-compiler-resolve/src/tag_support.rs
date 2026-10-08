@@ -1167,6 +1167,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
