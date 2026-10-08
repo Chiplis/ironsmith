@@ -629,6 +629,7 @@ const CLAUSE_READINGS: &[Reading] = &[
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("clause-primitives")
                 && !input.read_by("has-base-power")
+                && !input.read_by("has-base-power-toughness")
                 && !input.read_by("negative-characteristic-assertion")
                 && !input.read_by("target-player-choose-objects-with-count")
         },
