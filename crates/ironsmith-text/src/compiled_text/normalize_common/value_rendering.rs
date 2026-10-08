@@ -2032,7 +2032,7 @@ pub(crate) fn describe_attached_tagged_object_filter(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     | crate::filter::TaggedOpbjectRelation::SameObjectId
-            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         })
         .collect::<Vec<_>>();
     if attached_constraints.len() != 1 {

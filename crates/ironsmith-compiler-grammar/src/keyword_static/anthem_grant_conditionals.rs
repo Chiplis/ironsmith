@@ -52,7 +52,7 @@ fn parse_attached_subject_controller_condition(
         return Ok(None);
     };
     let Some(tag) = filter.tagged_constraints.iter().find_map(|constraint| {
-        matches!(constraint.tag.as_str(), "enchanted" | "equipped").then(|| constraint.tag.clone())
+        matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified").then(|| constraint.tag.clone())
     }) else {
         return Ok(None);
     };
@@ -1303,7 +1303,7 @@ fn attached_object_anthem_subject_filter(subject: &AnthemSubjectAst) -> Option<&
             matches!(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         })
         .then_some(filter)
 }

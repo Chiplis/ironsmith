@@ -21,6 +21,8 @@ pub enum KeywordDispatchHint {
     Cycling,
     Reinforce,
     Equip,
+    /// CR 702.67: Fortify.
+    Fortify,
     Reconfigure,
     Kicker,
     Flashback,
@@ -77,6 +79,7 @@ impl KeywordDispatchHint {
             Self::Cycling => &["cycling", "basic"],
             Self::Reinforce => &["reinforce"],
             Self::Equip => &["equip"],
+            Self::Fortify => &["fortify"],
             Self::Reconfigure => &["reconfigure"],
             Self::Kicker => &["kicker"],
             Self::Flashback => &["flashback"],
@@ -180,6 +183,7 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
         alt((
             primitives::kw("reinforce").value(KeywordDispatchHint::Reinforce),
             primitives::kw("equip").value(KeywordDispatchHint::Equip),
+            primitives::kw("fortify").value(KeywordDispatchHint::Fortify),
             primitives::kw("kicker").value(KeywordDispatchHint::Kicker),
             primitives::kw("flashback").value(KeywordDispatchHint::Flashback),
             primitives::kw("harmonize").value(KeywordDispatchHint::Harmonize),

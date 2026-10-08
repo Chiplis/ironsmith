@@ -260,6 +260,8 @@ pub enum CompilerReferenceTag {
     Triggering,
     Enchanted,
     Equipped,
+    /// The land a Fortification source is attached to (CR 301.6).
+    Fortified,
     DivvySource,
     DivvyChosen,
     DivvyPile,
@@ -427,6 +429,7 @@ impl CompilerReferenceTag {
             Self::Triggering => "triggering",
             Self::Enchanted => "enchanted",
             Self::Equipped => "equipped",
+            Self::Fortified => "fortified",
             Self::DivvySource => "divvy_source",
             Self::DivvyChosen => "divvy_chosen",
             Self::DivvyPile => "divvy_pile",

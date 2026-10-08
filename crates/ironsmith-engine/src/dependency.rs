@@ -1857,7 +1857,8 @@ fn attachment_scoped_effect_object(
                         constraint.relation,
                         crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     ) && (constraint.tag == crate::tag::TagKey::from("enchanted")
-                        || constraint.tag == crate::tag::TagKey::from("equipped"))
+                        || constraint.tag == crate::tag::TagKey::from("equipped")
+                        || constraint.tag == crate::tag::TagKey::from("fortified"))
                 })
         }
         _ => false,

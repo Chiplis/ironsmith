@@ -1340,7 +1340,7 @@ pub fn parse_attached_no_defender_shape(
     }
     let subject_tokens = trim_lexed_commas(&tokens[..phrase_start]);
     let first = subject_tokens.first()?.as_word()?;
-    (matches!(first, "enchanted" | "equipped" | "attached") && !subject_tokens.is_empty())
+    (matches!(first, "enchanted" | "equipped" | "fortified" | "attached") && !subject_tokens.is_empty())
         .then_some(NoDefenderSubjectShape { subject_tokens })
 }
 

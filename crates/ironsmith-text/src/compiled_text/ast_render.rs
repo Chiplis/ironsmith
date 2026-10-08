@@ -38246,7 +38246,7 @@ fn describe_source_line_attached_animation_group(members: &[Ability]) -> Option<
     let mut subject_filter: Option<ObjectFilter> = None;
     let mut same_subject = |filter: &ObjectFilter| -> bool {
         let attached = filter.tagged_constraints.iter().any(|constraint| {
-            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         });
         if !attached {

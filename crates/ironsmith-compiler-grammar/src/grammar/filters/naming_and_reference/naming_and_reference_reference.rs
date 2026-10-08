@@ -70,6 +70,13 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
+        all_words.remove(0);    } else if all_words.first().is_some_and(|word| *word == "fortified") {
+        // "Fortified land has indestructible" (CR 301.6): the Fortification's
+        // host, exactly as "equipped" names the Equipment's host.
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::Fortified.bind()).into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
         all_words.remove(0);
     }
 

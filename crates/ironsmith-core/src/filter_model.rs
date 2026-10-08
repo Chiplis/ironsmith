@@ -4943,6 +4943,7 @@ impl ObjectFilter {
                         "it" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
+                        "fortified" => parts.push("fortified".to_string()),
                         "convoked_this_spell" => {
                             post_noun_qualifiers.push("that convoked this spell".to_string());
                         }

@@ -1325,7 +1325,7 @@ fn describe_attachment_state_disjunction(condition: &Condition) -> Option<String
             Condition::TaggedObjectMatchedLastKnown(tag, filter) => (true, tag, filter),
             _ => return None,
         };
-        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+        if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
             return None;
         }
         let [constraint] = filter.tagged_constraints.as_slice() else {
@@ -1376,14 +1376,14 @@ pub(in crate::compiled_text) fn attachment_state_disjunction_reference_tag(
             | Condition::TaggedObjectMatchedLastKnown(tag, filter) => (tag, filter),
             _ => return None,
         };
-        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+        if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
             return None;
         }
         let [constraint] = filter.tagged_constraints.as_slice() else {
             return None;
         };
         if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         {
             return None;
         }
