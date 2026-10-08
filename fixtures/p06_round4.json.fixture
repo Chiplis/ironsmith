@@ -1,0 +1,92 @@
+[
+ {
+  "name": "Bruvac the Grandiloquent",
+  "oracle_id": "274b999f-f193-48fd-9a4a-0fdaf535e6c3",
+  "mana_cost": "{2}{U}",
+  "type_line": "Legendary Creature — Human Advisor",
+  "power": "1",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "If an opponent would mill one or more cards, they mill twice that many cards instead. (To mill a card, a player puts the top card of their library into their graveyard.)"
+ },
+ {
+  "name": "Kenessos, Priest of Thassa",
+  "oracle_id": "45b3a028-5705-4dc8-bfab-04bb5e01eea6",
+  "mana_cost": "{1}{U}",
+  "type_line": "Legendary Creature — Merfolk Cleric",
+  "power": "1",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "If you would scry a number of cards, scry that many cards plus one instead.\n{3}{G/U}: Look at the top card of your library. If it's a Kraken, Leviathan, Octopus, or Serpent creature card, you may put it onto the battlefield. If you don't put the card onto the battlefield, you may put it on the bottom of your library."
+ },
+ {
+  "name": "Eligeth, Crossroads Augur",
+  "oracle_id": "65e15354-4258-411f-a8f1-f64f4ccb873b",
+  "mana_cost": "{4}{U}{U}",
+  "type_line": "Legendary Creature — Sphinx",
+  "power": "5",
+  "toughness": "6",
+  "loyalty": null,
+  "oracle_text": "Flying\nIf you would scry a number of cards, draw that many cards instead.\nPartner (You can have two commanders if both have partner.)"
+ },
+ {
+  "name": "Divine Presence",
+  "oracle_id": "ff9a5529-83bd-46a8-b20b-235a5fd26d93",
+  "mana_cost": "{2}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If a source would deal 4 or more damage to a permanent or player, that source deals 3 damage to that permanent or player instead."
+ },
+ {
+  "name": "Forethought Amulet",
+  "oracle_id": "0edf0988-9ed8-4fe6-aa47-4921870f05a8",
+  "mana_cost": "{5}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, sacrifice this artifact unless you pay {3}.\nIf an instant or sorcery source would deal 3 or more damage to you, it deals 2 damage to you instead."
+ },
+ {
+  "name": "Ghosts of the Innocent",
+  "oracle_id": "9243bd95-5467-490d-9bd2-4d5ce1ebc589",
+  "mana_cost": "{5}{W}{W}",
+  "type_line": "Creature — Spirit",
+  "power": "4",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "If a source would deal damage to a permanent or player, it deals half that damage, rounded down, to that permanent or player instead."
+ },
+ {
+  "name": "Izzet Generatorium",
+  "oracle_id": "6a618c4a-e604-4dce-a078-755fd35ac5d9",
+  "mana_cost": "{U}{R}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you would get one or more {E} (energy counters), you get that many plus one {E} instead.\n{T}: Draw a card. Activate only if you've paid or lost four or more {E} this turn."
+ },
+ {
+  "name": "Enhanced Surveillance",
+  "oracle_id": "bfb5104b-01e3-4d37-ac93-1dc342121531",
+  "mana_cost": "{1}{U}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "You may look at an additional two cards each time you surveil.\nExile this enchantment: Shuffle your graveyard into your library."
+ },
+ {
+  "name": "Radiant Scrollwielder",
+  "oracle_id": "8f5ef838-839a-4eb0-8d65-c8c8def0a233",
+  "mana_cost": "{2}{R}{W}",
+  "type_line": "Creature — Dwarf Cleric",
+  "power": "2",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Instant and sorcery spells you control have lifelink.\nAt the beginning of your upkeep, exile an instant or sorcery card at random from your graveyard. You may cast it this turn. If a spell cast this way would be put into your graveyard, exile it instead."
+ }
+]

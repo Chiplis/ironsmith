@@ -88,6 +88,10 @@ pub enum KeywordActionKind {
     CumulativeUpkeepPaid,
     /// An accepted and completed echo payment, including a zero cost.
     EchoCostPaid,
+    /// A player mills N cards (CR 701.17). Proposed only so replacement
+    /// effects can modify the number milled ("they mill twice that many
+    /// cards instead"); milled cards are observed as card-milled events.
+    Mill,
 }
 
 impl KeywordActionKind {
@@ -247,6 +251,7 @@ impl KeywordActionKind {
             Self::TakeInitiative => "take the initiative",
             Self::Mentor => "mentor",
             Self::BecomeSaddled => "become saddled",
+            Self::Mill => "mill cards",
         }
     }
 
@@ -323,6 +328,7 @@ impl KeywordActionKind {
             Self::TakeInitiative => "takes the initiative",
             Self::Mentor => "mentors",
             Self::BecomeSaddled => "becomes saddled",
+            Self::Mill => "mills cards",
         }
     }
 }

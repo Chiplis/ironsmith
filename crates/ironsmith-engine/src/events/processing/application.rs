@@ -1420,6 +1420,12 @@ fn modify_token_groups_checked(
             tokens.adjusted_token_total(covers, |total| u128::from(total.max(floor)))
         }
         EventModification::ReduceToZero => tokens.adjusted_token_total(covers, |_| 0),
+        EventModification::Halve { round_up } => {
+            let round_up = *round_up;
+            tokens.adjusted_token_total(covers, move |total| {
+                u128::from(if round_up { total.div_ceil(2) } else { total / 2 })
+            })
+        }
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1445,6 +1451,9 @@ fn modified_count(
             count.max(resolve_value_for_replacement(value, game, effect.source))
         }
         EventModification::ReduceToZero => 0,
+        EventModification::Halve { round_up } => {
+            if *round_up { count.div_ceil(2) } else { count / 2 }
+        }
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }

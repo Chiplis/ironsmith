@@ -1552,6 +1552,19 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         replacement_effects: Vec<E>,
         display: String,
     },
+    /// "If an opponent would mill one or more cards, they mill twice that
+    /// many cards instead." (Bruvac), "If a source would deal 4 or more
+    /// damage to a permanent or player, that source deals 3 damage to that
+    /// permanent or player instead." (Divine Presence): the watched event
+    /// still happens with a modified amount (CR 614.1a, 616.1). `optional`
+    /// reads "you may" ("You may look at an additional two cards each time
+    /// you surveil"). Appended to preserve published payload variant ordinals.
+    EventAmountReplacement {
+        event: crate::AmountEventSpec,
+        modifier: crate::AmountModifierSpec,
+        optional: bool,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1992,6 +2005,17 @@ where
                     .into_iter()
                     .map(&mut *map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
+            } => StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
                 display,
             },
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
@@ -7016,6 +7040,25 @@ impl<
                 damager_filter_surface: None,
                 exile_with_counters,
                 follow_up_effects,
+            },
+        }
+    }
+    /// An amount-modifying replacement over one watched event (CR 614.1a).
+    pub fn event_amount_replacement(
+        event: crate::AmountEventSpec,
+        modifier: crate::AmountModifierSpec,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EventAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
             },
         }
     }

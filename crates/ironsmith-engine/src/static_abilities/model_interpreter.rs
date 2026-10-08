@@ -1912,6 +1912,17 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             )),
+            ironsmith_core::StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
+            } => StaticAbility::new(super::EventAmountReplacement::new(
+                event.clone(),
+                *modifier,
+                *optional,
+                display.clone(),
+            )),
             ironsmith_core::StaticAbilityPayload::RedirectMatchingDamage(spec) => {
                 StaticAbility::redirect_matching_damage(spec.clone())
             }

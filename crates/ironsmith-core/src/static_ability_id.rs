@@ -400,6 +400,8 @@ pub enum StaticAbilityId {
     LookAtSourceExiledCards,
     /// Generic "<event> instead" replacement; appended for wire compatibility.
     EventReplacementWithEffects,
+    /// Generic amount-modifying replacement; appended for wire compatibility.
+    EventAmountReplacement,
 }
 
 impl StaticAbilityId {
@@ -720,6 +722,7 @@ impl StaticAbilityId {
             | RedirectDrawReplacement
             | DrawReplacementWithEffects
             | EventReplacementWithEffects
+            | EventAmountReplacement
             | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

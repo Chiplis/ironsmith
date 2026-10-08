@@ -24,6 +24,12 @@ pub enum CounterReplacementShape<'a> {
     },
     GenericUnderYourControl,
     EnergyYouGet,
+    /// "If you would get one or more {E} (energy counters), you get that many
+    /// plus one {E} instead." (Izzet Generatorium): an additive energy-counter
+    /// replacement (CR 122.1, 614.1a).
+    EnergyYouGetPlus {
+        additional: u32,
+    },
     /// "If you would put one or more counters on a permanent or player, put
     /// twice that many of each of those kinds of counters on that permanent
     /// or player instead." (Innkeeper's Talent); `opponent` reads "If an
@@ -142,6 +148,13 @@ pub fn parse_counter_replacement_tokens(
     }
     if parse_energy_counter_replacement(tokens) {
         return Some(CounterReplacementShape::EnergyYouGet);
+    }
+    if let Some(additional) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_energy_counter_add_lexed,
+        "additive energy-counter replacement",
+    ) {
+        return Some(CounterReplacementShape::EnergyYouGetPlus { additional });
     }
     crate::grammar::primitives::probe_all(
         tokens,
@@ -563,6 +576,18 @@ fn parse_energy_counter_replacement(tokens: &[OwnedLexToken]) -> bool {
             .void(),
         "double energy-counter replacement",
     )
+}
+
+fn parse_energy_counter_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    semantic_phrase(&["if", "you", "would", "get", "one", "or", "more"]).parse_next(input)?;
+    semantic_energy_symbol.parse_next(input)?;
+    opt(semantic_phrase(&["energy", "counters"])).parse_next(input)?;
+    semantic_phrase(&["you", "get", "that", "many", "plus"]).parse_next(input)?;
+    let additional = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    semantic_energy_symbol.parse_next(input)?;
+    semantic_kw("instead").parse_next(input)?;
+    super::nearby_primitives::semantic_finish.parse_next(input)?;
+    Ok(additional)
 }
 
 fn parse_player_counter_per_turn_limit_lexed<'a>(

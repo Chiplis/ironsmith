@@ -103,6 +103,9 @@ impl EffectExecutor for MillEffect {
 #[derive(Debug)]
 struct MillProposal {
     player: PlayerId,
+    /// The number of cards the instruction asked for, before the library cap
+    /// (CR 701.17b); replacements modify this proposed number (CR 616.1).
+    requested: u64,
     cards: Vec<(ObjectId, Option<ObjectSnapshot>)>,
 }
 impl crate::effects::SimultaneousEffectProposal for MillProposal {
@@ -138,7 +141,89 @@ fn prepare_mill(
         .take(count)
         .map(|&id| (id, ObjectSnapshot::from_object_id(game, id)))
         .collect();
-    Ok(MillProposal { player, cards })
+    Ok(MillProposal {
+        player,
+        requested,
+        cards,
+    })
+}
+
+/// "If an opponent would mill one or more cards, they mill twice that many
+/// cards instead." (Bruvac): propose the mill as a keyword action so amount
+/// replacements change its number before any card moves (CR 614.1a, 616.1,
+/// 701.17). Returns `None` while a replacement-order choice is pending.
+fn apply_mill_amount_replacements(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut proposal: MillProposal,
+) -> Result<Option<MillProposal>, ExecutionError> {
+    use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
+    if proposal.requested == 0
+        || !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game)
+    {
+        return Ok(Some(proposal));
+    }
+    let event = crate::events::Event::new_with_provenance(
+        KeywordActionEvent::new(
+            KeywordActionKind::Mill,
+            proposal.player,
+            ctx.source,
+            u32::try_from(proposal.requested).unwrap_or(u32::MAX),
+        ),
+        ctx.provenance,
+    );
+    let amount = match process_trait_event_with_execution_context(game, event, ctx)? {
+        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+            crate::events::downcast_event::<KeywordActionEvent>(event.inner())
+                .filter(|action| action.action == KeywordActionKind::Mill)
+                .map(|action| u64::from(action.amount))
+                .ok_or_else(|| {
+                    ExecutionError::InternalError("mill replacement changed action kind".into())
+                })?
+        }
+        TraitEventResult::Prevented => 0,
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+            return Err(ExecutionError::InternalError(
+                "mill proposal suspended without a decision".into(),
+            ));
+        }
+        TraitEventResult::Replaced { .. } | TraitEventResult::Expanded { .. } => {
+            return Err(ExecutionError::InternalError(
+                "mill proposals only accept amount replacements".into(),
+            ));
+        }
+    };
+    if amount == proposal.requested {
+        return Ok(Some(proposal));
+    }
+    // The frozen top cards stay the ones milled; a larger number continues
+    // down the library from where the frozen proposal stopped.
+    let player = proposal.player;
+    let library_len = game.player(player).map_or(0, |player| player.library.len()) as u64;
+    let count = amount.min(library_len) as usize;
+    if count <= proposal.cards.len() {
+        proposal.cards.truncate(count);
+    } else {
+        let frozen: std::collections::HashSet<ObjectId> =
+            proposal.cards.iter().map(|(id, _)| *id).collect();
+        let game: &GameState = game;
+        let reserved = &ctx.replacement.entry_reserved_objects;
+        let additional = game
+            .player(player)
+            .into_iter()
+            .flat_map(|player| player.library.iter().rev())
+            .filter(|id| !frozen.contains(id) && !reserved.contains(id))
+            .take(count - proposal.cards.len())
+            .map(|&id| (id, ObjectSnapshot::from_object_id(game, id)))
+            .collect::<Vec<_>>();
+        proposal.cards.extend(additional);
+    }
+    proposal.requested = amount;
+    Ok(Some(proposal))
 }
 fn execute_prepared_mill(
     proposal: MillProposal,
@@ -188,6 +273,9 @@ fn execute_prepared_mill_with_completion<'a, R>(
         return Ok(pending());
     }
     crate::effects::composition::execute_transaction(game, ctx, &pending, |game, ctx| {
+        let Some(proposal) = apply_mill_amount_replacements(game, ctx, proposal)? else {
+            return Ok(pending());
+        };
         let player_id = proposal.player;
         let memories = proposal
             .cards
