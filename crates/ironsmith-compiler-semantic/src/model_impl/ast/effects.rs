@@ -4739,6 +4739,7 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: false,
+                manifest: false,
                 shuffle_before: false,
             }),
         )
@@ -4759,6 +4760,30 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: true,
+                manifest: false,
+                shuffle_before,
+            }),
+        )
+    }
+
+    /// Manifest the chosen/tagged cards (CR 701.40a): each is put onto the
+    /// battlefield face down as a 2/2 creature.
+    pub fn subject_verb_manifest_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+        shuffle_before: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+                cloak: false,
+                manifest: true,
                 shuffle_before,
             }),
         )

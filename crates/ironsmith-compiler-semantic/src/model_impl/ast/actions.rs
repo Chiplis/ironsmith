@@ -837,6 +837,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tapped,
                 controller,
                 cloak,
+                manifest,
                 shuffle_before,
             }) => f
                 .debug_struct("PutOntoBattlefield")
@@ -844,6 +845,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("tapped", tapped)
                 .field("controller", controller)
                 .field("cloak", cloak)
+                .field("manifest", manifest)
                 .field("shuffle_before", shuffle_before)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::RevealCardsFromHand {

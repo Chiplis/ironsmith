@@ -441,5 +441,23 @@
     "mana_cost": "{2}{R}",
     "type_line": "Enchantment — Aura Curse",
     "oracle_text": "Enchant player\nCreatures attacking enchanted player have trample.\nWhenever a creature deals combat damage to enchanted player, that player exiles the top card of their library. Until end of turn, that creature's controller may play that card and they may spend mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Write into Being",
+    "oracle_id": "4fc69345-4c1f-4113-8e1c-15b8e2e597fc",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top two cards of your library. Manifest one of those cards, then put the other on the top or bottom of your library."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Jeskai Infiltrator",
+    "oracle_id": "39b359c1-48b8-43a7-b972-54764eadd2c7",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Monk",
+    "oracle_text": "This creature can't be blocked as long as you control no other creatures.\nWhen this creature deals combat damage to a player, exile it and the top card of your library in a face-down pile, shuffle that pile, then manifest those cards.",
+    "power": "2",
+    "toughness": "3"
   }
 ]
