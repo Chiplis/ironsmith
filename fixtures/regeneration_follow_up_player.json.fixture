@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Soldevi Sentry",
+    "oracle_id": "d2a61132-d881-4c80-92f1-a151d835832a",
+    "text": "Mana cost: {1}\nType: Artifact Creature — Soldier\nPower/Toughness: 1/1\n{1}: Choose target opponent. Regenerate this creature. When it regenerates this way, that player may draw a card."
+  }
+]

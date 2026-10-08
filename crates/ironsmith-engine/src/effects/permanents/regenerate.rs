@@ -57,6 +57,19 @@ impl EffectExecutor for RegenerateEffect {
             return Err(ExecutionError::InvalidTarget);
         }
 
+        // "that player" in a follow-up is fixed now, from this resolution's
+        // targets and choices; the shield's program runs without them.
+        let follow_up_effects = match &self.follow_up_player {
+            Some(filter) if !self.follow_up_effects.is_empty() => {
+                let player = crate::effects::helpers::resolve_player_filter(game, filter, ctx)?;
+                vec![Effect::for_players(
+                    crate::target::PlayerFilter::Specific(player),
+                    self.follow_up_effects.clone(),
+                )]
+            }
+            _ => self.follow_up_effects.clone(),
+        };
+
         let mut outcomes = Vec::new();
         for target_id in targets {
             // CR 701.19a: any permanent can be regenerated, not only creatures
@@ -88,7 +101,7 @@ impl EffectExecutor for RegenerateEffect {
                     ChooseSpec::SpecificObject(target_id),
                 )),
             ];
-            replacement_effects.extend(self.follow_up_effects.clone());
+            replacement_effects.extend(follow_up_effects.iter().cloned());
 
             let matcher = RegenerationShieldMatcher::new(target_id);
             let replacement_effect = ReplacementEffect::with_matcher(

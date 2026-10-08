@@ -704,7 +704,8 @@ where
         let follow_up_effects = convert_effects(payload.follow_up_effects.clone(), hooks)?;
         return Ok(Effect::new(
             crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone())
-                .with_follow_up_effects(follow_up_effects),
+                .with_follow_up_effects(follow_up_effects)
+                .with_follow_up_player(payload.follow_up_player.clone()),
         ));
     }
     if let Some(converted) =

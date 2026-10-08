@@ -3092,6 +3092,7 @@ pub(super) fn compile_subject_verb_late(
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut follow_ups = Vec::new();
+            let mut follow_up_player = None;
             // "When it regenerates this way, ..." (Matopi Golem): a reflexive
             // trigger created when the shield replaces a destruction (CR
             // 701.19, 603.12), controlled by the shield's controller. Its
@@ -3105,7 +3106,29 @@ pub(super) fn compile_subject_verb_late(
             {
                 let saved_last_object_tag = ctx.last_object_tag.clone();
                 ctx.last_object_tag = Some((crate::tag::CompilerReferenceTag::It.bind()).into());
-                let (compiled, trigger_choices) = compile_effects(trigger_effects, ctx)?;
+                // "Choose target opponent. Regenerate ... When it regenerates
+                // this way, that player may draw a card." (Soldevi Sentry):
+                // the activation's player is fixed when the shield is made
+                // and the trigger names it as the iterated player of a
+                // one-player loop the shield wraps around it.
+                let saved_last_player_filter = ctx.last_player_filter.clone();
+                let carried_player = match saved_last_player_filter.clone() {
+                    Some(PlayerFilter::You | PlayerFilter::IteratedPlayer) | None => None,
+                    Some(player) => Some(player),
+                };
+                if carried_player.is_some() {
+                    ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+                }
+                let compiled_trigger = compile_effects(trigger_effects, ctx);
+                ctx.last_player_filter = saved_last_player_filter;
+                let (compiled, trigger_choices) = compiled_trigger?;
+                if carried_player.is_some()
+                    && compiled
+                        .iter()
+                        .any(crate::compile_support::effect_mentions_iterated_player)
+                {
+                    follow_up_player = carried_player;
+                }
                 ctx.last_object_tag = saved_last_object_tag;
                 follow_ups.push(Effect::reflexive_trigger(
                     crate::effects::RegenerateEffect::SHIELD_USED_ID,
@@ -3128,7 +3151,8 @@ pub(super) fn compile_subject_verb_late(
                 spec.clone(),
                 crate::effect::Until::EndOfTurn,
             )
-            .with_follow_up_effects(follow_ups);
+            .with_follow_up_effects(follow_ups)
+            .with_follow_up_player(follow_up_player);
             let effect =
                 tag_object_target_effect(Effect::new(regenerate), &spec, ctx, "regenerated");
             Ok((vec![effect], choices))

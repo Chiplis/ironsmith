@@ -1645,6 +1645,14 @@ pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
     pub follow_up_effects: Vec<E>,
+    /// The player a follow-up's "that player" names, resolved when the shield
+    /// is created ("Choose target opponent. Regenerate this creature. When it
+    /// regenerates this way, that player may draw a card."). The follow-up
+    /// runs later in the shield's replacement program, which has none of the
+    /// creating resolution's targets, so it reads that player as the iterated
+    /// player of a one-player loop.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub follow_up_player: Option<PlayerFilter>,
 }
 
 impl<E> RegenerateEffect<E> {
@@ -1659,6 +1667,7 @@ impl<E> RegenerateEffect<E> {
             target,
             duration,
             follow_up_effects: Vec::new(),
+            follow_up_player: None,
         }
     }
 
@@ -1672,6 +1681,11 @@ impl<E> RegenerateEffect<E> {
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_follow_up_player(mut self, player: Option<PlayerFilter>) -> Self {
+        self.follow_up_player = player;
         self
     }
 }
