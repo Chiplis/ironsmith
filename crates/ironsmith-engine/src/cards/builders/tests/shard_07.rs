@@ -748,14 +748,10 @@ pub(super) fn war_elemental_runtime_condition_fails_when_no_opponent_lost_life_t
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
+    // The either-characteristic filter now owns this subject.
+    CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
         .parse_text("Creatures you control with power or toughness 1 or less can't be blocked.")
-        .expect_err("power-or-toughness unblockable subject should fail when unsupported");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported power-or-toughness cant-be-blocked subject"),
-        "expected power-or-toughness subject parse error, got {message}"
-    );
+        .expect("power-or-toughness unblockable subject parses through the disjunction filter");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

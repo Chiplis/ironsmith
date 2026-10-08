@@ -1974,14 +1974,10 @@ pub(super) fn aberrant_return_target_requirements_reject_noncreatures_and_cap_at
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_named_enters_tapped_and_doesnt_untap_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Grimgrin Variant")
+    // Read as two owned source statics (entry replacement + untap restriction).
+    CardDefinitionBuilder::new(CardId::new(), "Grimgrin Variant")
         .parse_text("Grimgrin enters tapped and doesn't untap during your untap step.")
-        .expect_err("mixed enters-tapped/negated-untap should fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported mixed enters-tapped and negated-untap clause"),
-        "expected strict mixed enters-tapped parse error, got {message}"
-    );
+        .expect("enters-tapped/negated-untap conjunction parses as two statics");
 }
 
 #[cfg(ironsmith_runtime_removed_parser_helper_unit_tests)]
