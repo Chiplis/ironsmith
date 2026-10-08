@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Crashing Boars",
+    "oracle_id": "a4c59feb-e76a-4e08-b296-21c3e61cfc64",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Creature — Boar",
+    "oracle_text": "Whenever this creature attacks, defending player chooses an untapped creature they control. That creature blocks this creature this turn if able.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {3}{G}{G}\nType: Creature — Boar\nPower/Toughness: 4/4\nWhenever this creature attacks, defending player chooses an untapped creature they control. That creature blocks this creature this turn if able."
+  },
+  {
+    "name": "Drana, the Last Bloodchief",
+    "oracle_id": "3ae3b901-4d36-40e2-b861-26209fa1e823",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Legendary Creature — Vampire Cleric",
+    "oracle_text": "Flying\nWhenever Drana attacks, defending player chooses a nonlegendary creature card in your graveyard. You return that card to the battlefield with an additional +1/+1 counter on it. The creature is a Vampire in addition to its other types.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {3}{B}{B}\nType: Legendary Creature — Vampire Cleric\nPower/Toughness: 4/4\nFlying\nWhenever Drana attacks, defending player chooses a nonlegendary creature card in your graveyard. You return that card to the battlefield with an additional +1/+1 counter on it. The creature is a Vampire in addition to its other types."
+  }
+]
