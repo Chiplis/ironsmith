@@ -37,7 +37,9 @@ pub use normalization_support::normalize_line_ast_standalone;
 pub use normalization_support::normalize_parsed_card_ast_for_lowering;
 
 pub use damage_and_cost_rewrites::*;
-pub use finalization_support::derive_triggered_ability_functional_zones_from_facts;
+pub use finalization_support::{
+    base_trigger_functional_zones, derive_triggered_ability_functional_zones_from_facts,
+};
 pub(crate) use finalization_support::finalize_effect_list_references;
 use finalization_support::{
     finalize_lowered_card, normalize_selected_sacrifice_tags, runtime_effects_to_costs,

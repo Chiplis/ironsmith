@@ -33,7 +33,7 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
 /// whole-ability facts are applied. CR 113.6: an ability functions only
 /// from its zones; an "A or B" trigger functions wherever either arm does
 /// ("When you cast or cycle this card", CR 603.2 + CR 702.29c).
-fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
+pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => base_trigger_functional_zones(trigger),
         TriggerSpec::Either(left, right) => {

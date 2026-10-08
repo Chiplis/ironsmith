@@ -859,6 +859,13 @@ impl Auditor {
             }
             return scope;
         }
+        // A zone gate only restricts where one union arm functions.
+        if name == "ZoneGated" {
+            return self.trigger(
+                payload.get("trigger").unwrap_or(&Value::Null),
+                &child(path, "trigger"),
+            );
+        }
         if name == "AnyOf" || name == "Either" {
             let branches: Vec<&Value> = if name == "AnyOf" || payload.is_array() {
                 payload

@@ -160,6 +160,9 @@ pub(crate) fn interpret_trigger_model(
             surface,
             stun_counter_reminder_surface,
         ),
+        TriggerKind::ZoneGated { trigger, zones } => crate::triggers::Trigger::new(
+            crate::triggers::ZoneGatedTrigger::new(interpret_trigger_model(*trigger)?, zones),
+        ),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
         TriggerKind::ThisAttacksWhileYouControl { filter } => {
             crate::triggers::Trigger::this_attacks_while_you_control(filter)
