@@ -111,6 +111,37 @@ fn parse_effect_sentence_lexed_uncached(
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // "Starting with you, each player chooses a creature." (The Horus
+    // Heresy): the authored turn order of an each-player loop. The players
+    // act one at a time beginning with the controller instead of in APNAP
+    // order (CR 101.4), which the lowering reads from the source-sentence
+    // order flag.
+    let ordered_rest = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["starting", "with", "you"]),
+    )
+    .map(|((), rest)| crate::lexer::trim_lexed_commas(rest));
+    if let Some(rest) = ordered_rest
+        && rest.first().is_some_and(|token| token.is_word("each"))
+        && rest.get(1).is_some_and(|token| token.is_word("player"))
+    {
+        // Any other reading of the full sentence (votes, payment loops)
+        // keeps its own owner.
+        if let Ok(effects) = parse_effect_sentence_lexed(rest)
+            && matches!(
+                effects.first(),
+                Some(EffectAst::ForEach(
+                    crate::cards::builders::ForEachEffectAst::ForEachPlayer { .. }
+                ))
+            )
+        {
+            return Ok(vec![EffectAst::SourceSentence {
+                effects,
+                leading_then: false,
+                starting_with_controller: true,
+            }]);
+        }
+    }
     // "If you do, that creature gains first strike until end of turn and
     // must be blocked this turn if able" (Magitek Scythe): the requirement
     // conjunct shares the grant's subject; spell it out so the result-gated
