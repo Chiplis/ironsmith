@@ -1274,6 +1274,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 spell_cost_increase,
                 lands_enter_tapped,
                 surface,
+                during_turns_attacked_with,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("permission_bound_mana", permission_bound_mana)
@@ -1290,6 +1291,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("spell_cost_increase", spell_cost_increase)
                 .field("lands_enter_tapped", lands_enter_tapped)
                 .field("surface", surface)
+                .field("during_turns_attacked_with", during_turns_attacked_with)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
                 tag, player, allow_land, without_paying_mana_cost, surface,

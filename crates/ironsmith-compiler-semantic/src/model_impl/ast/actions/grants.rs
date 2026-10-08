@@ -62,6 +62,9 @@ pub enum GrantActionAst {
         /// Whether lands played through this exact permission enter tapped.
         lands_enter_tapped: bool,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+        /// Restrict the persistent permission to turns in which its player
+        /// attacked with enough matching creatures.
+        during_turns_attacked_with: Option<ironsmith_core::effect::AttackedWithTurnCondition>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagRef,

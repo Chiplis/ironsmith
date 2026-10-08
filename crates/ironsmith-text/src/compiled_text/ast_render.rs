@@ -694,6 +694,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
         || permission.while_on_top_of_library
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.max_plays.is_some()
@@ -13828,6 +13829,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -13957,6 +13959,7 @@ fn describe_cross_segment_filtered_exile_cast_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -14377,6 +14380,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -17657,6 +17661,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -20601,6 +20606,7 @@ fn describe_you_life_change_exile_then_play_program(
         || permission.while_on_top_of_library
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.cast_pool_is_plural

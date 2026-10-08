@@ -51,6 +51,9 @@ pub struct GrantPlayTaggedEffect {
     /// card is deferred until a card is actually played.
     pub max_plays: Option<u32>,
     pub alternative_cost: Option<crate::cost::TotalCost>,
+    /// When present, the persistent grant is active only during turns in
+    /// which its player attacked with enough matching creatures.
+    pub during_turns_attacked_with: Option<ironsmith_core::effect::AttackedWithTurnCondition>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -81,7 +84,16 @@ impl GrantPlayTaggedEffect {
             cast_pool_is_plural: false,
             max_plays: None,
             alternative_cost: None,
+            during_turns_attacked_with: None,
         }
+    }
+
+    pub fn during_turns_attacked_with(
+        mut self,
+        condition: ironsmith_core::effect::AttackedWithTurnCondition,
+    ) -> Self {
+        self.during_turns_attacked_with = Some(condition);
+        self
     }
 
     pub fn with_alternative_cost(mut self, cost: crate::cost::TotalCost) -> Self {
@@ -257,6 +269,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
             if self.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
                 || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
+                || self.during_turns_attacked_with.is_some()
             { return Err(ExecutionError::IncompleteEvidence("unsupported extra source-lifetime permission scope".into())); }
             if !game.object(ctx.source).is_some_and(|source| source.zone == crate::zone::Zone::Battlefield)
                 || game.is_phased_out(ctx.source)
@@ -264,6 +277,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         }
         if self.permission_bound_mana && (!self.mana_spend_mode.allows_any_color()
             || self.alternative_cost.is_some() || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
+            || self.during_turns_attacked_with.is_some()
             || matches!(self.duration, GrantPlayTaggedDuration::UntilSourceExilesAnother
                 | GrantPlayTaggedDuration::ForAsLongAsYouControlSource | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
         { return Err(ExecutionError::IncompleteEvidence("unsupported marked tagged-permission scope".into())); }
@@ -387,6 +401,15 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     source_id: ctx.source,
                     counter_type,
                 }
+            } else if let Some(condition) = &self.during_turns_attacked_with {
+                // "During any turn you attacked with ...": the exact source and
+                // player are fixed now; the attack history is read each turn.
+                GrantSource::EffectDuringTurnsAttackedWith {
+                    source_id: ctx.source,
+                    player: player_id,
+                    filter: condition.filter.clone(),
+                    minimum: condition.minimum,
+                }
             } else if self.while_on_top_of_library {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
                     source_id: ctx.source,
@@ -472,7 +495,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 let target_stable_id = ((constraints != PlayFromConstraints::default()
                     && !self.permission_bound_mana
                     && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
-                    || self.during_turns_counter_put_on_source.is_some())
+                    || self.during_turns_counter_put_on_source.is_some()
+                    || self.during_turns_attacked_with.is_some())
                 .then_some(object_stable_id);
                 game.effect_store
                     .grant_registry

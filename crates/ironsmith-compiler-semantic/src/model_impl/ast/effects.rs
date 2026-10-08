@@ -1550,6 +1550,7 @@ impl EffectAst {
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
                 surface: None,
+                during_turns_attacked_with: None,
             }),
         )
     }
@@ -1575,6 +1576,35 @@ impl EffectAst {
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
                 surface: None,
+                during_turns_attacked_with: None,
+            }),
+        )
+    }
+
+    /// "During any turn you attacked with <filter>, you may play that card."
+    pub fn subject_verb_grant_play_tagged_during_turns_attacked_with(
+        tag: TagRef,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
+        condition: ironsmith_core::effect::AttackedWithTurnCondition,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                permission_bound_mana: false,
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: allow_any_color_for_cast.into(),
+                filter: None,
+                during_turns_counter_put_on_source: None,
+                spell_cost_increase: None,
+                lands_enter_tapped: false,
+                surface: None,
+                during_turns_attacked_with: Some(condition),
             }),
         )
     }
@@ -1600,6 +1630,7 @@ impl EffectAst {
                 spell_cost_increase,
                 lands_enter_tapped,
                 surface: None,
+                during_turns_attacked_with: None,
             }),
         )
     }

@@ -1766,6 +1766,7 @@ pub(super) fn compile_subject_verb_middle(
             spell_cost_increase,
             lands_enter_tapped,
             surface,
+            during_turns_attacked_with,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1793,6 +1794,7 @@ pub(super) fn compile_subject_verb_middle(
                 if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
                     || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
                     || *without_paying_mana_cost || during_turns_counter_put_on_source.is_some()
+                    || during_turns_attacked_with.is_some()
                 { return Err(CardTextError::ParseError("marked exile permission lost its exact producer".into())); }
                 grant_play.permission_bound_mana = true;
             }
@@ -1806,6 +1808,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             if let Some(counter_type) = during_turns_counter_put_on_source {
                 grant_play = grant_play.during_turns_counter_put_on_source(*counter_type);
+            }
+            if let Some(condition) = during_turns_attacked_with.clone() {
+                grant_play = grant_play.during_turns_attacked_with(condition);
             }
             if let Some(cost) = spell_cost_increase.clone() {
                 grant_play = grant_play.with_spell_cost_increase(cost);

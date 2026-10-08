@@ -1560,6 +1560,9 @@ where
         if let Some(counter_type) = payload.during_turns_counter_put_on_source {
             grant = grant.during_turns_counter_put_on_source(counter_type);
         }
+        if let Some(condition) = payload.during_turns_attacked_with.clone() {
+            grant = grant.during_turns_attacked_with(condition);
+        }
         if let Some(cost) = payload.spell_cost_reduction.clone() {
             grant = grant.with_spell_cost_reduction(cost);
         }
