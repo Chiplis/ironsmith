@@ -72,7 +72,7 @@ pub use ironsmith_core::{
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, ReselectAttackTargetEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatProcessPromptEffect,
     ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,

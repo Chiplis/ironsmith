@@ -336,6 +336,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "TicketCountersEffect" => Some(EffectFamily::Player),
         "TransformEffect" => Some(EffectFamily::Permanent),
         "TurnFaceDownEffect" => Some(EffectFamily::Permanent),
+        "ReselectAttackTargetEffect" => Some(EffectFamily::Permanent),
         "TurnFaceUpEffect" => Some(EffectFamily::Permanent),
         "UnattachObjectsEffect" => Some(EffectFamily::Permanent),
         "UnearthEffect" => Some(EffectFamily::Permanent),

@@ -249,6 +249,47 @@ pub fn parse_attack_player_requirement_shape(
     .then_some(shape)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReselectAttackTargetShape<'a> {
+    pub attacker_tokens: &'a [OwnedLexToken],
+    pub players_only: bool,
+}
+
+fn reselect_attack_target<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ReselectAttackTargetShape<'a>> {
+    primitives::phrase(&["reselect", "which"]).parse_next(input)?;
+    let players_only = alt((
+        primitives::phrase(&["player", "or", "permanent"]).value(false),
+        primitives::kw("player").value(true),
+    ))
+    .parse_next(input)?;
+    let attacker_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek((primitives::phrase(&["is", "attacking"]), primitives::sentence_end())),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["is", "attacking"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ReselectAttackTargetShape {
+        attacker_tokens: trim_shape_edges(attacker_tokens),
+        players_only,
+    })
+}
+
+pub fn parse_reselect_attack_target_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ReselectAttackTargetShape<'_>> {
+    crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        reselect_attack_target,
+        "reselect attack target clause",
+    )
+}
+
 fn subject_blocks_this_turn<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {
     let suffix = || {
         (

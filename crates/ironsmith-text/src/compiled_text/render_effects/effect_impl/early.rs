@@ -7080,6 +7080,13 @@
             prompt.description().to_string()
         };
     }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>() {
+        let choices = if reselect.players_only { "player" } else { "player or permanent" };
+        return format!(
+            "Reselect which {choices} {} is attacking",
+            describe_choose_spec(&reselect.target)
+        );
+    }
     if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
         return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));
     }

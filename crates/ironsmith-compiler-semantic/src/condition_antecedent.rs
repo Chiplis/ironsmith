@@ -694,6 +694,7 @@ fn persistent_battlefield_subject(action: &mut SubjectVerbActionAst) -> Option<&
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             target,
         })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) => {
             Some(target)
         }

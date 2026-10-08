@@ -526,6 +526,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_attack_this_turn_if_able_clause,
         ),
         specific_primitive!(
+            "reselect-attack-target-clause",
+            &["reselect"],
+            parse_reselect_attack_target_clause,
+        ),
+        specific_primitive!(
             "attack-player-if-able-clause",
             &["it", "that", "they", "target", "this", "up", "until"],
             parse_attack_player_if_able_clause,
@@ -858,6 +863,34 @@ pub fn parse_attack_this_turn_if_able_clause(
         filter,
         vec![ability],
         duration,
+    )))
+}
+
+/// "reselect which player or permanent target attacking creature is
+/// attacking" (Portal Mage) / "reselect which player this creature is
+/// attacking" (Capricopian): the creature stays attacking; its controller
+/// chooses anew among what it could attack (CR 508.1b).
+pub fn parse_reselect_attack_target_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(shape) = clause_shapes::parse_reselect_attack_target_shape(tokens) else {
+        return Ok(None);
+    };
+    let subject_tokens = shape.attacker_tokens;
+    let target = if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            crate::util::span_from_tokens(subject_tokens),
+        )
+    } else {
+        parse_target_phrase(subject_tokens)?
+    };
+    Ok(Some(EffectAst::subject_verb_reselect_attack_target(
+        target,
+        shape.players_only,
     )))
 }
 
