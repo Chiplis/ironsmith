@@ -3137,12 +3137,15 @@ pub fn parse_reinforce_line(
             words_all.join(" ")
         )));
     };
-    let Value::Fixed(amount) = amount_value else {
+    // "Reinforce X—{X}{G}{G}" (Wren's Run Hydra): CR 702.77a puts N
+    // counters, and an X amount is the X paid in the reinforce cost itself
+    // (CR 107.3), so it is only meaningful when that cost contains {X}.
+    if !matches!(amount_value, Value::Fixed(_) | Value::X) {
         return Err(CardTextError::ParseError(format!(
             "unsupported reinforce amount (clause: '{}')",
             words_all.join(" ")
         )));
-    };
+    }
 
     if fact.cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -3159,6 +3162,12 @@ pub fn parse_reinforce_line(
             words_all.join(" ")
         )));
     };
+    if amount_value == Value::X && !base_mana_cost.has_x() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported reinforce amount (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
     let base_cost =
         ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(base_mana_cost.clone());
     let mut merged_costs = base_cost.costs().to_vec();
@@ -3170,7 +3179,7 @@ pub fn parse_reinforce_line(
 
     let effect = crate::cards::builders::EffectAst::subject_verb_put_counters(
         CounterType::PlusOnePlusOne,
-        Value::Fixed(amount),
+        amount_value,
         // Reinforce's keyword definition targets a creature even though the
         // compact keyword line does not spell out the word `target`.  Retain
         // that semantic choice in the same typed slot used by an explicit
