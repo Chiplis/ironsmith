@@ -231,6 +231,10 @@ const PREDICATE_REFERENCE_NOUN_WORDS: &[&str] = &[
     "permanent",
     "source",
     "spell",
+    // "... instead if that target is a creature or planeswalker" (Light Up
+    // the Night, Lithomantic Barrage): the announced target, rebound to
+    // `TargetMatches` once the previous action's target is explicit.
+    "target",
     "token",
 ];
 const ENCHANTMENT_WORD: &str = "enchantment";
