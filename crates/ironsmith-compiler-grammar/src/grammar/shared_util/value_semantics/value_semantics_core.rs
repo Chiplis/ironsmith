@@ -289,6 +289,32 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         ));
     }
 
+    // "for each card you've discarded this turn" (Change of Fortune, Misty
+    // Knight, Living Laser): the discard events of the turn (CR 701.9a),
+    // read from the turn history rather than from any current zone.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["card", "cards"],
+            &["youve", "you've"],
+            &["discarded"],
+            &["this"],
+            &["turn"],
+        ],
+    ) || crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["card", "cards"],
+            &["you"],
+            &["have"],
+            &["discarded"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::CardsDiscardedThisTurn(PlayerFilter::You));
+    }
+
     let graveyard_put = crate::word_primitives::parse_sequence_start(&words, &["put"]);
     let graveyard_prefix = graveyard_put.and_then(|put| words.get(..put));
     let graveyard_tail = graveyard_put.and_then(|put| words.get(put..));
