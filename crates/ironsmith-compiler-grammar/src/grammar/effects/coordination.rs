@@ -925,6 +925,16 @@ fn classify_boundary<'a>(
         if or_continues_explicit_target_domain(&before_words, &after_words) {
             return None;
         }
+        const COLOR_WORDS: &[&str] = &["white", "blue", "black", "red", "green"];
+        if before_words.last().is_some_and(|word| COLOR_WORDS.contains(word))
+            && after_words.first().is_some_and(|word| COLOR_WORDS.contains(word))
+        {
+            // "tap target red or green creature an opponent controls"
+            // (Tidebinder Mage): a color disjunction is one object
+            // qualifier; the second color has no action of its own, even
+            // when a later sentence of the chain carries a verb.
+            return None;
+        }
         if crate::word_primitives::sequence_occurs(&before_words, &["protection", "from"])
             && crate::word_primitives::parse_sequence_prefix(&after_words, &["from"])
         {
