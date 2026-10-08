@@ -19,6 +19,8 @@ pub struct EquipQualifierSpec<'a> {
     pub commander: bool,
     /// "Equip worthy {1}" (Mjölnir, Hammer of Thor).
     pub worthy: bool,
+    /// "Equip creature token {1}": the target must be a token creature.
+    pub token: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,7 +88,7 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
     let ((mana_prefix, trailing), cost_tokens) = (leaf::parse_leaf_mana_cost_prefix_lexed, rest)
         .with_taken()
         .parse_next(input)?;
-    let (subtypes, legendary, commander, worthy) = qualifier;
+    let (subtypes, legendary, commander, worthy, token) = qualifier;
     Ok(EquipLineSpec::QualifiedCost {
         qualifier: EquipQualifierSpec {
             tokens: trim_lexed_commas(qualifier_tokens),
@@ -94,6 +96,7 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
             legendary,
             commander,
             worthy,
+            token,
         },
         cost_tokens: trim_lexed_commas(cost_tokens),
         mana_prefix: mana_prefix.cost,
@@ -125,7 +128,7 @@ fn parse_general_equip_activation_cost<'a>(
 
 fn parse_equip_qualifier_lexed<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<(Vec<Subtype>, bool, bool, bool)> {
+) -> WResult<(Vec<Subtype>, bool, bool, bool, bool)> {
     // "Equip legendary creature {3}" (Blackblade Reforged), "Equip commander
     // {3}" (Commander's Plate): a supertype or commander qualifier instead of
     // (or before) a subtype list. "Equip worthy {1}" (Mjölnir, Hammer of
@@ -161,15 +164,18 @@ fn parse_equip_qualifier_lexed<'a>(
             crate::slice_primitives::push_unique(&mut subtypes, subtype);
         });
     }
-    opt(primitives::kw("creature")).parse_next(input)?;
+    let creature = opt(primitives::kw("creature")).parse_next(input)?.is_some();
+    // "Equip creature token {1}" (Team Pennant): the noun must be present so
+    // a bare "token" never reads as a qualifier.
+    let token = creature && opt(primitives::kw("token")).parse_next(input)?.is_some();
     eof.parse_next(input)?;
-    if subtypes.is_empty() && !legendary && !commander && !worthy {
+    if subtypes.is_empty() && !legendary && !commander && !worthy && !token {
         return Err(primitives::backtrack_err(
             "equip qualifier",
             "a subtype or qualifier",
         ));
     }
-    Ok((subtypes, legendary, commander, worthy))
+    Ok((subtypes, legendary, commander, worthy, token))
 }
 
 fn parse_equip_subtype_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {

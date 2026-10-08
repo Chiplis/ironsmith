@@ -329,6 +329,9 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             if qualifier.commander {
                 target_filter.is_commander = true;
             }
+            if qualifier.token {
+                target_filter.token = true;
+            }
             if qualifier.worthy {
                 // A creature is worthy if it's a legendary non-Villain that's
                 // red and/or white.
