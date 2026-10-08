@@ -1369,6 +1369,11 @@ fn parse_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    // This complete counter program must survive statement/static partitioning
+    // intact. Prefer prepared tokens, where legitimate reminder text is gone.
+    if let Some(effects) = crate::effect_sentences::counter_exile_permission::parse(parse_tokens)? {
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     if let Some(assertion) =
         crate::grammar::effects::characteristic_assertions::parse(&line.info.source_tokens)
         && !assertion

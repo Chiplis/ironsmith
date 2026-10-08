@@ -73,6 +73,7 @@ fn conditional_mana_value_limit(effect: &EffectAst) -> Option<i32> {
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Stack(StackActionAst::Counter {
                     target: TargetAst::Spell(_),
+                    ..
                 }),
                 ..
             })]

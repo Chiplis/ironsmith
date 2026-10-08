@@ -571,6 +571,9 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
     };
     let counter = structural_unwrap_render_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
+    if counter.exile_permission.is_some() {
+        return None;
+    }
     let ChooseSpec::Target(target) = &counter.target else {
         return None;
     };

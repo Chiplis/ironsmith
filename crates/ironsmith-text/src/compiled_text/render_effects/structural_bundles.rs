@@ -13080,7 +13080,8 @@ pub(super) fn describe_counter_unless_then_kick_count_draw(effects: &[Effect]) -
     let [_counter] = unless_pays.effects.as_slice() else {
         return None;
     };
-    unless_pays.effects[0].downcast_ref::<crate::effects::CounterEffect>()?;
+    unless_pays.effects[0].downcast_ref::<crate::effects::CounterEffect>()
+        .filter(|counter| counter.exile_permission.is_none())?;
     let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
     if draw.count != Value::KickCount {
         return None;
@@ -13111,7 +13112,8 @@ pub(super) fn describe_counter_unless_then_controller_discards(
     let [counter_effect] = unless_pays.effects.as_slice() else {
         return None;
     };
-    counter_effect.downcast_ref::<crate::effects::CounterEffect>()?;
+    counter_effect.downcast_ref::<crate::effects::CounterEffect>()
+        .filter(|counter| counter.exile_permission.is_none())?;
 
     let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
     if discard.count != Value::Fixed(1)

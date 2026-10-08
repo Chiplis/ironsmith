@@ -980,6 +980,12 @@ fn future_zone_replacement_counters(
 }
 
 pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    // This marker-based legacy representation has no characteristic gate.
+    // A permanent-only counter destination belongs to the complete typed
+    // counter/permission owner, including its fail-closed missing-tail case.
+    if super::counter_exile_permission::has_permanent_counter_exile_gate(tokens) {
+        return None;
+    }
     // A result-gated instruction may grant a quoted replacement ability.
     // Parse its outer result envelope before recognizing any replacement.
     if tokens
@@ -6113,6 +6119,9 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
+        return Ok(effects);
+    }
     crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     super::pair_procedure::validate_discard_replacements(tokens)?;
     super::local_self_replacement::validate(tokens)?;
@@ -8292,6 +8301,9 @@ mod resolving_card_countered_exile_tests {
 pub(super) fn parse_effect_sentences_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
@@ -13333,6 +13345,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 })
                 | SubjectVerbActionAst::Stack(StackActionAst::Counter {
                     target: effect_target,
+                    ..
                 })
                 | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays {
                     target: effect_target,

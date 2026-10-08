@@ -13,7 +13,7 @@ for (const poisonSaved of [false, true]) {
     const game = new WasmGame(), handles = [], failures = [];
     const hash = () => {
       const checkpoint = game.exportPublicAuditCheckpoint();
-      assert.equal(CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION, 10);
+      assert.equal(CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION, 11);
       assert.equal(checkpoint.version, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION);
       assert.ok(Object.hasOwn(checkpoint, 'lastAttackDeclarationStepPlayers'));
       return publicCheckpointHash(checkpoint, webcrypto);

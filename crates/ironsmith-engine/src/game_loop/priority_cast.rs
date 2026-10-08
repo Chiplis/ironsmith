@@ -945,6 +945,13 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
     }
 
     let min_x = min_x_from_static_abilities(game, caster, stack_id).unwrap_or(0);
+    // A zero-component exile FromZone alternative is the complete free price.
+    // Unlike an independent AlternativePrice it has no cast_price receipt,
+    // but it still fixes printed mana-cost X to zero (CR 107.3b). An X that
+    // appears only in an additional cost remains independently choosable.
+    if printed_has_x && selected_free_from_zone_price(game, caster, spell, casting_method) {
+        return (true, min_x, 0);
+    }
     // CR 107.3b: a separately selected price that doesn't contain X fixes
     // printed mana-cost X at zero, even if another additional cost mentions X.
     if printed_has_x
@@ -997,6 +1004,17 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
     }
 
     (true, min_x, max_x.unwrap_or(0))
+}
+
+fn selected_free_from_zone_price(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    matches!(crate::decision::alternative_method_for_casting_method(game, caster, spell, casting_method),
+        Some(crate::alternative_cast::AlternativeCastingMethod::FromZone { zone: Zone::Exile, total_cost, .. })
+            if total_cost.costs().is_empty())
 }
 
 /// Format an alternative casting method's name and cost description.
@@ -3220,18 +3238,41 @@ pub(super) fn check_x_or_continue(
     // CR 107.3b: casting without paying the mana cost forces X to 0 only when
     // X is in that mana cost. An X that appears only in an additional cost
     // ("pay X life", "sacrifice X creatures") is still chosen (CR 107.3a).
-    if pending.base_mana_cost_waived
+    if ((pending.base_mana_cost_waived
         && pending.effect_alternative_cost.as_ref().is_none_or(|cost| {
             !cost.costs().iter().any(|component| {
                 (component.mana_cost_ref().is_some_and(|mana| mana.has_x())
                     || cost_references_x(component))
             })
-        })
+        })) || game.object(pending.spell_id).is_some_and(|spell|
+            selected_free_from_zone_price(game, pending.caster, spell, &pending.casting_method)))
         && game
             .object(pending.spell_id)
             .and_then(|spell| spell.mana_cost.as_ref())
             .is_some_and(|cost| cost.has_x())
     {
+        // Proposal has already moved the card to the stack and may have
+        // consumed a shared grant. A forced zero is not an exemption from an
+        // authored minimum: reject and restore the whole pre-cast transaction
+        // before targeting, paying any cost, or committing the spell.
+        let allowed = crate::decision::spell_x_minimum_allows_zero(
+            game,
+            pending.caster,
+            game.object(pending.spell_id).expect("forced-X spell exists"),
+        );
+        match allowed {
+            Ok(true) => {}
+            Ok(false) => {
+                state.rollback_action(game);
+                return Err(GameLoopError::ActionCancelled(
+                    "The selected free price forces X below this spell's minimum".into(),
+                ));
+            }
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(GameLoopError::ExecutionFailed(error));
+            }
+        }
         pending.x_value = Some(0);
         if let Some(spell) = game.object_mut(pending.spell_id) {
             spell.x_value = Some(0);
@@ -8132,6 +8173,10 @@ fn auto_pay_activation_tap_cost_steps_inner(
 #[cfg(test)]
 #[path = "cost_resource_tests.rs"]
 mod cost_resource_tests;
+
+#[cfg(test)]
+#[path = "priced_exile_permission_tests.rs"]
+mod priced_exile_permission_tests;
 
 #[cfg(test)]
 #[path = "activation_display_tests.rs"]

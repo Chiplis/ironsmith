@@ -19,8 +19,8 @@ fn compile_source(name: &str, text: &str) -> CompiledCardArtifact {
         compile_to_artifact(name, text, false));
     let (artifact, _) = compiled.unwrap_or_else(|error| panic!("artifact {name}: {error}"));
     assert!(!artifact_loss.is_lossy(), "artifact {name}: {}", artifact_loss.reasons_text());
-    assert_eq!(FORMAT_VERSION, 16);
-    assert_eq!(artifact.format_version, 16);
+    assert_eq!(FORMAT_VERSION, 17);
+    assert_eq!(artifact.format_version, 17);
     assert_eq!(artifact.engine_schema_hash, ENGINE_SCHEMA_HASH);
     artifact.validate().unwrap();
     let bytes = artifact.to_json().unwrap();
@@ -59,26 +59,27 @@ fn source(row: &serde_json::Value) -> String {
 }
 
 fn assert_old_envelopes_refused(artifact: &CompiledCardArtifact) {
-    for version in [11, 12, 13, 14, 15] {
+    for version in [11, 12, 13, 14, 15, 16] {
         let mut stale = artifact.clone();
         stale.format_version = version;
         stale.refresh_checksum();
         assert!(matches!(stale.validate(), Err(ArtifactValidationError::UnsupportedFormat {
-            found, expected: 16,
+            found, expected: 17,
         }) if found == version));
         assert!(CompiledCardArtifact::from_json(&stale.to_json().unwrap()).is_err());
         assert!(matches!(materialize_artifact(&stale),
             Err(ArtifactMaterializationError::InvalidArtifact(
-                ArtifactValidationError::UnsupportedFormat { found, expected: 16 }
+                ArtifactValidationError::UnsupportedFormat { found, expected: 17 }
             )) if found == version));
         let mut registry = ironsmith::cards::CardRegistry::new();
         assert!(matches!(registry.register_compiled_artifact(&stale),
             Err(ArtifactRegistrationError::Invalid(
-                ArtifactValidationError::UnsupportedFormat { found, expected: 16 }
+                ArtifactValidationError::UnsupportedFormat { found, expected: 17 }
             )) if found == version));
         assert!(registry.get(&artifact.card.name).is_none());
     }
     for schema in [PUBLISHED_13_SCHEMA,
+        "51232067d473dfff42849248b163193463ac225d2861f3bfe693e8d586b8f3b6",
         "ce114b87adedd56e98d8472b5d4e3db436ab9408ff2dc3176a286c32132462b7",
         "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
         "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
@@ -161,11 +162,11 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
     assert_eq!(stale.payload, current.payload);
     assert!(matches!(materialize_artifact(&stale),
         Err(ArtifactMaterializationError::InvalidArtifact(
-            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 16 }))));
+            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 17 }))));
     let mut registry = ironsmith::cards::CardRegistry::new();
     assert!(matches!(registry.register_compiled_artifact(&stale),
         Err(ArtifactRegistrationError::Invalid(
-            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 16 }))));
+            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 17 }))));
     assert!(registry.get("Synthetic cache boundary").is_none());
     // Do not recover with materialize_definition(stale.payload.definition).
     // It has no envelope provenance and cannot distinguish these release owners.
@@ -175,7 +176,7 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
 // source-cache boundary. This does not claim an old engine is compatible.
 #[test]
 fn step_local_native_history_uses_the_current_compiled_definition_boundary() {
-    assert_eq!(FORMAT_VERSION, 16);
+    assert_eq!(FORMAT_VERSION, 17);
     let rows: Vec<serde_json::Value> = serde_json::from_str(
         include_str!("../../../fixtures/combat_blocked_status.json.fixture")).unwrap();
     for name in ["Deep Wood", "Heavy Fog"] {
@@ -234,7 +235,7 @@ fn same_session_refusals_and_permissive_compiles_do_not_contaminate_fresh_routes
         for _ in 0..2 {
             assert!(matches!(registry.register_compiled_artifact(&stale),
                 Err(ArtifactRegistrationError::Invalid(
-                    ArtifactValidationError::UnsupportedFormat { found: 15, expected: 16 }))));
+                    ArtifactValidationError::UnsupportedFormat { found: 15, expected: 17 }))));
             assert_eq!(encode_runtime_definition(registry.get(name).unwrap().clone()).unwrap(), before);
         }
         compile_source(name, clean);
@@ -286,6 +287,75 @@ fn second_oct8_same_name_strict_and_permissive_requests_keep_source_admission() 
             assert!(direct.is_err() || loss.is_lossy(), "direct {name}");
             assert_old_envelopes_refused(&compile_source(name, clean));
             compile_source(name, clean);
+        }
+    }
+}
+
+// Source-only successor gates. This is independent direct compilation, never a
+// decoder fallback taking the payload from a refused v16 envelope.
+#[test]
+fn exact_permission_complete_raw_and_normalized_sources_require_v17() {
+    let frozen: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../reports/countered-spell-durable-permission-20261008/frozen-inputs.json"
+    )).unwrap();
+    for row in frozen["actual_card_metadata"].as_array().unwrap() {
+        let name = row["name"].as_str().unwrap();
+        let diagnostic = frozen["retained_results"].as_array().unwrap().iter()
+            .find(|record| record["oracle_id"] == row["oracle_id"]).unwrap();
+        for body in [row["oracle_text"].as_str().unwrap(),
+            diagnostic["normalized_oracle_text"].as_str().unwrap()] {
+            let mut complete = row.clone();
+            complete["oracle_text"] = body.into();
+            for _ in 0..2 {
+                let current = compile_source(name, &source(&complete));
+                assert_old_envelopes_refused(&current);
+                let mut registry = ironsmith::cards::CardRegistry::new();
+                registry.register_compiled_artifact(&current).unwrap();
+                let before = encode_runtime_definition(registry.get(name).unwrap().clone()).unwrap();
+                for _ in 0..2 {
+                    let mut stale = current.clone();
+                    stale.format_version = 16;
+                    stale.refresh_checksum();
+                    assert!(matches!(registry.register_compiled_artifact(&stale),
+                        Err(ArtifactRegistrationError::Invalid(ArtifactValidationError::UnsupportedFormat {
+                            found: 16, expected: 17,
+                        }))));
+                    assert_eq!(encode_runtime_definition(registry.get(name).unwrap().clone()).unwrap(), before);
+                }
+                // A refused cached card never supplies direct-route inputs.
+                compile_source(name, &source(&complete));
+            }
+        }
+    }
+}
+
+#[test]
+fn exact_permission_same_session_loss_isolation_and_fresh_clean_sources() {
+    let clean = "Type: Instant\nCounter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may play it without paying its mana cost for as long as it remains exiled.";
+    let unsupported = clean.replace("for as long as it remains exiled", "until your next turn");
+    for _ in 0..2 {
+        let name = "Exact permission cache isolation";
+        let _ = compile_to_artifact(name, &unsupported, true);
+        let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, &unsupported, false));
+        assert!(result.is_err() || loss.is_lossy());
+        let _ = compile_to_runtime_definition(name, &unsupported, true);
+        let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, &unsupported, false));
+        assert!(result.is_err() || loss.is_lossy());
+        assert_old_envelopes_refused(&compile_source(name, clean));
+        compile_source(name, clean);
+    }
+}
+
+#[test]
+fn lesson_full_bodies_require_fresh_v17_routes_after_normalization_prerequisite() {
+    // Requires b38192bf and its separately reviewed test correction integrated.
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/intervening_predicate_cohort.json.fixture")).unwrap();
+    for name in ["Dragonfly Swarm", "Walltop Sentries"] {
+        let row = rows.iter().find(|row| row["name"].as_str() == Some(name)).unwrap();
+        for text in [source(row), source(row).replace("there's", "there’s"),
+            source(row).replace("there's", "there is")] {
+            assert_old_envelopes_refused(&compile_source(name, &text));
         }
     }
 }

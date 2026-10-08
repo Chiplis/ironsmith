@@ -15411,7 +15411,8 @@ pub(super) fn describe_targeted_player_or_permanent_counter_unless_life(
         return None;
     };
     let counter = counter_effect.downcast_ref::<crate::effects::CounterEffect>()?;
-    if counter.target != ChooseSpec::Tagged(tag.clone()) {
+    if counter.exile_permission.is_some()
+        || counter.target != ChooseSpec::Tagged(tag.clone()) {
         return None;
     }
     let [cost] = unless.cost.as_all()? else {

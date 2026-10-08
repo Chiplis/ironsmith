@@ -1808,7 +1808,7 @@ pub fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
     let [
         EffectAst::SubjectVerb(
             counter @ SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Stack(StackActionAst::Counter { target }),
+                action: SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. }),
                 ..
             },
         ),

@@ -8043,7 +8043,7 @@ pub(super) fn describe_conditional_action_on_tagged_target(
     }
     if effect
         .downcast_ref::<crate::effects::CounterEffect>()
-        .is_some()
+        .is_some_and(|counter| counter.exile_permission.is_none())
     {
         return Some(format!("Counter {target_text}"));
     }
@@ -8355,6 +8355,9 @@ pub(super) fn describe_countered_spell_same_name_search_sequence(
     };
     let counter = unwrap_basic_tag_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
+    if counter.exile_permission.is_some() {
+        return None;
+    }
     let choose = structural_unwrap_render_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let same_name_constraints = choose
@@ -8419,7 +8422,8 @@ pub(super) fn describe_counter_and_damage_sequence(effects: &[Effect]) -> Option
     let [counter_effect, damage_effect] = effects else {
         return None;
     };
-    unwrap_basic_tag_wrappers(counter_effect).downcast_ref::<crate::effects::CounterEffect>()?;
+    unwrap_basic_tag_wrappers(counter_effect).downcast_ref::<crate::effects::CounterEffect>()
+        .filter(|counter| counter.exile_permission.is_none())?;
     unwrap_basic_tag_wrappers(damage_effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
 
     let counter_text = describe_effect(unwrap_basic_tag_wrappers(counter_effect));
@@ -8579,7 +8583,8 @@ pub(super) fn describe_countered_spell_controller_consult_cast_shuffle(
 
     let counter = unwrap_basic_tag_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
-    if !choose_spec_is_target_instant_or_sorcery_spell(&counter.target) {
+    if counter.exile_permission.is_some()
+        || !choose_spec_is_target_instant_or_sorcery_spell(&counter.target) {
         return None;
     }
 

@@ -5122,8 +5122,13 @@ pub(super) fn single_subtype_descriptor_clause<'a>(
     Some(LexedClause::new(descriptor))
 }
 
+const CARD_GRAVEYARD_EXISTENTIAL_WORDS: &[&[&str]] =
+    &[&["there", "is"], &["there", "are"], &["theres"]];
+
 pub(super) fn is_card_graveyard_existential_clause(clause: LexedClause<'_>) -> bool {
-    surface::exact_any(clause, &[&["there", "is"], &["there", "are"], &["there's"]])
+    // Word views remove apostrophes; token spellings retain them. These
+    // alternatives are consumed by word-view captures, not token keywords.
+    surface::exact_any(clause, CARD_GRAVEYARD_EXISTENTIAL_WORDS)
 }
 
 pub(super) fn is_graveyard_location_clause(clause: LexedClause<'_>) -> bool {
@@ -5161,7 +5166,7 @@ pub(super) fn parse_subtype_card_descriptor_clause(
 pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_word("there's"))
+    if tokens.first().is_some_and(|token| token.is_any_word(&["there's", "theres"]))
         && tokens.iter().any(|token| token.as_word().is_none() && !token.is_comma())
     {
         return Ok(None);
@@ -5170,7 +5175,7 @@ pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
     let outer_atoms = [
         WinnowSequence::subject(
             "existential",
-            WinnowCaptureKind::OneOfPhrase(&[&["there", "is"], &["there", "are"], &["there's"]]),
+            WinnowCaptureKind::OneOfPhrase(CARD_GRAVEYARD_EXISTENTIAL_WORDS),
         ),
         WinnowSequence::object("descriptors", WinnowCaptureKind::UntilPhrase(&["in"])),
         WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
@@ -5256,7 +5261,7 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
 ) -> Option<PredicateAst> {
     // The contracted surface is newly admitted. Do not let a word-only
     // capture discard a mana symbol or an unsupported operator in its tail.
-    if tokens.first().is_some_and(|token| token.is_word("there's"))
+    if tokens.first().is_some_and(|token| token.is_any_word(&["there's", "theres"]))
         && tokens.iter().any(|token| token.as_word().is_none() && !token.is_comma())
     {
         return None;
@@ -5275,7 +5280,7 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     let atoms = [
         WinnowSequence::subject(
             "existential",
-            WinnowCaptureKind::OneOfPhrase(&[&["there", "is"], &["there", "are"], &["there's"]]),
+            WinnowCaptureKind::OneOfPhrase(CARD_GRAVEYARD_EXISTENTIAL_WORDS),
         ),
         WinnowSequence::object("descriptor", WinnowCaptureKind::UntilPhrase(&["in"])),
         WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),

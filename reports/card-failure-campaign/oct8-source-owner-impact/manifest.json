@@ -1,0 +1,19 @@
+{
+  "scope": "Published ancestor180459e9 to measured main1dd81cd; historical225d50dd unavailable",
+  "current_source_eligible_total": null,
+  "historical_proposals_preserved": 1291,
+  "files": {
+    "source-owner-impact.md": {
+      "sha256": "9f6ceb471115359982bc090b8ef5f2e29a1e2124bc1c5f0431bf6f6a70677fed",
+      "bytes": 21085,
+      "source_sha256": "9f6ceb471115359982bc090b8ef5f2e29a1e2124bc1c5f0431bf6f6a70677fed",
+      "source_bytes": 21085
+    },
+    "source-owner-impact.json.gz": {
+      "sha256": "8f9033c05b8d05ec28c4a3f67bbca0817a41d885e04428f4e23441f54e855292",
+      "bytes": 101323,
+      "source_sha256": "754a7aa35f1d0a17ac0e7d5db3c5213a53d030c56f4f154cecdf54deacd09256",
+      "source_bytes": 603332
+    }
+  }
+}

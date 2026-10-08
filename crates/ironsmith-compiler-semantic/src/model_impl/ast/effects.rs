@@ -5359,7 +5359,27 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Stack(StackActionAst::Counter { target }),
+            SubjectVerbActionAst::Stack(StackActionAst::Counter {
+                target,
+                exile_permission: None,
+            }),
+        )
+    }
+
+    /// The explicit "you" in the permission is the controller of this
+    /// resolving spell or ability. The counter remains unconditional; the
+    /// characteristic gate belongs only to its exile destination rider.
+    pub fn subject_verb_counter_with_exile_permission(
+        target: TargetAst,
+        permission: ironsmith_core::CounterExilePermission,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::Stack(StackActionAst::Counter {
+                target,
+                exile_permission: Some(permission),
+            }),
         )
     }
 

@@ -2141,7 +2141,21 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
                 }
-                SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
+                SubjectVerbActionAst::Stack(StackActionAst::Counter {
+                    exile_permission: Some(_),
+                    ..
+                }) => {
+                    // This atomic producer consumes its own committed exile
+                    // receipt. Do not invent a pre-move tag export for a
+                    // detached permission or reuse an older object's tag.
+                    frame.last_object_tag = None;
+                    frame.last_player_filter = None;
+                    frame.source_object_antecedent = false;
+                }
+                SubjectVerbActionAst::Stack(StackActionAst::Counter {
+                    target,
+                    exile_permission: None,
+                })
                 | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
                     remember_explicit_spell_target_binding(target, frame);
@@ -8463,7 +8477,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
-            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
+            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {

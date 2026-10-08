@@ -28,10 +28,14 @@ fn rows() -> Vec<serde_json::Value> {
 }
 fn definitions(name: &str) -> [CardDefinition; 2] {
     let row = rows().into_iter().find(|row| row["name"] == name).unwrap();
+    definitions_with_oracle(name, row["oracle_text"].as_str().unwrap())
+}
+fn definitions_with_oracle(name: &str, oracle: &str) -> [CardDefinition; 2] {
+    let row = rows().into_iter().find(|row| row["name"] == name).unwrap();
     let text = format!("Mana cost: {}\nType: {}\nPower/Toughness: {}/{}\n{}",
         row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap(),
         row["power"].as_str().unwrap(), row["toughness"].as_str().unwrap(),
-        row["oracle_text"].as_str().unwrap());
+        oracle);
     let (direct, direct_loss) = ironsmith_compiler::parse_loss::capture(||
         compile_to_runtime_definition(name, &text, false));
     let direct = direct.unwrap_or_else(|error| panic!("direct {name}: {error}"));
@@ -525,5 +529,89 @@ fn unsupported_predicate_neighbors_remain_errors_in_full_triggered_lines() {
         "When this creature dies, if there's a Lesson card in your graveyard with an unknown qualification, draw a card.",
     ] {
         assert!(compile_to_artifact("Unsupported neighbor", format!("Type: Creature\nPower/Toughness: 1/1\n{text}"), false).is_err(), "{text}");
+    }
+}
+
+// Regression controls use the complete retained bodies and their actual metadata.
+// The only edited surface is the existential head in the death-trigger condition.
+#[test]
+fn complete_lesson_bodies_route_contractions_and_recheck_exact_owned_graveyard() {
+    for name in LESSON_CARDS {
+        let row = rows().into_iter().find(|row| row["name"] == *name).unwrap();
+        for head in ["there's", "there’s", "there is"] {
+            let oracle = row["oracle_text"].as_str().unwrap().replace("there's", head);
+            for definition in definitions_with_oracle(name, &oracle) {
+                let gates = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+                    AbilityKind::Triggered(triggered) => triggered.intervening_if.as_ref(),
+                    _ => None,
+                }).collect::<Vec<_>>();
+                let expected = Condition::PlayerControls {
+                    player: PlayerFilter::You,
+                    filter: ObjectFilter::default().with_subtype(Subtype::Lesson)
+                        .in_zone(Zone::Graveyard).owned_by(PlayerFilter::You),
+                };
+                assert_eq!(gates, vec![&expected], "{name}: {head}");
+                for (at_death, at_resolution) in [(false, true), (true, false), (true, true)] {
+                    let mut game = game();
+                    let host = source(&mut game, &definition);
+                    // The controller's graveyard matters even when the source is stolen.
+                    game.set_current_controller(host, B).unwrap();
+                    object(&mut game, A, Zone::Graveyard, "Sorcery — Lesson");
+                    object(&mut game, B, Zone::Hand, "Sorcery — Lesson");
+                    object(&mut game, B, Zone::Exile, "Instant — Lesson");
+                    object(&mut game, B, Zone::Graveyard, "Sorcery");
+                    let lesson = at_death.then(|| object(&mut game, B, Zone::Graveyard, "Sorcery — Lesson"));
+                    let before = [A, B, C, D].into_iter().map(|player| {
+                        let state = game.player(player).unwrap();
+                        (player, state.hand.clone(), state.library.clone(), state.life)
+                    }).collect::<Vec<_>>();
+                    let draw_source = game.player(B).unwrap().library.last().copied().unwrap();
+                    let expected_draw = game.object(draw_source).unwrap().stable_id;
+                    if *name == "Dragonfly Swarm" {
+                        assert!(game.current_has_static_ability_id(host, StaticAbilityId::Flying));
+                        assert!(game.current_has_static_ability_id(host, StaticAbilityId::Ward));
+                        assert_eq!(game.calculated_power(host), Some(1 + i32::from(at_death)));
+                        assert_eq!(game.calculated_toughness(host), Some(3));
+                    } else {
+                        assert!(game.current_has_static_ability_id(host, StaticAbilityId::Reach));
+                        assert!(game.current_has_static_ability_id(host, StaticAbilityId::Deathtouch));
+                    }
+                    let mut queue = die(&mut game, host);
+                    assert_eq!(queue.entries.len(), usize::from(at_death), "{name}: {head}");
+                    put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut SelectFirstDecisionMaker).unwrap();
+                    if let Some(lesson) = lesson {
+                        game.move_object_by_effect(lesson, Zone::Exile).unwrap();
+                    }
+                    if at_resolution { object(&mut game, B, Zone::Graveyard, "Instant — Lesson"); }
+                    while !game.stack_is_empty() {
+                        resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
+                    }
+                    let happened = at_death && at_resolution;
+                    for (player, hand, mut library, life) in before {
+                        let state = game.player(player).unwrap();
+                        let drew = *name == "Dragonfly Swarm" && player == B && happened;
+                        assert_eq!(state.hand.len(), hand.len() + usize::from(drew));
+                        assert!(hand.iter().all(|id| state.hand.contains(id)), "hand decoy changed");
+                        let added = state.hand.iter().copied()
+                            .filter(|id| !hand.contains(id)).collect::<Vec<_>>();
+                        assert_eq!(added.len(), usize::from(drew));
+                        if drew {
+                            assert_eq!(game.object(added[0]).unwrap().stable_id, expected_draw);
+                            library.pop();
+                        }
+                        assert_eq!(state.library, library);
+                        assert_eq!(state.life, life + if *name == "Walltop Sentries" && player == B && happened { 2 } else { 0 });
+                    }
+                }
+            }
+            for suffix in [" with an unknown qualification", " {2}", " and a missing predicate"] {
+                let invalid = oracle.replace("in your graveyard,", &format!("in your graveyard{suffix},"));
+                let text = format!("Mana cost: {}\nType: {}\nPower/Toughness: {}/{}\n{}",
+                    row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap(),
+                    row["power"].as_str().unwrap(), row["toughness"].as_str().unwrap(), invalid);
+                assert!(compile_to_runtime_definition(name, &text, false).is_err(), "{name}: {head}: {suffix}");
+                assert!(compile_to_artifact(name, &text, false).is_err(), "{name}: {head}: {suffix}");
+            }
+        }
     }
 }

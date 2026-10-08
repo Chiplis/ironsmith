@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "status": "INDEPENDENTLY_SOURCE_REVIEWED_UNRUN",
+  "measured_baseline_commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "reviewed_integrated_source": "a5878ad2f06b18d5ec0b146ddd7ccec1f09c0354",
+  "artifact": {
+    "format": 17,
+    "schema": "a4bb7964a2b6b477e4d128c655ca747453c74a9d5d1cf119ac7daf399fb840c0",
+    "public_digest": 11,
+    "signed_audit": 31,
+    "manabrew_major": 3
+  },
+  "current_batch_source_reviewed_ids": 5,
+  "new_original_failure_source_reviewed_proposals": 3,
+  "historical_original_proposals_source_revalidated": 2,
+  "oct8_new_original_failure_proposals_in_this_cumulative_stack": 8,
+  "new_measured_recoveries": 0,
+  "immutable_measurement": {
+    "unique_compile_failures": 1824,
+    "unique_unresolved": 1925,
+    "original_measured_recoveries": 1445,
+    "original_measured_regressions": 137
+  },
+  "original_gate": {
+    "historical_proposed_ids": 1291,
+    "historical_proposed_entries": 1296,
+    "historical_shortfall": 306,
+    "denominator": 3193,
+    "threshold": 1597,
+    "current_total_source_eligibility": null,
+    "reason": "Three new original-failure proposals and two explicit historical revalidations are exact scoped evidence. They do not automatically carry all historical1291 or open an execution gate. The overall current eligibility union remains unestablished."
+  },
+  "cards": [
+    {
+      "name": "Spelljack",
+      "oracle_id": "7687b2a7-816d-4416-979b-675e35e235fc",
+      "family": "counter_exile_exact_permission",
+      "reviewed_author_head": "a646cc65f957ee616d6ed98f1f3e4cf82d331dbb",
+      "historical_status": "unaddressed",
+      "original_failure_scope": true,
+      "current_measured_status": "parser_failure",
+      "source_status": "new_source_reviewed_proposal",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Thranduil's Decree",
+      "oracle_id": "d7cba934-02ad-4677-bb4d-50808b01b4f9",
+      "family": "counter_exile_exact_permission",
+      "reviewed_author_head": "a646cc65f957ee616d6ed98f1f3e4cf82d331dbb",
+      "historical_status": "unaddressed",
+      "original_failure_scope": true,
+      "current_measured_status": "parser_failure",
+      "source_status": "new_source_reviewed_proposal",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Kheru Spellsnatcher",
+      "oracle_id": "c01411e0-77b2-4e65-a369-5dbe13745769",
+      "family": "counter_exile_exact_permission",
+      "reviewed_author_head": "a646cc65f957ee616d6ed98f1f3e4cf82d331dbb",
+      "historical_status": "unaddressed",
+      "original_failure_scope": true,
+      "current_measured_status": "parser_failure",
+      "source_status": "new_source_reviewed_proposal",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Dragonfly Swarm",
+      "oracle_id": "83abf1d0-04e4-49e5-bf63-59f77829ffd1",
+      "family": "lesson_graveyard_predicate",
+      "reviewed_author_head": "26c0d38fc2e1d1b49e1ce18ce26f0d6ad7377b92",
+      "historical_status": "implemented_pending_full_corpus_validation",
+      "original_failure_scope": true,
+      "current_measured_status": "parser_failure",
+      "source_status": "bounded_historical_source_revalidation",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Walltop Sentries",
+      "oracle_id": "fb3a0910-a582-41ef-b5b9-3cda1f1cd5ce",
+      "family": "lesson_graveyard_predicate",
+      "reviewed_author_head": "26c0d38fc2e1d1b49e1ce18ce26f0d6ad7377b92",
+      "historical_status": "implemented_pending_full_corpus_validation",
+      "original_failure_scope": true,
+      "current_measured_status": "parser_failure",
+      "source_status": "bounded_historical_source_revalidation",
+      "execution": "UNRUN"
+    }
+  ],
+  "generator_source": {
+    "reviewed_author_head": "45bce2dab1db5c1d07e925d6105d191109289823",
+    "alignment": "source-template drift closed; retained Rust unchanged",
+    "genuine_regeneration": "UNRUN"
+  },
+  "review_records": [
+    "oct8-exact-permission-reviews/cumulative-review.md",
+    "oct8-exact-permission-reviews/release-review.md",
+    "oct8-exact-permission-reviews/native-runtime-review.md",
+    "oct8-exact-permission-reviews/grammar-artifact-review.md",
+    "oct8-exact-permission-reviews/lesson-review.md",
+    "oct8-exact-permission-reviews/generator-review.md"
+  ],
+  "remaining_gates": [
+    "Genuine final-source decoder generation/idempotence and compiler/engine/verifier/WASM/glue/catalog outputs.",
+    "Real current artifact v17 golden and original v5 historical evidence; do not fabricate or relabel either.",
+    "All authored compiler/runtime/peer/recovery checks and final same-revision corpus execution remain UNRUN.",
+    "Whole optional-rider removal or valid semantic relabeling plus recomputed unsigned checksum is not source authentication.",
+    "Unusual synthetic replacement ownership controls are not an exhaustive external rules ruling.",
+    "Historical source eligibility requires explicit owner-impact qualification; no blanket carry-forward."
+  ],
+  "prior_holds": "Three-card report-only HOLD records remain historical evidence. This packet supplies reviewed source proposals, not executable recovery. Sinister Concierge remains unimplemented strict HOLD."
+}
