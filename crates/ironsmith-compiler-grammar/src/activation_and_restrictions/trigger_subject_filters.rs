@@ -428,6 +428,37 @@ pub fn parse_trigger_subject_filter_lexed(
         return Ok(Some(ObjectFilter::default()));
     }
     if subject_facts.relative_pronoun {
+        // "Whenever one or more creatures you control that entered this turn
+        // attack/deal combat damage ..." (Goro-Goro and Satoru, Whirlwind,
+        // Pick Up the Pace): the relative clause is the typed
+        // entered-the-battlefield-this-turn predicate on an ordinary subject.
+        if let Some(relative_start) =
+            trigger_subject_grammar::parse_trigger_entered_this_turn_suffix(&subject_words)
+            && let Some(prefix_end) =
+                trigger_subject_grammar::parse_trigger_word_span(subject_tokens, relative_start)
+                    .map(|span| span.first)
+            && prefix_end > 0
+        {
+            let Some(mut filter) = parse_trigger_subject_filter_lexed(&subject_tokens[..prefix_end])?
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                )));
+            };
+            if !filter.any_of.is_empty() || filter.source {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                )));
+            }
+            filter.entered_battlefield_this_turn = true;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            if other {
+                filter.other = true;
+            }
+            return Ok(Some(filter));
+        }
         // "Whenever that creature deals combat damage ... this turn" (Hunter's
         // Insight): the demonstrative names the object chosen earlier.
         if let ["that", noun] = subject_words.as_slice()
