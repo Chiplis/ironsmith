@@ -144,6 +144,7 @@ pub(super) fn try_parse_modal_bullet_block(
     let header_has_common_target_suffix =
         super::super::modal_support::parse_modal_header(&line.info, &header_tokens)?
             .is_some_and(|header| !header.common_suffix_effects_ast.is_empty());
+    let characteristics_template = super::characteristic_modes::token_template_colors(&header_tokens);
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
@@ -154,6 +155,13 @@ pub(super) fn try_parse_modal_bullet_block(
                 .is_some_and(|token| token.kind == TokenKind::Plus);
         if !is_bullet_line(next_line) && !is_spree_mode {
             break;
+        }
+        if let Some(colors) = characteristics_template.as_deref() {
+            bullet_modes.push(super::characteristic_modes::recognize_characteristics_mode(
+                next_line, colors,
+            )?);
+            probe_idx += 1;
+            continue;
         }
         bullet_modes.push(recognize_modal_mode(
             &preprocessed.card,
