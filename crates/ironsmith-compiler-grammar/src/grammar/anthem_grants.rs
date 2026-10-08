@@ -816,18 +816,19 @@ pub fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> GrantedKeywo
 }
 
 pub fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_phrase_complete(
+    // "The flashback cost is equal to that card's mana cost" (Lier, Iroh)
+    // is the same CR 702.34a derived cost as "its flashback cost ...".
+    token_any_phrase_complete(
         tokens,
         &[
-            "its",
-            "flashback",
-            "cost",
-            "is",
-            "equal",
-            "to",
-            "its",
-            "mana",
-            "cost",
+            &["its", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
+            &["the", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
+            &[
+                "the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost",
+            ],
+            &[
+                "the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost",
+            ],
         ],
     )
 }
