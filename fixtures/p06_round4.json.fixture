@@ -108,5 +108,25 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "If target player has exactly 10 life, Hidetsugu's Second Rite deals 10 damage to that player."
+ },
+ {
+  "name": "Marcus, Mutant Mayor",
+  "oracle_id": "c9db8f36-2c72-403e-b2b7-7cdfba5feaa4",
+  "mana_cost": "{3}{G}{U}",
+  "type_line": "Legendary Creature — Mutant Advisor",
+  "power": "4",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Vigilance, trample\nWhenever a creature you control deals combat damage to a player, draw a card if that creature has a +1/+1 counter on it. If it doesn't, put a +1/+1 counter on it."
+ },
+ {
+  "name": "Weatherlight Compleated",
+  "oracle_id": "060a7d77-61a8-4964-8fb6-35bd9a999517",
+  "mana_cost": "{2}",
+  "type_line": "Legendary Artifact — Vehicle",
+  "power": "5",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Flying\nAs long as Weatherlight Compleated has four or more phyresis counters on it, it's a Phyrexian creature in addition to its other types.\nWhenever a creature you control dies, put a phyresis counter on Weatherlight Compleated. Then draw a card if it has seven or more phyresis counters on it. If it doesn't, scry 1."
  }
 ]

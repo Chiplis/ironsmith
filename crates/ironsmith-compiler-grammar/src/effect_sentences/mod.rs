@@ -126,6 +126,7 @@ mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;
 mod cast_spell_graveyard_rider;
+mod elliptical_conditions;
 mod statement_readings;
 pub use procedures::RIDDEN_STATEMENT;
 mod search_library;

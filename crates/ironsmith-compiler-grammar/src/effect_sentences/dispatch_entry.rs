@@ -3032,6 +3032,16 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        // "If it doesn't, ..." completes the preceding conditional's false arm.
+        if super::elliptical_conditions::try_merge_elliptical_condition(
+            &mut effects,
+            &sentence_tokens,
+        )? {
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         if sentence_tokens
             .first()
             .is_some_and(|token| token.is_word("unless"))
