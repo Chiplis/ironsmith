@@ -55,6 +55,8 @@ mod named_random_reveal;
 mod counter_total_limit;
 #[path = "pair_procedure/collect_mana_payments.rs"]
 mod collect_mana_payments;
+#[path = "pair_procedure/life_bid.rs"]
+mod life_bid;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -887,6 +889,14 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentence_idx,
                 kinds::open_target_opponent_copy_retarget(sentences, sentence_idx),
             )
+        },
+    },
+    Shape {
+        id: RuleId::new("bid-life-for-control"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 5,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, life_bid::read(sentences, sentence_idx))
         },
     },
     Shape {

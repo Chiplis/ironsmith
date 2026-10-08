@@ -601,7 +601,16 @@ pub struct LifeBidShape<'a> {
 
 pub fn parse_life_bid_shape(tokens: &[OwnedLexToken]) -> Option<LifeBidShape<'_>> {
     let sentences = split_lexed_sentences(tokens);
-    let [first, start, top, stands, reward] = sentences.as_slice() else {
+    parse_life_bid_sentences(&sentences)
+}
+
+/// The five sentences of a life auction for control of a target (Illicit
+/// Auction), read together: the bid, the opening bid, the rounds, the end of
+/// the bidding and the high bidder's payment and reward.
+pub fn parse_life_bid_sentences<'a>(
+    sentences: &[&'a [OwnedLexToken]],
+) -> Option<LifeBidShape<'a>> {
+    let &[first, start, top, stands, reward] = sentences else {
         return None;
     };
     let first_words = parser_token_word_refs(first);
