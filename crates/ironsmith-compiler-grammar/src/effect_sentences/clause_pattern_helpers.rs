@@ -1325,6 +1325,37 @@ fn filtered_prevention(
     effect
 }
 
+/// "a source of your choice" / "a red source of your choice": the filter
+/// that limits the single source chosen on resolution. `None` when the phrase
+/// is not a source choice.
+fn parse_source_of_your_choice_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((base, ())) =
+        crate::grammar::primitives::split_lexed_once_before_suffix(tokens, 0, || {
+            crate::grammar::primitives::phrase(&["of", "your", "choice"])
+        })
+    else {
+        return Ok(None);
+    };
+    let base = match base.split_first() {
+        Some((article, rest)) if article.is_any_word(&["a", "an"]) => rest,
+        _ => return Ok(None),
+    };
+    if !base.last().is_some_and(|token| token.is_word("source"))
+        || base.iter().any(|token| {
+            token.is_any_word(&["target", "and", "or", "color", "that", "other"])
+        })
+    {
+        return Ok(None);
+    }
+    let (filter, of_chosen_color) = parse_damage_sources_filter(base)?;
+    if of_chosen_color {
+        return Ok(None);
+    }
+    Ok(Some(filter))
+}
+
 /// "sources", "red sources", "black sources and red sources", "sources of
 /// the color of your choice": returns the source filter and whether the color
 /// is chosen on resolution.
@@ -1475,6 +1506,29 @@ pub fn parse_prevent_all_damage_clause(
                 return Err(CardTextError::ParseError(
                     "all-damage source exclusion needs its own complete target binding".into(),
                 ));
+            }
+            // "Prevent all damage a [red] source of your choice would deal
+            // [to you] this turn" (Burrenton Forge-Tender, Auriok Replica,
+            // Prahv): one source is chosen on resolution (CR 609.7a).
+            if let Some(choice_filter) = parse_source_of_your_choice_filter(source_tokens)? {
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
+                };
+                let mut effect = filtered_prevention(target, choice_filter, false);
+                if let EffectAst::SubjectVerb(subject) = &mut effect
+                    && let SubjectVerbActionAst::DamagePrevention(
+                        DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                            source_of_your_choice,
+                            ..
+                        },
+                    ) = &mut subject.action
+                {
+                    *source_of_your_choice = true;
+                }
+                return Ok(Some(effect.with_prevention_source_would_deal_surface()));
             }
             if source_tokens.iter().any(|token| token.is_word("target"))
                 || source_tokens.first().is_some_and(|token| {

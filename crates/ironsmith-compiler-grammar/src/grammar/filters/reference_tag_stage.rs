@@ -129,6 +129,8 @@ const EXCLUSION_RELATION_IGNORED_PREFIXES: &[&[&str]] =
 const REST_REVEALED_OBJECT_PHRASES: &[&[&str]] = &[
     &["rest"],
     &["rest", "of", "revealed", "cards"],
+    &["rest", "of", "cards"],
+    &["rest", "of", "those", "cards"],
     &["remaining", "revealed", "cards"],
 ];
 const TAGGED_COUNTER_STATE_DISJUNCTION_PHRASES: &[&[&str]] = &[

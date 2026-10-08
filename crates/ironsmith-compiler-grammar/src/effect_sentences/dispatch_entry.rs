@@ -6418,6 +6418,11 @@ fn parse_effect_sentences_lexed_unfinalized(
     {
         return Ok(effects);
     }
+    if split_lexed_sentences(tokens).len() == 1
+        && let Some(effects) = super::bundle_rules::parse_put_from_outside_game(tokens)?
+    {
+        return Ok(effects);
+    }
     // A demonstrative leave watcher in resolving instructions retains its event header.
     if let Some(effects) =
         super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(tokens)?

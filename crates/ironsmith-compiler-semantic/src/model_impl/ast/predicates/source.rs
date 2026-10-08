@@ -65,4 +65,6 @@ pub enum SourcePredicateAst {
     SourceIsHarnessed,
     /// "if this creature isn't prepared"
     SourceIsPrepared,
+    /// "it has dealt damage" since it entered (negated by "hasn't ... yet").
+    SourceHasDealtDamageSinceEntered,
 }

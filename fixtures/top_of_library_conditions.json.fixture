@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Mul Daya Channelers",
+    "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+    "text": "Mana cost: {1}{G}{G}\nType: Creature — Elf Druid Shaman\nPower/Toughness: 2/2\nPlay with the top card of your library revealed.\nAs long as the top card of your library is a creature card, this creature gets +3/+3.\nAs long as the top card of your library is a land card, this creature has \"{T}: Add two mana of any one color.\""
+  },
+  {
+    "name": "Vampire Nocturnus",
+    "oracle_id": "2109c49e-dc81-4a10-8265-3cf8c90db523",
+    "text": "Mana cost: {1}{B}{B}{B}\nType: Creature — Vampire\nPower/Toughness: 3/3\nPlay with the top card of your library revealed.\nAs long as the top card of your library is black, this creature and other Vampire creatures you control get +2/+1 and have flying."
+  }
+]

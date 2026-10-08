@@ -361,6 +361,24 @@ impl GameState {
         self.battlefield_flags.monstrous.contains(&id)
     }
 
+    /// Whether this permanent has dealt damage since it entered.
+    pub fn has_dealt_damage_since_entered(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.dealt_damage_since_entered.contains(&id)
+    }
+
+    /// Record that a battlefield permanent dealt (unprevented) damage.
+    pub fn mark_dealt_damage_since_entered(&mut self, id: ObjectId) {
+        if !self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            return;
+        }
+        if self.battlefield_flags_mut().dealt_damage_since_entered.insert(id) {
+            self.mark_source_designation_changed(id, Self::condition_reads_damage_dealt_state);
+        }
+    }
+
     /// Mark a creature as monstrous.
     pub fn set_monstrous(&mut self, id: ObjectId) {
         if self.battlefield_flags_mut().monstrous.insert(id) {
@@ -1936,6 +1954,7 @@ impl GameState {
             flags.damage_marked.remove(&id);
             flags.battle_protectors.remove(&id);
             flags.monstrous.remove(&id);
+            flags.dealt_damage_since_entered.remove(&id);
             flags.suspected.remove(&id);
             flags.dealt_deathtouch_damage_since_sba.remove(&id);
             flags.regeneration_shields.remove(&id);

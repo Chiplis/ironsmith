@@ -214,6 +214,13 @@ pub(super) fn matches_surface(words: &[&str], surface: TargetSurface) -> bool {
                 &["the", "rest", "of", "revealed", "cards"],
                 &["rest", "of", "the", "revealed", "cards"],
                 &["the", "rest", "of", "the", "revealed", "cards"],
+                // "Put the rest of the cards / the rest of those cards on the
+                // bottom" (Winota, Armored Skyhunter): the same looked-at
+                // remainder as "the rest".
+                &["rest", "of", "the", "cards"],
+                &["the", "rest", "of", "the", "cards"],
+                &["rest", "of", "those", "cards"],
+                &["the", "rest", "of", "those", "cards"],
             ],
         ),
         TargetSurface::SourcePtPrefix => prefix_one_of(

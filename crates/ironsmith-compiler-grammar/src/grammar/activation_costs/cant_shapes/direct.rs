@@ -86,6 +86,8 @@ pub enum DirectCantFact {
     SourceCantBeBlocked,
     TemporaryUnblockable,
     SourceCantAttackAlone,
+    /// "This creature can't block alone." (Craven Hulk, CR 509.1b)
+    SourceCantBlockAlone,
     SourceCantAttackOrBlock,
     SourceCantAttackOrBlockAlone,
     SourceCantAttackOrBlockUnlessMaxSpeed,
@@ -258,6 +260,12 @@ fn parse_source_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<Direc
             primitives::phrase(&["attack", "alone"]),
         )
             .value(DirectCantFact::SourceCantAttackAlone),
+        (
+            parse_source_subject,
+            parse_cant,
+            primitives::phrase(&["block", "alone"]),
+        )
+            .value(DirectCantFact::SourceCantBlockAlone),
         (parse_source_subject, parse_cant, primitives::kw("attack"))
             .value(DirectCantFact::SourceCantAttack),
         (parse_source_subject, parse_cant, primitives::kw("block"))

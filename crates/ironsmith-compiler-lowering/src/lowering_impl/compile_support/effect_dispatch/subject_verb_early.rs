@@ -3214,6 +3214,7 @@ pub(super) fn compile_subject_verb_early(
                 source_filter,
                 source_would_deal_surface,
                 of_chosen_color,
+                source_of_your_choice,
             },
         ) => {
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
@@ -3235,7 +3236,17 @@ pub(super) fn compile_subject_verb_early(
                 if *source_would_deal_surface {
                     effect = effect.with_source_would_deal_surface();
                 }
+                if *source_of_your_choice {
+                    // CR 609.7a: the source is chosen as the shield is
+                    // created; the filter only limits that choice.
+                    effect = effect.with_source_of_your_choice();
+                }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+            }
+            if *source_of_your_choice {
+                return Err(CardTextError::ParseError(
+                    "a source of your choice needs a non-targeted protected recipient".into(),
+                ));
             }
             if non_choice {
                 return Err(CardTextError::ParseError(

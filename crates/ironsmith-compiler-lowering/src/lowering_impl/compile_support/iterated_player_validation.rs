@@ -462,6 +462,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         YouControl(filter)
         | OpponentControls(filter)
         | YouHaveCardInHandMatching(filter)
+        | TopCardOfYourLibraryMatches(filter)
         | ObjectEnteredBattlefieldThisTurn(filter)
         | ObjectEnteredBattlefieldLastTurn(filter)
         | ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)

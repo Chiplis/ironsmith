@@ -1665,6 +1665,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_each_creature_cant_be_blocked_by_more_than_line
         ),
         single_static_ability_ast_passthrough_rule!(
+            parse_filtered_blocker_count_restriction_line
+        ),
+        single_static_ability_ast_passthrough_rule!(
             parse_each_creature_can_block_additional_creature_each_combat_line
         ),
         multi_static_ability_ast_rule!(parse_anthem_and_type_color_addition_line),

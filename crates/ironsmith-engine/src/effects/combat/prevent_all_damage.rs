@@ -113,6 +113,11 @@ impl ExecuteBoundPrevention for PreventAllDamageEffect {
             match selection {
                 SourceChoiceSelection::Chosen(source) => {
                     damage_filter.from_specific_source = Some(source);
+                    // CR 609.7a: the descriptor ("a red source of your
+                    // choice") only limits the choice made on resolution; the
+                    // shield then follows that object even if its
+                    // characteristics change afterwards.
+                    damage_filter.from_source = None;
                 }
                 SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
                 SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),

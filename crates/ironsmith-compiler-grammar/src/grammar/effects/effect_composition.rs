@@ -295,6 +295,49 @@ pub fn parse_outside_game_wish_shape(tokens: &[OwnedLexToken]) -> Option<Outside
     })
 }
 
+/// "[You may] put a card you own from outside the game into your hand"
+/// (Mastermind's Acquisition, North Wind Avatar) or "... on top of your
+/// library" (The Raven's Warning): an owned card from outside the game
+/// (CR 400.11; the sideboard) moved directly, without a reveal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutsideGamePutShape {
+    pub optional: bool,
+    pub filter_tokens: Vec<OwnedLexToken>,
+    pub to_library_top: bool,
+}
+
+pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGamePutShape> {
+    let tokens = trim_lexed_commas(tokens);
+    let words = parser_token_word_refs(tokens);
+    let (optional, put_word) = match words.as_slice() {
+        ["you", "may", "put", ..] => (true, 2),
+        ["put", ..] => (false, 0),
+        _ => return None,
+    };
+    if !matches!(words.get(put_word + 1), Some(&("a" | "an"))) {
+        return None;
+    }
+    let own_word = sequence_offset(
+        &words,
+        &["you", "own", "from", "outside", "the", "game"],
+    )?;
+    if own_word <= put_word + 2 {
+        return None;
+    }
+    let tail = &words[own_word + 6..];
+    let to_library_top = match tail {
+        ["into", "your", "hand"] => false,
+        ["on", "top", "of", "your", "library"] => true,
+        _ => return None,
+    };
+    let filter_tokens = token_slice_for_words(tokens, put_word + 1..own_word)?.to_vec();
+    Some(OutsideGamePutShape {
+        optional,
+        filter_tokens,
+        to_library_top,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForEachChosenShape<'a> {
     pub body: &'a [OwnedLexToken],

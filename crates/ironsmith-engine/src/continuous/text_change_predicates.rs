@@ -480,6 +480,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         }
         Condition::YouControl(filter) | Condition::OpponentControls(filter)
         | Condition::YouHaveCardInHandMatching(filter) | Condition::ObjectEnteredBattlefieldThisTurn(filter)
+        | Condition::TopCardOfYourLibraryMatches(filter)
         | Condition::ObjectEnteredBattlefieldLastTurn(filter)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
         | Condition::SourceCrewedByExactly { filter, .. } | Condition::SourceMatches(filter)
@@ -573,6 +574,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::SourceControllersMainPhase
         | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
+        | Condition::SourceHasDealtDamageSinceEntered
         | Condition::SourceIsHarnessed | Condition::SourceIsPrepared | Condition::SourceIsRenowned | Condition::SourceIsFaceDown
         | Condition::SourceHasNoCounter(_) | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceHasCountersAtLeast(_) | Condition::SourcePowerAtLeast(_)

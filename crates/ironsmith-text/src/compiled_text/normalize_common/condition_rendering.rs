@@ -2170,6 +2170,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let object_text = with_indefinite_article(&filter.description());
             format!("you have {object_text} in hand")
         }
+        Condition::TopCardOfYourLibraryMatches(filter) => {
+            let object_text = with_indefinite_article(&filter.description());
+            format!("the top card of your library is {object_text}")
+        }
         Condition::YourTurn => "it's your turn".to_string(),
         Condition::CurrentTurnIsExtra => "it's an extra turn".to_string(),
         Condition::YourFirstTurnsOfTheGameOrFewer(3) => {
@@ -3885,6 +3889,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
+        Condition::SourceHasDealtDamageSinceEntered => "this permanent has dealt damage".to_string(),
         Condition::SourceIsHarnessed => "this permanent is harnessed".to_string(),
         Condition::SourceIsPrepared => "this creature is prepared".to_string(),
         Condition::SourceIsRenowned => "this creature is renowned".to_string(),

@@ -1964,6 +1964,10 @@ pub enum Condition {
         count: u32,
     },
     YouHaveCardInHandMatching(ObjectFilter),
+    /// The card on top of the controller's library (CR 401.1: the last
+    /// object of the library sequence) matches the filter. Library-top
+    /// changes mark continuous state dirty, so statics re-evaluate.
+    TopCardOfYourLibraryMatches(ObjectFilter),
     YourTurn,
     /// The turn currently being played was created as an extra turn rather
     /// than reached through the normal turn order.
@@ -2078,6 +2082,10 @@ pub enum Condition {
     },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
+    /// The source permanent has dealt damage since it last entered the
+    /// battlefield ("as long as it hasn't dealt damage yet", Karakyk
+    /// Guardian). A new object (CR 400.7) starts with no damage history.
+    SourceHasDealtDamageSinceEntered,
     SourceIsHarnessed,
     /// "if this creature isn't prepared" (Paradox Shaper): the source bears
     /// the prepared designation.

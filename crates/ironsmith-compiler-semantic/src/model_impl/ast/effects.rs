@@ -819,6 +819,7 @@ impl EffectAst {
                     source_filter,
                     source_would_deal_surface: false,
                     of_chosen_color: false,
+                    source_of_your_choice: false,
                 },
             ),
         )

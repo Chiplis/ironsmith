@@ -27,6 +27,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             | DirectCantFact::SourceCantAttackItsOwner
             | DirectCantFact::SourceCantBeBlocked
             | DirectCantFact::SourceCantAttackAlone
+            | DirectCantFact::SourceCantBlockAlone
             | DirectCantFact::SourceCantAttackOrBlock
             | DirectCantFact::SourceCantAttackOrBlockAlone
             | DirectCantFact::SourceCantAttackOrBlockUnlessMaxSpeed
@@ -86,6 +87,10 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantBeBlocked => StaticAbility::unblockable(),
         DirectCantFact::SourceCantAttackAlone => StaticAbility::restriction(
             crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+            format_negated_restriction_display(tokens),
+        ),
+        DirectCantFact::SourceCantBlockAlone => StaticAbility::restriction(
+            crate::effect::Restriction::block_alone(ObjectFilter::source()),
             format_negated_restriction_display(tokens),
         ),
         DirectCantFact::SourceCantAttackOrBlock => StaticAbility::restriction(
@@ -852,6 +857,14 @@ fn parse_cant_clauses_unbound(
                 crate::grammar::anthem_grants::parse_each_creature_subject(clause.subject_tokens)
                     .is_some()
             })
+        // A filtered set granted a blocker-count restriction ("Boars you
+        // control can't be blocked by more than one creature") is owned by
+        // its grant production; the negated grammar would read the count as
+        // a blocker filter.
+        || matches!(
+            crate::keyword_static::parse_filtered_blocker_count_restriction_line(tokens),
+            Ok(Some(_))
+        )
         || crate::grammar::keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(
             tokens,
         )
@@ -1134,6 +1147,17 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     }
 
     if let Some(ability) = blocking_cant_static_ability(tokens) {
+        return Ok(Some(ability));
+    }
+
+    // "can't block alone" is a block-legality requirement on the source
+    // (CR 509.1b), not "can't block <an attacker named 'alone'>".
+    if matches!(
+        cant_shapes::parse_direct_cant_fact_tokens(tokens),
+        Some(DirectCantFact::SourceCantBlockAlone)
+    ) && let Some(StaticAbilityShapeResolution::Ability(ability)) =
+        direct_cant_static_ability(tokens)
+    {
         return Ok(Some(ability));
     }
 

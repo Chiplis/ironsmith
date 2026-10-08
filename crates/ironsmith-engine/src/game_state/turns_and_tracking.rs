@@ -4214,6 +4214,12 @@ impl GameState {
         })
     }
 
+    pub(super) fn condition_reads_damage_dealt_state(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_matches_or_nested(condition, |condition| {
+            matches!(condition, crate::ConditionExpr::SourceHasDealtDamageSinceEntered)
+        })
+    }
+
     pub(super) fn condition_reads_monstrous_state(condition: &crate::ConditionExpr) -> bool {
         Self::condition_matches_or_nested(condition, |condition| {
             matches!(condition, crate::ConditionExpr::SourceIsMonstrous)

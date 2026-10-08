@@ -2919,11 +2919,23 @@ fn try_parse_labeled_line_dispatch(
                         rewrite_line_tokens(line, &body)
                     })
                     .map(|body_line| recognize_static_line(&body_line))
-                    .transpose()?
-                    .flatten();
-            let mut labeled_static = builder_aware_static;
+                    .transpose();
+            // A builder-aware view that the static grammar rejects (Hexmark
+            // Destroyer's "Multi-threat Eliminator — This creature can't be
+            // blocked except by six or more creatures.") still has the
+            // normalized body view, which the unlabeled line parses; only
+            // when that also fails does the builder-aware error stand.
+            let (mut labeled_static, builder_aware_error) = match builder_aware_static {
+                Ok(parsed) => (parsed.flatten(), None),
+                Err(error) => (None, Some(error)),
+            };
             if labeled_static.is_none() {
-                labeled_static = recognize_static_line(line)?;
+                labeled_static = match (recognize_static_line(line), builder_aware_error) {
+                    (Ok(Some(parsed)), _) => Some(parsed),
+                    (_, Some(error)) => return Err(error),
+                    (Ok(None), None) => None,
+                    (Err(error), None) => return Err(error),
+                };
             }
             if let Some(mut static_line) = labeled_static {
                 // "• Mardu — If a creature attacking causes …" (Windcrag Siege):
