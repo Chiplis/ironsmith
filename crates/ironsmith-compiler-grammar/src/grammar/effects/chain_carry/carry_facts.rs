@@ -12,6 +12,8 @@ pub enum RestActionShape {
     Destroy,
     Exile,
     Sacrifice,
+    /// "chooses a card in their hand and discards the rest" (Monomania).
+    Discard,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +49,8 @@ pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionSh
                 semantic_kw("exile").value(RestActionShape::Exile),
                 alt((semantic_kw("sacrifice"), semantic_kw("sacrifices")))
                     .value(RestActionShape::Sacrifice),
+                alt((semantic_kw("discard"), semantic_kw("discards")))
+                    .value(RestActionShape::Discard),
             )),
             semantic_kw("rest"),
             semantic_finish,

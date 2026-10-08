@@ -125,6 +125,17 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             idx + 3,
         ));
     }
+    // "gets +2/+2 until end of turn for each of its colors" (Might of the
+    // Nephilim): the colors of the pronoun's object antecedent.
+    if let ["its", "colors", ..] = &words[idx..] {
+        return Some((
+            Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 2,
+        ));
+    }
 
     // "for each creature it devoured" (Tar Fiend, Marrow Chomper): the
     // creatures sacrificed to this permanent's devour ability (CR 702.82b),
@@ -629,6 +640,16 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             {
                 return Some((
                     Value::PlayerCounters(PlayerFilter::You, counter_type),
+                    filter_end,
+                ));
+            }
+            // "discards a card for each poison counter they have" (Whispering
+            // Specter): the referenced player's own counters.
+            if count_words.get(counter_idx + 1..) == Some(&["they", "have"][..])
+                || count_words.get(counter_idx + 1..) == Some(&["that", "player", "has"][..])
+            {
+                return Some((
+                    Value::PlayerCounters(PlayerFilter::IteratedPlayer, counter_type),
                     filter_end,
                 ));
             }

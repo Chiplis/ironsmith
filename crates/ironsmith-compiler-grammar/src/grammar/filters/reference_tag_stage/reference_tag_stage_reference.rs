@@ -1117,6 +1117,25 @@ pub(in super::super) fn parse_object_filter_inner(
                 idx += consumed.max(1);
                 continue;
             }
+            // "permanents they control but don't own" (Blim): the negated
+            // relation's elided subject is the pronoun of the preceding
+            // relation, not "you".
+            if idx >= 3
+                && all_words[idx - 1] == "but"
+                && all_words[idx - 3] == "they"
+                && matches!(all_words[idx - 2], "control" | "controls" | "own" | "owns")
+            {
+                let mut with_subject = vec!["they"];
+                with_subject.extend_from_slice(slice);
+                if let Some(consumed) = try_apply_negated_you_relation_clause(
+                    &mut filter,
+                    &with_subject,
+                    &pronoun_player_filter,
+                ) {
+                    idx += consumed.saturating_sub(1).max(1);
+                    continue;
+                }
+            }
             if let Some(consumed) =
                 try_apply_negated_you_relation_clause(&mut filter, slice, &pronoun_player_filter)
             {

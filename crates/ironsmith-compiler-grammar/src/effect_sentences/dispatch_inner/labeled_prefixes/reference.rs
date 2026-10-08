@@ -121,14 +121,20 @@ pub(super) fn parse_earthbend_subject_verb_sentence(
         return Ok(None);
     };
 
-    let Some((_, used)) = parse_number(&tokens[1..]) else {
+    let used = if let Some((_, used)) = parse_number(&tokens[1..]) {
+        used
+    } else if crate::lexer::token_slice_at_is(tokens, 1, "x") {
+        1
+    } else {
         return Ok(Some(vec![earthbend]));
     };
     let mut tail = trim_commas(&tokens[1 + used..]).to_vec();
     while token_slice_first_is(&tail, "then") {
         tail.remove(0);
     }
-    if tail.is_empty() {
+    // The where-X binding is applied by the sentence reader to the whole
+    // instruction; it is not a following effect.
+    if tail.is_empty() || token_slice_first_is(&tail, "where") {
         return Ok(Some(vec![earthbend]));
     }
 

@@ -93,10 +93,19 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         shapes::RemoveClauseShape::Counters {
             amount,
             up_to,
+            any_number,
             counter_descriptor,
             destination,
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
+            // "any number of [kind] counters": up to every counter of that kind
+            // the holder has. Lowering rebinds the source placeholder to the
+            // resolved holder (or the "from among" set).
+            let amount = if any_number {
+                Value::CountersOn(Box::new(ChooseSpec::Source), counter_type)
+            } else {
+                amount
+            };
             match destination {
                 shapes::RemoveCounterDestination::EachOfAnyNumber { filter_tokens } => {
                     let filter = parse_object_filter(filter_tokens, false)?;

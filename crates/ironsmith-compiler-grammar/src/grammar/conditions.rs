@@ -1546,7 +1546,13 @@ fn parse_target_spell_controller_poisoned_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextConditionAst> {
     let shape = event_shapes::parse_target_spell_controller_poisoned(tokens)?;
-    let spell = event_shapes::parse_target_spell_controller(shape.controller_tokens)?;
+    // "if its controller is poisoned" (Corrupted Resolve): the copula is
+    // part of the predicate surface, not of the controller reference.
+    let controller_tokens = match shape.controller_tokens.split_last() {
+        Some((last, head)) if last.is_word("is") => head,
+        _ => shape.controller_tokens,
+    };
+    let spell = event_shapes::parse_target_spell_controller(controller_tokens)?;
     Some(SpellContextConditionAst::ControllerIsPoisoned { spell })
 }
 
@@ -1987,6 +1993,14 @@ fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFil
         ["youve"] | ["you've"] | ["you", "ve"] | ["you", "have"]
     ) {
         return Some(PlayerFilter::You);
+    }
+    // "if a player other than you lost life this turn" (Ludevic): any one
+    // player except the ability's controller.
+    if matches!(
+        clause.word_refs().as_slice(),
+        ["a", "player", "other", "than", "you"] | ["another", "player"]
+    ) {
+        return Some(PlayerFilter::NotYou);
     }
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),

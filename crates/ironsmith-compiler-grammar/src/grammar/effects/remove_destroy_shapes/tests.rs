@@ -49,6 +49,7 @@ fn parses_counter_distribution_from_among_all_permanents() {
         up_to,
         counter_descriptor,
         destination,
+        ..
     } = parse_remove_clause_shape(&tokens).unwrap()
     else {
         panic!("expected counter removal");

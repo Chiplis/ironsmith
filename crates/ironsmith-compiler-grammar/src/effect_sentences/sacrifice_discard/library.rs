@@ -32,6 +32,20 @@ pub fn parse_discard(
         ));
     }
 
+    // "discard cards equal to that creature's toughness" / "... equal to the
+    // damage": the same dynamic count grammar as "draw cards equal to ...".
+    if tokens.first().is_some_and(|token| token.is_word("cards"))
+        && tokens.get(1).is_some_and(|token| token.is_word("equal"))
+        && let Some(count) =
+            crate::effect_sentences::verb_handlers::parse_draw_card_prefixed_count_value(
+                &tokens[1..],
+            )?
+    {
+        return Ok(EffectAst::subject_verb_discard(
+            player, count, false, false, None, None,
+        ));
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
         |error| match error {

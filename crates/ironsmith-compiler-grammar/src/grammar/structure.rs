@@ -722,7 +722,7 @@ fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
         || primitives::has_phrase(tokens, &["toughness", "is", "equal", "to"])
 }
 
-fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     fn life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         use crate::grammar::conditions::PlayerLifeRelationAst;
 

@@ -1,0 +1,18 @@
+[
+ {
+  "name": "Life of Toshiro Umezawa // Memory of Toshiro",
+  "oracle_id": "0a708566-2994-47b3-8d89-0547cc115e7c",
+  "mana_cost": "{1}{B}",
+  "type_line": "Enchantment — Saga",
+  "oracle_text": "I, II — Choose one —\n• Target creature gets +2/+2 until end of turn.\n• Target creature gets -1/-1 until end of turn.\n• You gain 2 life.\nIII — Exile this Saga, then return it to the battlefield transformed under your control."
+ },
+ {
+  "name": "Summon: Magus Sisters",
+  "oracle_id": "06f11ff8-cc99-411d-b00b-464ba4b7b87d",
+  "mana_cost": "{4}{G}",
+  "type_line": "Enchantment Creature — Saga Faerie",
+  "oracle_text": "I, II, III — Choose one at random —\n• Combine Powers! — Put three +1/+1 counters on target creature.\n• Defense! — Put a shield counter on target creature. You gain 3 life.\n• Fight! — This creature fights up to one target creature an opponent controls.\nHaste",
+  "power": "5",
+  "toughness": "5"
+ }
+]

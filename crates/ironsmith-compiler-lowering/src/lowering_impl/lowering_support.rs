@@ -3953,6 +3953,12 @@ pub fn stage_owned_triggered_effects_for_lowering(
     {
         bind_condition_counter_antecedent_in_effects(&mut body_effects, counter_type);
     }
+    if let Some(predicate) = intervening_if.as_ref() {
+        crate::condition_antecedent::bind_condition_it_counter_antecedent_in_effects(
+            &mut body_effects,
+            predicate,
+        );
+    }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
         resolve_phase_step_it_targets_to_source(&mut body_effects);
     }

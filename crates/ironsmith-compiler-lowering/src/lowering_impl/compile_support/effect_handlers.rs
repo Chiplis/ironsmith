@@ -4,7 +4,7 @@ use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::DelayedEffectAst;
 use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects,
+    bind_condition_counter_antecedent_in_effects, bind_condition_it_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent,
 };
@@ -2128,6 +2128,7 @@ fn compile_conditional_ast(
     if let Some(counter_type) = predicate_source_counter_antecedent(predicate) {
         bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
     }
+    bind_condition_it_counter_antecedent_in_effects(&mut effective_if_true, predicate);
     let saved_last_tag = ctx.last_object_tag.clone();
     // The predicate is evaluated before either branch runs, so it
     // reads the player context from before the branches.

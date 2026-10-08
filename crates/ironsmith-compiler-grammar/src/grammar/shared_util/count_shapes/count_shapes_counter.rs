@@ -12,6 +12,10 @@ pub(super) fn is_source_counter_reference(words: &[&str]) -> bool {
         words,
         &[
             &["it"],
+            // Oracle's gendered object pronouns name the legendary source
+            // ("the number of +1/+1 counters on him", Red Hulk).
+            &["him"],
+            &["her"],
             &["this"],
             &["this", "card"],
             &["this", "creature"],

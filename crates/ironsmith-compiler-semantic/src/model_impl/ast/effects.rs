@@ -4225,11 +4225,13 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_earthbend(counters: u32) -> Self {
+    pub fn subject_verb_earthbend(counters: impl Into<Value>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
+                counters: counters.into(),
+            }),
         )
     }
 

@@ -1,0 +1,29 @@
+[
+ {
+  "name": "Tetsuo, Imperial Champion",
+  "oracle_id": "1111e042-0bce-4819-ab42-9912aed4d930",
+  "mana_cost": "{U}{B}{R}",
+  "type_line": "Legendary Creature — Human Samurai",
+  "oracle_text": "Whenever Tetsuo attacks, if it's equipped, choose one —\n• Tetsuo deals damage equal to the greatest mana value among Equipment attached to it to any target.\n• You may cast an instant or sorcery spell from your hand with mana value less than or equal to the greatest mana value among Equipment attached to Tetsuo without paying its mana cost.",
+  "power": "3",
+  "toughness": "3"
+ },
+ {
+  "name": "Vision, Synthezoid Avenger",
+  "oracle_id": "2f4360f6-9ac7-499f-b0a5-769550ea15ba",
+  "mana_cost": "{4}",
+  "type_line": "Legendary Artifact Creature — Robot Hero",
+  "oracle_text": "Flying\nWhenever a player casts a spell, if it isn't that player's turn, choose one —\n• Put a +1/+1 counter on Vision.\n• Vision phases out.",
+  "power": "3",
+  "toughness": "3"
+ },
+ {
+  "name": "Wardens of the Cycle",
+  "oracle_id": "fa7d09aa-2ebc-4571-81da-836cd80cf554",
+  "mana_cost": "{1}{B}{G}{G}",
+  "type_line": "Creature — Elf Warlock",
+  "oracle_text": "Morbid — At the beginning of your end step, if a creature died this turn, choose one —\n• You gain 2 life.\n• You draw a card and you lose 1 life.",
+  "power": "3",
+  "toughness": "4"
+ }
+]

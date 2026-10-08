@@ -257,6 +257,11 @@ pub fn parse_discard_clause_shape(
             (false, count, any_number, used)
         } else if let Some((count, used)) = crate::util::parse_value(tokens) {
             (false, count, false, used)
+        } else if tokens.first().is_some_and(|token| token.is_word("another")) {
+            // "then that player discards another card at random" (Flay): the
+            // earlier discarded card has already left the hand, so this is
+            // one more card from what remains.
+            (false, Value::Fixed(1), false, 1)
         } else {
             return Err(DiscardShapeError::MissingCount);
         };

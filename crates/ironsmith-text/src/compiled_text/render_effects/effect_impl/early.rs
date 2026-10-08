@@ -4253,6 +4253,18 @@
         } else {
             "from"
         };
+        // "any number of" is an upper bound of every counter of that kind on
+        // the holder(s) themselves.
+        if let Value::CountersOn(counter_source, Some(counter_type)) =
+            remove_up_to_counters.max_count.unhinted()
+            && counter_source.unhinted() == remove_up_to_counters.target.unhinted()
+            && *counter_type == remove_up_to_counters.counter_type
+        {
+            return format!(
+                "Remove any number of {} counters {preposition} {target}",
+                describe_counter_type(remove_up_to_counters.counter_type),
+            );
+        }
         let counter_noun = if remove_up_to_counters.max_count.unhinted() == &Value::Fixed(1) {
             "counter"
         } else {
@@ -4268,6 +4280,13 @@
         effect.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
     {
         let target = describe_choose_spec(&remove_up_to_any_counters.target);
+        if remove_up_to_any_counters.up_to
+            && let Value::CountersOn(counter_source, None) =
+                remove_up_to_any_counters.max_count.unhinted()
+            && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
+        {
+            return format!("Remove any number of counters from {target}");
+        }
         if let Value::CountersOn(counter_source, None) = &remove_up_to_any_counters.max_count
             && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
         {

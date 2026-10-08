@@ -190,6 +190,9 @@ pub struct RecognizedModalBlock {
     pub header: LineInfo,
     pub header_tokens: Vec<OwnedLexToken>,
     pub modes: Vec<RecognizedModalMode>,
+    /// "I, II — Choose one —": a modal Saga chapter ability. The header
+    /// tokens are the chapter body; these chapters are its trigger (CR 714.2b).
+    pub saga_chapters: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Clone)]

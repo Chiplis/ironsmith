@@ -113,6 +113,7 @@ pub fn lower_parsed_modal(
         choose_both_control_card_types,
         choose_both_exact_life_total,
         trigger,
+        intervening_if,
         activated,
         x_replacement,
         prefix_effects_ast: _,
@@ -488,7 +489,7 @@ pub fn lower_parsed_modal(
             trigger,
             Vec::new(),
             vec![Zone::Battlefield],
-            None,
+            intervening_if,
             None,
             ReferenceImports::default(),
         ))?;

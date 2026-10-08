@@ -91,7 +91,7 @@ pub enum KeywordActionAst {
     ManifestCardFromHand,
     ManifestDread,
     Earthbend {
-        counters: u32,
+        counters: Value,
     },
     Behold {
         subtype: Subtype,
