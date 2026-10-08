@@ -2343,6 +2343,29 @@ fn describe_any_target_excluding_subtypes(
 }
 
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
+    // "any target chosen at random" (Goblin Test Pilot): a single target the
+    // game picks at random.
+    if let ChooseSpec::Target(inner) = spec
+        && let ChooseSpec::WithCount(base, count) = inner.as_ref()
+        && count.random
+        && count.is_single()
+    {
+        return format!(
+            "{} chosen at random",
+            describe_choose_spec(&ChooseSpec::Target(base.clone()))
+        );
+    }
+    if let ChooseSpec::WithCount(base, count) = spec
+        && count.random
+        && count.is_single()
+        && matches!(base.as_ref(), ChooseSpec::Target(_) | ChooseSpec::AnyTarget)
+    {
+        let base = match base.as_ref() {
+            ChooseSpec::AnyTarget => ChooseSpec::Target(Box::new(ChooseSpec::AnyTarget)),
+            other => other.clone(),
+        };
+        return format!("{} chosen at random", describe_choose_spec(&base));
+    }
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
             // An explicit target declaration owns the rendered subject. A
