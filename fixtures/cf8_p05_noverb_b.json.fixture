@@ -341,5 +341,45 @@
     "oracle_text": "Flash\nFlying\nWhen this creature enters during the declare attackers step, for each attacking creature, you may reselect which player or permanent that creature is attacking.",
     "power": "4",
     "toughness": "4"
+  },
+  {
+    "cluster": "manifest_top_count",
+    "name": "Omarthis, Ghostfire Initiate",
+    "oracle_id": "50676eba-a55a-4749-bb07-74a30e015781",
+    "mana_cost": "{X}{X}",
+    "type_line": "Legendary Creature — Spirit Snake",
+    "oracle_text": "Omarthis enters with X +1/+1 counters on it.\nWhenever you put one or more +1/+1 counters on another colorless creature, you may put a +1/+1 counter on Omarthis.\nWhen Omarthis dies, manifest a number of cards from the top of your library equal to the number of counters on it.",
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "cluster": "flashback_cost_reference",
+    "name": "Sphinx of Forgotten Lore",
+    "oracle_id": "ddb7e868-8f1d-4d57-9ee2-ebadb17b398a",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Creature — Sphinx",
+    "oracle_text": "Flash\nFlying\nWhenever this creature attacks, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to that card's mana cost.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "amount_and_color_coordination",
+    "name": "Willowdusk, Essence Seer",
+    "oracle_id": "94723d61-3e29-4180-91bc-df37c4086a66",
+    "mana_cost": "{1}{B}{G}",
+    "type_line": "Legendary Creature — Dryad Druid",
+    "oracle_text": "{1}, {T}: Choose another target creature. Put a number of +1/+1 counters on it equal to the amount of life you gained this turn or the amount of life you lost this turn, whichever is greater. Activate only as a sorcery.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "amount_and_color_coordination",
+    "name": "Lightwielder Paladin",
+    "oracle_id": "ad62e9d6-61bc-485f-a9b8-2ef9ba98a4b0",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike\nWhenever this creature deals combat damage to a player, you may exile target black or red permanent that player controls.",
+    "power": "4",
+    "toughness": "4"
   }
 ]
