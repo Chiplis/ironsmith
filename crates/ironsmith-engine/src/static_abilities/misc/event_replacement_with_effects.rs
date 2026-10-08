@@ -12,6 +12,9 @@ use crate::events::DamageTarget;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::life::LifeGainEvent;
+use crate::events::life::matchers::WouldLoseLifeMatcher;
+use crate::events::permanents::matchers::WouldBeDestroyedMatcher;
+use crate::events::zones::matchers::WouldChangeZoneMatcher;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::ids::{ObjectId, PlayerId};
@@ -56,14 +59,40 @@ impl StaticAbilityKind for EventReplacementWithEffects {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(ReplacementEffect::with_matcher(
-            source,
-            controller,
-            ReplacedEventMatcher {
-                event: self.event.clone(),
-            },
-            ReplacementAction::Instead(self.replacement_effects.clone()),
-        ))
+        let action = ReplacementAction::Instead(self.replacement_effects.clone());
+        Some(match &self.event {
+            ReplacedEventSpec::DamageToPlayer { .. }
+            | ReplacedEventSpec::DamageToObject { .. }
+            | ReplacedEventSpec::LifeGain { .. } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                ReplacedEventMatcher {
+                    event: self.event.clone(),
+                },
+                action,
+            ),
+            ReplacedEventSpec::LifeLoss { player } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldLoseLifeMatcher::new(player.clone()),
+                action,
+            ),
+            // The destruction owner binds the permanent as "it" and as the
+            // program's target.
+            ReplacedEventSpec::Destroy { target } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldBeDestroyedMatcher::new(target.clone()),
+                action,
+            ),
+            // Zone-change owners bind the moving object as "it".
+            ReplacedEventSpec::ZoneChange { object, from, to } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldChangeZoneMatcher::new(object.clone(), *from, *to),
+                action,
+            ),
+        })
     }
 }
 
@@ -109,6 +138,10 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 kind == EventKind::Damage
             }
             ReplacedEventSpec::LifeGain { .. } => kind == EventKind::LifeGain,
+            // Installed through their dedicated matchers instead.
+            ReplacedEventSpec::LifeLoss { .. }
+            | ReplacedEventSpec::Destroy { .. }
+            | ReplacedEventSpec::ZoneChange { .. } => false,
         }
     }
 
@@ -162,6 +195,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 };
                 player.matches_player(gain.player, &ctx.filter_ctx)
             }
+            ReplacedEventSpec::LifeLoss { .. }
+            | ReplacedEventSpec::Destroy { .. }
+            | ReplacedEventSpec::ZoneChange { .. } => false,
         }
     }
 
@@ -175,6 +211,15 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::LifeGain { .. } => {
                 "When a matching player would gain life".to_string()
+            }
+            ReplacedEventSpec::LifeLoss { .. } => {
+                "When a matching player would lose life".to_string()
+            }
+            ReplacedEventSpec::Destroy { .. } => {
+                "When a matching permanent would be destroyed".to_string()
+            }
+            ReplacedEventSpec::ZoneChange { .. } => {
+                "When a matching object would change zones".to_string()
             }
         }
     }

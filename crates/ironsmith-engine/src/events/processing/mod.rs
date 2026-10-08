@@ -5165,8 +5165,29 @@ fn prepare_zone_change_with_context_inner(
                         return Ok(EventOutcome::Replaced);
                     }
                 }
-                let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                    game, &mut ctx, &effects, source, controller, &context, None,
+                // The instead-program's "it" is the object that would have
+                // moved (CR 614.6: the replaced move never happens), exactly as
+                // the draw-continuation branch above binds it.
+                let snapshot = context
+                    .zone_change_context
+                    .as_ref()
+                    .or_else(|| {
+                        crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
+                            context.event.inner(),
+                        )
+                    })
+                    .and_then(|zone| zone.snapshot.clone())
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let mut outcome = crate::effects::replacement::execute_replacement_payload_with_object_tags(
+                    game,
+                    &mut ctx,
+                    &effects,
+                    source,
+                    controller,
+                    &context,
+                    None,
+                    vec![("it".into(), snapshot.clone()), ("__it__".into(), snapshot)],
                 )?;
                 crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
                 for event in outcome.events {

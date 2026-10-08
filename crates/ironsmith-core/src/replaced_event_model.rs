@@ -4,7 +4,7 @@
 //! "that player" names the affected player.
 
 use crate::tag::TagKeyWalk;
-use crate::{ObjectFilter, PlayerFilter};
+use crate::{ObjectFilter, PlayerFilter, Zone};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -26,4 +26,17 @@ pub enum ReplacedEventSpec {
     },
     /// "If an opponent would gain life": a matching player's life gain.
     LifeGain { player: PlayerFilter },
+    /// "If you would lose life": a matching player's life loss.
+    LifeLoss { player: PlayerFilter },
+    /// "If enchanted land would be destroyed": destruction of a matching
+    /// permanent (CR 701.8).
+    Destroy { target: ObjectFilter },
+    /// "If this creature would die" (battlefield to graveyard, CR 700.4),
+    /// "If this would be put into a graveyard from anywhere": a matching
+    /// object's zone change. The program's "it" is the moving object.
+    ZoneChange {
+        object: ObjectFilter,
+        from: Option<Zone>,
+        to: Option<Zone>,
+    },
 }

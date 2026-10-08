@@ -1,5 +1,6 @@
-//! "If <event> would happen, <program> instead." (CR 614.1a): a damage or
-//! life-gain event replaced by an arbitrary effect program, which runs with
+//! "If <event> would happen, <program> instead." (CR 614.1a): a damage,
+//! life-change, destruction or zone-change event replaced by an arbitrary
+//! effect program, which runs with
 //! the replaced event as its context ("that much", "that many", "that
 //! player"). Event modifications (amount changes, redirection, prevention)
 //! keep their own readers; this reader declines any body that names them.
@@ -9,9 +10,39 @@ use ironsmith_core::ReplacedEventSpec;
 
 /// Body words that belong to a modification or prevention of the event
 /// rather than to a replacement program, owned by the specialized readers.
-const MODIFICATION_WORDS: &[&str] = &[
-    "prevent", "damage", "double", "twice", "plus", "gain", "gains", "may",
-];
+const MODIFICATION_WORDS: &[&str] = &["prevent", "double", "twice", "plus", "may"];
+
+/// Additional modification words for the event kinds that own them: an
+/// amount change of the same damage ("deals that much damage plus 1") or of
+/// the same life gain ("gain twice that much life").
+fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str] {
+    match event {
+        ReplacedEventSpec::DamageToPlayer { .. } | ReplacedEventSpec::DamageToObject { .. } => {
+            &["damage"]
+        }
+        ReplacedEventSpec::LifeGain { .. } => &["gain", "gains"],
+        ReplacedEventSpec::LifeLoss { .. } => &["lose", "loses"],
+        // Regeneration is its own destruction replacement (CR 701.19).
+        ReplacedEventSpec::Destroy { .. } => &["regenerate"],
+        ReplacedEventSpec::ZoneChange { .. } => &[],
+    }
+}
+
+/// An object event subject: the source, or an object description
+/// ("enchanted land", "a creature you control that's enchanted").
+fn object_subject(header: &[OwnedLexToken], subject: &[&str]) -> Option<ObjectFilter> {
+    if let Some(filter) = source_subject(subject) {
+        return Some(filter);
+    }
+    // The subject words are the header tokens after "if"; header words and
+    // tokens coincide (the header holds only word tokens).
+    let subject_tokens = header.get(1..1 + subject.len())?;
+    if words_of(subject_tokens) != subject {
+        return None;
+    }
+    let filter = crate::object_filters::parse_object_filter_lexed(subject_tokens, false).ok()?;
+    (filter != ObjectFilter::default()).then_some(filter)
+}
 
 fn words_of(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::lexer::token_word_refs(tokens)
@@ -109,6 +140,35 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         ["gain", "life"] => Some(ReplacedEventSpec::LifeGain {
             player: player_subject(subject)?,
         }),
+        // "If you would lose life".
+        ["lose", "life"] => Some(ReplacedEventSpec::LifeLoss {
+            player: player_subject(subject)?,
+        }),
+        // "If enchanted land would be destroyed" (CR 701.8).
+        ["be", "destroyed"] => Some(ReplacedEventSpec::Destroy {
+            target: object_subject(header, subject)?,
+        }),
+        // "If this creature would die": put into a graveyard from the
+        // battlefield (CR 700.4).
+        ["die"] => Some(ReplacedEventSpec::ZoneChange {
+            object: object_subject(header, subject)?,
+            from: Some(Zone::Battlefield),
+            to: Some(Zone::Graveyard),
+        }),
+        // "If this would be put into a graveyard from the battlefield", "...
+        // from anywhere".
+        ["be", "put", "into", "a", "graveyard", origin @ ..] => {
+            let from = match origin {
+                [] | ["from", "anywhere"] => None,
+                ["from", "the", "battlefield"] => Some(Zone::Battlefield),
+                _ => return None,
+            };
+            Some(ReplacedEventSpec::ZoneChange {
+                object: object_subject(header, subject)?,
+                from,
+                to: Some(Zone::Graveyard),
+            })
+        }
         _ => None,
     }
 }
@@ -146,10 +206,24 @@ pub fn parse_if_event_would_happen_instead_line(
     if trailing {
         body.remove(sentence_end - 1);
     }
+    let modification_words = event_modification_words(&event);
     if body.iter().any(|token| token.is_word("instead") || token.is_quote())
-        || words_of(&body)
-            .iter()
-            .any(|word| MODIFICATION_WORDS.contains(word))
+        || words_of(&body).iter().any(|word| {
+            MODIFICATION_WORDS.contains(word) || modification_words.contains(word)
+        })
+    {
+        return Ok(None);
+    }
+    // The exile-instead readers own "exile it instead" for dying objects and
+    // graveyard-bound cards; keep one owner per line.
+    if matches!(event, ReplacedEventSpec::ZoneChange { .. })
+        && (is_shuffle_into_library_from_graveyard_line_lexed(tokens)
+            || matches!(parse_exile_would_die_instead_line(tokens), Ok(Some(_)))
+            || matches!(parse_exile_to_exile_instead_of_graveyard_line(tokens), Ok(Some(_)))
+            || matches!(
+                parse_exile_to_countered_exile_instead_of_graveyard_line(tokens),
+                Ok(Some(_))
+            ))
     {
         return Ok(None);
     }

@@ -5636,6 +5636,15 @@ pub(crate) fn lower_compiler_static_ability_core(
             ctx.allow_life_event_value = true;
             ctx.iterated_player = true;
             ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+            // Destruction and zone-change owners bind the affected object as
+            // the program's "it" ("put it on top of its owner's library").
+            if matches!(
+                event,
+                ironsmith_core::ReplacedEventSpec::Destroy { .. }
+                    | ironsmith_core::ReplacedEventSpec::ZoneChange { .. }
+            ) {
+                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            }
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
             if !choices.is_empty() {
