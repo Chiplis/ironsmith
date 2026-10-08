@@ -1,0 +1,11 @@
+[
+ {
+  "name": "Thornbow Archer",
+  "oracle_id": "a9b35457-0f1c-495c-a508-6f6693835051",
+  "mana_cost": "{B}",
+  "type_line": "Creature — Elf Archer",
+  "oracle_text": "Whenever this creature attacks, each opponent who doesn't control an Elf loses 1 life.",
+  "power": "1",
+  "toughness": "2"
+ }
+]
