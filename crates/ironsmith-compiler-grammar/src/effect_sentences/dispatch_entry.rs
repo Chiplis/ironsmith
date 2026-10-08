@@ -6278,6 +6278,7 @@ fn merge_cast_this_way_tax_into_play_permission(
                         during_turns_counter_put_on_source: None,
                         spell_cost_increase: None,
                         lands_enter_tapped: false,
+                        during_turns_attacked_with: None,
                         ..
                     }
                 ),

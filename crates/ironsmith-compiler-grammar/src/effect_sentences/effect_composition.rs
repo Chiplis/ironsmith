@@ -576,11 +576,22 @@ fn parse_exile_top_library_then_play_bundle(
                     during_turns_counter_put_on_source,
                     spell_cost_increase,
                     lands_enter_tapped,
+                    during_turns_attacked_with,
                     ..
                 }),
             ..
         }) => {
-            if spell_cost_increase.is_some() || lands_enter_tapped {
+            if let Some(condition) = during_turns_attacked_with {
+                // "During any turn you attacked with ..." keeps its turn
+                // scope when the bundle relinks the permission's tag.
+                EffectAst::subject_verb_grant_play_tagged_during_turns_attacked_with(
+                    permission_tag,
+                    player,
+                    allow_land,
+                    allow_any_color_for_cast,
+                    condition,
+                )
+            } else if spell_cost_increase.is_some() || lands_enter_tapped {
                 EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
                     permission_tag,
                     player,
