@@ -395,6 +395,11 @@ fn parse_behold_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Activati
     let subtype_word = primitives::word_parser_text.parse_next(input)?;
     let subtype = leaf::parse_leaf_subtype_flexible_complete(subtype_word)
         .map_err(|_| primitives::backtrack_err("behold subtype", "known subtype"))?;
+    // "behold a Gamma creature" (Hulk's Thunderclap): the noun after a
+    // creature type restates that the beheld object is a creature.
+    if subtype.is_creature_type() {
+        opt(alt((primitives::kw("creature"), primitives::kw("creatures")))).parse_next(input)?;
+    }
     eof.parse_next(input)?;
     Ok(ActivationCostSegmentCst::Behold { subtype, count })
 }

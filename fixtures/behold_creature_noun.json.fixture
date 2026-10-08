@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Hulk's Thunderclap",
+    "oracle_id": "e377059d-a918-462f-920a-6b062bd5fcfd",
+    "mana_cost": "{1}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "As an additional cost to cast this spell, you may behold a Gamma creature.\nTarget creature you control deals damage equal to its power to another target creature. If this spell's additional cost was paid, destroy target noncreature artifact or noncreature enchantment.",
+    "text": "Mana cost: {1}{G}\nType: Sorcery\nAs an additional cost to cast this spell, you may behold a Gamma creature.\nTarget creature you control deals damage equal to its power to another target creature. If this spell's additional cost was paid, destroy target noncreature artifact or noncreature enchantment."
+  }
+]
