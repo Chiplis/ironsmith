@@ -1,11 +1,12 @@
 //! Exile top cards of library effect implementation.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::{EffectOutcome, Value};
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::helpers::{
     resolve_player_filter, resolve_value, view_hidden_candidate_objects,
 };
 use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::zones::movement_instruction::{SelectedZoneMovement, ZoneMovementInstruction};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -80,10 +81,29 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(
+            crate::effects::zones::movement_instruction::prepare_movement_instruction(
+                self.clone(),
+                ctx,
+            ),
+        )
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        crate::effects::zones::movement_instruction::prepare_movement_draw_continuation(
+            self.clone(),
+            game,
+            ctx,
+        )
     }
 
     fn execute(
@@ -105,98 +125,102 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                 EffectOutcome::count(0),
             ));
         }
-        let result = crate::effects::composition::execute_transaction(
+        crate::effects::zones::movement_instruction::execute_movement_instruction(
+            self.clone(),
             game,
             ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let player_id = resolve_player_filter(game, &self.player, ctx)?;
-                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-                for tag in &self.moved_tags {
-                    ctx.set_tagged_objects(tag.clone(), Vec::new());
-                }
+        )
+    }
+}
 
-                let top_cards = game
-                    .player(player_id)
-                    .map(|p| {
-                        let mut cards = p
-                            .library
-                            .iter()
-                            .rev()
-                            .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
-                            .take(count)
-                            .copied()
-                            .collect::<Vec<_>>();
-                        // Preserve the existing bottom-to-top processing order within
-                        // the selected top group while skipping simultaneous entrants.
-                        cards.reverse();
-                        cards
-                    })
-                    .unwrap_or_default();
+impl ZoneMovementInstruction for ExileTopOfLibraryEffect {
+    fn select(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SelectedZoneMovement, ExecutionError> {
+        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        for tag in &self.moved_tags {
+            ctx.set_tagged_objects(tag.clone(), Vec::new());
+        }
 
-                let moves = top_cards
-                    .into_iter()
-                    .map(|id| {
-                        crate::effects::zones::PreparedZoneMove::capture(
-                            game,
-                            id,
-                            Zone::Library,
-                            Zone::Exile,
-                            ctx.cause.clone(),
-                            None,
-                        )
-                    })
-                    .collect();
-                crate::effects::zones::execute_zone_moves_with_outputs(
+        let top_cards = game
+            .player(player_id)
+            .map(|p| {
+                let mut cards = p
+                    .library
+                    .iter()
+                    .rev()
+                    .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
+                    .take(count)
+                    .copied()
+                    .collect::<Vec<_>>();
+                // Preserve the existing bottom-to-top processing order within
+                // the selected top group while skipping simultaneous entrants.
+                cards.reverse();
+                cards
+            })
+            .unwrap_or_default();
+
+        let moves = top_cards
+            .into_iter()
+            .map(|id| {
+                crate::effects::zones::PreparedZoneMove::capture(
                     game,
-                    ctx,
-                    moves,
-                    |game, ctx, receipts| {
-                        let mut moved_ids = Vec::new();
-                        for (_, receipt) in receipts {
-                            if let crate::events::processing::EventOutcome::Proceed(change) =
-                                &receipt.original
-                                && change.final_zone == Zone::Exile
-                                && let Some(id) = change.new_object_id
-                            {
-                                if let Some(owner) = &ctx.linked_exile_owner {
-                                    game.add_linked_exile_pair_member(owner.clone(), id);
-                                }
-                                game.add_exiled_with_source_link(ctx.source, id);
-                                if self.face_down {
-                                    game.set_face_down(id);
-                                }
-                                if let Some(snapshot) = ObjectSnapshot::from_object_id(game, id) {
-                                    for tag in self.moved_tags.iter().chain(&self.accumulated_tags)
-                                    {
-                                        ctx.tag_object(tag.clone(), snapshot.clone());
-                                    }
-                                }
-                                moved_ids.push(id);
+                    id,
+                    Zone::Library,
+                    Zone::Exile,
+                    ctx.cause.clone(),
+                    None,
+                )
+            })
+            .collect();
+        let effect = self.clone();
+        Ok(SelectedZoneMovement::moves(
+            moves,
+            move |game, ctx, receipts, _pending_start| {
+                let mut moved_ids = Vec::new();
+                for (_, receipt) in receipts {
+                    if let crate::events::processing::EventOutcome::Proceed(change) =
+                        &receipt.original
+                        && change.final_zone == Zone::Exile
+                        && let Some(id) = change.new_object_id
+                    {
+                        if let Some(owner) = &ctx.linked_exile_owner {
+                            game.add_linked_exile_pair_member(owner.clone(), id);
+                        }
+                        game.add_exiled_with_source_link(ctx.source, id);
+                        if effect.face_down {
+                            game.set_face_down(id);
+                        }
+                        if let Some(snapshot) = ObjectSnapshot::from_object_id(game, id) {
+                            for tag in effect.moved_tags.iter().chain(&effect.accumulated_tags) {
+                                ctx.tag_object(tag.clone(), snapshot.clone());
                             }
                         }
-                        // Exiled cards are public by their destination. This visibility
-                        // synchronization does not add an authored reveal action.
-                        if !self.face_down {
-                            view_hidden_candidate_objects(
-                                game,
-                                ctx,
-                                player_id,
-                                &moved_ids,
-                                "Reveal exiled library cards",
-                                true,
-                            );
-                        }
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
-                        }
-                        Ok(EffectOutcome::with_objects(moved_ids.clone())
-                            .with_affected_objects_from_game(game, moved_ids))
-                    },
-                )
+                        moved_ids.push(id);
+                    }
+                }
+                // Exiled cards are public by their destination. This visibility
+                // synchronization does not add an authored reveal action.
+                if !effect.face_down {
+                    view_hidden_candidate_objects(
+                        game,
+                        ctx,
+                        player_id,
+                        &moved_ids,
+                        "Reveal exiled library cards",
+                        true,
+                    );
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                Ok(EffectOutcome::with_objects(moved_ids.clone())
+                    .with_affected_objects_from_game(game, moved_ids))
             },
-        );
-        result
+        ))
     }
 }
 
@@ -402,7 +426,6 @@ mod tests {
         assert!(dm.views.is_empty(), "face-down cards must not be revealed");
     }
 }
-
 
 #[cfg(test)]
 mod additional_owner_contract_tests {

@@ -29,15 +29,23 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
         }
         let mut filter = self.filter.clone();
         if filter.chosen_creature_type {
-            let subtype = game.chosen_creature_type(ctx.source)
-                .or_else(|| game.turn_store.turn_history.source_departure_snapshot(ctx.source)
-                    .and_then(|snapshot| snapshot.chosen_subtype))
-                .or_else(|| ctx.source_snapshot.as_ref()
-                    .filter(|snapshot| snapshot.object_id == ctx.source)
-                    .and_then(|snapshot| snapshot.chosen_subtype))
-                .ok_or_else(|| ExecutionError::IncompleteEvidence(
-                    "next-spell filter requires its source's exact chosen creature type".into(),
-                ))?;
+            let subtype = game
+                .chosen_creature_type(ctx.source)
+                .or_else(|| {
+                    game.source_departure_snapshot(ctx.source)
+                        .and_then(|snapshot| snapshot.chosen_subtype)
+                })
+                .or_else(|| {
+                    ctx.source_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == ctx.source)
+                        .and_then(|snapshot| snapshot.chosen_subtype)
+                })
+                .ok_or_else(|| {
+                    ExecutionError::IncompleteEvidence(
+                        "next-spell filter requires its source's exact chosen creature type".into(),
+                    )
+                })?;
             filter.chosen_creature_type = false;
             filter.all_subtypes.push(subtype);
         }

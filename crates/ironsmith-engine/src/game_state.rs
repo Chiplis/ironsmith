@@ -40,10 +40,10 @@ use crate::zone::Zone;
 
 mod alternating_teams;
 mod attack_direction;
-mod defending_player;
 mod attractions;
 mod commander_draft;
 mod conspiracy;
+mod defending_player;
 mod emperor;
 mod free_for_all;
 mod grand_melee;
@@ -54,6 +54,7 @@ pub(crate) use life_payments::PreparedLifePayment;
 mod announcement_visibility;
 mod monarch;
 mod object_state_and_events;
+pub(crate) use object_state_and_events::AuthoredAbilityDuplicatePolicy;
 mod opaque_library_epochs;
 pub(crate) use announcement_visibility::{LibraryTopAnnouncement, LibraryTopVisibilityBoundary};
 mod attachment_transitions;
@@ -267,6 +268,8 @@ pub struct EntryCommitResult {
     pub original: crate::events::processing::EventOutcome<EntersResult>,
     pub programs: Vec<crate::events::processing::PreparedReplacementProgram>,
     pub pending: bool,
+    /// Immutable outputs already published by entry-owned programs.
+    pub(crate) published_outputs: Vec<crate::effects::PublishedEffectOutputs>,
 }
 
 impl EntryCommitResult {
@@ -275,6 +278,7 @@ impl EntryCommitResult {
             original: crate::events::processing::EventOutcome::Prevented,
             programs: Vec::new(),
             pending: true,
+            published_outputs: Vec::new(),
         }
     }
 }
@@ -706,7 +710,8 @@ struct AuxiliaryTrackingState {
     /// disguise's ward from it (see `hidden_hand_choices`).
     hidden_face_down_cast_claims: HashMap<ObjectId, hidden_hand_choices::FaceDownCastKind>,
     /// Exact admitted unseen-exile declaration; never reconstructed from a kind claim.
-    blind_face_down_declarations: HashMap<ObjectId, crate::alternative_cast::blind_play::BlindFaceDownDeclaration>,
+    blind_face_down_declarations:
+        HashMap<ObjectId, crate::alternative_cast::blind_play::BlindFaceDownDeclaration>,
     /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
     /// for the end-of-match disclosure.
     departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
@@ -1060,6 +1065,10 @@ pub struct EffectStore {
     /// Scoped observations retained for deferred action completion, independent
     /// of trigger queue consumption. Nested observers each retain their receipts.
     pub(crate) action_observation_records: Vec<Vec<crate::triggers::TriggerEvent>>,
+    /// Immutable receipts from an actual original group, scoped by its retained
+    /// completion owner. Read-only aliases do not publish or drain observations.
+    pub(crate) retained_original_observation_scopes:
+        Vec<std::sync::Arc<Vec<crate::triggers::TriggerEvent>>>,
     /// Trigger matches produced inside a nested rules transaction, such as a
     /// spell cast while another spell or ability is resolving. They wait here
     /// until the outer resolution boundary can put them into its trigger queue.
@@ -1139,6 +1148,7 @@ impl Default for EffectStore {
             pending_trigger_events: Vec::new(),
             instruction_result_records: Vec::new(),
             action_observation_records: Vec::new(),
+            retained_original_observation_scopes: Vec::new(),
             pending_trigger_entries: Vec::new(),
             pending_reflexive_triggers: Vec::new(),
             next_reflexive_trigger_id: 0,
@@ -2184,7 +2194,8 @@ pub struct RestrictionEffectInstance {
 impl RestrictionEffectInstance {
     pub fn untap_step_player(&self, game: &GameState) -> Option<PlayerId> {
         match self.untap_step_object {
-            Some(id) => game.object(id)
+            Some(id) => game
+                .object(id)
                 .filter(|object| object.zone == Zone::Battlefield)
                 .map(|object| game.controller_of(object)),
             None => Some(self.controller),
@@ -2198,7 +2209,8 @@ impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
         if matches!(
             self.duration,
-            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
+            crate::effect::Until::ControllersNextUntapStep
+                | crate::effect::Until::YourNextUntapStep
         ) && self.consumed_next_untap
         {
             return true;
@@ -2228,8 +2240,10 @@ impl RestrictionEffectInstance {
                     false
                 }
             }
-            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep => {
-                self.untap_step_player(game).is_some_and(|player| game.is_active_player(player))
+            crate::effect::Until::ControllersNextUntapStep
+            | crate::effect::Until::YourNextUntapStep => {
+                self.untap_step_player(game)
+                    .is_some_and(|player| game.is_active_player(player))
                     && matches!(game.turn.phase, Phase::Beginning)
                     && matches!(game.turn.step, Some(Step::Untap))
             }
@@ -2563,7 +2577,8 @@ impl CantEffectTracker {
             *self.must_attack.entry(object).or_default() += count;
         }
         for (object, maximum) in other.maximum_blockers {
-            self.maximum_blockers.entry(object)
+            self.maximum_blockers
+                .entry(object)
                 .and_modify(|existing| *existing = (*existing).min(maximum))
                 .or_insert(maximum);
         }
@@ -2572,7 +2587,8 @@ impl CantEffectTracker {
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
-        self.cant_become_suspected.extend(other.cant_become_suspected);
+        self.cant_become_suspected
+            .extend(other.cant_become_suspected);
         self.cant_be_sacrificed_by_cause
             .extend(other.cant_be_sacrificed_by_cause);
         for restriction in other.cant_enter_battlefield {
@@ -2640,8 +2656,7 @@ impl CantEffectTracker {
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
-        self.player_hexproof_from
-            .extend(other.player_hexproof_from);
+        self.player_hexproof_from.extend(other.player_hexproof_from);
         self.player_protections
             .extend(other.player_protections.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
@@ -4079,12 +4094,18 @@ impl StackEntry {
     }
 
     /// Retain the exact acquisition admitted by the activation owner.
-    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+    pub fn with_activation_origin(
+        mut self,
+        origin: Option<crate::continuous::AbilityOrigin>,
+    ) -> Self {
         self.activation_origin = origin;
         self
     }
 
-    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+    pub fn with_activation_definition(
+        mut self,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+    ) -> Self {
         self.activation_definition = definition;
         self
     }
@@ -6023,11 +6044,17 @@ impl GameState {
 
     /// Queue a physical coin face; the flip still consumes its normal randomness.
     pub fn force_next_coin_flip(&mut self, face: ironsmith_core::CoinFace) {
-        self.runtime_cache.forced_coin_flips.borrow_mut().push_back(face);
+        self.runtime_cache
+            .forced_coin_flips
+            .borrow_mut()
+            .push_back(face);
     }
 
     pub(crate) fn take_forced_coin_flip(&self) -> Option<ironsmith_core::CoinFace> {
-        self.runtime_cache.forced_coin_flips.borrow_mut().pop_front()
+        self.runtime_cache
+            .forced_coin_flips
+            .borrow_mut()
+            .pop_front()
     }
 
     /// Queue a deterministic die result for test harnesses that mirror external fixtures.
@@ -6761,7 +6788,12 @@ impl GameState {
         remaining_uses: u32,
     ) {
         self.add_temporary_spell_ability_grant_with_mode(
-            player, source, filter, ability, remaining_uses, ironsmith_core::NextSpellGrantMode::Ability,
+            player,
+            source,
+            filter,
+            ability,
+            remaining_uses,
+            ironsmith_core::NextSpellGrantMode::Ability,
         );
     }
 
@@ -6833,19 +6865,22 @@ impl GameState {
         ability_payload: Option<crate::static_abilities::StaticAbility>,
         expires_end_of_turn: u32,
     ) {
-        if self.object(object_id).is_none() { return; }
+        if self.object(object_id).is_none() {
+            return;
+        }
         let acquired_at = self.effect_store.continuous_effects.next_timestamp();
         let object = self.object_mut(object_id).expect("grant recipient exists");
         // Each call creates an independent ability grant. Equal payloads and
         // durations do not make two grants the same instance; callers retaining
         // an existing grant must do so before requesting a new one.
-        object
-            .temporary_static_ability_grants
-            .push_at_timestamp(crate::object::TemporaryStaticAbilityGrant {
+        object.temporary_static_ability_grants.push_at_timestamp(
+            crate::object::TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload,
                 expires_end_of_turn: Some(expires_end_of_turn),
-            }, acquired_at);
+            },
+            acquired_at,
+        );
     }
 
     /// A noncopiable granted ability survives only this object incarnation
@@ -6855,7 +6890,9 @@ impl GameState {
         object: ObjectId,
         ability: StaticAbility,
     ) {
-        if self.object(object).is_none() { return; }
+        if self.object(object).is_none() {
+            return;
+        }
         let acquired_at = self.effect_store.continuous_effects.next_timestamp();
         let object = self.object_mut(object).expect("grant recipient exists");
         object.temporary_static_ability_grants.push_at_timestamp(
@@ -6894,7 +6931,11 @@ impl GameState {
             .iter()
             .filter(|effect| {
                 effect.player == player
-                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
+                    && matches!(
+                        effect.mode,
+                        ironsmith_core::NextSpellGrantMode::Ability
+                            | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                    )
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6942,7 +6983,11 @@ impl GameState {
             .enumerate()
             .filter_map(|(idx, effect)| {
                 (effect.player == player
-                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
+                    && matches!(
+                        effect.mode,
+                        ironsmith_core::NextSpellGrantMode::Ability
+                            | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                    )
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6959,7 +7004,13 @@ impl GameState {
                 self.effect_store
                     .temporary_spell_ability_grants
                     .get(*idx)
-                    .filter(|effect| matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility))
+                    .filter(|effect| {
+                        matches!(
+                            effect.mode,
+                            ironsmith_core::NextSpellGrantMode::Ability
+                                | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                        )
+                    })
                     .map(|effect| (effect.mode, effect.ability.clone()))
             })
             .collect::<Vec<_>>();
@@ -6968,8 +7019,12 @@ impl GameState {
                 if let crate::ability::AbilityKind::Static(ability) = ability.kind {
                     self.grant_incarnation_static_ability(spell_id, ability);
                 }
-            } else if let Some(spell) = self.object_mut(spell_id) {
-                spell.abilities_mut().push(ability);
+            } else {
+                self.install_authored_object_ability(
+                    spell_id,
+                    ability,
+                    AuthoredAbilityDuplicatePolicy::PreserveAll,
+                );
             }
         }
         for idx in matching {
@@ -6987,34 +7042,59 @@ impl GameState {
     /// Pure timing query against the already selected prospective face. It
     /// grants no origin, price, priority, land-drop, or opponent-turn right.
     pub(crate) fn next_play_timing_allows(
-        &self, player: PlayerId, object: &crate::object::Object, land_play: bool,
+        &self,
+        player: PlayerId,
+        object: &crate::object::Object,
+        land_play: bool,
     ) -> bool {
-        let ctx = self.filter_context_for(player, Some(object.id)).with_caster(Some(player));
+        let ctx = self
+            .filter_context_for(player, Some(object.id))
+            .with_caster(Some(player));
         let mut proposed = object.clone();
-        if !land_play { proposed.zone = Zone::Stack; }
-        self.effect_store.temporary_spell_ability_grants.iter().any(|grant| {
-            grant.player == player && !grant.is_expired(self.turn.turn_number)
-                && match grant.mode {
-                    ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility => false,
-                    ironsmith_core::NextSpellGrantMode::CastTiming => !land_play,
-                    ironsmith_core::NextSpellGrantMode::PlayTiming => true,
-                }
-                && grant.filter.matches(&proposed, &ctx, self)
-        })
+        if !land_play {
+            proposed.zone = Zone::Stack;
+        }
+        self.effect_store
+            .temporary_spell_ability_grants
+            .iter()
+            .any(|grant| {
+                grant.player == player
+                    && !grant.is_expired(self.turn.turn_number)
+                    && match grant.mode {
+                        ironsmith_core::NextSpellGrantMode::Ability
+                        | ironsmith_core::NextSpellGrantMode::IncarnationAbility => false,
+                        ironsmith_core::NextSpellGrantMode::CastTiming => !land_play,
+                        ironsmith_core::NextSpellGrantMode::PlayTiming => true,
+                    }
+                    && grant.filter.matches(&proposed, &ctx, self)
+            })
     }
 
     /// Every completed matching cast consumes its timing budget, regardless
     /// of whether another origin, price, or timing permission was selected.
     pub(crate) fn consume_next_cast_timing(&mut self, player: PlayerId, id: ObjectId) {
-        let Some(object) = self.object(id) else { return; };
-        let ctx = self.filter_context_for(player, Some(id)).with_caster(Some(player));
-        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+        let Some(object) = self.object(id) else {
+            return;
+        };
+        let ctx = self
+            .filter_context_for(player, Some(id))
+            .with_caster(Some(player));
+        let matching = self
+            .effect_store
+            .temporary_spell_ability_grants
+            .iter()
+            .enumerate()
             .filter_map(|(index, grant)| {
-                (matches!(grant.mode, ironsmith_core::NextSpellGrantMode::CastTiming | ironsmith_core::NextSpellGrantMode::PlayTiming)
-                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
+                (matches!(
+                    grant.mode,
+                    ironsmith_core::NextSpellGrantMode::CastTiming
+                        | ironsmith_core::NextSpellGrantMode::PlayTiming
+                ) && grant.player == player
+                    && !grant.is_expired(self.turn.turn_number)
                     && self.temporary_spell_filter_matches(&grant.filter, id, object, &ctx))
-                    .then_some(index)
-            }).collect::<Vec<_>>();
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
         for index in matching {
             self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
         }
@@ -7024,14 +7104,23 @@ impl GameState {
     /// expose nested choices. The land owners' checkpoint restores pending,
     /// cancelled, and failed instructions, including these reservations.
     pub(crate) fn reserve_next_land_play_timing(&mut self, player: PlayerId, id: ObjectId) {
-        let Some(object) = self.object(id) else { return; };
+        let Some(object) = self.object(id) else {
+            return;
+        };
         let ctx = self.filter_context_for(player, Some(id));
-        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+        let matching = self
+            .effect_store
+            .temporary_spell_ability_grants
+            .iter()
+            .enumerate()
             .filter_map(|(index, grant)| {
                 (grant.mode == ironsmith_core::NextSpellGrantMode::PlayTiming
-                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
-                    && grant.filter.matches(object, &ctx, self)).then_some(index)
-            }).collect::<Vec<_>>();
+                    && grant.player == player
+                    && !grant.is_expired(self.turn.turn_number)
+                    && grant.filter.matches(object, &ctx, self))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
         for index in matching {
             self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
         }
@@ -7262,7 +7351,9 @@ impl GameState {
         let current_turn = self.turn.turn_number;
         self.effect_store
             .temporary_spell_ability_grants
-            .retain(|effect| effect.remaining_uses > 0 && effect.expires_end_of_turn > current_turn);
+            .retain(|effect| {
+                effect.remaining_uses > 0 && effect.expires_end_of_turn > current_turn
+            });
     }
 
     pub fn cleanup_repeatable_mana_payment_actions_end_of_turn(&mut self) {
@@ -8081,12 +8172,9 @@ impl GameState {
             (_, Some(snapshot)) => Some(crate::filter::ObjectSubject::Snapshot(snapshot)),
             (_, None) => None,
         };
-        self.effect_store.cant_effects.can_target_player_from_subject(
-            self,
-            player,
-            source,
-            targeting_controller,
-        )
+        self.effect_store
+            .cant_effects
+            .can_target_player_from_subject(self, player, source, targeting_controller)
     }
 
     /// Can this spell on the stack be countered?
@@ -8347,7 +8435,9 @@ impl GameState {
     }
 
     pub(crate) fn reserve_hidden_incarnation_epoch(&mut self) -> Result<u64, String> {
-        let next = self.hidden_incarnation_high_water().checked_add(1)
+        let next = self
+            .hidden_incarnation_high_water()
+            .checked_add(1)
             .ok_or_else(|| "hidden-card incarnation history is exhausted".to_string())?;
         self.auxiliary_tracking_mut().hidden_incarnation_high_water = next;
         Ok(next)
@@ -8379,7 +8469,9 @@ impl GameState {
                 .clone()
                 .or_else(|| Some(existing.commitment.clone()));
         } else {
-            if info.incarnation == Some(0) { info.incarnation = Some(self.hidden_incarnation_high_water()); }
+            if info.incarnation == Some(0) {
+                info.incarnation = Some(self.hidden_incarnation_high_water());
+            }
             info.origin_slot.get_or_insert(info.slot);
             info.origin_commitment
                 .get_or_insert_with(|| info.commitment.clone());

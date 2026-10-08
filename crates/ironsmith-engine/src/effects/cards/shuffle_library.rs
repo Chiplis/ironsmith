@@ -32,19 +32,46 @@ impl EffectExecutor for ShuffleLibraryAction {
         if game.player(self.player).is_none() {
             return Err(ExecutionError::PlayerNotFound(self.player));
         }
-        game.shuffle_library_except_then_insert_from_top(
+        Ok(commit_library_shuffle(
+            game,
             self.player,
             &self.retained,
             self.position_from_top,
             &self.reason,
-        );
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-                ShuffleLibraryEvent::new(self.player, ctx.cause.clone()),
-                ctx.provenance,
-            )),
-        )
+            ctx.cause.clone(),
+            |_| ctx.provenance,
+        ))
     }
+}
+
+/// Commit one shuffle original and its observation. The enclosing instruction
+/// owns player validation and batching; provenance is supplied after the RNG
+/// operation so native compound callers retain their existing event ordering.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_library_shuffle(
+    game: &mut GameState,
+    player: crate::ids::PlayerId,
+    retained: &[crate::ids::ObjectId],
+    position_from_top: usize,
+    reason: &str,
+    cause: crate::events::cause::EventCause,
+    provenance: impl FnOnce(&mut GameState) -> crate::provenance::ProvNodeId,
+) -> EffectOutcome {
+    if retained.is_empty() {
+        game.shuffle_player_library(player);
+    } else {
+        game.shuffle_library_except_then_insert_from_top(
+            player,
+            retained,
+            position_from_top,
+            reason,
+        );
+    }
+    let provenance = provenance(game);
+    EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+        ShuffleLibraryEvent::new(player, cause),
+        provenance,
+    ))
 }
 
 /// One owner for randomization and its completion observation, including
@@ -57,7 +84,20 @@ pub(crate) fn shuffle_library(
     position_from_top: usize,
     reason: &str,
 ) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::execute_effect(
+    shuffle_library_with_outputs(game, ctx, player, retained, position_from_top, reason)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// Preserve the actual shuffle packet through the same semantic owner.
+pub(crate) fn shuffle_library_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: crate::ids::PlayerId,
+    retained: &[crate::ids::ObjectId],
+    position_from_top: usize,
+    reason: &str,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::execute_effect_with_outputs(
         game,
         &shuffle_library_action(player, retained, position_from_top, reason),
         ctx,
@@ -93,11 +133,18 @@ pub(crate) fn shuffle_library_action(
 /// let effect = ShuffleLibraryEffect::you();
 /// ```
 impl EffectExecutor for ShuffleLibraryEffect {
-    fn supports_simultaneous_player_action(&self) -> bool { true }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
 
-    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
-        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(ShuffleProposal { player: resolve_player_filter(game, &self.player, ctx)? }))
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(ShuffleProposal {
+            player: resolve_player_filter(game, &self.player, ctx)?,
+        }))
     }
 
     fn execute(
@@ -122,11 +169,17 @@ impl EffectExecutor for ShuffleLibraryEffect {
 /// Shuffling asks no choices and runs no replacement-added programs. Resolve
 /// the player before any member of a simultaneous batch changes the world.
 #[derive(Debug)]
-struct ShuffleProposal { player: crate::ids::PlayerId }
+struct ShuffleProposal {
+    player: crate::ids::PlayerId,
+}
 impl crate::effects::SimultaneousEffectProposal for ShuffleProposal {
-    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<EffectOutcome, ExecutionError> {
-        ShuffleLibraryEffect::new(crate::target::PlayerFilter::Specific(self.player)).execute(game, ctx)
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        ShuffleLibraryEffect::new(crate::target::PlayerFilter::Specific(self.player))
+            .execute(game, ctx)
     }
 }
 

@@ -23,10 +23,12 @@ pub(super) struct ManaSourceAnalysis<'a> {
     has_mana_triggers: bool,
     projection_safe: bool,
     replacements: Option<super::replacement_program::CompiledManaReplacements>,
-    branch_cache: std::cell::RefCell<std::collections::HashMap<
-        (crate::ids::ObjectId, usize, Option<Vec<Color>>),
-        Option<std::rc::Rc<Vec<ProjectedManaBranch>>>,
-    >>,
+    branch_cache: std::cell::RefCell<
+        std::collections::HashMap<
+            (crate::ids::ObjectId, usize, Option<Vec<Color>>),
+            Option<std::rc::Rc<Vec<ProjectedManaBranch>>>,
+        >,
+    >,
 }
 
 pub(super) struct ProjectedMana {
@@ -68,17 +70,31 @@ impl<'a> ManaSourceAnalysis<'a> {
 
     pub fn project(&self, choice: &ActivationChoice) -> Option<ProjectedMana> {
         if let Some(witnesses) = &choice.replacement_witnesses {
-            return self.branches(choice)?.iter().find(|branch| branch.witnesses == *witnesses)
-                .map(|branch| ProjectedMana { output: branch.output.clone(), credits: branch.credits.clone(), needs_choice: false });
+            return self
+                .branches(choice)?
+                .iter()
+                .find(|branch| branch.witnesses == *witnesses)
+                .map(|branch| ProjectedMana {
+                    output: branch.output.clone(),
+                    credits: branch.credits.clone(),
+                    needs_choice: false,
+                });
         }
         self.project_inner(choice)
     }
 
-    pub fn branches(&self, choice: &ActivationChoice) -> Option<std::rc::Rc<Vec<ProjectedManaBranch>>> {
+    pub fn branches(
+        &self,
+        choice: &ActivationChoice,
+    ) -> Option<std::rc::Rc<Vec<ProjectedManaBranch>>> {
         // The analysis borrows one immutable game. All witnesses for the same
         // source/domain share this expansion; validating N selected outputs
         // must not execute the entire N-way event tree N times.
-        let key = (choice.source, choice.ability_index, choice.color_restriction.clone());
+        let key = (
+            choice.source,
+            choice.ability_index,
+            choice.color_restriction.clone(),
+        );
         if let Some(cached) = self.branch_cache.borrow().get(&key) {
             return cached.clone();
         }
@@ -89,61 +105,150 @@ impl<'a> ManaSourceAnalysis<'a> {
 
     fn expand_branches(&self, choice: &ActivationChoice) -> Option<Vec<ProjectedManaBranch>> {
         use crate::effects::mana::production_resolution::ResolvedManaOutput;
-        if !self.projection_safe { return None; }
-        let ability = self.view.abilities_rc(choice.source)?.get(choice.ability_index)?.clone();
-        let AbilityKind::Activated(activated) = &ability.kind else { return None; };
+        if !self.projection_safe {
+            return None;
+        }
+        let ability = self
+            .view
+            .abilities_rc(choice.source)?
+            .get(choice.ability_index)?
+            .clone();
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            return None;
+        };
         // The source controller and the ability activator can differ. This
         // projection's event context binds the former; retain full execution
         // for public activator permissions until it carries an explicit actor.
-        if activated.allows_any_player_to_activate() { return None; }
+        if activated.allows_any_player_to_activate() {
+            return None;
+        }
         let costs = activated.mana_cost.as_all()?;
-        if costs.len() != 1 || !costs[0].requires_tap() || !activated.choices.is_empty()
+        if costs.len() != 1
+            || !costs[0].requires_tap()
+            || !activated.choices.is_empty()
             || activated.is_exhaust_ability()
-            || activated.effects.segments.iter().any(|segment| !segment.self_replacements.is_empty()) { return None; }
+            || activated
+                .effects
+                .segments
+                .iter()
+                .any(|segment| !segment.self_replacements.is_empty())
+        {
+            return None;
+        }
         let controller = self.view.current_controller(choice.source)?;
         let object = self.game.object(choice.source)?;
         let chars = self.view.calculated_characteristics_arc(choice.source)?;
-        let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_known_characteristics(object, self.game, Some(&chars));
-        let activation = crate::events::AbilityActivatedEvent::new(choice.source, controller, true)
-            .with_activation_cost_has_tap(true).with_snapshot(Some(snapshot.clone()));
+        let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_known_characteristics(
+            object,
+            self.game,
+            Some(&chars),
+        );
+        let activation = crate::events::AbilityActivatedEvent::from_effective_ability(
+            choice.source,
+            controller,
+            true,
+            Some(ability.clone()),
+            Some(snapshot.clone()),
+        )
+        .with_activation_cost_has_tap(true);
         snapshot.tapped = true;
-        let make_event = |player, symbols| crate::events::ManaAddedEvent::new(choice.source, controller, player, symbols)
-            .with_snapshot(Some(snapshot.clone()))
-            .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana).into_trigger_event();
+        let make_event = |player, symbols| {
+            crate::events::ManaAddedEvent::new(choice.source, controller, player, symbols)
+                .with_snapshot(Some(snapshot.clone()))
+                .with_production_provenance(
+                    crate::events::mana::ManaProductionProvenance::TappedSourceForMana,
+                )
+                .into_trigger_event()
+        };
         let mut batches = vec![Vec::new()];
         if let Some(symbols) = &activated.mana_output {
-            if !symbols.is_empty() { batches[0].push(make_event(controller, symbols.clone())); }
+            if !symbols.is_empty() {
+                batches[0].push(make_event(controller, symbols.clone()));
+            }
         }
         for effect in activated.effects.iter() {
-            let mut resolved = effect.mana_production()?.stable_resolved(self.game, choice.source, controller)?;
+            let mut resolved =
+                effect
+                    .mana_production()?
+                    .stable_resolved(self.game, choice.source, controller)?;
             if let ResolvedManaOutput::Choice { available, .. } = &mut resolved.output {
-                if resolved.player != controller { return None; }
+                if resolved.player != controller {
+                    return None;
+                }
                 if let Some(colors) = &choice.color_restriction {
-                    available.retain(|symbol| colors.iter().any(|color| crate::mana::ManaSymbol::from_color(*color) == *symbol));
+                    available.retain(|symbol| {
+                        colors
+                            .iter()
+                            .any(|color| crate::mana::ManaSymbol::from_color(*color) == *symbol)
+                    });
                 }
             }
             let outputs = resolved.output.alternatives(128)?;
-            if batches.len().checked_mul(outputs.len())? > 128 { return None; }
-            batches = batches.into_iter().flat_map(|prefix| outputs.iter().map(|symbols| {
-                let mut next = prefix.clone();
-                if !symbols.is_empty() { next.push(make_event(resolved.player, symbols.clone())); }
-                next
-            }).collect::<Vec<_>>()).collect();
+            if batches.len().checked_mul(outputs.len())? > 128 {
+                return None;
+            }
+            batches = batches
+                .into_iter()
+                .flat_map(|prefix| {
+                    outputs
+                        .iter()
+                        .map(|symbols| {
+                            let mut next = prefix.clone();
+                            if !symbols.is_empty() {
+                                next.push(make_event(resolved.player, symbols.clone()));
+                            }
+                            next
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
         }
         let mut result = Vec::new();
         for mut events in batches {
-            events.push(crate::triggers::TriggerEvent::new(activation.clone(), crate::provenance::ProvNodeId::default()));
-            for branch in super::event_program::evaluate_branches_with_context(self.game, &self.view, events, choice.source, 512,
-                self.replacements.as_ref()?, &super::replacement_program::ReplacementResources::default(),
-                ManaCreditContext::from_activation(self.game, choice.source, activated))? {
-                if branch.witnesses.iter().any(|witness| witness.original.player != controller && !witness.decisions.is_empty()) { return None; }
+            events.push(crate::triggers::TriggerEvent::new(
+                activation.clone(),
+                crate::provenance::ProvNodeId::default(),
+            ));
+            for branch in super::event_program::evaluate_branches_with_context(
+                self.game,
+                &self.view,
+                events,
+                choice.source,
+                512,
+                self.replacements.as_ref()?,
+                &super::replacement_program::ReplacementResources::default(),
+                ManaCreditContext::from_activation(self.game, choice.source, activated),
+            )? {
+                if branch.witnesses.iter().any(|witness| {
+                    witness.original.player != controller && !witness.decisions.is_empty()
+                }) {
+                    return None;
+                }
                 let mut output = ManaPool::new();
                 for credit in &branch.result.credits {
-                    if credit.event.player == controller { for &symbol in &credit.event.mana { output.add(symbol, 1); } }
+                    if credit.event.player == controller {
+                        for &symbol in &credit.event.mana {
+                            output.add(symbol, 1);
+                        }
+                    }
                 }
-                result.push(ProjectedManaBranch { output, credits: branch.result.credits, witnesses: branch.witnesses.into_iter()
-                    .map(|witness| super::ManaReplacementWitness::from_event(&witness.original, witness.decisions)).collect() });
-                if result.len() > 512 { return None; }
+                result.push(ProjectedManaBranch {
+                    output,
+                    credits: branch.result.credits,
+                    witnesses: branch
+                        .witnesses
+                        .into_iter()
+                        .map(|witness| {
+                            super::ManaReplacementWitness::from_event(
+                                &witness.original,
+                                witness.decisions,
+                            )
+                        })
+                        .collect(),
+                });
+                if result.len() > 512 {
+                    return None;
+                }
             }
         }
         Some(result)
@@ -161,7 +266,9 @@ impl<'a> ManaSourceAnalysis<'a> {
         let AbilityKind::Activated(activated) = &ability.kind else {
             return None;
         };
-        if activated.allows_any_player_to_activate() { return None; }
+        if activated.allows_any_player_to_activate() {
+            return None;
+        }
         // Tapping is the only state change allowed before the fixed production.
         // Untap, sacrifice, life, counters, filters, exhaust, and player choices
         // remain simulations. Collection has already checked activation legality.
@@ -187,7 +294,9 @@ impl<'a> ManaSourceAnalysis<'a> {
         }
         for effect in activated.effects.iter() {
             let production = effect.mana_production()?.stable_event(
-                self.game, choice.source, self.view.current_controller(choice.source)?,
+                self.game,
+                choice.source,
+                self.view.current_controller(choice.source)?,
                 choice.color_restriction.as_deref(),
             )?;
             needs_choice |= production.needs_choice;
@@ -199,31 +308,66 @@ impl<'a> ManaSourceAnalysis<'a> {
         let object = self.game.object(choice.source)?;
         let chars = self.view.calculated_characteristics_arc(choice.source)?;
         let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_known_characteristics(
-            object, self.game, Some(&chars),
+            object,
+            self.game,
+            Some(&chars),
         );
-        let activation = crate::events::AbilityActivatedEvent::new(choice.source, controller, true)
-            .with_activation_cost_has_tap(true).with_snapshot(Some(snapshot.clone()));
+        let activation = crate::events::AbilityActivatedEvent::from_effective_ability(
+            choice.source,
+            controller,
+            true,
+            Some(ability.clone()),
+            Some(snapshot.clone()),
+        )
+        .with_activation_cost_has_tap(true);
         snapshot.tapped = true;
-        let credit_context = ManaCreditContext::from_activation(self.game, choice.source, activated);
-        let initial = production_events.into_iter().map(|symbols| {
-            crate::events::ManaAddedEvent::new(choice.source, controller, controller, symbols)
-                .with_snapshot(Some(snapshot.clone()))
-                .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana)
-        }).collect::<Vec<_>>();
+        let credit_context =
+            ManaCreditContext::from_activation(self.game, choice.source, activated);
+        let initial = production_events
+            .into_iter()
+            .map(|symbols| {
+                crate::events::ManaAddedEvent::new(choice.source, controller, controller, symbols)
+                    .with_snapshot(Some(snapshot.clone()))
+                    .with_production_provenance(
+                        crate::events::mana::ManaProductionProvenance::TappedSourceForMana,
+                    )
+            })
+            .collect::<Vec<_>>();
         let credits = if self.has_mana_triggers || !self.replacements.as_ref()?.is_empty() {
-            let mut events = initial.into_iter().map(|event| event.into_trigger_event()).collect::<Vec<_>>();
-            events.push(crate::triggers::TriggerEvent::new(activation, crate::provenance::ProvNodeId::default()));
-            let evaluated = super::event_program::evaluate_with_context(self.game, &self.view, events,
-                choice.source, 512, self.replacements.as_ref()?, credit_context)?;
+            let mut events = initial
+                .into_iter()
+                .map(|event| event.into_trigger_event())
+                .collect::<Vec<_>>();
+            events.push(crate::triggers::TriggerEvent::new(
+                activation,
+                crate::provenance::ProvNodeId::default(),
+            ));
+            let evaluated = super::event_program::evaluate_with_context(
+                self.game,
+                &self.view,
+                events,
+                choice.source,
+                512,
+                self.replacements.as_ref()?,
+                credit_context,
+            )?;
             // Ordinary triggers remain pending for authoritative replay.
             evaluated.credits
         } else {
-            initial.into_iter().map(|event| ManaCredit { event, context: credit_context.clone() }).collect()
+            initial
+                .into_iter()
+                .map(|event| ManaCredit {
+                    event,
+                    context: credit_context.clone(),
+                })
+                .collect()
         };
         let mut output = ManaPool::new();
         for credit in &credits {
             if credit.event.player == controller {
-                for &symbol in &credit.event.mana { output.add(symbol, 1); }
+                for &symbol in &credit.event.mana {
+                    output.add(symbol, 1);
+                }
             }
         }
         // A zero-output activation is not a mana contribution. Source-specific
@@ -295,15 +439,26 @@ pub(super) fn pool_units(pool: &ManaPool) -> Vec<ManaSymbol> {
 
 pub(crate) fn has_mana_modifying_replacements(game: &GameState) -> bool {
     use crate::events::EventKind;
-    has_replacements_for_events(game, &[
-        EventKind::BecomeTapped, EventKind::ManaAdded, EventKind::AbilityActivated,
-    ])
+    has_replacements_for_events(
+        game,
+        &[
+            EventKind::BecomeTapped,
+            EventKind::ManaAdded,
+            EventKind::AbilityActivated,
+        ],
+    )
 }
 
-pub(super) fn has_replacements_for_events(game: &GameState, kinds: &[crate::events::EventKind]) -> bool {
+pub(super) fn has_replacements_for_events(
+    game: &GameState,
+    kinds: &[crate::events::EventKind],
+) -> bool {
     let unrelated = |effect: &crate::replacement::ReplacementEffect| {
-        effect.matcher.as_ref().is_some_and(|matcher|
-            kinds.iter().all(|&kind| !matcher.may_match_event_kind(kind)))
+        effect.matcher.as_ref().is_some_and(|matcher| {
+            kinds
+                .iter()
+                .all(|&kind| !matcher.may_match_event_kind(kind))
+        })
     };
     game.effect_store
         .replacement_effects
@@ -312,9 +467,7 @@ pub(super) fn has_replacements_for_events(game: &GameState, kinds: &[crate::even
         .any(|effect| !unrelated(effect))
         || crate::replacement_ability_processor::generate_replacement_effects_from_abilities(game)
             .map_or(true, |effects| {
-                effects
-                    .iter()
-                    .any(|effect| !unrelated(effect))
+                effects.iter().any(|effect| !unrelated(effect))
             })
 }
 

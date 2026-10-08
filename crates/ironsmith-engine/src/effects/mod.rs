@@ -98,7 +98,8 @@ pub use executor_trait::{
     CompletedEffectOutputs, CostChoiceBindings, CostExecutableEffect, CostValidationError,
     DamageActionBinding, DeferredPlayerActionProposal, EffectExecutionCategory, EffectExecutor,
     EffectOutcomeContribution, EffectOutcomeScope, ModalEffectSpec, ModalSpec,
-    OriginalEffectOutput, PreparedSelectionBinding, ScopedEffectOutcome, SharedEffectOutcome,
+    OriginalEffectOutput, PreparedSelectionBinding, PublishedEffectOutputs,
+    ResolutionPreludeBinding, ScopedEffectOutcome, SharedEffectOutcome, SharedEffectOutputView,
     SharedOutcomeOwnership, SimultaneousEffectCommit, SimultaneousEffectCompletion,
     SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
 };
@@ -107,7 +108,8 @@ pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint, PaymentEx
 pub(crate) use runtime::{EffectExecutionPurpose, execute_effect_payment_with_outputs};
 pub(crate) use runtime::{
     capture_triggers_before_added_program, match_triggers_at_instruction_boundary,
-    retain_unmatched_outcome_events, with_per_event_trigger_matching, select_reached_action_program,
+    retain_unmatched_outcome_events, select_reached_action_program,
+    with_per_event_trigger_matching,
 };
 pub use runtime::{execute_effect, execute_effect_with_outputs, resolve_value, validate_target};
 
@@ -136,11 +138,11 @@ pub use combat::{
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
     BolsterEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
-    ChooseSpellCastHistoryEffect, CipherEffect, CollectEvidenceEffect, ConditionalEffect,
-    CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect,
-    EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
+    ChooseSpellCastHistoryEffect, CipherEffect, CollectEvidenceEffect, CollectManaPaymentsEffect,
+    ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
+    EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     IfEffect, LifeBidStart, LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,
@@ -153,7 +155,9 @@ pub use composition::{
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
-pub use continuous::{ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification};
+pub use continuous::{
+    ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification,
+};
 pub use control::{
     DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
     SharedTypeConstraint,
@@ -200,8 +204,8 @@ pub use permanents::{
     PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
     RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
-    TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UnlockRoomDoorEffect,
-    UntapEffect,
+    TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
+    UnlockRoomDoorEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,

@@ -21,72 +21,112 @@ impl EffectExecutor for RepeatProcessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        let sequence = SequenceEffect::new(self.effects.clone());
-        let mut children = Vec::new();
-        let mut continuation_count = 0i64;
-        let (status, value) = loop {
-            // A failed result may itself be the authored continuation gate
-            // (for example, paying an "unless" cost records Declined and then
-            // repeats the process). Remove the prior iteration's result so an
-            // earlier gate cannot accidentally drive a later iteration that
-            // failed before reaching the condition.
-            ctx.effect_outcomes.remove(&self.condition);
-            let outcome = sequence.execute_child(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            children.push(outcome.clone());
-            if ctx.resolution_stopped() { break (outcome.status, outcome.value); }
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-            let condition = ctx.get_outcome(self.condition).ok_or_else(|| ExecutionError::IncompleteEvidence(
-                "repeated process has no completed continuation receipt".into(),
-            ))?;
-            let should_continue = {
-                if self.predicate == crate::effect::EffectPredicate::Happened
-                    && let Some(player_counts) = condition.player_counts()
-                {
-                    // A mixed optional pass can contain both accepted and
-                    // declined outcomes. Its aggregate `Declined` fact must
-                    // not hide that another participant acted this round.
-                    player_counts.iter().any(|(_, count)| *count > 0)
-                } else { super::if_effect::predicate_matches_with_context(
-                    &self.predicate,
-                    condition,
-                    game,
-                    ctx,
-                ) }
-            };
-            if should_continue && !ctx.resolution_stopped() {
-                continuation_count = continuation_count.checked_add(1).ok_or(ExecutionError::ResourceLimitExceeded {
-                    resource: "repeated process continuation count",
-                    requested: continuation_count as u128 + 1, maximum: i64::MAX as u128,
-                })?;
-                crate::effects::capture_triggers_before_added_program(game, ctx, None,
-                    children.iter_mut().flat_map(|outcome| outcome.events.iter_mut()))?;
-                continue;
-            }
-            break (outcome.status, outcome.value);
-        };
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                let sequence = SequenceEffect::new(self.effects.clone());
+                let mut children = Vec::new();
+                let mut continuation_count = 0i64;
+                let (status, value) = loop {
+                    // A failed result may itself be the authored continuation gate
+                    // (for example, paying an "unless" cost records Declined and then
+                    // repeats the process). Remove the prior iteration's result so an
+                    // earlier gate cannot accidentally drive a later iteration that
+                    // failed before reaching the condition.
+                    ctx.effect_outcomes.remove(&self.condition);
+                    let outputs = sequence.execute_child_with_outputs(game, ctx)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    let outcome = outputs.outcome.clone();
+                    children.push(outputs);
+                    if ctx.resolution_stopped() {
+                        break (outcome.status, outcome.value);
+                    }
 
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::with_details(
-                if continuation_count > 0 {
-                    crate::effect::OutcomeStatus::Succeeded
-                } else {
-                    status
-                },
-                if continuation_count > 0 || value.as_count().is_none() {
-                    crate::effect::OutcomeValue::Count(continuation_count)
-                } else {
-                    value
-                },
-                Vec::new(),
-                Vec::new(),
-            ),
-            children,
-        ))
-        })
+                    let condition = ctx.get_outcome(self.condition).ok_or_else(|| {
+                        ExecutionError::IncompleteEvidence(
+                            "repeated process has no completed continuation receipt".into(),
+                        )
+                    })?;
+                    let should_continue = {
+                        if self.predicate == crate::effect::EffectPredicate::Happened
+                            && let Some(player_counts) = condition.player_counts()
+                        {
+                            // A mixed optional pass can contain both accepted and
+                            // declined outcomes. Its aggregate `Declined` fact must
+                            // not hide that another participant acted this round.
+                            player_counts.iter().any(|(_, count)| *count > 0)
+                        } else {
+                            super::if_effect::predicate_matches_with_context(
+                                &self.predicate,
+                                condition,
+                                game,
+                                ctx,
+                            )
+                        }
+                    };
+                    if should_continue && !ctx.resolution_stopped() {
+                        continuation_count = continuation_count.checked_add(1).ok_or(
+                            ExecutionError::ResourceLimitExceeded {
+                                resource: "repeated process continuation count",
+                                requested: continuation_count as u128 + 1,
+                                maximum: i64::MAX as u128,
+                            },
+                        )?;
+                        crate::effects::capture_triggers_before_added_program(
+                            game,
+                            ctx,
+                            None,
+                            children
+                                .iter_mut()
+                                .flat_map(|outputs| outputs.outcome.events.iter_mut()),
+                        )?;
+                        for outputs in &mut children {
+                            outputs.synchronize_observations();
+                        }
+                        continue;
+                    }
+                    break (outcome.status, outcome.value);
+                };
+
+                let primary = EffectOutcome::with_details(
+                    if continuation_count > 0 {
+                        crate::effect::OutcomeStatus::Succeeded
+                    } else {
+                        status
+                    },
+                    if continuation_count > 0 || value.as_count().is_none() {
+                        crate::effect::OutcomeValue::Count(continuation_count)
+                    } else {
+                        value
+                    },
+                    Vec::new(),
+                    Vec::new(),
+                );
+                Ok(crate::effects::CompletedEffectOutputs::from_children(
+                    children,
+                    |outcomes| EffectOutcome::aggregate_with_primary_result(primary, outcomes),
+                ))
+            },
+        )
     }
 }
 

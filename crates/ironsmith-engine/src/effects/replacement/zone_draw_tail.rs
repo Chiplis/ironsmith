@@ -1,10 +1,12 @@
 //! Retain an already-bound compound zone replacement across its first draw.
+use super::ReplacementProgramBindings;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint,
-    ExecutionError, SimultaneousEffectCommit, SimultaneousEffectCompletion};
+use crate::effects::{
+    CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint, ExecutionError,
+    SimultaneousEffectCommit, SimultaneousEffectCompletion,
+};
 use crate::events::processing::PreparedReplacementProgram;
 use crate::game_state::GameState;
-use super::ReplacementProgramBindings;
 
 type BoundProgram = (PreparedReplacementProgram, ReplacementProgramBindings);
 
@@ -17,7 +19,10 @@ struct ZoneTail {
 }
 
 fn append(before: CompletedEffectOutputs, child: CompletedEffectOutputs) -> CompletedEffectOutputs {
-    let aggregate = EffectOutcome::aggregate_replacement_outcomes(before.outcome.clone(), [child.outcome.clone()]);
+    let aggregate = EffectOutcome::aggregate_replacement_outcomes(
+        before.outcome.clone(),
+        [child.outcome.clone()],
+    );
     let mut outputs = before.project_aggregate(aggregate);
     outputs.retain_owned_child(child);
     outputs
@@ -25,15 +30,32 @@ fn append(before: CompletedEffectOutputs, child: CompletedEffectOutputs) -> Comp
 
 impl SimultaneousEffectCompletion for ZoneTail {
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        game.freeze_completed_entry_events(self.before.outcome.events.iter_mut()
-            .chain(self.first.outcome.outcome.events.iter_mut()))?;
-        if let Some(first) = &mut self.first.completion { first.freeze(game)?; }
+        game.freeze_completed_entry_events(
+            self.before
+                .outcome
+                .events
+                .iter_mut()
+                .chain(self.first.outcome.outcome.events.iter_mut()),
+        )?;
+        if let Some(first) = &mut self.first.completion {
+            first.freeze(game)?;
+        }
         Ok(())
     }
-    fn observe_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: &mut EffectOutcome) -> Result<(), ExecutionError> {
-        crate::effects::composition::inherit_original_observations(&mut self.before.outcome, &original.events);
-        crate::effects::composition::inherit_original_observations(&mut self.first.outcome.outcome, &original.events);
+    fn observe_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), ExecutionError> {
+        crate::effects::composition::inherit_original_observations(
+            &mut self.before.outcome,
+            &original.events,
+        );
+        crate::effects::composition::inherit_original_observations(
+            &mut self.first.outcome.outcome,
+            &original.events,
+        );
         if let Some(completion) = &mut self.first.completion {
             let parent = ExecutionContextCheckpoint::capture(ctx);
             self.scope.restore_ref(ctx);
@@ -43,40 +65,86 @@ impl SimultaneousEffectCompletion for ZoneTail {
         }
         Ok(())
     }
-    fn prepare_draw_boundary_with_outputs(self: Box<Self>, _game: &mut GameState,
-        _ctx: &mut ExecutionContext, original: EffectOutcome,
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        Ok(SimultaneousEffectCommit { outcome: CompletedEffectOutputs::aggregate_only(original), completion: Some(self) })
+        Ok(SimultaneousEffectCommit {
+            outcome: CompletedEffectOutputs::aggregate_only(original),
+            completion: Some(self),
+        })
     }
-    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        prefix: EffectOutcome) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, prefix).map(CompletedEffectOutputs::into_outcome)
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        prefix: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, prefix)
+            .map(CompletedEffectOutputs::into_outcome)
     }
-    fn complete_with_outputs(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        prefix: EffectOutcome) -> Result<CompletedEffectOutputs, ExecutionError> {
-        crate::effects::composition::inherit_original_observations(&mut self.before.outcome, &prefix.events);
-        crate::effects::composition::inherit_original_observations(&mut self.first.outcome.outcome, &prefix.events);
+    fn complete_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        prefix: EffectOutcome,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::inherit_original_observations(
+            &mut self.before.outcome,
+            &prefix.events,
+        );
+        crate::effects::composition::inherit_original_observations(
+            &mut self.first.outcome.outcome,
+            &prefix.events,
+        );
         let parent = ExecutionContextCheckpoint::capture(ctx);
         self.scope.restore_ref(ctx);
         let result = (|| {
-            let first = crate::effects::composition::complete_committed_original_with_outputs(game, ctx, self.first)?;
+            let first = crate::effects::composition::complete_committed_original_with_outputs(
+                game, ctx, self.first,
+            )?;
             let mut outputs = append(self.before, first);
-            if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
-            for (program, bindings) in self.programs {
-                crate::effects::capture_triggers_before_added_program(game, ctx,
-                    program.effects.first(), outputs.outcome.events.iter_mut())?;
-                let added = super::execute_replacement_payload_with_outputs(
-                    game, ctx, &program.effects, program.source, program.controller,
-                    &program.context, bindings.targets, program.source_snapshot, bindings.object_tags)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            let completed = super::complete_bound_replacement_programs_with_outputs(
+                game,
+                ctx,
+                outputs.outcome.clone(),
+                self.programs,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            let (observed_original, added_programs) = completed.into_outputs();
+            outputs.outcome = observed_original;
+            for added in added_programs {
+                // This continuation retains its established owned-child projection.
                 outputs = append(outputs, added);
-                if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
             }
             for effect in self.followups {
-                if ctx.resolution_stopped() { break; }
-                crate::effects::capture_triggers_before_added_program(game, ctx, Some(&effect), outputs.outcome.events.iter_mut())?;
+                if ctx.resolution_stopped() {
+                    break;
+                }
+                crate::effects::capture_triggers_before_added_program(
+                    game,
+                    ctx,
+                    Some(&effect),
+                    outputs.outcome.events.iter_mut(),
+                )?;
                 let added = crate::effects::execute_effect_with_outputs(game, &effect, ctx)?;
                 outputs = append(outputs, added);
-                if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
             }
             outputs.synchronize_observations();
             Ok(outputs)
@@ -87,8 +155,11 @@ impl SimultaneousEffectCompletion for ZoneTail {
 }
 
 pub(crate) fn prepare_zone_draw_tail(
-    game: &mut GameState, ctx: &mut ExecutionContext, before: EffectOutcome,
-    programs: Vec<BoundProgram>, followups: &[Effect],
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    before: EffectOutcome,
+    programs: Vec<BoundProgram>,
+    followups: &[Effect],
 ) -> Result<SimultaneousEffectCommit, ExecutionError> {
     prepare_zone_draw_tail_with_outputs(game, ctx, before, programs, followups)
         .map(SimultaneousEffectCommit::into_aggregate)
@@ -97,41 +168,89 @@ pub(crate) fn prepare_zone_draw_tail(
 /// Every program binding is frozen by the action owner before this boundary.
 /// A paused draw owns its suffix; later programs cannot overtake it.
 pub(crate) fn prepare_zone_draw_tail_with_outputs(
-    game: &mut GameState, ctx: &mut ExecutionContext, before: EffectOutcome,
-    programs: Vec<BoundProgram>, followups: &[Effect],
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    before: EffectOutcome,
+    programs: Vec<BoundProgram>,
+    followups: &[Effect],
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
     let mut before = CompletedEffectOutputs::aggregate_only(before);
     let mut programs = programs.into_iter();
     while let Some((program, bindings)) = programs.next() {
-        crate::effects::capture_triggers_before_added_program(game, ctx, program.effects.first(), before.outcome.events.iter_mut())?;
-        let first = super::with_replacement_child(
-            game, ctx, program.source, program.controller, &program.context,
-            bindings.targets, program.source_snapshot, bindings.object_tags,
-            |game, child| super::prepare_scoped_program_draw_boundary_with_outputs(game, child, &program.effects),
+        crate::effects::capture_triggers_before_added_program(
+            game,
+            ctx,
+            program.effects.first(),
+            before.outcome.events.iter_mut(),
         )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)))); }
+        let first = super::with_replacement_child(
+            game,
+            ctx,
+            program.source,
+            program.controller,
+            &program.context,
+            bindings.targets,
+            program.source_snapshot,
+            bindings.object_tags,
+            |game, child| {
+                super::prepare_scoped_program_draw_boundary_with_outputs(
+                    game,
+                    child,
+                    &program.effects,
+                )
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(SimultaneousEffectCommit::finished(
+                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
         if first.completion.is_some() {
-            let prefix = EffectOutcome::aggregate_replacement_outcomes(before.outcome.clone(), [first.outcome.outcome.clone()]);
+            let prefix = EffectOutcome::aggregate_replacement_outcomes(
+                before.outcome.clone(),
+                [first.outcome.outcome.clone()],
+            );
             return Ok(SimultaneousEffectCommit {
                 outcome: CompletedEffectOutputs::aggregate_only(prefix),
-                completion: Some(Box::new(ZoneTail { before, first, programs: programs.collect(),
-                    followups: followups.to_vec(), scope: ExecutionContextCheckpoint::capture(ctx) })),
+                completion: Some(Box::new(ZoneTail {
+                    before,
+                    first,
+                    programs: programs.collect(),
+                    followups: followups.to_vec(),
+                    scope: ExecutionContextCheckpoint::capture(ctx),
+                })),
             });
         }
         before = append(before, first.outcome);
     }
-    crate::effects::capture_triggers_before_added_program(game, ctx, followups.first(), before.outcome.events.iter_mut())?;
+    crate::effects::capture_triggers_before_added_program(
+        game,
+        ctx,
+        followups.first(),
+        before.outcome.events.iter_mut(),
+    )?;
     if !followups.is_empty() {
         let first = super::prepare_scoped_program_draw_boundary_with_outputs(game, ctx, followups)?;
         if first.completion.is_some() {
-            let prefix = EffectOutcome::aggregate_replacement_outcomes(before.outcome.clone(), [first.outcome.outcome.clone()]);
+            let prefix = EffectOutcome::aggregate_replacement_outcomes(
+                before.outcome.clone(),
+                [first.outcome.outcome.clone()],
+            );
             return Ok(SimultaneousEffectCommit {
                 outcome: CompletedEffectOutputs::aggregate_only(prefix),
-                completion: Some(Box::new(ZoneTail { before, first, programs: Vec::new(), followups: Vec::new(),
-                    scope: ExecutionContextCheckpoint::capture(ctx) })),
+                completion: Some(Box::new(ZoneTail {
+                    before,
+                    first,
+                    programs: Vec::new(),
+                    followups: Vec::new(),
+                    scope: ExecutionContextCheckpoint::capture(ctx),
+                })),
             });
         }
-        return Ok(SimultaneousEffectCommit::finished(append(before, first.outcome)));
+        return Ok(SimultaneousEffectCommit::finished(append(
+            before,
+            first.outcome,
+        )));
     }
 
     Ok(SimultaneousEffectCommit::finished(before))

@@ -358,7 +358,10 @@ pub(crate) fn pin_tagged_objects_to_current(
 ) {
     for (tag, snapshots) in tagged_objects.iter_mut() {
         if tag.as_str().starts_with("__paid_departure__")
-            || matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
+            || matches!(
+                ironsmith_core::tag::SacrificeCostTag::parse(tag),
+                Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_))
+            )
             || tag.as_str().starts_with("__pre_move_history__")
         {
             continue;
@@ -450,10 +453,17 @@ fn aura_source_graveyard_incarnation(
         })
     });
     if destination.is_none()
-        && (transition.result_objects.iter().all(|id| game.object(*id).is_some())
-            || transition.result_objects.iter().filter_map(|id| game.object(*id)).any(|object| {
-                object.stable_id == snapshot.stable_id && object.owner != snapshot.owner
-            }))
+        && (transition
+            .result_objects
+            .iter()
+            .all(|id| game.object(*id).is_some())
+            || transition
+                .result_objects
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|object| {
+                    object.stable_id == snapshot.stable_id && object.owner != snapshot.owner
+                }))
     {
         game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
             "attached Aura destination mapping contradicts its retained identity or owner".into(),
@@ -603,14 +613,20 @@ pub fn get_optional_costs_paid<'a>(
     ctx: &'a ExecutionContext,
 ) -> &'a OptionalCostsPaid {
     // If context has costs tracked, use those (for spell resolution)
-    if !ctx.optional_costs_paid.costs.is_empty() || ctx.optional_costs_paid.cast_payment_turn.is_some() {
+    if !ctx.optional_costs_paid.costs.is_empty()
+        || ctx.optional_costs_paid.cast_payment_turn.is_some()
+    {
         return &ctx.optional_costs_paid;
     }
     // Otherwise, try to get from the source object (for ETB triggers)
     if let Some(source) = game.object(ctx.source) {
         return &source.optional_costs_paid;
     }
-    if let Some(snapshot) = ctx.source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == ctx.source) {
+    if let Some(snapshot) = ctx
+        .source_snapshot
+        .as_ref()
+        .filter(|snapshot| snapshot.object_id == ctx.source)
+    {
         return &snapshot.optional_costs_paid;
     }
     // Fallback to context (empty)
@@ -674,8 +690,12 @@ fn resolve_effect_metric(
     source: EffectMetricSource,
     metric: EffectMetric,
 ) -> Result<i64, ExecutionError> {
-    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
-        return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST
+        && ctx.get_outcome(effect_id).is_none()
+    {
+        return Err(ExecutionError::IncompleteEvidence(
+            "activation counter payment has no completed receipt".into(),
+        ));
     }
     // "the other result" of a roll-and-choose die roll (Wild Endeavor) is
     // recorded on the roll itself. When the bound producer is a later
@@ -694,25 +714,41 @@ fn resolve_effect_metric(
             .find_map(|id| other_number(crate::effect::EffectId(id)));
         return Ok(found.unwrap_or(0));
     }
-    if matches!(metric, EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails) {
+    if matches!(
+        metric,
+        EffectMetric::CoinFlipsTotal
+            | EffectMetric::CoinFlipsWon
+            | EffectMetric::CoinFlipsLost
+            | EffectMetric::CoinHeads
+            | EffectMetric::CoinTails
+    ) {
         if source != EffectMetricSource::Outcome {
-            return Err(ExecutionError::UnresolvableValue("coin metrics require an exact instruction outcome".into()));
+            return Err(ExecutionError::UnresolvableValue(
+                "coin metrics require an exact instruction outcome".into(),
+            ));
         }
-        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "coin instruction has no completed receipt".into(),
-        ))?;
-        if outcome.status == crate::effect::OutcomeStatus::Declined { return Ok(0); }
-        let results = outcome.coin_flip_results().ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "coin instruction outcome has no retained-flip receipt".into(),
-        ))?;
-        return Ok(results.iter().filter(|flip| match metric {
-            EffectMetric::CoinFlipsTotal => true,
-            EffectMetric::CoinFlipsWon => flip.winner == Some(flip.player),
-            EffectMetric::CoinFlipsLost => flip.loser == Some(flip.player),
-            EffectMetric::CoinHeads => flip.face == ironsmith_core::CoinFace::Heads,
-            EffectMetric::CoinTails => flip.face == ironsmith_core::CoinFace::Tails,
-            _ => unreachable!("guarded coin metric"),
-        }).count() as i64);
+        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| {
+            ExecutionError::IncompleteEvidence("coin instruction has no completed receipt".into())
+        })?;
+        if outcome.status == crate::effect::OutcomeStatus::Declined {
+            return Ok(0);
+        }
+        let results = outcome.coin_flip_results().ok_or_else(|| {
+            ExecutionError::IncompleteEvidence(
+                "coin instruction outcome has no retained-flip receipt".into(),
+            )
+        })?;
+        return Ok(results
+            .iter()
+            .filter(|flip| match metric {
+                EffectMetric::CoinFlipsTotal => true,
+                EffectMetric::CoinFlipsWon => flip.winner == Some(flip.player),
+                EffectMetric::CoinFlipsLost => flip.loser == Some(flip.player),
+                EffectMetric::CoinHeads => flip.face == ironsmith_core::CoinFace::Heads,
+                EffectMetric::CoinTails => flip.face == ironsmith_core::CoinFace::Tails,
+                _ => unreachable!("guarded coin metric"),
+            })
+            .count() as i64);
     }
     // A metric over an instruction that never ran counts nothing.
     let Some(outcome) = ctx.get_outcome(effect_id) else {
@@ -723,7 +759,11 @@ fn resolve_effect_metric(
     let object_memory = || effect_metric_memory(game, outcome, source);
 
     let resolved = match metric {
-        EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
+        EffectMetric::CoinFlipsTotal
+        | EffectMetric::CoinFlipsWon
+        | EffectMetric::CoinFlipsLost
+        | EffectMetric::CoinHeads
+        | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
         EffectMetric::ChosenCount => {
             effect_metric_object_count(game, outcome, EffectMetricSource::ChosenObjects)
@@ -946,15 +986,11 @@ fn resolve_capped_damage_result(
                         0
                     }
                 } else {
-                    let snapshot = game
-                        .turn_store
-                        .turn_history
-                        .source_last_known_snapshot(*object)
-                        .ok_or_else(|| {
-                            ExecutionError::UnresolvableValue(
-                                "original damaged creature has no exact departure LKI".into(),
-                            )
-                        })?;
+                    let snapshot = game.source_last_known_snapshot(*object).ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "original damaged creature has no exact departure LKI".into(),
+                        )
+                    })?;
                     if snapshot.card_types.contains(&CardType::Creature) {
                         snapshot.toughness.ok_or_else(|| {
                             ExecutionError::UnresolvableValue(
@@ -985,87 +1021,164 @@ fn resolve_prior_effect_metric(
     // can move them again or add unrelated arrivals of their own.
     let destination_memory = if let Some(destination) = query.original_destination {
         if query.source != EffectMetricSource::AffectedObjects {
-            return Err(ExecutionError::UnresolvableValue("an original destination query requires arrival memory".into()));
+            return Err(ExecutionError::UnresolvableValue(
+                "an original destination query requires arrival memory".into(),
+            ));
         }
-        let memory = ctx.get_outcome(effect_id).and_then(|outcome| {
-            let facts = &outcome.instruction_result().execution_facts;
-            let receipts: Vec<_> = facts.iter().filter_map(|fact| match fact {
-                crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) => Some(cards),
-                _ => None,
-            }).collect();
-            (!receipts.is_empty()).then(|| receipts.into_iter().flatten()
-                .filter(|card| card.zone == destination).cloned().collect::<Vec<_>>())
-        }).ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "an original destination query has no completed movement receipt".into(),
-        ))?;
+        let memory = ctx
+            .get_outcome(effect_id)
+            .and_then(|outcome| {
+                let facts = &outcome.instruction_result().execution_facts;
+                let receipts: Vec<_> = facts
+                    .iter()
+                    .filter_map(|fact| match fact {
+                        crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) => Some(cards),
+                        _ => None,
+                    })
+                    .collect();
+                (!receipts.is_empty()).then(|| {
+                    receipts
+                        .into_iter()
+                        .flatten()
+                        .filter(|card| card.zone == destination)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+            })
+            .ok_or_else(|| {
+                ExecutionError::IncompleteEvidence(
+                    "an original destination query has no completed movement receipt".into(),
+                )
+            })?;
         Some(memory)
-    } else { None };
-    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
-        return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
-    }
-    if matches!(query.metric, EffectMetric::CoinFlipsTotal | EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)
-        && (query.filter.is_some() || query.player.is_some())
+    } else {
+        None
+    };
+    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST
+        && ctx.get_outcome(effect_id).is_none()
     {
-        return Err(ExecutionError::UnresolvableValue("coin receipts do not accept object or player-memory filters".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "activation counter payment has no completed receipt".into(),
+        ));
+    }
+    if matches!(
+        query.metric,
+        EffectMetric::CoinFlipsTotal
+            | EffectMetric::CoinFlipsWon
+            | EffectMetric::CoinFlipsLost
+            | EffectMetric::CoinHeads
+            | EffectMetric::CoinTails
+    ) && (query.filter.is_some() || query.player.is_some())
+    {
+        return Err(ExecutionError::UnresolvableValue(
+            "coin receipts do not accept object or player-memory filters".into(),
+        ));
     }
     if let Some(reference) = query.color_choice {
         let ironsmith_core::ColorChoiceReference::Effect(color_id) = reference else {
-            return Err(ExecutionError::UnresolvableValue("unbound local color choice".into()));
+            return Err(ExecutionError::UnresolvableValue(
+                "unbound local color choice".into(),
+            ));
         };
         if query.action != Some(ironsmith_core::PriorEffectAction::Revealed)
             || query.source != EffectMetricSource::AffectedObjects
-            || query.metric != EffectMetric::Count || query.player.is_some()
-            || query.counter_type.is_some() || query.original_destination.is_some()
-            || query.filter.as_ref() != Some(&crate::target::ObjectFilter::default().of_chosen_color()) {
-            return Err(ExecutionError::UnresolvableValue("local color count requires an exact revealed-card set".into()));
+            || query.metric != EffectMetric::Count
+            || query.player.is_some()
+            || query.counter_type.is_some()
+            || query.original_destination.is_some()
+            || query.filter.as_ref()
+                != Some(&crate::target::ObjectFilter::default().of_chosen_color())
+        {
+            return Err(ExecutionError::UnresolvableValue(
+                "local color count requires an exact revealed-card set".into(),
+            ));
         }
-        let color_outcome = ctx.get_outcome(color_id).ok_or_else(||
-            ExecutionError::IncompleteEvidence("local color choice has no completed receipt".into()))?;
-        let colors = color_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
-            crate::effect::ExecutionFact::ChosenColor(color) => Some(*color), _ => None,
-        }).collect::<Vec<_>>();
+        let color_outcome = ctx.get_outcome(color_id).ok_or_else(|| {
+            ExecutionError::IncompleteEvidence("local color choice has no completed receipt".into())
+        })?;
+        let colors = color_outcome
+            .instruction_result()
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::ChosenColor(color) => Some(*color),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         let [color] = colors.as_slice() else {
-            return Err(ExecutionError::IncompleteEvidence("local color choice receipt is missing or ambiguous".into()));
+            return Err(ExecutionError::IncompleteEvidence(
+                "local color choice receipt is missing or ambiguous".into(),
+            ));
         };
-        let reveal_outcome = ctx.get_outcome(effect_id).ok_or_else(||
-            ExecutionError::IncompleteEvidence("hand reveal has no completed receipt".into()))?;
+        let reveal_outcome = ctx.get_outcome(effect_id).ok_or_else(|| {
+            ExecutionError::IncompleteEvidence("hand reveal has no completed receipt".into())
+        })?;
         // The shared reveal owner records the exact producer's action set,
         // including an explicitly empty completed reveal. Legacy native
         // receipts remain readable, but unrelated additions are never borrowed.
         let cards = if let Some(cards) = crate::effects::outcome_recording::action_objects(
-            reveal_outcome, ironsmith_core::PriorEffectAction::Revealed, None,
+            reveal_outcome,
+            ironsmith_core::PriorEffectAction::Revealed,
+            None,
         ) {
             cards
         } else {
-            let reveals = reveal_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
-                crate::effect::ExecutionFact::RevealedCards(cards) => Some(cards), _ => None,
-            }).collect::<Vec<_>>();
+            let reveals = reveal_outcome
+                .instruction_result()
+                .execution_facts
+                .iter()
+                .filter_map(|fact| match fact {
+                    crate::effect::ExecutionFact::RevealedCards(cards) => Some(cards),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
             let [cards] = reveals.as_slice() else {
-                return Err(ExecutionError::IncompleteEvidence("hand reveal receipt is missing or ambiguous".into()));
+                return Err(ExecutionError::IncompleteEvidence(
+                    "hand reveal receipt is missing or ambiguous".into(),
+                ));
             };
             (*cards).clone()
         };
-        return i64::try_from(cards.iter().filter(|card| card.colors.contains(*color)).count())
-            .map_err(|_| ExecutionError::UnresolvableValue("revealed card count exceeds supported range".into()));
+        return i64::try_from(
+            cards
+                .iter()
+                .filter(|card| card.colors.contains(*color))
+                .count(),
+        )
+        .map_err(|_| {
+            ExecutionError::UnresolvableValue("revealed card count exceeds supported range".into())
+        });
     }
     if query.action == Some(ironsmith_core::PriorEffectAction::ChosenNumber) {
-        if query.source != EffectMetricSource::Outcome || query.metric != EffectMetric::Count
-            || query.filter.is_some() || query.player.is_some() || query.counter_type.is_some()
+        if query.source != EffectMetricSource::Outcome
+            || query.metric != EffectMetric::Count
+            || query.filter.is_some()
+            || query.player.is_some()
+            || query.counter_type.is_some()
         {
-            return Err(ExecutionError::UnresolvableValue("a chosen-number query requires its exact numeric decision".into()));
+            return Err(ExecutionError::UnresolvableValue(
+                "a chosen-number query requires its exact numeric decision".into(),
+            ));
         }
-        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "numeric decision has no completed receipt".into(),
-        ))?;
-        let mut choices = outcome.execution_facts.iter().filter_map(|fact| match fact {
-            crate::effect::ExecutionFact::ChosenNumber(number) => Some(*number),
-            _ => None,
-        });
-        let number = choices.next().ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "numeric decision outcome has no chosen-number fact".into(),
-        ))?;
+        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| {
+            ExecutionError::IncompleteEvidence("numeric decision has no completed receipt".into())
+        })?;
+        let mut choices = outcome
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::ChosenNumber(number) => Some(*number),
+                _ => None,
+            });
+        let number = choices.next().ok_or_else(|| {
+            ExecutionError::IncompleteEvidence(
+                "numeric decision outcome has no chosen-number fact".into(),
+            )
+        })?;
         if choices.next().is_some() || outcome.as_count() != Some(i64::from(number)) {
-            return Err(ExecutionError::IncompleteEvidence("numeric decision receipt is ambiguous or inconsistent".into()));
+            return Err(ExecutionError::IncompleteEvidence(
+                "numeric decision receipt is ambiguous or inconsistent".into(),
+            ));
         }
         return Ok(i64::from(number));
     }
@@ -1376,7 +1489,8 @@ fn greatest_shared_creature_type_count_for_filter(
     ctx: &ExecutionContext,
     filter_ctx: &FilterContext,
 ) -> i32 {
-    let subtype_sets = if let Some(snapshots) = value_tagged_snapshots_for_filter(game, filter, ctx) {
+    let subtype_sets = if let Some(snapshots) = value_tagged_snapshots_for_filter(game, filter, ctx)
+    {
         snapshots
             .iter()
             .filter(|snapshot| {
@@ -1501,9 +1615,7 @@ pub(crate) fn source_attachment_target_with_lki(
     if let Some(source) = game.object(source) {
         return source.attached_to;
     }
-    game.turn_store
-        .turn_history
-        .source_departure_snapshot(source)
+    game.source_departure_snapshot(source)
         .or_else(|| retained.filter(|snapshot| snapshot.object_id == source))
         .and_then(|snapshot| snapshot.attached_to)
 }
@@ -1583,18 +1695,11 @@ pub(crate) fn latest_zone_change_snapshot_for_object(
         .cloned()
 }
 
-fn source_lki_for_moved_current_object<'a>(
-    game: &GameState,
+fn source_characteristic_lki_for_execution<'a>(
+    game: &'a GameState,
     ctx: &'a ExecutionContext<'_>,
 ) -> Option<&'a ObjectSnapshot> {
-    let snapshot = ctx.source_snapshot.as_ref()?;
-    let current = game.object(ctx.source).or_else(|| {
-        game.find_object_by_stable_id(snapshot.stable_id)
-            .and_then(|id| game.object(id))
-    })?;
-    (snapshot.stable_id == current.stable_id
-        && (snapshot.object_id != current.id || snapshot.zone != current.zone))
-        .then_some(snapshot)
+    game.source_characteristic_lki_snapshot(ctx.source, ctx.source_snapshot.as_ref())
 }
 
 fn value_candidate_ids_for_filter(
@@ -1708,12 +1813,18 @@ fn value_tagged_snapshots_for_filter<'a>(
     filter: &crate::filter::ObjectFilter,
     ctx: &'a ExecutionContext,
 ) -> Option<Vec<&'a ObjectSnapshot>> {
-    if !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game)) {
+    if !crate::object_query::require_captured_public_collections(
+        game,
+        filter,
+        &ctx.filter_context(game),
+    ) {
         return Some(Vec::new());
     }
     // A public destination reference reads the exact still-present result,
     // rather than historical types of a card that has moved or turned face down.
-    if filter.match_captured_public_destination { return None; }
+    if filter.match_captured_public_destination {
+        return None;
+    }
     // A leave-the-battlefield event captures each attachment under
     // `attached_source` before state-based actions move unattached Auras to
     // their owners' graveyards.  Counts such as Hateful Eidolon's "each Aura
@@ -2235,7 +2346,9 @@ pub fn resolve_player_filter(
             .and_then(|players| players.first().copied())
             .ok_or_else(|| {
                 if tag.as_str() == ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG {
-                    return ExecutionError::IncompleteEvidence("missing damage-time source controller".into());
+                    return ExecutionError::IncompleteEvidence(
+                        "missing damage-time source controller".into(),
+                    );
                 }
                 ExecutionError::UnresolvableValue(format!(
                     "TaggedPlayer requires a tagged player for '{tag}'"
@@ -2261,8 +2374,12 @@ pub fn resolve_player_filter(
                 ExecutionError::UnresolvableValue("There is no active player".to_string())
             }),
         PlayerFilter::Defending => match ctx.defending_players(game)?.as_slice() {
-            [player] => Ok(*player), [] => Err(ExecutionError::InvalidTarget),
-            _ => Err(ExecutionError::UnresolvedPlayerDecision { player: ctx.controller, decision: "choose the defending player" }),
+            [player] => Ok(*player),
+            [] => Err(ExecutionError::InvalidTarget),
+            _ => Err(ExecutionError::UnresolvedPlayerDecision {
+                player: ctx.controller,
+                decision: "choose the defending player",
+            }),
         },
         PlayerFilter::IteratedPlayer => ctx
             .iteration
@@ -2360,7 +2477,9 @@ fn resolve_controller_of(
                 // controller, not the graveyard card's owner). Once it has
                 // left, the snapshot's last known controller stands
                 // (CR 608.2h).
-                let exact_attack_participant = ctx.triggering_event.as_ref()
+                let exact_attack_participant = ctx
+                    .triggering_event
+                    .as_ref()
                     .and_then(|event| event.downcast::<crate::events::CreatureAttackedEvent>())
                     .is_some_and(|attack| attack.attacker == snapshot.object_id);
                 let live_id = if exact_attack_participant {
@@ -2380,24 +2499,27 @@ fn resolve_controller_of(
                     })
                     .map(|object| game.controller_of(object));
                 let departure_controller = if exact_attack_participant {
-                    game.turn_store.turn_history.source_departure_snapshot(snapshot.object_id)
+                    game.source_departure_snapshot(snapshot.object_id)
                         .map(|departed| departed.controller)
-                } else { ctx
-                    .triggering_event
-                    .as_ref()
-                    .filter(|event| {
-                        matches!(
-                            event.kind(),
-                            crate::events::EventKind::PermanentTapped
-                                | crate::events::EventKind::PermanentUntapped
-                                | crate::events::EventKind::ObjectBecameAttached
-                                | crate::events::EventKind::ObjectBecameUnattached
-                                | crate::events::EventKind::PermanentPhasedIn
-                                | crate::events::EventKind::PermanentPhasedOut
-                        )
-                    })
-                    .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
-                    .map(|departed| departed.controller) };
+                } else {
+                    ctx.triggering_event
+                        .as_ref()
+                        .filter(|event| {
+                            matches!(
+                                event.kind(),
+                                crate::events::EventKind::PermanentTapped
+                                    | crate::events::EventKind::PermanentUntapped
+                                    | crate::events::EventKind::ObjectBecameAttached
+                                    | crate::events::EventKind::ObjectBecameUnattached
+                                    | crate::events::EventKind::PermanentPhasedIn
+                                    | crate::events::EventKind::PermanentPhasedOut
+                            )
+                        })
+                        .and_then(|_| {
+                            latest_zone_change_snapshot_for_object(game, snapshot.object_id)
+                        })
+                        .map(|departed| departed.controller)
+                };
                 if exact_attack_participant {
                     return live_controller.or(departure_controller).ok_or_else(||
                         ExecutionError::IncompleteEvidence(
@@ -2407,14 +2529,16 @@ fn resolve_controller_of(
                     .or(departure_controller)
                     .unwrap_or(snapshot.controller))
             } else if matches!(tag.as_str(), "triggering" | "it" | "__it__")
-                && let Some(attack) = ctx.triggering_event.as_ref()
+                && let Some(attack) = ctx
+                    .triggering_event
+                    .as_ref()
                     .and_then(|event| event.downcast::<crate::events::CreatureAttackedEvent>())
             {
                 // The trigger may be stacked after its exact attacker left.
                 // Its event identity still owns this reference even if no
                 // presentation tag could be populated during stacking.
                 game.controller_of_id(attack.attacker)
-                    .or_else(|| game.turn_store.turn_history.source_departure_snapshot(attack.attacker)
+                    .or_else(|| game.source_departure_snapshot(attack.attacker)
                         .map(|snapshot| snapshot.controller))
                     .ok_or_else(|| ExecutionError::IncompleteEvidence(
                         "attacking creature's controller requires its exact live incarnation or departure receipt".into()))
@@ -2939,9 +3063,15 @@ pub fn resolve_objects_for_effect_with_choice_description(
     choice_description: Option<String>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
-        && !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game))
+        && !crate::object_query::require_captured_public_collections(
+            game,
+            filter,
+            &ctx.filter_context(game),
+        )
     {
-        return Err(ExecutionError::IncompleteEvidence("public destination reference requires its producer collection".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "public destination reference requires its producer collection".into(),
+        ));
     }
     if !spec.is_target()
         && let ChooseSpec::Object(filter) = spec.base()
@@ -3627,14 +3757,29 @@ pub fn apply_to_selected_objects_with_choice_description(
         ObjectId,
     ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
-    apply_to_selected_objects_with_prepared(game, ctx, spec, result_policy, choice_description, None, apply)
+    apply_to_selected_objects_with_prepared(
+        game,
+        ctx,
+        spec,
+        result_policy,
+        choice_description,
+        None,
+        apply,
+    )
 }
 
 pub(crate) fn apply_to_selected_objects_with_prepared(
-    game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec,
-    result_policy: ObjectApplyResultPolicy, choice_description: Option<String>,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    result_policy: ObjectApplyResultPolicy,
+    choice_description: Option<String>,
     prepared: Option<Vec<ObjectId>>,
-    mut apply: impl FnMut(&mut GameState, &mut ExecutionContext, ObjectId) -> Result<bool, ExecutionError>,
+    mut apply: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext,
+        ObjectId,
+    ) -> Result<bool, ExecutionError>,
 ) -> Result<ObjectApplyResult, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(ObjectApplyResult {
@@ -3646,7 +3791,9 @@ pub(crate) fn apply_to_selected_objects_with_prepared(
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
-        let objects = if let Some(objects) = prepared { objects } else {
+        let objects = if let Some(objects) = prepared {
+            objects
+        } else {
             resolve_objects_for_effect_with_choice_description(game, ctx, spec, choice_description)?
         };
         if ctx.decision_maker.awaiting_choice() {
@@ -3764,9 +3911,15 @@ pub fn resolve_objects_from_spec(
     ctx: &ExecutionContext,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
-        && !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game))
+        && !crate::object_query::require_captured_public_collections(
+            game,
+            filter,
+            &ctx.filter_context(game),
+        )
     {
-        return Err(ExecutionError::IncompleteEvidence("public destination reference requires its producer collection".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "public destination reference requires its producer collection".into(),
+        ));
     }
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => resolve_objects_from_spec(game, spec, ctx),
@@ -4465,7 +4618,9 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::TaggedPlayer(tag) => resolve_tagged_players_from_context(game, ctx, tag)
             .ok_or_else(|| {
                 if tag.as_str() == ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG {
-                    return ExecutionError::IncompleteEvidence("missing damage-time source controller".into());
+                    return ExecutionError::IncompleteEvidence(
+                        "missing damage-time source controller".into(),
+                    );
                 }
                 ExecutionError::UnresolvableValue(format!(
                     "TaggedPlayer requires a tagged player for '{tag}'"

@@ -18,8 +18,8 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::lifecycle::{
-    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
-    create_replacement_additional_tokens, schedule_token_cleanup,
+    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry_with_outputs,
+    create_replacement_additional_tokens, schedule_token_cleanup_with_outputs,
 };
 
 /// Effect that creates a token copy of a permanent.
@@ -315,11 +315,12 @@ fn prepare_token_copy_proposal(
     let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
         snapshot.object_id
     } else {
-        let resolved = match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx) {
-            Ok(ids) => ids,
-            Err(ExecutionError::InvalidTarget) => Vec::new(),
-            Err(error) => return Err(error),
-        };
+        let resolved =
+            match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx) {
+                Ok(ids) => ids,
+                Err(ExecutionError::InvalidTarget) => Vec::new(),
+                Err(error) => return Err(error),
+            };
         match resolved.first() {
             Some(id) => *id,
             None => {
@@ -381,9 +382,8 @@ fn prepare_token_copy_proposal(
     if stored_snapshot.is_none()
         && let Some(target) = target_object.as_ref()
     {
-        stored_snapshot = Some(ObjectSnapshot::try_from_object_with_calculated_characteristics(
-            target, game,
-        )?);
+        stored_snapshot =
+            Some(ObjectSnapshot::try_from_object_with_calculated_characteristics(target, game)?);
     }
     let copy_snapshot = stored_snapshot.as_ref();
     if target_object.is_none() && copy_snapshot.is_none() {
@@ -597,6 +597,18 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         commit_token_copy_proposal(*self, game, ctx)
     }
     fn commit(
@@ -630,7 +642,10 @@ fn commit_token_copy_proposal(
     mut proposal: TokenCopyProposal,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     use crate::effects::SimultaneousEffectProposal;
     use crate::events::processing::PreparedTokenCreation;
     if proposal.prepared.is_none() {
@@ -638,7 +653,7 @@ fn commit_token_copy_proposal(
     }
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
-            EffectOutcome::count(0),
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
     let phase = proposal
@@ -651,7 +666,7 @@ fn commit_token_copy_proposal(
     })? {
         PreparedTokenCreation::Finished { outcome, programs } => {
             crate::effects::SimultaneousEffectCommit {
-                outcome,
+                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
                 completion: Some(super::lifecycle::token_instruction_completion(
                     proposal.instruction.take(),
                     Vec::new(),
@@ -677,7 +692,10 @@ fn commit_token_copy_original(
     ctx: &mut ExecutionContext,
     replacement: crate::events::CreateTokensEvent,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     let effect = &proposal.effect;
     let controller_id = replacement.controller;
     let token_preview = replacement
@@ -693,6 +711,7 @@ fn commit_token_copy_original(
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
     let mut lifecycle_children = Vec::new();
+    let mut entry_outputs = Vec::new();
 
     for index in 0..count {
         let id = game.new_object_id();
@@ -711,13 +730,14 @@ fn commit_token_copy_original(
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                EffectOutcome::count(0),
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             ));
         }
         let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(
             game,
             id,
             entry_result,
+            &mut entry_outputs,
             &mut entry_receipts,
         )?
         else {
@@ -731,7 +751,7 @@ fn commit_token_copy_original(
             .is_some_and(|obj| obj.zone == Zone::Battlefield)
         {
             let entered_is_creature = game.current_is_creature(entered_id);
-            let entry_observation = apply_token_battlefield_entry(
+            let entry_observation = apply_token_battlefield_entry_with_outputs(
                 game,
                 ctx,
                 entered_id,
@@ -749,7 +769,9 @@ fn commit_token_copy_original(
             );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    EffectOutcome::with_objects(Vec::new()),
+                    crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::with_objects(Vec::new()),
+                    ),
                 ));
             }
             if let Some(Some(target)) = proposal.original_attack_targets.get(index)
@@ -779,10 +801,11 @@ fn commit_token_copy_original(
         &mut events,
         &mut entry_receipts,
         &mut lifecycle_children,
+        &mut entry_outputs,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
-            EffectOutcome::count(0),
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
     created_ids.extend(additional_ids);
@@ -801,23 +824,36 @@ fn commit_token_copy_original(
                     game.turn.turn_number,
                 ));
             }
-            let cleanup =
-                schedule_token_cleanup(game, ctx, id, controller_id, proposal.cleanup.clone())?;
+            let cleanup = schedule_token_cleanup_with_outputs(
+                game,
+                ctx,
+                id,
+                controller_id,
+                proposal.cleanup.clone(),
+            )?;
             super::lifecycle::retain_token_child(&mut events, &mut lifecycle_children, cleanup);
         }
     }
-    let haste_recipients = if effect.has_haste && effect.haste_followup_reference_surface.is_some() {
+    let haste_recipients = if effect.has_haste && effect.haste_followup_reference_surface.is_some()
+    {
         created_ids.clone()
-    } else { Vec::new() };
+    } else {
+        Vec::new()
+    };
+    let mut outcome = super::lifecycle::compose_token_original(
+        EffectOutcome::with_objects(created_ids.clone())
+            .with_result_objects(created_ids)
+            .with_events(events),
+        lifecycle_children,
+    );
+    outcome.retain_published_references(entry_outputs);
     Ok(crate::effects::SimultaneousEffectCommit {
-        outcome: super::lifecycle::compose_token_original(
-            EffectOutcome::with_objects(created_ids.clone())
-                .with_result_objects(created_ids)
-                .with_events(events),
-            lifecycle_children,
-        ),
+        outcome,
         completion: Some(super::lifecycle::token_instruction_completion_with_haste(
-            proposal.instruction.take(), entry_receipts, programs, haste_recipients,
+            proposal.instruction.take(),
+            entry_receipts,
+            programs,
+            haste_recipients,
         )),
     })
 }

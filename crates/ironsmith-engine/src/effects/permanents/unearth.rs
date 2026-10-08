@@ -27,46 +27,52 @@ impl EffectExecutor for UnearthEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = execute_unearth(game, ctx);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            execute_unearth_with_outputs,
+        )
     }
 }
 
-fn execute_unearth(
+fn execute_unearth_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let source_id = ctx.source;
     let Some(source_obj) = game.object(source_id) else {
-        return Ok(EffectOutcome::target_invalid());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::target_invalid(),
+        ));
     };
     if source_obj.zone != Zone::Graveyard {
-        return Ok(EffectOutcome::target_invalid());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::target_invalid(),
+        ));
     }
 
     let move_to_battlefield = Effect::new(
         MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false).under_owner_control(),
     );
-    let move_outcome = execute_effect(game, &move_to_battlefield, ctx)?;
+    let move_outcome =
+        crate::effects::execute_effect_with_outputs(game, &move_to_battlefield, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
     let new_id = if let Some(id) = move_outcome
+        .outcome
         .instruction_result()
         .objects()
         .and_then(|objects| objects.first())
@@ -80,7 +86,7 @@ fn execute_unearth(
             events,
             execution_facts,
             instruction_result,
-        } = move_outcome;
+        } = move_outcome.outcome.clone();
         let status = if matches!(value, crate::effect::OutcomeValue::Objects(_)) {
             crate::effect::OutcomeStatus::TargetInvalid
         } else {
@@ -97,7 +103,10 @@ fn execute_unearth(
             execution_facts,
         );
         outcome.instruction_result = instruction_result;
-        return Ok(outcome);
+        return Ok(crate::effects::CompletedEffectOutputs::from_children(
+            [move_outcome],
+            |_| outcome,
+        ));
     };
     // Later clauses refer to the original arrival, never a successor
     // found by stable identity or an object created by a replacement.
@@ -108,7 +117,7 @@ fn execute_unearth(
     {
         return Ok(move_outcome);
     }
-    let primary = move_outcome.summary_projection();
+    let primary = move_outcome.outcome.summary_projection();
     let mut children = vec![move_outcome];
 
     // CR 702.84a gives the returned permanent haste without a duration.
@@ -121,9 +130,11 @@ fn execute_unearth(
     .with_source_type(EffectSourceType::Resolution {
         locked_targets: vec![new_id],
     });
-    children.push(haste_effect.execute_child(game, ctx)?);
+    children.push(haste_effect.execute_child_with_outputs(game, ctx)?);
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
 
     // "If it would leave the battlefield, exile it instead."
@@ -133,9 +144,12 @@ fn execute_unearth(
         WouldLeaveBattlefieldMatcher::new(ObjectFilter::specific(new_id)),
         ReplacementAction::ChangeDestination(Zone::Exile),
     );
-    children.push(ApplyReplacementEffect::one_shot(replacement).execute_child(game, ctx)?);
+    children
+        .push(ApplyReplacementEffect::one_shot(replacement).execute_child_with_outputs(game, ctx)?);
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
 
     // "Exile it at the beginning of the next end step."
@@ -146,12 +160,15 @@ fn execute_unearth(
         vec![new_id],
         PlayerFilter::Specific(ctx.controller),
     );
-    children.push(schedule.execute_child(game, ctx)?);
+    children.push(schedule.execute_child_with_outputs(game, ctx)?);
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
-    Ok(EffectOutcome::aggregate_with_primary_result(
-        primary, children,
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        children,
+        |children| EffectOutcome::aggregate_with_primary_result(primary, children),
     ))
 }
 #[cfg(test)]

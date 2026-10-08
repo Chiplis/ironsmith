@@ -1399,6 +1399,11 @@ export function usePeerLobby({
         if (reuseEmptyPreview) {
           recordPeerSyncPerf("submit_action:reuse_empty_preview", submitPerf);
         }
+        updateLocalActionProgress({
+          kind: "engine_work",
+          operation: "Validating action requirements",
+          detail: label || summarizePeerCommand(command)?.type || String(command?.type || "action"),
+        }, "engine_work", PROTOCOL_RESPONSE_TIMEOUT_MS);
         for (let pass = 0; pass < 256; pass++) {
           assertSubmissionActive();
           const refreshed = pass === 0 && reuseEmptyPreview

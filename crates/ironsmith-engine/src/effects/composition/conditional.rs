@@ -551,6 +551,20 @@ impl EffectExecutor for ConditionalEffect {
         controller: PlayerId,
         source: ObjectId,
     ) -> Option<ModalSpec> {
+        // Mode discovery also visits nonmodal effects while announcing a
+        // spell or trigger. A resolution-only condition may need receipts
+        // that do not exist yet; inspecting a nonmodal branch must not read it.
+        fn contains_modal(effect: &crate::effect::Effect) -> bool {
+            if effect.0.get_modal_spec().is_some() {
+                return true;
+            }
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| found |= contains_modal(child));
+            found
+        }
+        if !self.if_true.iter().chain(&self.if_false).any(contains_modal) {
+            return None;
+        }
         // Evaluate the condition at cast time to determine which branch to use
         let condition_result = evaluate_condition_simple(game, &self.condition, controller, source);
 

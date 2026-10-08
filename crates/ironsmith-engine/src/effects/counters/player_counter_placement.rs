@@ -2,7 +2,8 @@
 
 use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::{
-    CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint, ExecutionError, ResolvedTarget,
+    CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint, ExecutionError,
+    ResolvedTarget,
 };
 use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, MarkersChangedEvent, PutCountersEvent, downcast_event};
@@ -14,6 +15,37 @@ fn prevented() -> EffectOutcome {
     let mut outcome = EffectOutcome::prevented();
     outcome.value = OutcomeValue::Count(0);
     outcome
+}
+
+/// One owner for player counter eligibility. Zero placement is a successful
+/// no-op; missing recipients and locks retain their existing order and policy.
+pub(super) fn player_counter_request_outcome(
+    game: &GameState,
+    event: &Event,
+) -> Result<Option<EffectOutcome>, ExecutionError> {
+    let proposed = downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
+        ExecutionError::InternalError("player counter placement requires a counter event".into())
+    })?;
+    let Target::Player(player) = proposed.target else {
+        return Err(ExecutionError::InternalError(
+            "player counter placement requires a player".into(),
+        ));
+    };
+    if game.player(player).is_none() {
+        return Err(ExecutionError::PlayerNotFound(player));
+    }
+    if proposed.count == 0 {
+        return Ok(Some(EffectOutcome::count(0)));
+    }
+    if game
+        .turn_store
+        .turn_history
+        .player_counter_is_locked_this_turn(player, proposed.counter_type)
+        || (proposed.counter_type == CounterType::Poison && !game.can_get_poison_counters(player))
+    {
+        return Ok(Some(prevented()));
+    }
+    Ok(None)
 }
 
 pub(crate) fn execute_player_counter_placement(
@@ -44,32 +76,8 @@ pub(crate) fn execute_player_counter_placement_with_outputs(
                 EffectOutcome::count(0),
             ));
         }
-        let proposed = downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
-            ExecutionError::InternalError(
-                "player counter placement requires a counter event".into(),
-            )
-        })?;
-        let Target::Player(player) = proposed.target else {
-            return Err(ExecutionError::InternalError(
-                "player counter placement requires a player".into(),
-            ));
-        };
-        if game.player(player).is_none() {
-            return Err(ExecutionError::PlayerNotFound(player));
-        }
-        if proposed.count == 0 {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        if game
-            .turn_store
-            .turn_history
-            .player_counter_is_locked_this_turn(player, proposed.counter_type)
-            || (proposed.counter_type == CounterType::Poison
-                && !game.can_get_poison_counters(player))
-        {
-            return Ok(CompletedEffectOutputs::aggregate_only(prevented()));
+        if let Some(outcome) = player_counter_request_outcome(game, &event)? {
+            return Ok(CompletedEffectOutputs::aggregate_only(outcome));
         }
         let processed = process_trait_event_with_execution_context(game, event, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
@@ -238,6 +246,128 @@ pub(super) fn commit_player_counter_placement_with_outputs(
                 "player counter replacement suspended without a captured decision".into(),
             ))
         }
+    }
+}
+
+enum PlayerCounterInstructionState {
+    Selection,
+    Selected(Event),
+    Prepared {
+        event: Event,
+        placement: super::PreparedCounterPlacement,
+    },
+    Finished(EffectOutcome),
+    Preparing,
+}
+struct PlayerCounterInstruction {
+    effect: crate::effects::PlayerCountersEffect,
+    iterated_player: Option<crate::ids::PlayerId>,
+    state: PlayerCounterInstructionState,
+}
+impl std::fmt::Debug for PlayerCounterInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlayerCounterInstruction")
+            .field("effect", &self.effect)
+            .finish_non_exhaustive()
+    }
+}
+pub(crate) fn prepare_player_counter_instruction(
+    effect: crate::effects::PlayerCountersEffect,
+    ctx: &ExecutionContext,
+) -> Box<dyn crate::effects::SimultaneousEffectProposal> {
+    Box::new(PlayerCounterInstruction {
+        effect,
+        iterated_player: ctx.iteration.iterated_player,
+        state: PlayerCounterInstructionState::Selection,
+    })
+}
+impl crate::effects::SimultaneousEffectProposal for PlayerCounterInstruction {
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if ctx.decision_maker.awaiting_choice()
+            || !matches!(self.state, PlayerCounterInstructionState::Selection)
+        {
+            return Ok(());
+        }
+        let event = ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+            self.effect.selected_counter_event(game, ctx)
+        })?;
+        if let Some(event) = event {
+            self.state = PlayerCounterInstructionState::Selected(event);
+        }
+        Ok(())
+    }
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.prepare_selection(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let state = std::mem::replace(&mut self.state, PlayerCounterInstructionState::Preparing);
+        self.state = match state {
+            PlayerCounterInstructionState::Selected(event) => {
+                if let Some(outcome) = player_counter_request_outcome(game, &event)? {
+                    PlayerCounterInstructionState::Finished(outcome)
+                } else {
+                    let placement = ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+                        super::prepare_counter_placement(game, ctx, event.clone())
+                    })?;
+                    PlayerCounterInstructionState::Prepared { event, placement }
+                }
+            }
+            PlayerCounterInstructionState::Prepared { event, placement }
+                if placement.requires_replacement_input() =>
+            {
+                let placement = ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+                    super::prepare_counter_placement(game, ctx, event.clone())
+                })?;
+                PlayerCounterInstructionState::Prepared { event, placement }
+            }
+            other => other,
+        };
+        Ok(())
+    }
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        ctx.with_temp_iterated_player(self.iterated_player, |ctx| match self.state {
+            PlayerCounterInstructionState::Finished(outcome) => {
+                Ok(crate::effects::SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(outcome),
+                ))
+            }
+            PlayerCounterInstructionState::Prepared { placement, .. } => {
+                super::commit_prepared_counter_original_with_outputs(game, ctx, placement)
+            }
+            _ => Err(ExecutionError::InternalError(
+                "player counter instruction committed before selection and replacement preparation"
+                    .into(),
+            )),
+        })
+    }
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original(self, game, ctx)
     }
 }
 

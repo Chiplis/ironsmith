@@ -12,16 +12,18 @@ use crate::target::ChooseSpec;
 
 pub type IncubateEffect = ironsmith_core::IncubateEffect;
 
-fn execute_token_instruction(
+fn execute_token_instruction_with_outputs(
     effect: &IncubateEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let controller = resolve_player_filter(game, &effect.controller, ctx)?;
     let amount = resolve_value(game, &effect.amount, ctx)?.max(0) as u32;
     let count = resolve_value(game, &effect.count, ctx)?.max(0) as usize;
     if count == 0 {
-        return Ok(EffectOutcome::with_objects(Vec::new()));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::with_objects(Vec::new()),
+        ));
     }
     game.reserve_token_repetition_work(count)?;
     let (front, back) = incubator_token_definitions();
@@ -40,7 +42,7 @@ fn execute_token_instruction(
     let mut outcomes = super::resources::buffer(count)?;
     let mut created = Vec::new();
     for _ in 0..count {
-        let outcome = super::create_tokens_with_entry_counters(
+        let outcome = super::create_tokens_with_entry_counters_with_outputs(
             &request,
             game,
             ctx,
@@ -48,14 +50,21 @@ fn execute_token_instruction(
             Some((KeywordActionKind::Incubate, amount)),
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        created.extend_from_slice(outcome.instruction_result().output_objects());
+        created.extend_from_slice(outcome.outcome.instruction_result().output_objects());
         outcomes.push(outcome);
     }
-    Ok(EffectOutcome::aggregate_with_primary_result(
-        EffectOutcome::with_objects(created),
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
         outcomes,
+        |children| {
+            EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::with_objects(created),
+                children,
+            )
+        },
     ))
 }
 
@@ -65,9 +74,25 @@ impl EffectExecutor for IncubateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
-            execute_token_instruction(self, game, ctx)
-        })
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::lifecycle::execute_token_instruction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| execute_token_instruction_with_outputs(self, game, ctx),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

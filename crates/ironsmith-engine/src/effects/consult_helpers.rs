@@ -188,20 +188,31 @@ pub fn execute_library_consult_with_outputs(
                         .unwrap_or_default();
 
                     for object_id in top_to_bottom {
-                        let selected = ObjectSnapshot::from_object_id(game, object_id)
-                            .ok_or_else(|| ExecutionError::IncompleteEvidence(
-                                "consulted library card disappeared before its reveal".into()))?;
-                        let mut reveal = crate::effects::cards::reveal_objects(
-                            game, ctx, vec![selected], Some(player), "Reveal next consulted card",
+                        let selected =
+                            ObjectSnapshot::from_object_id(game, object_id).ok_or_else(|| {
+                                ExecutionError::IncompleteEvidence(
+                                    "consulted library card disappeared before its reveal".into(),
+                                )
+                            })?;
+                        let mut reveal = crate::effects::cards::reveal_objects_with_outputs(
+                            game,
+                            ctx,
+                            vec![selected],
+                            Some(player),
+                            "Reveal next consulted card",
                             reveal_context_amount,
                         )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(LibraryConsultResult::default());
                         }
-                        result.reveal_events.append(&mut reveal.events);
-                        result.operation_outcomes.push(CompletedEffectOutputs::aggregate_only(reveal));
-                        let object = game.object(object_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
-                            "consulted library card disappeared before its match decision".into()))?;
+                        result.reveal_events.append(&mut reveal.outcome.events);
+                        result.operation_outcomes.push(reveal);
+                        let object = game.object(object_id).ok_or_else(|| {
+                            ExecutionError::IncompleteEvidence(
+                                "consulted library card disappeared before its match decision"
+                                    .into(),
+                            )
+                        })?;
                         let snapshot = ObjectSnapshot::from_object(object, game);
                         let mana_value = object
                             .mana_cost
@@ -226,8 +237,6 @@ pub fn execute_library_consult_with_outputs(
                             break;
                         }
                     }
-
-
                 }
                 LibraryConsultMode::Exile => {
                     loop {

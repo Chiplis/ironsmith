@@ -5,6 +5,16 @@ use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub use ironsmith_core::TicketCountersEffect;
 
+fn ticket_counter_instruction(
+    effect: &TicketCountersEffect,
+) -> crate::effects::PlayerCountersEffect {
+    crate::effects::PlayerCountersEffect::new(
+        crate::object::CounterType::Named("ticket".into()),
+        effect.count.clone(),
+        effect.player.clone(),
+    )
+}
+
 impl EffectExecutor for TicketCountersEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -12,13 +22,26 @@ impl EffectExecutor for TicketCountersEffect {
 
     fn prepare_simultaneous_player_action(
         &self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        ticket_counter_instruction(self).prepare_simultaneous_player_action(game, ctx)
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        ticket_counter_instruction(self)
+            .prepare_replacement_draw_continuation_with_outputs(game, ctx)
     }
 
     fn execute(
@@ -26,12 +49,16 @@ impl EffectExecutor for TicketCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::PlayerCountersEffect::new(
-            crate::object::CounterType::Named("ticket".into()),
-            self.count.clone(),
-            self.player.clone(),
-        )
-        .execute_child(game, ctx)
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        ticket_counter_instruction(self).execute_child_with_outputs(game, ctx)
     }
 }
 

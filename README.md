@@ -2,8 +2,9 @@
 
 Ironsmith is a Magic: The Gathering rules engine that runs entirely in your
 browser. It reads a card's Oracle text, compiles it into executable rules, and
-plays full games with those rules, including multiplayer games of up to four
-players. No game server is involved at any point.
+plays full games with those rules. The default table is a local 1v1 game;
+multiplayer lobbies also support games of up to four players. No game server
+is involved at any point.
 
 **Play the official hosted version at <https://chiplis.com/ironsmith>.**
 
@@ -69,41 +70,47 @@ guarantee (see [Honest limits](#honest-limits)). The full explanation is in
 
 1. Open <https://chiplis.com/ironsmith>. A progress bar appears while the
    engine downloads and loads the card catalogue.
-2. You start at a table with a **randomly generated four-player board**:
-   Alice, Bob, Charlie and Diana, each with a random mix of cards in play.
+2. You start at a table with a **randomly generated 1v1 board**:
+   Alice and Bob each use a supported Modern deck from the lobby catalog.
+   Cards from those decks form a position already in progress, with the
+   remaining cards in each library (see [Random Game](#random-game)).
    There is no main menu, so you can start playing right away.
 3. From here you can:
-   - **Play the board as it is.** Use the **Playing as** menu in the top bar
-     to switch seats. Only the seat you are viewing can act, so you play every
-     side yourself. This is good for testing interactions, goldfishing, or
-     playing hotseat at one computer. There are no AI opponents.
+   - **Play the board as it is.** Use **Playing as** in the player header or
+     turn status to switch seats. You control that seat; the other seat
+     automatically passes priority and answers required decisions. You can
+     switch sides to test interactions, goldfish, or play hotseat.
    - **Load real decks** with **Load Decks**, then **Test in game**.
    - **Roll a new random board** with **Random Game**.
    - **Build an exact position** with **Puzzle Setup** and share it as a link.
    - **Play people online** with **Create Lobby** (see
      [Multiplayer](#multiplayer)).
 
-The table tools row holds these buttons. If it is hidden, click **Show table
-tools**.
+Open **Menu** beside your player information to find **Table actions**,
+including deck loading, random games, puzzles, sharing, and lobbies. The
+desktop player header also has quick **Add** and **Compile** controls.
 
 ## The table
 
 | Area | What it shows |
 |---|---|
-| **Top bar** | The phase track, plus "Turn N • Active X • Priority Y • Playing as" so you always know whose turn it is and who holds priority. The **Playing as** seat selector is here, along with icons for the repository link, **Settings**, **Open Log** and **Debug**. |
+| **Turn controls** | On desktop, the phase track and current action sit between the battlefields. The status shows the turn, active player, and priority holder, or the player currently making a decision. Compact layouts move these controls into a smaller toolbar. |
 | **Opponents** (top) | Each opponent's battlefield, life total, and zone piles. |
 | **You** (bottom) | Your battlefield, hand, life total, and mana pool. |
+| **Player header** | **Playing as** switches seats in local games. The header also provides **Menu**, chat, and card setup shortcuts on desktop. |
 | **Zone piles** | **GY** (graveyard), **Exile**, **CZ** (command zone) and **Library**. Click a pile to open it. When a pile holds legal targets it grows and highlights. |
-| **Stack rail** | The spells and abilities waiting to resolve, newest on top. While you are putting triggers on the stack, it previews them before they land. |
-| **Inspector** (right) | Hover over or click any card to see a large view: rules text, counters, attachments, and buttons for its activated abilities. Hover a keyword or mana symbol for its rules explanation. Cards appear in the printed frame of the language you have chosen when that printing exists. |
-| **Game Log** | Opened from the top bar. Lists every event, with **Show system events** for engine-level detail. |
+| **Stack rail** | Beside the zone piles on desktop, it shows spells and abilities waiting to resolve, newest on top. It also previews pending triggers. Select an entry to inspect it and its targets. |
+| **Inspector** | Hover over or click a card to see its rules text, counters, attachments, and activated abilities. The detail panel adapts to the available space; mobile uses a sheet. Hover a keyword or mana symbol for its rules explanation. Cards use the translated printing when one exists. |
+| **Game Log** | Open **Menu → Turn controls → Open Log**. Lists every event, with **Show system events** for engine-level detail. |
 
 ## Playing a game
 
 ### Priority and the main button
 
-The **main action strip** at the bottom of the screen always holds the one
-thing that moves the game forward.
+The **main action strip** holds the action that moves the game forward.
+On desktop it is docked with the turn controls between the battlefields;
+mobile places it beside your player controls. Required choices expand into
+decision panels with the relevant cards or options.
 
 - The main button passes priority, and its label says where the game goes next:
   **Main I**, **Attackers**, **Blockers**, **Damage**, **Main II**,
@@ -114,21 +121,24 @@ thing that moves the game forward.
   in it.
 - **Hold priority** keeps priority after you cast something, so you can respond
   to your own spell.
+- **Auto-pass**, beside the turn controls, automatically presses **Resolve** whenever
+  you have priority with something on the stack. It stays enabled until you turn
+  it off and pauses for choices made during resolution.
 - At the start of a game, choose **Keep hand** or **Mulligan**.
 
 ### Auto-pass
 
-Turn on **Auto-pass priority** (in the toolbar or in Settings) to skip moments
-where you have nothing to do. Use **Pause auto-pass on** to choose when to stop
-anyway:
+Use **Auto-pass** at the table, or **Auto-pass priority** under **Menu →
+Turn controls**, to automatically pass your priority while the stack is not
+empty. It pauses for your targeting, payment, and resolution choices.
 
-- No extra pauses
-- Available actions
-- The stack
-- Main phases
-- Combat
-- Ending steps
-- Every priority
+In local games, the other seats automatically answer their own required
+decisions: object and target selections, modes and ordering, counter
+allocations, numbers, names, mana payments, and combat declarations. The
+engine checks constrained selections, including linked targets, partial
+completion, and mandatory attacks or blocks. This keeps effects moving while
+leaving your choices for you to make. Automatic responses are for local play;
+online opponents make their own decisions.
 
 ### Casting spells and activating abilities
 
@@ -167,6 +177,15 @@ and after paying. You can adjust the plan:
   choose **Declare no attackers**.
 - **Blocking:** select a blocker and then the attacker it blocks.
 
+### Effect decisions
+
+When a spell or ability needs a choice, its decision panel shows the legal
+objects, modes, or input fields. You can select relevant cards directly on
+the table or from an opened zone pile. Selection counts show the required
+range; counter allocations use an amount for each counter type. Number and
+card-name choices provide their own input fields.
+Submit the choice to continue resolving the effect.
+
 ### Ordering choices
 
 When several of your triggers happen at once, **Order In Stack** lets you
@@ -175,10 +194,14 @@ apply to one event, you pick the order with **Apply First**.
 
 ## Loading decks
 
-Click **Load Decks**. The screen walks through **Load Decks → Configure →
-Start**.
+Choose **Menu → Table actions → Load Decks**. The catalog and player deck
+editor share one screen, with **Load Decks → Configure → Start** showing the
+workflow.
 
-- **Players:** choose 2–4 players and give each one a decklist.
+- **Players / deck assignment:** select the seat to edit, then paste a list or
+  use a catalog deck. The editor offers ×1, ×2, and, when four seats are
+  available, ×4. Editing one deck still starts a two-player local test;
+  unassigned seats retain their existing decks.
 - **Paste a list** in MTGO or Arena format:
 
   ```text
@@ -195,21 +218,25 @@ Start**.
   - Lines starting with `//` or `#` are ignored.
   - Set codes and collector numbers are optional. When present, they choose
     which printing is shown.
-- **Browse decks:** recent competitive decklists for Modern, Pioneer,
-  Standard, Legacy and Pauper.
+- **Browse decks:** competitive decklists for Standard, Pioneer, Modern,
+  Legacy, Vintage, Pauper, and Commander.
+  - Featured decks highlight recent major events.
   - Search by deck name, archetype, card, or event.
   - Filter by colour, using "Includes" or "Only these".
   - Sort by most recent, best placement, or most played.
   - Open a collection: **Last major events**, **Last 20 events**,
     **Mono-color**, or **My decks**.
   - **Use** loads a deck into the selected seat. **Copy MTGO** copies it as
-    text.
+    text. The editor shows main-deck and sideboard counts, with **Copy** and
+    **Clear** controls for each seat.
 - **Save configuration** stores a named set of decks for this browser
   session.
 
 When the decks are ready:
 
-- **Test in game** starts a local game with them.
+- **Test in game** loads the decks into a local test position with cards
+  already in play. It can load supported cards from a partially supported
+  list and reports the omissions.
 - **Lobby and share** opens a multiplayer lobby with these decks already
   assigned.
 
@@ -256,16 +283,24 @@ set up a board for testing an interaction.
 
 ### Random Game
 
-**Random Game** creates a new board from options you set:
+**Random Game** creates a **1v1 position from two complete lobby catalog
+decks**. Choose **Format**, **Starting life**, and an optional **Seed**, then
+click **Generate**. Modern and 20 life are the defaults; choosing Commander
+sets 40 life while keeping the random game 1v1.
 
-- player count, starting life, and a seed you can reuse;
-- how many cards and basic lands go in each zone;
-- cards that are always on your battlefield;
-- card types and colours to include;
-- a mana-value range;
-- **Min fidelity**, a minimum compilation-quality score for the cards it
-  picks;
-- options for duplicates and legendary permanents.
+Only decks whose entire main deck and commanders are supported and meet the
+**Card fidelity threshold** in Table Settings are eligible. Each position
+moves existing card copies into the battlefield, hand, and graveyard; all
+remaining main-deck cards stay in the library, and commanders go in the
+command zone. Sideboards stay out of the position. The battlefield uses up
+to four lands and three affordable creatures or artifacts, avoids duplicate
+legendary permanents, and deals up to seven cards into each hand.
+
+These are generated test positions, rather than replays of earlier turns.
+Reusing a seed with the same catalog and settings reproduces the selection.
+If only one deck qualifies, both seats use that deck. If none qualify,
+generation reports an error; try a different format or fidelity threshold.
+The sheet shows collection progress, and closing it cancels generation.
 
 ---
 
@@ -575,20 +610,27 @@ The design and protocol are described in full in
 
 ## Settings
 
-The cog in the top bar opens **Table Settings**.
+**Menu** in the player header opens **Table Settings**. Compact and mobile
+layouts use the menu button in their toolbar or floating overlay.
 
 - **Display:** interface language (English or Español). Card names, text, and
   images switch to the translated printing when one exists.
-- **Appearance:**
+- **Table Theme:**
   - interface font;
   - player accent colour;
   - **Card fidelity threshold**, the minimum compilation-quality score a card
-    needs to be offered in card pickers.
+    needs to be offered in card pickers. Random games require every card in a
+    selected deck to meet this threshold.
 - **Setup:** player names, starting life, **Load a fixed board** (start from a
   preset instead of a random board), **Reset Match**, and shortcuts to deck
   loading, puzzles, and lobbies.
-- **Gameplay Controls:** auto-pass options and **Debug**. Debug mode adds
+- **Turn controls:** **Auto-pass priority**, **Open Log**, and **Debug**. Debug mode adds
   similarity scores and raw compiled definitions to the inspector.
+- **Table actions / Shortcuts:** deck loading, random games, puzzles, lobby
+  tools, match verification, and diagnostics. The shortcuts shown depend on
+  the layout and whether a match is active.
+- **Session:** the current seat, compiled card count, lobby status, and
+  repository link.
 - **Diagnostics:** engine timings, peer latency, and recent actions and events,
   with **Copy report** and **Download report** for bug reports.
 
@@ -608,7 +650,7 @@ The mobile layout has:
 - a "Your zones" tray;
 - a card inspector sheet.
 
-Long-press a player bar or the stack to see more detail. A floating cog holds
+Long-press a player bar or the stack to see more detail. A floating menu holds
 settings and quick shortcuts.
 
 ## Keyboard reference
@@ -631,6 +673,7 @@ You need a Rust toolchain installed through `rustup`, Python 3, Node, and
 
 ```sh
 ./rebuild-wasm.sh
+./tools/deck-catalog/sync-all.sh modern
 cd web/ui && pnpm install && pnpm dev
 ```
 
@@ -644,8 +687,12 @@ take a while:
 - installs the `wasm32-unknown-unknown` target and the pinned `wasm-bindgen`
   CLI if they are missing.
 
-Later runs only compile cards the registry doesn't have yet.
-`./rebuild-wasm.sh --release` also runs the optimiser over the WASM.
+Later runs only compile cards the registry doesn't have yet. The default build
+uses the fast-to-compile `wasm-release` profile, which leaves several engine
+crates at Rust optimization level zero. Use `./rebuild-wasm.sh --release` for
+gameplay performance measurements and deployment: it selects `wasm-dist`, with
+size optimization and link-time optimization. Binaryen optimization runs by
+default in both modes, so it does not make their Rust build profiles equivalent.
 
 The engine bundles the whole card catalogue as indexed, Brotli-compressed
 chunks: compiled definitions, source text, aliases, and metadata. Add Card,
@@ -688,22 +735,39 @@ cargo run -p ironsmith-cli --bin ironsmith
 
 The deck browser reads a generated catalog under `catalog/`. It isn't
 committed: `catalog/` and its copy at `web/ui/public/catalog/` are both
-gitignored. Without a catalog, the app builds and runs normally, and the deck
-browser just says no catalog was downloaded.
+gitignored. The same catalog supplies the startup board and **Random Game**.
+A build can succeed without it, but catalog browsing and random board
+generation need downloaded decks. For a new checkout, sync at least Modern
+before starting the default random table:
+
+```sh
+./tools/deck-catalog/sync-all.sh modern
+```
+
+`pnpm dev` and `pnpm build` copy the catalog into frontend assets. To use the
+table without a catalog, enable **Load a fixed board** in an existing session
+or open a shared puzzle link.
 
 - The browser loads `catalog/<format>/index.json` and a search index first.
-- It fetches `details/<deck-id>.json` only when you select or copy a deck.
+- The deck browser fetches `details/<deck-id>.json` when you select or copy
+  a deck. Random generation also fetches candidate decks to check that their
+  complete inventories are supported.
 - Players' browsers never contact MTGTop8 directly.
 
 The synchronizer in `tools/deck-catalog/`:
 
-- fetches the newest events and a small mono-colour sample, waiting 750 ms
-  between requests;
+- supports Commander (multiplayer cEDH), Standard, Vintage, Legacy, Pauper,
+  Pioneer, and Modern;
+- fetches the newest events and a mono-colour sample, then paginates older
+  events until each format has at least 500 usable saved decks;
+- spaces MTGTop8 requests at least 750 ms apart;
+- enriches card metadata from the repo's Scryfall `cards.json` and local card
+  artifacts without requiring Scryfall API calls;
 - merges new decks into the existing catalog without deleting older ones, so
   history builds up over repeated runs.
 
 ```sh
-# Refresh Modern, Pioneer and Standard (or name formats: ./tools/deck-catalog/sync-all.sh legacy pauper)
+# Download at least 500 decks per format (or select formats: ./tools/deck-catalog/sync-all.sh legacy pauper)
 ./tools/deck-catalog/sync-all.sh
 
 # Or a single bounded run
@@ -714,8 +778,17 @@ node tools/deck-catalog/sync.mjs --format modern --page 0 --events 5 --limit 24 
 Useful options:
 
 - `--dry-run` fetches without writing anything.
+- `--metadata-network` explicitly enables Scryfall API fallback for cards
+  missing from the local datasets.
 - `--output <dir>` writes somewhere other than `catalog/`.
-- `--page N` fetches older history.
+- `--page N` fetches older history (MTGTop8 uses page 2 for the second page).
+- Without `--meta`, the source's all-decks filter is discovered for that format.
+- `sync-all.sh` accepts `DECK_CATALOG_MIN_DECKS` (default 500),
+  `DECK_CATALOG_MAX_PAGES` (default 100), and `DECK_CATALOG_OUTPUT`.
+  It checks usable detail files, preserves partial downloads, and exits nonzero
+  if any format falls short. Reruns skip already-saved history decks.
+- `sync-all.sh` copies the generated catalog into the frontend after syncing;
+  a custom `DECK_CATALOG_OUTPUT` leaves frontend assets untouched.
 - `tools/deck-catalog/enrich.mjs [--offline]` recomputes colours, mana
   profiles, and art cards for decks already downloaded.
 

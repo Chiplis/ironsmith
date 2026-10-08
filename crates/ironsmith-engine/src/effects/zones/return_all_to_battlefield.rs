@@ -30,6 +30,15 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let objects = resolve_objects_from_spec(game, &ChooseSpec::all(self.filter.clone()), ctx)?;
         commit_return_all(self, objects, game, ctx, false).map(|commit| commit.outcome)
     }
@@ -46,6 +55,17 @@ impl crate::effects::SimultaneousEffectProposal for ReturnAllProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         commit_return_all(&self.effect, self.objects, game, ctx, true)
     }
     fn commit(
@@ -53,7 +73,8 @@ impl crate::effects::SimultaneousEffectProposal for ReturnAllProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        commit_return_all(&self.effect, self.objects, game, ctx, false).map(|commit| commit.outcome)
+        commit_return_all(&self.effect, self.objects, game, ctx, false)
+            .map(|commit| commit.outcome.into_outcome())
     }
 }
 fn commit_return_all(
@@ -62,14 +83,19 @@ fn commit_return_all(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     defer_additions: bool,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     use crate::effects::SimultaneousEffectCommit;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        return Ok(SimultaneousEffectCommit::finished(
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     }
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let instruction = (|| -> Result<SimultaneousEffectCommit, ExecutionError> {
+    let instruction = (|| -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
         let mut entries = Vec::new();
         for object_id in objects {
             let options = match effect.battlefield_controller {
@@ -95,7 +121,7 @@ fn commit_return_all(
             .iter()
             .map(|(id, options, _)| (*id, options.clone()))
             .collect();
-        super::execute_battlefield_entries(
+        super::execute_battlefield_entries_with_outputs(
             game,
             ctx,
             requests,
@@ -122,19 +148,25 @@ fn commit_return_all(
                         }
                     }
                 }
-                Ok(EffectOutcome::count(returned_ids.len() as i64)
-                    .with_result_objects(returned_ids)
-                    .with_affected_object_memory(affected_memory))
+                Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(returned_ids.len() as i64)
+                        .with_result_objects(returned_ids)
+                        .with_affected_object_memory(affected_memory),
+                ))
             },
         )
     })();
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || instruction.is_err() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok());
         context_checkpoint.restore(ctx);
     }
     if pending {
-        return instruction.map(|_| SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        return instruction.map(|_| {
+            SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            )
+        });
     }
     instruction
 }

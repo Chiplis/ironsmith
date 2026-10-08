@@ -18,52 +18,97 @@ impl EffectExecutor for LookAtTopCardsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if !self.reveal || ctx.iteration.iterated_player.is_none() { ctx.clear_object_tag(self.tag.as_str()); }
-        let Some(player) = game.player(player_id) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-        let top_cards: Vec<_> = player.library.iter().rev().take(count).copied().collect();
-        if top_cards.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                if !self.reveal || ctx.iteration.iterated_player.is_none() {
+                    ctx.clear_object_tag(self.tag.as_str());
+                }
+                let Some(player) = game.player(player_id) else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+                if count == 0 {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-        let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
-        let viewers = game.private_information_viewers_for(viewer, crate::zone::Zone::Library);
-        game.hydrate_verified_library_replay_view(&top_cards, &viewers, self.reveal);
-        let snapshots: Vec<ObjectSnapshot> = top_cards
-            .iter()
-            .filter_map(|&id| {
-                game.object(id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game))
-            })
-            .collect();
-        if snapshots.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+                let top_cards: Vec<_> = player.library.iter().rev().take(count).copied().collect();
+                if top_cards.is_empty() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-        if self.reveal {
-            let outcome = super::reveal_objects(game, ctx, snapshots, Some(player_id),
-                "Reveal cards from the top of a library", None)?;
-            if !ctx.decision_maker.awaiting_choice() {
-                ctx.tag_objects_unique(self.tag.clone(), outcome.chosen_object_memory().unwrap_or_default().to_vec());
-            }
-            Ok(outcome)
-        } else {
-            let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
-            let observed = super::look_at_cards(game, ctx, viewer, player_id,
-                crate::zone::Zone::Library, &top_cards, "Look at cards from the top of a library");
-            ctx.remember_face_down_exile_viewers(&top_cards, viewer);
-            ctx.set_tagged_objects(self.tag.clone(), snapshots);
-            Ok(observed)
-        }
-        })
+                let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
+                let viewers =
+                    game.private_information_viewers_for(viewer, crate::zone::Zone::Library);
+                game.hydrate_verified_library_replay_view(&top_cards, &viewers, self.reveal);
+                let snapshots: Vec<ObjectSnapshot> = top_cards
+                    .iter()
+                    .filter_map(|&id| {
+                        game.object(id)
+                            .map(|obj| ObjectSnapshot::from_object(obj, game))
+                    })
+                    .collect();
+                if snapshots.is_empty() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                if self.reveal {
+                    let outcome = super::reveal_objects_with_outputs(
+                        game,
+                        ctx,
+                        snapshots,
+                        Some(player_id),
+                        "Reveal cards from the top of a library",
+                        None,
+                    )?;
+                    if !ctx.decision_maker.awaiting_choice() {
+                        ctx.tag_objects_unique(
+                            self.tag.clone(),
+                            outcome
+                                .outcome
+                                .chosen_object_memory()
+                                .unwrap_or_default()
+                                .to_vec(),
+                        );
+                    }
+                    Ok(outcome)
+                } else {
+                    let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
+                    let observed = super::look_at_cards_with_outputs(
+                        game,
+                        ctx,
+                        viewer,
+                        player_id,
+                        crate::zone::Zone::Library,
+                        &top_cards,
+                        "Look at cards from the top of a library",
+                    )?;
+                    ctx.remember_face_down_exile_viewers(&top_cards, viewer);
+                    ctx.set_tagged_objects(self.tag.clone(), snapshots);
+                    Ok(observed)
+                }
+            },
+        )
     }
 
     fn is_read_only_simultaneous_player_action(&self) -> bool {

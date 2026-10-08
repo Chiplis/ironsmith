@@ -57,7 +57,7 @@ export default function Shell() {
   const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
   const syncedLobbyUrlRef = useRef("");
   const [playerNames, setPlayerNames] = useState(
-    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || "Alice,Bob,Charlie,Diana"
+    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || "Alice,Bob"
   );
 
   useEffect(() => {

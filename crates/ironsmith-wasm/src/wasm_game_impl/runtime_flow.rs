@@ -1,3 +1,15 @@
+fn runtime_execution_error(message: &str) -> JsValue {
+    #[cfg(target_arch = "wasm32")]
+    {
+        JsValue::from_str(message)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = message;
+        JsValue::NULL
+    }
+}
+
 // Counter quantities are sparse: aggregate limits do not depend on pointer
 // width, and the selected kind order reaches the owning executor unchanged.
 fn validate_counter_allocations(
@@ -308,7 +320,7 @@ impl WasmGame {
                     let runner = self.runner.as_mut().unwrap();
                     runner
                         .advance(&mut self.game, &mut self.trigger_queue)
-                        .map_err(|e| JsValue::from_str(&format!("{e}")))?
+                        .map_err(|e| runtime_execution_error(&format!("{e}")))?
                 };
                 perf.runner_advance_ms += runner_advance_started_at.elapsed_ms();
 
@@ -540,12 +552,34 @@ impl WasmGame {
         pending_ctx: DecisionContext,
         command: UiCommand,
     ) -> Result<JsValue, JsValue> {
-        self.apply_runner_decision(pending_ctx, command)?;
+        // The routed dispatcher owns the savepoint for this path, including
+        // snapshot construction; avoid taking a second deep checkpoint here.
+        self.apply_runner_decision_inner(pending_ctx, command)?;
         self.snapshot()
     }
 
     /// Apply the same validated runner command without constructing a JS snapshot.
+    #[cfg(test)]
     pub(super) fn apply_runner_decision(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<(), JsValue> {
+        let before = RuntimeSavepoint::capture(self);
+        let retry_context = pending_ctx.clone();
+        let result = self.apply_runner_decision_inner(pending_ctx, command);
+        if result.is_err() {
+            // Validation in the runner can fail after consuming the response,
+            // or after tapping attackers and queueing their triggers. Restore
+            // the complete runtime, not just the prompt shown by the UI.
+            before.restore(self);
+            self.pending_decision = Some(retry_context);
+            self.runner_pending_decision = true;
+        }
+        result
+    }
+
+    fn apply_runner_decision_inner(
         &mut self,
         pending_ctx: DecisionContext,
         command: UiCommand,
@@ -1335,7 +1369,7 @@ impl WasmGame {
                 perf.outcome_kind = "error".to_string();
                 perf.total_ms = total_started_at.elapsed_ms();
                 self.last_replay_execution_perf = Some(perf);
-                Err(JsValue::from_str(&format!("dispatch failed: {e}")))
+                Err(runtime_execution_error(&format!("dispatch failed: {e}")))
             }
         }
     }

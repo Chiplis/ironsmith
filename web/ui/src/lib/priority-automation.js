@@ -121,13 +121,9 @@ export function buildMultiplayerSmartAutoPass({
     if (perspective !== null && activePlayer === perspective) {
       return { command: null, holdReason: LOCAL_EMPTY_STACK_HOLD_REASON, passAction };
     }
-    // The first deferred snapshot only contains Pass priority. Passing here
-    // would skip the opponent-turn casting window before the hand can light up.
-    if (decision.analysis_complete === false) {
-      return { command: null, holdReason: "checking playable actions", passAction };
-    }
-    // Playable-action holds are handled by priorityHoldReason above according
-    // to holdRule; they must not override an explicit "never" hold setting.
+    // priorityHoldReason already applies the selected pause policy. Only
+    // "if_actions" needs card analysis; waiting here invents an extra hold
+    // that can strand every unpaused phase on the opponent's turn.
     return {
       command: priorityCommandForAction(passAction),
       holdReason: null,

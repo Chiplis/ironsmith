@@ -21,7 +21,7 @@ const built = await stat(path.join(CARDS_DIR, "index.json")).then(() => true, ()
 
 /** Read the generated card assets straight off disk, as the browser would over HTTP. */
 const fileFetch = async (url) => {
-  const file = path.join(CARDS_DIR, String(url).split("/cards/")[1]);
+  const file = path.join(CARDS_DIR, "..", new URL(url).pathname);
   try {
     const body = await readFile(file, "utf8");
     return { ok: true, json: async () => JSON.parse(body) };
@@ -30,7 +30,7 @@ const fileFetch = async (url) => {
   }
 };
 
-test("startup samples the full catalogue for hands, libraries and board zones", { skip: !built }, async () => {
+test("startup uses complete supported lobby decks for a 1v1 board", { skip: !built }, async () => {
   const names = ["Alice", "Bob", "Charlie", "Diana"];
   const requested = new Set();
   const fetchImpl = async (url) => {
@@ -43,28 +43,22 @@ test("startup samples the full catalogue for hands, libraries and board zones", 
   const second = await buildRandomStartingBoard(names, 25, 96, {
     rng: createSeededRng("another-startup"), fetchImpl,
   });
-  assert.deepEqual(first.players.map((player) => player.name), names);
-  assert.ok(first.players.every((player) => player.life === 25));
-  assert.ok(requested.has("http://localhost/cards/index.json"));
-  const index = await fileFetch("http://localhost/cards/index.json").then((response) => response.json());
-  const catalog = new Map(index.cards.map((card) => [card.name, card]));
-  const basics = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]);
-  const uniqueNonbasics = new Set();
-  for (const [index, player] of first.players.entries()) {
-    for (const zone of ["battlefield", "hand", "library", "graveyard", "exile"]) {
-      assert.ok(player.zones[zone].length > 0, `${zone} is populated`);
-      assert.notDeepEqual(player.zones[zone], second.players[index].zones[zone], `${zone} changes on each load`);
-      for (const name of player.zones[zone]) {
-        assert.ok(catalog.has(name), `${name} comes from the full catalogue`);
-        if (!basics.has(name) && name !== "Omniscience") {
-          uniqueNonbasics.add(name);
-          assert.ok(catalog.get(name).score >= 0.96, `${name} meets the fidelity setting`);
-        }
-      }
+  assert.deepEqual(first.players.map(player => player.name), names.slice(0, 2));
+  assert.ok(first.players.every(player => player.life === 25));
+  assert.ok(requested.has("http://localhost/catalog/modern/index.json"));
+  assert.notDeepEqual(first, second);
+  const index = await fileFetch("http://localhost/cards/index.json").then(response => response.json());
+  const cards = new Map(index.cards.map(card => [card.name, card]));
+  for (const player of first.players) {
+    assert.equal(player.zones.hand.length, 7);
+    assert.ok(player.zones.library.length >= 40);
+    assert.deepEqual(player.zones.exile, []);
+    assert.deepEqual(player.zones.command, []);
+    for (const name of Object.values(player.zones).flat()) {
+      assert.ok(cards.has(name), `${name} is supported`);
+      assert.ok(cards.get(name).score >= .96, `${name} meets the fidelity setting`);
     }
-    assert.ok(first.players[0].zones.hand.includes("Sphinx of Foresight"), "the local opening hand contains its promised real card");
   }
-  assert.ok(uniqueNonbasics.size > 30, "startup is not limited to the old small card pool");
 });
 
 test("a table generated from the real card assets is one the engine can be handed", { skip: !built, timeout: 120000 }, async () => {

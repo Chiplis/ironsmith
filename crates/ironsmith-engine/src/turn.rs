@@ -659,9 +659,18 @@ fn execute_untap_step_inner(
     // Freeze which existing exact restrictions this completed step consumes.
     // Replacement additions during untapping cannot create or retarget one of
     // these next-step occurrences retroactively.
-    let consumed_untap_restrictions = game.effect_store.restriction_effects.iter()
-        .filter(|effect| matches!(effect.duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep)
-            && effect.untap_step_player(game).is_some_and(|player| active_players.contains(&player)))
+    let consumed_untap_restrictions = game
+        .effect_store
+        .restriction_effects
+        .iter()
+        .filter(|effect| {
+            matches!(
+                effect.duration,
+                Until::ControllersNextUntapStep | Until::YourNextUntapStep
+            ) && effect
+                .untap_step_player(game)
+                .is_some_and(|player| active_players.contains(&player))
+        })
         .map(|effect| effect.timestamp)
         .collect::<std::collections::HashSet<_>>();
     let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
@@ -773,32 +782,78 @@ fn execute_untap_step_inner(
         return Ok(());
     }
 
-    // Untapping itself never changes continuous-control eligibility.
+    // Every replacement choice precedes the simultaneous original untaps.
+    // CR 502.3 / 122.1d includes stun-counter replacement. There is no
+    // priority here; published events wait for the upkeep trigger drain.
     let before = crate::events::other::before_tap_state_snapshots(game);
-    let mut untap_events = Vec::new();
+    let mut prepared = Vec::new();
     for id in permanents {
-        // Only untap if the permanent doesn't have DoesntUntap
-        if should_untap.contains(&id) {
-            // CR 502.3 untaps go through replacement effects, including the
-            // stun-counter rule (CR 122.1d).
-            // CR 502.3 / 603.2: the permanent "becomes untapped" (Inspired).
-            // No player gets priority in the untap step, so the event waits
-            // for the upkeep trigger drain (CR 502.4).
-            let actor = before
-                .get(&id)
-                .map(|snapshot| snapshot.controller)
-                .unwrap_or(game.turn.active_player);
-            let mut ctx = crate::effects::ExecutionContext::new(id, actor, &mut *decision_maker);
-            let outcome = crate::events::processing::process_untap_with_execution_context(
-                game, id, &mut ctx,
-            )?;
-            if decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-            untap_events.extend(outcome.events);
+        if !should_untap.contains(&id) {
+            continue;
         }
+        let actor = before
+            .get(&id)
+            .map(|snapshot| snapshot.controller)
+            .unwrap_or(game.turn.active_player);
+        game.clear_pending_decision_controllers();
+        let mut ctx = crate::effects::ExecutionContext::new(id, actor, &mut *decision_maker);
+        let original =
+            crate::events::processing::prepare_untap_with_execution_context(game, id, &mut ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        prepared.push((id, actor, original));
     }
-
+    let mut ctx = crate::effects::ExecutionContext::new(
+        crate::ids::ObjectId::from_raw(0),
+        game.turn.active_player,
+        &mut *decision_maker,
+    );
+    let outputs = crate::effects::composition::execute_simultaneous_originals_with_outputs(
+        game,
+        &mut ctx,
+        true,
+        |game, ctx| {
+            let mut receipts = Vec::new();
+            for (id, actor, original) in prepared {
+                let mut child =
+                    crate::effects::ExecutionContext::new(id, actor, &mut *ctx.decision_maker);
+                let receipt = crate::events::processing::commit_prepared_untap_with_outputs(
+                    game, &mut child, original,
+                )?;
+                let receipt =
+                    crate::effects::composition::with_original_execution_context(receipt, &child);
+                receipts.push(receipt);
+                if child.decision_maker.awaiting_choice() {
+                    return Ok(Vec::new());
+                }
+            }
+            Ok(receipts)
+        },
+        |game, _, receipts| {
+            let mut observed: Vec<_> = receipts
+                .iter()
+                .flat_map(|receipt| receipt.outcome.outcome.events.iter().cloned())
+                .collect();
+            crate::events::other::bind_before_tap_state_snapshots(&mut observed, &before);
+            crate::events::other::group_tap_state_events(game, &mut observed, Default::default());
+            for receipt in receipts {
+                crate::effects::composition::inherit_original_observations(
+                    &mut receipt.outcome.outcome,
+                    &observed,
+                );
+                receipt.outcome.synchronize_observations();
+            }
+            Ok(crate::effects::composition::OriginalTriggerObservation::Capture)
+        },
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+    let mut untap_events: Vec<_> = outputs
+        .into_iter()
+        .flat_map(|output| output.outcome.events)
+        .collect();
     crate::events::other::bind_before_tap_state_snapshots(&mut untap_events, &before);
     crate::events::other::group_tap_state_events(game, &mut untap_events, Default::default());
     for event in untap_events {
@@ -1065,7 +1120,10 @@ fn execute_draw_step_for_player_with(
     }
 
     // Check if player can draw (the draw step draw is the first draw of the turn)
-    let is_first_draw = !game.turn_store.turn_history.has_drawn_cards_this_turn(active_player)?;
+    let is_first_draw = !game
+        .turn_store
+        .turn_history
+        .has_drawn_cards_this_turn(active_player)?;
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
     // The draw step draw is only blocked if they've already drawn this turn
@@ -1079,11 +1137,20 @@ fn execute_draw_step_for_player_with(
     let mut draw_events = Vec::new();
 
     if can_draw {
-        let draw_event_provenance = game.provenance_graph_mut()
+        let draw_event_provenance = game
+            .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::CardsDrawn);
         let completed = crate::effects::cards::draw_cards_with_miracle_window(
-            game, active_player, 1, is_first_draw, decision_maker, draw_event_provenance)?;
-        if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            game,
+            active_player,
+            1,
+            is_first_draw,
+            decision_maker,
+            draw_event_provenance,
+        )?;
+        if decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
         let drawn = completed.cards;
 
         // Create a single CardsDrawnEvent if any cards were drawn
@@ -1094,8 +1161,10 @@ fn execute_draw_step_for_player_with(
                 is_first_draw,
                 is_during_players_draw_step,
                 cards_previously_drawn_this_draw_step,
-            ).with_miracle_decision(completed.miracle);
-            let miracle_reveal = crate::effects::cards::miracle_reveal_event(game, &event, draw_event_provenance);
+            )
+            .with_miracle_decision(completed.miracle);
+            let miracle_reveal =
+                crate::effects::cards::miracle_reveal_event(game, &event, draw_event_provenance);
             let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
             if let Some(drawn_event) = event.downcast::<CardsDrawnEvent>() {
                 game.record_cards_drawn_in_current_draw_step(active_player, drawn_event.amount());
@@ -1181,7 +1250,7 @@ fn apply_cleanup_discard_inner(
     cards_to_discard: &[crate::ids::ObjectId],
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Vec<crate::ids::ObjectId>, crate::effects::ExecutionError> {
-    use crate::effects::{ExecutionContext, ExecutionError};
+    use crate::effects::ExecutionContext;
     use crate::events::cause::EventCause;
     if cards_to_discard.is_empty() {
         return Ok(Vec::new());
@@ -1198,66 +1267,34 @@ fn apply_cleanup_discard_inner(
     let provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::Discard);
-    let mut receipts = Vec::new();
-    let mut successful = Vec::new();
-    let mut madness_cards = Vec::new();
-    for &card_id in cards_to_discard {
-        let receipt = crate::events::processing::execute_discard_with_scope(
-            game,
-            card_id,
-            player,
-            cause.clone(),
-            false,
-            provenance,
-            decision_maker,
-            &crate::effects::ReplacementExecutionContext::default(),
-            None,
-        )?;
-        if decision_maker.awaiting_choice() {
-            return Ok(Vec::new());
-        }
-        if !receipt.result.prevented && receipt.result.new_id.is_some() {
-            let event = receipt.resolved_event.as_ref().ok_or_else(|| {
-                ExecutionError::InternalError("cleanup discard has no resolved event".into())
-            })?;
-            if event.player != player || event.card != card_id || event.cause != cause {
-                return Err(ExecutionError::InternalError(
-                    "cleanup discard changed an unsupported batch identity".into(),
-                ));
-            }
-            successful.push((
-                event.card,
-                receipt.discarded_snapshot.clone(),
-                receipt.result.final_zone,
-                receipt.result.new_id,
-            ));
-        }
-        if let Some(id) = receipt.result.new_id
-            && game.is_madness_exiled(id)
-        {
-            madness_cards.push(id);
-        }
-        receipts.push(receipt);
-    }
-    let count = i32::try_from(successful.len())
-        .map_err(|_| ExecutionError::InternalError("cleanup discard count overflow".into()))?;
-    let events = crate::effects::cards::completed_discard_events(
-        game,
-        player,
-        cause.clone(),
-        provenance,
-        successful,
-    );
+    // Cleanup chooses the complete hand subset before replacement preparation.
+    // Keep its rule-caused original source policy, then restore completion evidence.
     let mut ctx = ExecutionContext::new(source, player, decision_maker)
         .with_cause(cause)
         .with_provenance(provenance);
-    ctx.source_snapshot = source_snapshot;
-    let mut outcome = crate::effects::cards::finish_discard_receipts(
+    let Some(prepared) = crate::effects::cards::prepare_selected_discard_batch(
         game,
         &mut ctx,
-        crate::effect::EffectOutcome::count(count).with_events(events),
-        receipts,
-    )?;
+        player,
+        cards_to_discard.to_vec(),
+        None,
+        true,
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+    ctx.source_snapshot = source_snapshot;
+    let committed = crate::effects::cards::commit_selected_discard_batch(game, &mut ctx, prepared)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(Vec::new());
+    }
+    let Some(originals) = committed.prepare_completion_with_outputs(game, &mut ctx)? else {
+        return Ok(Vec::new());
+    };
+    let madness_cards = originals.madness_cards.clone();
+    let mut outcome = originals
+        .complete_added_programs_with_outputs(game, &mut ctx)?
+        .into_outcome();
     if ctx.decision_maker.awaiting_choice() {
         return Ok(Vec::new());
     }

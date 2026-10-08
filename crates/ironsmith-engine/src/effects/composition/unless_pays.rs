@@ -330,7 +330,7 @@ struct UnlessPaysProgram {
     next_payer: usize,
     payment: Option<crate::effects::CompletedEffectOutputs>,
     consequence: Option<Box<dyn crate::effects::ActionProgramCursor>>,
-    result: Option<crate::effects::CompletedEffectOutputs>,
+    result: Option<crate::effects::ProgramCompletion>,
     pending: Option<PendingUnlessInstruction>,
     preparations: Vec<crate::effects::ProgramPreparation>,
     ends_unit: bool,
@@ -366,6 +366,29 @@ impl UnlessPaysProgram {
             ends_unit: false,
         })
     }
+
+    fn complete_selected(
+        self: Box<Self>,
+        prefix: Option<crate::effects::ProgramCompletion>,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        let mut completed = if let Some(payment) = self.payment {
+            let outcome = EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::declined(),
+                [payment.outcome.clone()],
+            );
+            crate::effects::ProgramCompletion::new(payment.project_aggregate(outcome))
+        } else if let Some(result) = self.result {
+            result
+        } else {
+            prefix.ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "unless-payment lost its completed consequence".into(),
+                )
+            })?
+        };
+        completed.outputs.retain_batch_children(self.declarations);
+        Ok(completed)
+    }
 }
 impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
     fn take_preparations(&mut self) -> Vec<crate::effects::ProgramPreparation> {
@@ -376,7 +399,7 @@ impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
+        if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
             return Ok(None);
         }
         if self.pending.is_some() {
@@ -488,8 +511,7 @@ impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
             self.consequence
                 .take()
                 .expect("completed consequence")
-                .finish()?
-                .outputs,
+                .finish()?,
         );
         Ok(None)
     }
@@ -527,21 +549,25 @@ impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
                 "unless-payment finished before instruction acknowledgement".into(),
             ));
         }
-        let mut outputs = if let Some(payment) = self.payment {
-            let outcome = EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::declined(),
-                [payment.outcome.clone()],
-            );
-            payment.project_aggregate(outcome)
+        self.complete_selected(None)
+    }
+
+    fn finish_stopped(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        // No acknowledgement is manufactured for an uncommitted request. The
+        // active child owns its completed prefix and scope cancellation.
+        self.pending = None;
+        let prefix = if let Some(consequence) = self.consequence.take() {
+            consequence.finish_stopped(game, ctx)?
         } else {
-            self.result.ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "unless-payment lost its completed consequence".into(),
-                )
-            })?
+            crate::effects::ProgramCompletion::new(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            )
         };
-        outputs.retain_batch_children(self.declarations);
-        Ok(crate::effects::ProgramCompletion::new(outputs))
+        self.complete_selected(Some(prefix))
     }
 }
 
@@ -775,6 +801,15 @@ impl EffectExecutor for UnlessPaysEffect {
             None
         };
 
+        if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
+            return Ok(Box::new(UnlessPaysProposal {
+                prepared: None,
+                effects: self.effects.clone(),
+                payer,
+                cost: None,
+                iterated_player: ctx.iteration.iterated_player,
+            }));
+        }
         let iterated_player = ctx.iteration.iterated_player;
         let prepared = if let Some(cost) = &cost {
             crate::costs::prepare_total_cost(

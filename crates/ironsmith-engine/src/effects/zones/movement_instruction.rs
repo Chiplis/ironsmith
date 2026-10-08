@@ -22,7 +22,7 @@ type MovementProjection = dyn FnOnce(
 
 /// Selection fixes subjects, snapshots and authored arrival metadata. It must
 /// not commit a move or execute replacement-added programs.
-pub(super) trait ZoneMovementInstruction: std::fmt::Debug + Send {
+pub(crate) trait ZoneMovementInstruction: std::fmt::Debug + Send {
     fn select(
         &self,
         game: &mut GameState,
@@ -30,7 +30,7 @@ pub(super) trait ZoneMovementInstruction: std::fmt::Debug + Send {
     ) -> Result<SelectedZoneMovement, ExecutionError>;
 }
 
-pub(super) enum SelectedZoneMovement {
+pub(crate) enum SelectedZoneMovement {
     Finished(EffectOutcome),
     Moves {
         requests: Vec<PreparedZoneMove>,
@@ -39,7 +39,7 @@ pub(super) enum SelectedZoneMovement {
 }
 
 impl SelectedZoneMovement {
-    pub(super) fn moves(
+    pub(crate) fn moves(
         requests: Vec<PreparedZoneMove>,
         projection: impl FnOnce(
             &mut GameState,
@@ -89,7 +89,7 @@ impl std::fmt::Debug for PreparedMovementInstruction {
     }
 }
 
-pub(super) fn prepare_movement_instruction(
+pub(crate) fn prepare_movement_instruction(
     instruction: impl ZoneMovementInstruction + 'static,
     ctx: &ExecutionContext,
 ) -> Box<dyn SimultaneousEffectProposal> {
@@ -101,7 +101,7 @@ pub(super) fn prepare_movement_instruction(
 
 /// Ordinary and enclosing simultaneous execution consume the same retained
 /// proposal; the enclosing coordinator owns transactions and batch scopes.
-pub(super) fn execute_movement_instruction(
+pub(crate) fn execute_movement_instruction(
     instruction: impl ZoneMovementInstruction + 'static,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -153,24 +153,39 @@ impl SimultaneousEffectProposal for PreparedMovementInstruction {
                 SelectedZoneMovement::Moves {
                     requests,
                     projection,
-                } => {
-                    MovementInstructionState::Selected { requests, projection }
-                }
+                } => MovementInstructionState::Selected {
+                    requests,
+                    projection,
+                },
             };
             Ok(())
         })
     }
 
-    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<(), ExecutionError> {
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
         self.prepare_selection(game, ctx)?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         let state = std::mem::replace(&mut self.state, MovementInstructionState::Preparing);
         self.state = match state {
-            MovementInstructionState::Selected { requests, projection } => {
-                let (proposals, draws) = ctx.with_temp_iterated_player(self.iterated_player,
-                    |ctx| super::prepare_zone_moves(game, ctx, requests))?;
-                MovementInstructionState::Prepared { proposals, projection, draws }
+            MovementInstructionState::Selected {
+                requests,
+                projection,
+            } => {
+                let (proposals, draws) = ctx
+                    .with_temp_iterated_player(self.iterated_player, |ctx| {
+                        super::prepare_zone_moves(game, ctx, requests)
+                    })?;
+                MovementInstructionState::Prepared {
+                    proposals,
+                    projection,
+                    draws,
+                }
             }
             other => other,
         };
@@ -190,11 +205,12 @@ impl SimultaneousEffectProposal for PreparedMovementInstruction {
             MovementInstructionState::Prepared {
                 proposals,
                 projection,
-                draws,
+                mut draws,
             } => {
                 let pending_start = game.effect_store.pending_trigger_events.len();
-                let receipts =
-                    super::prepared_move::commit_prepared_zone_moves(game, ctx, proposals)?;
+                let receipts = super::prepared_move::commit_prepared_zone_moves(
+                    game, ctx, proposals, &mut draws,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(SimultaneousEffectCommit::finished(
                         CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -203,13 +219,12 @@ impl SimultaneousEffectProposal for PreparedMovementInstruction {
                 let original = projection(game, ctx, &receipts, pending_start)?;
                 Ok(draws.finish(original, receipts, ctx).into_retained())
             }
-            MovementInstructionState::Selection(_) | MovementInstructionState::Selected { .. }
-                | MovementInstructionState::Preparing => {
-                Err(ExecutionError::InternalError(
-                    "movement instruction committed before selection and replacement preparation"
-                        .into(),
-                ))
-            }
+            MovementInstructionState::Selection(_)
+            | MovementInstructionState::Selected { .. }
+            | MovementInstructionState::Preparing => Err(ExecutionError::InternalError(
+                "movement instruction committed before selection and replacement preparation"
+                    .into(),
+            )),
         })
     }
 
@@ -243,18 +258,23 @@ impl SimultaneousEffectProposal for PreparedMovementInstruction {
 
 /// A replacement-created movement keeps its non-draw originals now and returns
 /// the same prepared completion at the first actual draw boundary.
-pub(super) fn prepare_movement_draw_continuation(
+pub(crate) fn prepare_movement_draw_continuation(
     instruction: impl ZoneMovementInstruction + 'static,
-    game: &mut GameState, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
     let mut proposal = prepare_movement_instruction(instruction, ctx);
     proposal.prepare_selection(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+        return Ok(SimultaneousEffectCommit::finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     }
     proposal.prepare_original(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+        return Ok(SimultaneousEffectCommit::finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     }
     proposal.seal_original(game, ctx)?;
     let committed = proposal.commit_original_with_outputs(game, ctx)?;
@@ -263,8 +283,11 @@ pub(super) fn prepare_movement_draw_continuation(
         completion.freeze(game)?;
         completion.observe_original(game, ctx, &mut original.outcome)?;
         original.synchronize_observations();
-        let mut prepared = completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
+        let mut prepared =
+            completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
         prepared.outcome.retain_owned_child(original);
         Ok(prepared)
-    } else { Ok(committed) }
+    } else {
+        Ok(committed)
+    }
 }

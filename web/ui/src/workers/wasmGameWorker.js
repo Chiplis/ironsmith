@@ -158,7 +158,7 @@ const priorityAnalysis = createIsolatedPriorityAnalysis({
   deliver: operation => enqueueCall(operation, { kind: 'priority_analysis_publish' }),
   publish: analysis => {
     if (analysis.decision?.analysis_complete) {
-      game.rememberPriorityAffordability(analysis.decision.actions.map(action => action.action_ref));
+      game.rememberPriorityAffordability(analysis.decision.actions.filter(action => action.payment_proven === true).map(action => action.action_ref));
     }
     self.postMessage({ type: 'priorityAnalysis', ...analysis });
   },

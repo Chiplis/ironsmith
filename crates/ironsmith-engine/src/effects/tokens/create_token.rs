@@ -15,8 +15,8 @@ use super::create_token_copy::{
     CopyAttackTargetMode, attack_targets_for_player, choose_attack_target,
 };
 use super::lifecycle::{
-    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
-    create_replacement_additional_tokens, schedule_token_cleanup,
+    TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry_with_outputs,
+    create_replacement_additional_tokens, schedule_token_cleanup_with_outputs,
 };
 
 /// Effect that creates token creatures or other token permanents.
@@ -230,9 +230,19 @@ fn prepare_token_proposal(
     {
         resolved_token.card.subtypes.push(subtype);
     }
-    if effect.text_roles.as_ref().is_some_and(|roles| roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived) {
-        resolved_token.card.name = ironsmith_core::subtype_derived_token_name(&resolved_token.card.subtypes)
-            .ok_or_else(|| ExecutionError::IncompleteEvidence("derived token name requires canonical subtype spellings".into()))?;
+    if effect
+        .text_roles
+        .as_ref()
+        .is_some_and(|roles| roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived)
+    {
+        resolved_token.card.name = ironsmith_core::subtype_derived_token_name(
+            &resolved_token.card.subtypes,
+        )
+        .ok_or_else(|| {
+            ExecutionError::IncompleteEvidence(
+                "derived token name requires canonical subtype spellings".into(),
+            )
+        })?;
     }
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
     let token_preview = crate::object::Object::from_token_definition(
@@ -284,6 +294,18 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         commit_token_proposal(*self, game, ctx)
     }
     fn commit(
@@ -297,18 +319,17 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
 }
 /// A token creation request with entry-time instructions. This uses the same
 /// prepared creation/entry owner as CreateToken, never a later counter effect.
-pub(crate) fn create_tokens_with_entry_counters(
+pub(crate) fn create_tokens_with_entry_counters_with_outputs(
     effect: &CreateTokenEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     counters: Vec<(crate::object::CounterType, u32)>,
     completion: Option<(crate::events::KeywordActionKind, u32)>,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let mut proposal = prepare_token_proposal(effect, game, ctx)?;
     proposal.initial_counters = counters;
     proposal.completion = completion;
     complete_token_proposal(proposal, game, ctx)
-        .map(crate::effects::CompletedEffectOutputs::into_outcome)
 }
 
 /// One creation instruction whose requested amount is multiplied by an
@@ -414,7 +435,10 @@ fn commit_token_proposal(
     mut proposal: TokenProposal,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     use crate::effects::SimultaneousEffectProposal;
     use crate::events::processing::PreparedTokenCreation;
     if proposal.prepared.is_none() {
@@ -422,7 +446,7 @@ fn commit_token_proposal(
     }
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
-            EffectOutcome::count(0),
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
     let phase = proposal
@@ -442,7 +466,7 @@ fn commit_token_proposal(
     let mut committed = match prepared {
         PreparedTokenCreation::Finished { outcome, programs } => {
             crate::effects::SimultaneousEffectCommit {
-                outcome,
+                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
                 completion: Some(super::lifecycle::token_instruction_completion(
                     proposal.instruction.take(),
                     Vec::new(),
@@ -473,7 +497,7 @@ fn commit_token_proposal(
         }
     };
     if let Some((action, amount)) = proposal.completion {
-        committed.outcome = crate::effects::composition::complete_keyword_action_with_result(
+        committed.outcome = crate::effects::composition::complete_keyword_action_with_outputs(
             game,
             ctx,
             committed.outcome,
@@ -498,7 +522,10 @@ fn commit_token_original(
     replacement: crate::events::CreateTokensEvent,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
     instruction: Option<super::resources::TokenInstructionPermit>,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
     game.reserve_token_creation(replacement.total_count())?;
@@ -538,6 +565,7 @@ fn commit_token_original(
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
     let mut lifecycle_children = Vec::new();
+    let mut entry_outputs = Vec::new();
     let pending_start = game.effect_store.pending_trigger_events.len();
     let cost_exiled = cost_exiled_objects(game, ctx);
     // CR 607.2a: a token whose ability returns "the exiled card" is linked
@@ -580,13 +608,16 @@ fn commit_token_original(
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                EffectOutcome::with_objects(Vec::new()),
+                crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::with_objects(Vec::new()),
+                ),
             ));
         }
         let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(
             game,
             id,
             entry_result,
+            &mut entry_outputs,
             &mut entry_receipts,
         )?
         else {
@@ -605,7 +636,7 @@ fn commit_token_original(
         if entered_battlefield {
             let entered_is_creature = game.current_is_creature(entered_id);
             let tracks_creature_etb = entered_is_creature || token_is_creature;
-            let entry_observation = apply_token_battlefield_entry(
+            let entry_observation = apply_token_battlefield_entry_with_outputs(
                 game,
                 ctx,
                 entered_id,
@@ -623,7 +654,9 @@ fn commit_token_original(
             );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    EffectOutcome::with_objects(Vec::new()),
+                    crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::with_objects(Vec::new()),
+                    ),
                 ));
             }
 
@@ -644,7 +677,9 @@ fn commit_token_original(
                 };
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                        EffectOutcome::with_objects(Vec::new()),
+                        crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::with_objects(Vec::new()),
+                        ),
                     ));
                 }
                 if let Some(chosen_target) = chosen_target {
@@ -656,7 +691,7 @@ fn commit_token_original(
                 crate::effects::combat::put_onto_battlefield_blocking(game, entered_id, attacker);
             }
 
-            let cleanup = schedule_token_cleanup(
+            let cleanup = schedule_token_cleanup_with_outputs(
                 game,
                 ctx,
                 entered_id,
@@ -691,10 +726,13 @@ fn commit_token_original(
         &mut events,
         &mut entry_receipts,
         &mut lifecycle_children,
+        &mut entry_outputs,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
-            EffectOutcome::with_objects(Vec::new()),
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                Vec::new(),
+            )),
         ));
     }
     created_ids.extend(additional_ids);
@@ -762,7 +800,8 @@ fn commit_token_original(
         .with_result_objects(created_ids.clone())
         .with_events(events)
         .with_affected_objects_from_game(game, created_ids);
-    let outcome = super::lifecycle::compose_token_original(original, lifecycle_children);
+    let mut outcome = super::lifecycle::compose_token_original(original, lifecycle_children);
+    outcome.retain_published_references(entry_outputs);
     Ok(crate::effects::SimultaneousEffectCommit {
         outcome,
         completion: Some(super::lifecycle::token_instruction_completion(

@@ -173,7 +173,10 @@ pub enum DamageRecipientBefore {
 
 /// A retained flip from one exact instruction, independent of event draining.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct CoinFlipResult {
     pub player: PlayerId,
     pub face: ironsmith_core::CoinFace,
@@ -356,16 +359,22 @@ impl EffectOutcome {
     }
 
     pub fn coin_flip_results(&self) -> Option<&[CoinFlipResult]> {
-        self.execution_facts.iter().rev().find_map(|fact| match fact {
-            ExecutionFact::CoinFlips(results) => Some(results.as_slice()),
-            _ => None,
-        })
+        self.execution_facts
+            .iter()
+            .rev()
+            .find_map(|fact| match fact {
+                ExecutionFact::CoinFlips(results) => Some(results.as_slice()),
+                _ => None,
+            })
     }
 
     /// Keep the terminal authored summary and the complete chronological receipts.
     pub fn aggregate_terminal(outcomes: impl IntoIterator<Item = EffectOutcome>) -> Self {
         Self::aggregate_with_summary(outcomes, |results| {
-            results.last().cloned().unwrap_or((OutcomeStatus::Succeeded, OutcomeValue::None))
+            results
+                .last()
+                .cloned()
+                .unwrap_or((OutcomeStatus::Succeeded, OutcomeValue::None))
         })
     }
 
@@ -1255,7 +1264,10 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
-                if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
+                if matches!(
+                    surface.action,
+                    crate::effect::PriorEffectAction::CountersMoved(_)
+                ) {
                     return outcome.count_or_zero() > 0;
                 }
                 if surface.action == crate::effect::PriorEffectAction::Died {
@@ -1483,7 +1495,7 @@ impl RestrictionExt for Restriction {
                                         tracker.add_scoped_cant_cast_filter(
                                             player.id,
                                             crate::game_state::CastRestrictionFilter {
-                                    source_number_owner: None,
+                                                source_number_owner: None,
                                                 filter: resolved_filter,
                                                 source: Some(source),
                                                 controller: Some(controller),
@@ -1835,7 +1847,9 @@ impl RestrictionExt for Restriction {
                         && let Some(object) = game.object(object)
                         && filter.matches(object, &ctx, game)
                     {
-                        tracker.maximum_blockers.entry(object.id)
+                        tracker
+                            .maximum_blockers
+                            .entry(object.id)
                             .and_modify(|existing| *existing = (*existing).min(*maximum))
                             .or_insert(*maximum);
                     }
@@ -1930,7 +1944,7 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
-                                    source_number_owner: None,
+                    source_number_owner: None,
                     filter: filter.clone(),
                     source,
                     controller: Some(controller),
@@ -1943,7 +1957,11 @@ impl RestrictionExt for Restriction {
             }
             Restriction::BecomeSuspected(filter) => {
                 for &obj_id in &game.battlefield {
-                    if !game.is_phased_out(obj_id) && game.object(obj_id).is_some_and(|object| filter.matches(object, &ctx, game)) {
+                    if !game.is_phased_out(obj_id)
+                        && game
+                            .object(obj_id)
+                            .is_some_and(|object| filter.matches(object, &ctx, game))
+                    {
                         tracker.cant_become_suspected.insert(obj_id);
                     }
                 }
@@ -2140,15 +2158,23 @@ impl RestrictionExt for Restriction {
 ///
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
-pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>, Arc<TextChangeCache>);
+pub struct Effect(
+    pub Arc<dyn EffectExecutor>,
+    Option<RetainedEffectModel>,
+    Arc<TextChangeCache>,
+);
 
 /// Immutable transformed executors are memoized by original executor and
 /// directed word change. Repeated layer reads retain the same program-node
 /// identities instead of manufacturing a new acquisition on each read.
 struct TextChangeCache {
     executor: std::sync::Weak<dyn EffectExecutor>,
-    values: std::sync::Mutex<std::collections::HashMap<ironsmith_core::TextChange,
-        Result<Effect, crate::continuous::text_changes::TextChangeDomainError>>>,
+    values: std::sync::Mutex<
+        std::collections::HashMap<
+            ironsmith_core::TextChange,
+            Result<Effect, crate::continuous::text_changes::TextChangeDomainError>,
+        >,
+    >,
 }
 
 /// The canonical executable model belongs to this exact immutable executor.
@@ -2185,8 +2211,11 @@ impl Effect {
     /// Select a reached native program through the same checked input and
     /// instruction-identity gateway as ordinary effect dispatch.
     pub(crate) fn select_prepared_action_program(
-        &self, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
-    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, crate::effects::ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, crate::effects::ExecutionError>
+    {
         crate::effects::select_reached_action_program(game, self, ctx)
     }
 
@@ -2226,38 +2255,61 @@ impl Effect {
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
         let executor: Arc<dyn EffectExecutor> = Arc::new(executor);
-        let cache = TextChangeCache { executor: Arc::downgrade(&executor),
-            values: std::sync::Mutex::new(std::collections::HashMap::new()) };
+        let cache = TextChangeCache {
+            executor: Arc::downgrade(&executor),
+            values: std::sync::Mutex::new(std::collections::HashMap::new()),
+        };
         Effect(executor, None, Arc::new(cache))
     }
 
     /// Rewrite this immutable definition through typed native owners. A
     /// caller that already captured this Effect keeps its old executor.
-    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
-        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
-    {
-        let valid_cache = self.2.executor.upgrade()
+    pub fn with_text_change(
+        &self,
+        change: ironsmith_core::TextChange,
+    ) -> Result<Self, crate::continuous::text_changes::TextChangeDomainError> {
+        let valid_cache = self
+            .2
+            .executor
+            .upgrade()
             .is_some_and(|executor| Arc::ptr_eq(&executor, &self.0));
         if valid_cache {
-            if let Some(value) = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner())
-                .get(&change).cloned() { return value; }
+            if let Some(value) = self
+                .2
+                .values
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .get(&change)
+                .cloned()
+            {
+                return value;
+            }
         }
-        let value = match crate::continuous::text_change_programs::rewrite_effect_words(self, change) {
-            Ok(None) => return Ok(self.clone()),
-            Ok(Some(value)) => Ok(value),
-            Err(error) => Err(error),
-        };
+        let value =
+            match crate::continuous::text_change_programs::rewrite_effect_words(self, change) {
+                Ok(None) => return Ok(self.clone()),
+                Ok(Some(value)) => Ok(value),
+                Err(error) => Err(error),
+            };
         if valid_cache {
             // Do not hold this lock during recursion through child programs.
-            let mut cache = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner());
+            let mut cache = self
+                .2
+                .values
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
             cache.entry(change).or_insert_with(|| value.clone()).clone()
-        } else { value }
+        } else {
+            value
+        }
     }
 
     pub(crate) fn from_boxed_executor(executor: Box<dyn EffectExecutor>) -> Self {
         let executor: Arc<dyn EffectExecutor> = Arc::from(executor);
-        let cache = TextChangeCache { executor: Arc::downgrade(&executor),
-            values: std::sync::Mutex::new(std::collections::HashMap::new()) };
+        let cache = TextChangeCache {
+            executor: Arc::downgrade(&executor),
+            values: std::sync::Mutex::new(std::collections::HashMap::new()),
+        };
         Effect(executor, None, Arc::new(cache))
     }
 
@@ -2342,7 +2394,7 @@ impl Effect {
 
     /// Return true when this effect only prepares resolution context.
     pub fn is_resolution_prelude(&self) -> bool {
-        self.0.is_resolution_prelude()
+        self.0.as_resolution_prelude().is_some()
     }
 
     /// Return true when this effect can consume X as a cost.

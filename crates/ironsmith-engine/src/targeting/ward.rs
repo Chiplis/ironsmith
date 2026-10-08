@@ -17,7 +17,7 @@ use crate::decisions::{WardSpec, make_decision};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::special_actions::pay_resolution_cost_with_snapshot;
+use crate::special_actions::pay_resolution_cost_with_outputs;
 use crate::static_abilities::StaticAbility;
 
 use super::types::{PendingWardCost, WardPaymentResult};
@@ -164,10 +164,26 @@ pub fn handle_ward_payment(
     source: ObjectId,
     decision_maker: &mut dyn DecisionMaker,
 ) -> WardPaymentResult {
-    // Create a description of the ward cost
-    let description = format_ward_cost_description(&ward_cost.cost);
+    match handle_ward_payment_with_outputs(game, ward_cost, caster, source, decision_maker) {
+        Ok(Some(_)) => WardPaymentResult::Paid,
+        Ok(None) => WardPaymentResult::NotPaid,
+        Err(error) => {
+            // Terminal boolean compatibility keeps the checked scope's failure
+            // channel. The effect itself consumes the typed error directly.
+            game.record_token_resource_failure(&error);
+            WardPaymentResult::NotPaid
+        }
+    }
+}
 
-    // Ask player whether to pay using the spec-based system
+fn handle_ward_payment_with_outputs(
+    game: &mut GameState,
+    ward_cost: &PendingWardCost,
+    caster: PlayerId,
+    source: ObjectId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Option<crate::special_actions::CompletedCostPayment>, crate::effects::ExecutionError> {
+    let description = format_ward_cost_description(&ward_cost.cost);
     let spec = WardSpec::new(
         source,
         ward_cost.target,
@@ -175,33 +191,23 @@ pub fn handle_ward_payment(
         description,
     );
     let should_pay: bool = make_decision(game, decision_maker, caster, Some(source), spec);
-    if decision_maker.awaiting_choice() {
-        // No answer yet: don't attempt payment. The caller must check
-        // `awaiting_choice()` and unwind instead of countering.
-        return WardPaymentResult::NotPaid;
+    if decision_maker.awaiting_choice() || !should_pay {
+        return Ok(None);
     }
-
-    if should_pay {
-        // Player chose to pay - attempt to deduct the cost. References in
-        // the cost ("life equal to its power") are to the ward permanent,
-        // not the targeting object (CR 702.21a); the payer stays the
-        // targeting object's controller.
-        if pay_ward_cost(
-            game,
-            caster,
-            ward_cost.target,
-            &ward_cost.cost,
-            ward_cost.source_snapshot.clone(),
-            decision_maker,
-        ) {
-            WardPaymentResult::Paid
-        } else {
-            // Couldn't actually pay the cost
-            WardPaymentResult::NotPaid
-        }
-    } else {
-        // Player declined to pay
-        WardPaymentResult::NotPaid
+    // References in the cost belong to the ward permanent. The payer remains
+    // the targeting stack object's controller, even if the source has departed.
+    match pay_resolution_cost_with_outputs(
+        game,
+        caster,
+        ward_cost.target,
+        &ward_cost.cost,
+        crate::costs::PaymentReason::Effect,
+        ward_cost.source_snapshot.clone(),
+        decision_maker,
+    ) {
+        Ok(outputs) => Ok(Some(outputs)),
+        Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Err(error),
+        Err(_) => Ok(None),
     }
 }
 
@@ -260,9 +266,20 @@ impl crate::effects::EffectExecutor for WardCounterEffect {
         game: &mut GameState,
         ctx: &mut crate::effects::ExecutionContext,
     ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
         // The spell or ability already left the stack: nothing to counter.
         let Some(index) = self.stack_index(game) else {
-            return Ok(crate::effect::EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::target_invalid(),
+            ));
         };
         let payer = game.stack[index].controller;
         let pending = PendingWardCost {
@@ -271,23 +288,30 @@ impl crate::effects::EffectExecutor for WardCounterEffect {
             ward_controller: ctx.controller,
             cost: self.cost.clone(),
         };
-        let payment = handle_ward_payment(
+        let payment = handle_ward_payment_with_outputs(
             game,
             &pending,
             payer,
             self.targeting_source,
             &mut *ctx.decision_maker,
-        );
+        )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effect::EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::count(0),
+            ));
         }
-        if payment == WardPaymentResult::Paid {
-            return Ok(crate::effect::EffectOutcome::resolved());
+        if let Some(payment) = payment {
+            return Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
+                crate::effect::EffectOutcome::resolved(),
+                payment.outputs,
+            ));
         }
         let Some(index) = self.stack_index(game) else {
-            return Ok(crate::effect::EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::target_invalid(),
+            ));
         };
-        crate::effects::stack::counter_stack_entry_at(game, ctx, index)
+        crate::effects::stack::counter_stack_entry_at_with_outputs(game, ctx, index)
     }
 }
 
@@ -316,25 +340,6 @@ fn format_ward_cost_description(cost: &TotalCost) -> String {
 /// for it rather than needing the mana already floating (CR 605.3a).
 ///
 /// Returns true if the cost was successfully paid, false otherwise.
-fn pay_ward_cost(
-    game: &mut GameState,
-    payer: PlayerId,
-    source: ObjectId,
-    cost: &TotalCost,
-    snapshot: Option<crate::snapshot::ObjectSnapshot>,
-    decision_maker: &mut dyn DecisionMaker,
-) -> bool {
-    pay_resolution_cost_with_snapshot(
-        game,
-        payer,
-        source,
-        cost,
-        crate::costs::PaymentReason::Effect,
-        snapshot,
-        decision_maker,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

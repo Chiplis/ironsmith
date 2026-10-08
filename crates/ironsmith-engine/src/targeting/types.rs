@@ -71,7 +71,8 @@ pub(crate) fn aggregate_contributions(
     }
 }
 
-pub(crate) fn aggregate_object_set_value(
+/// Evaluate a complete object choice using the same characteristic totals as targeting.
+pub fn aggregate_object_set_value(
     game: &GameState,
     ids: impl IntoIterator<Item = ObjectId>,
     metric: ChoiceAggregateMetric,
@@ -83,7 +84,8 @@ pub(crate) fn aggregate_object_set_value(
     )
 }
 
-pub(crate) fn aggregate_object_value(
+/// Evaluate one candidate for an aggregate object or target choice.
+pub fn aggregate_object_value(
     game: &GameState,
     id: ObjectId,
     metric: ChoiceAggregateMetric,

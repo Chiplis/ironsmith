@@ -118,10 +118,16 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
         let Some(characteristics) = view.calculated_characteristics_arc(source_id) else {
             continue;
         };
-        if characteristics.controller != player_id { continue; }
+        if characteristics.controller != player_id {
+            continue;
+        }
         for (ability_index, ability) in characteristics.abilities.iter().enumerate() {
-            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else { continue; };
-            if !ability.functions_in(&source_obj.zone) { continue; }
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if !ability.functions_in(&source_obj.zone) {
+                continue;
+            }
             let Some(spec) = static_ability.reveal_drawn_card_spec() else {
                 continue;
             };
@@ -138,11 +144,14 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
                 continue;
             };
 
-            let object = game.object(card_id)
+            let object = game
+                .object(card_id)
                 .filter(|object| object.zone == Zone::Hand && object.owner == player_id)
                 .ok_or(ExecutionError::InvalidTarget)?;
             let owner = crate::linked_exile::LinkedExileOwner::capture(
-                source_id, spec.linked_reveal_pair, characteristics.abilities.origin(ability_index),
+                source_id,
+                spec.linked_reveal_pair,
+                characteristics.abilities.origin(ability_index),
             );
             if spec.linked_reveal_pair.is_some() && owner.is_none() {
                 return Err(ExecutionError::IncompleteEvidence(
@@ -151,11 +160,16 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
             }
             let snapshot = revealed_draw_snapshot(game, card_id);
             let source_snapshot = ObjectSnapshot::from_object_with_known_characteristics(
-                source_obj, game, Some(&characteristics),
+                source_obj,
+                game,
+                Some(&characteristics),
             );
             let occurrence = crate::events::other::FirstDrawRevealOccurrence {
-                owner, drawn_card: card_id, drawn_stable_id: object.stable_id,
-                player: player_id, card_number: draw_number,
+                owner,
+                drawn_card: card_id,
+                drawn_stable_id: object.stable_id,
+                player: player_id,
+                card_number: draw_number,
             };
             candidates.push(AutomaticDrawRevealCandidate {
                 source_id,
@@ -197,10 +211,14 @@ pub(crate) fn emit_automatic_draw_reveal_event(
     let provenance = game
         .provenance_graph_mut()
         .alloc_child_event(provenance, crate::events::EventKind::CardRevealed);
-    TriggerEvent::new_with_provenance(
-        crate::events::CardRevealedEvent::new(candidate.player_id, candidate.card_id,
-            candidate.zone, Some(candidate.source_id), candidate.snapshot.clone())
-            .with_first_draw(candidate.occurrence.clone()),
+    super::public_reveal_observation(
+        candidate.player_id,
+        candidate.card_id,
+        candidate.zone,
+        candidate.source_id,
+        candidate.snapshot.clone(),
+        None,
+        Some(candidate.occurrence.clone()),
         provenance,
     )
     .with_source_snapshot(candidate.source_snapshot.clone())
@@ -218,12 +236,24 @@ pub(crate) fn draw_observation(
     step_context: (bool, u32),
     provenance: ProvNodeId,
 ) -> TriggerEvent {
-    draw_observation_with_miracle(game, player, cards, is_first, step_context, provenance, None)
+    draw_observation_with_miracle(
+        game,
+        player,
+        cards,
+        is_first,
+        step_context,
+        provenance,
+        None,
+    )
 }
 
 fn draw_observation_with_miracle(
-    game: &GameState, player: PlayerId, cards: Vec<ObjectId>, is_first: bool,
-    step_context: (bool, u32), provenance: ProvNodeId,
+    game: &GameState,
+    player: PlayerId,
+    cards: Vec<ObjectId>,
+    is_first: bool,
+    step_context: (bool, u32),
+    provenance: ProvNodeId,
     miracle: Option<crate::events::other::MiracleDrawDecision>,
 ) -> TriggerEvent {
     let snapshots = cards
@@ -238,7 +268,8 @@ fn draw_observation_with_miracle(
             step_context.0,
             step_context.1,
         )
-        .with_snapshots(snapshots).with_miracle_decision(miracle),
+        .with_snapshots(snapshots)
+        .with_miracle_decision(miracle),
         provenance,
     )
 }
@@ -309,7 +340,8 @@ pub(crate) fn automatic_reveal_events_for_draw(
     provenance: ProvNodeId,
     hidden_mode: HiddenDrawRevealMode,
 ) -> Result<Vec<TriggerEvent>, ExecutionError> {
-    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     let mut reveal_events = Vec::new();
 
     for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before)?
@@ -337,9 +369,13 @@ pub(crate) fn automatic_reveal_events_for_draw(
                     };
                     if revealed.contains(&candidate.card_id) {
                         if game.is_hidden_card_placeholder(candidate.card_id) {
-                            return Err(ExecutionError::IncompleteEvidence("first-draw revealed identity was not authenticated on this peer".into()));
+                            return Err(ExecutionError::IncompleteEvidence(
+                                "first-draw revealed identity was not authenticated on this peer"
+                                    .into(),
+                            ));
                         }
-                        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+                        game.refresh_continuous_state()
+                            .map_err(ExecutionError::ContinuousDiscovery)?;
                         let candidate = automatic_draw_reveal_candidate_for_pending(game, &pending);
                         reveal_events.push(emit_automatic_draw_reveal_event(
                             game,
@@ -366,12 +402,18 @@ pub(crate) fn automatic_reveal_events_for_draw(
         // A preceding independent reveal may have opened this hidden card.
         // Refresh only its revealed characteristics; never recapture ownership.
         let candidate = automatic_draw_reveal_candidate_for_pending(
-            game, &pending_hidden_automatic_draw_reveal(&candidate),
+            game,
+            &pending_hidden_automatic_draw_reveal(&candidate),
         );
         reveal_events.push(emit_automatic_draw_reveal_event(
-            game, decision_maker, &candidate, provenance,
+            game,
+            decision_maker,
+            &candidate,
+            provenance,
         ));
-        if decision_maker.awaiting_choice() { return Ok(reveal_events); }
+        if decision_maker.awaiting_choice() {
+            return Ok(reveal_events);
+        }
     }
 
     Ok(reveal_events)
@@ -400,7 +442,9 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
 impl EffectExecutor for DrawCardsEffect {
-    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        Some(self)
+    }
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         self.player.mentions_player_filter(needle)
     }
@@ -433,7 +477,10 @@ impl EffectExecutor for DrawCardsEffect {
         let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
         let result = execute_draw_instruction(self, game, ctx);
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(game_checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                game_checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if result.is_ok() && ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -445,19 +492,33 @@ impl EffectExecutor for DrawCardsEffect {
 
 impl crate::effects::CostExecutableEffect for DrawCardsEffect {
     fn can_execute_as_cost(
-        &self, game: &GameState, source: ObjectId, controller: PlayerId,
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
         let player = resolve_player_filter(game, &self.player, &ctx)
             .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?;
         let count = resolve_value(game, &self.count, &ctx)
-            .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?.max(0);
-        if count == 0 { return Ok(()); }
-        if !game.can_draw(player) { return Err(crate::effects::CostValidationError::NotEnoughCards); }
-        let has_drawn = game.turn_store.turn_history.has_drawn_cards_this_turn(player)
+            .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?
+            .max(0);
+        if count == 0 {
+            return Ok(());
+        }
+        if !game.can_draw(player) {
+            return Err(crate::effects::CostValidationError::NotEnoughCards);
+        }
+        let has_drawn = game
+            .turn_store
+            .turn_history
+            .has_drawn_cards_this_turn(player)
             .map_err(crate::effects::CostValidationError::ExecutionFailed)?;
-        if game.can_draw_extra_cards(player) || (count == 1 && !has_drawn)
-        { Ok(()) } else { Err(crate::effects::CostValidationError::NotEnoughCards) }
+        if game.can_draw_extra_cards(player) || (count == 1 && !has_drawn) {
+            Ok(())
+        } else {
+            Err(crate::effects::CostValidationError::NotEnoughCards)
+        }
     }
 }
 
@@ -564,15 +625,24 @@ fn commit_draw_original_with_reveal_mode(
             if !game.can_draw(player) {
                 return Ok(EffectOutcome::count(0));
             }
-            let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player)?
+            let is_first = !game
+                .turn_store
+                .turn_history
+                .has_drawn_cards_this_turn(player)?
                 && !prior_events.iter().any(|event| {
-                    event.downcast::<CardsDrawnEvent>().is_some_and(|draw| {
-                        draw.player == player && !draw.cards.is_empty()
-                    })
+                    event
+                        .downcast::<CardsDrawnEvent>()
+                        .is_some_and(|draw| draw.player == player && !draw.cards.is_empty())
                 });
             let step = game.draw_step_context_for_player(player);
             let completed = super::draw_cards_with_miracle_window(
-                game, player, count, is_first, &mut *ctx.decision_maker, ctx.provenance)?;
+                game,
+                player,
+                count,
+                is_first,
+                &mut *ctx.decision_maker,
+                ctx.provenance,
+            )?;
             let mut drawn = completed.cards;
             let mut miracle = completed.miracle;
             let mut automatic_reveals = completed.automatic_reveals;
@@ -628,11 +698,13 @@ pub(crate) fn execute_turn_draw_proposal(
 ) -> Result<EffectOutcome, ExecutionError> {
     game.update_replacement_effects()
         .map_err(ExecutionError::ContinuousDiscovery)?;
-    let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player)?;
+    let is_first = !game
+        .turn_store
+        .turn_history
+        .has_drawn_cards_this_turn(player)?;
     let (in_step, step_draws) = game.draw_step_context_for_player(player);
-    let event =
-        Event::draw_in_instruction(player, 1, is_first, true, in_step && step_draws == 0)
-            .with_provenance(ctx.provenance);
+    let event = Event::draw_in_instruction(player, 1, is_first, true, in_step && step_draws == 0)
+        .with_provenance(ctx.provenance);
     let result = process_trait_event_with_execution_context(game, event, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::count(0));
@@ -666,8 +738,11 @@ pub(crate) struct PreparedDrawInstruction {
     player: PlayerId,
     pub(crate) requested_count: u32,
 }
-pub(crate) fn prepare_draw_instruction(effect: &DrawCardsEffect, game: &GameState,
-    ctx: &ExecutionContext) -> Result<PreparedDrawInstruction, ExecutionError> {
+pub(crate) fn prepare_draw_instruction(
+    effect: &DrawCardsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<PreparedDrawInstruction, ExecutionError> {
     Ok(PreparedDrawInstruction {
         player: resolve_player_filter(game, &effect.player, ctx)?,
         requested_count: resolve_value(game, &effect.count, ctx)?.max(0) as u32,
@@ -678,19 +753,34 @@ fn execute_draw_instruction(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
     let prepared = prepare_draw_instruction(effect, game, ctx)?;
     execute_prepared_draw_instruction(prepared, game, ctx)
 }
-pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstruction,
-    game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    let PreparedDrawInstruction { player: player_id, requested_count } = prepared;
-    if requested_count == 0 { return Ok(EffectOutcome::count(0)); }
+pub(crate) fn execute_prepared_draw_instruction(
+    prepared: PreparedDrawInstruction,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+    let PreparedDrawInstruction {
+        player: player_id,
+        requested_count,
+    } = prepared;
+    if requested_count == 0 {
+        return Ok(EffectOutcome::count(0));
+    }
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
     let count = if !game.can_draw_extra_cards(player_id) {
-        let has_drawn = game.turn_store.turn_history.has_drawn_cards_this_turn(player_id)?;
+        let has_drawn = game
+            .turn_store
+            .turn_history
+            .has_drawn_cards_this_turn(player_id)?;
         // Player can only draw their first card of the turn
         if has_drawn {
             // Already drew this turn, can't draw any more
@@ -718,9 +808,16 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
             continue;
         }
 
-        let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player_id)?
-            && direct_drawn.is_empty() && !events.iter().any(|event: &TriggerEvent|
-            event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == player_id && !draw.cards.is_empty()));
+        let is_first = !game
+            .turn_store
+            .turn_history
+            .has_drawn_cards_this_turn(player_id)?
+            && direct_drawn.is_empty()
+            && !events.iter().any(|event: &TriggerEvent| {
+                event
+                    .downcast::<CardsDrawnEvent>()
+                    .is_some_and(|draw| draw.player == player_id && !draw.cards.is_empty())
+            });
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(player_id);
         let draw_event = Event::draw_in_instruction(
@@ -858,28 +955,49 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                     // Earlier direct cards precede this recipient change even
                     // when their enclosing instruction has not been published.
                     let segment = finish_direct_draw_segment(
-                        game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
-                        direct_draw_step_context, &mut direct_miracle,
+                        game,
+                        ctx,
+                        player_id,
+                        &mut direct_drawn,
+                        direct_draw_is_first,
+                        direct_draw_step_context,
+                        &mut direct_miracle,
                         &mut direct_automatic_reveals,
                     );
                     original_draw_facts.extend(segment.iter().flat_map(|event| {
                         crate::effects::outcome_recording::event_facts(game, event)
                     }));
                     events.extend(segment);
-                    let redirected_is_first = !game.turn_store.turn_history
+                    let redirected_is_first = !game
+                        .turn_store
+                        .turn_history
                         .has_drawn_cards_this_turn(redirected_player)?
-                        && !events.iter().any(|event: &TriggerEvent|
-                            event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == redirected_player && !draw.cards.is_empty()));
+                        && !events.iter().any(|event: &TriggerEvent| {
+                            event.downcast::<CardsDrawnEvent>().is_some_and(|draw| {
+                                draw.player == redirected_player && !draw.cards.is_empty()
+                            })
+                        });
                     let (redirected_in_draw_step, redirected_previous) =
                         game.draw_step_context_for_player(redirected_player);
-                    let completed = super::draw_cards_with_miracle_window(game, redirected_player,
-                        final_count as usize, redirected_is_first, &mut *ctx.decision_maker, ctx.provenance)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    let completed = super::draw_cards_with_miracle_window(
+                        game,
+                        redirected_player,
+                        final_count as usize,
+                        redirected_is_first,
+                        &mut *ctx.decision_maker,
+                        ctx.provenance,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                     let drawn = completed.cards;
                     if drawn.is_empty() {
                         continue;
                     }
-                    let redirected_provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::CardsDrawn);
+                    let redirected_provenance = game.alloc_child_event_provenance(
+                        ctx.provenance,
+                        crate::events::EventKind::CardsDrawn,
+                    );
                     let event = draw_observation_with_miracle(
                         game,
                         redirected_player,
@@ -898,16 +1016,28 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                     game.note_hidden_draw_for_reveal_window(&event);
                     original_draw_facts
                         .extend(crate::effects::outcome_recording::event_facts(game, &event));
-                    let reveal = super::miracle_reveal_event(game, event.downcast::<CardsDrawnEvent>().expect("typed draw"), ctx.provenance);
+                    let reveal = super::miracle_reveal_event(
+                        game,
+                        event.downcast::<CardsDrawnEvent>().expect("typed draw"),
+                        ctx.provenance,
+                    );
                     events.push(event);
                     events.extend(reveal);
                     events.extend(completed.automatic_reveals);
                     continue;
                 }
 
-                let completed = super::draw_cards_with_miracle_window(game, player_id,
-                    final_count as usize, is_first, &mut *ctx.decision_maker, ctx.provenance)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let completed = super::draw_cards_with_miracle_window(
+                    game,
+                    player_id,
+                    final_count as usize,
+                    is_first,
+                    &mut *ctx.decision_maker,
+                    ctx.provenance,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 let drawn = completed.cards;
 
                 // Only emit event if cards were actually drawn

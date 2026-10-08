@@ -25,9 +25,13 @@ pub use investigate::InvestigateEffect;
 pub(crate) mod resources;
 pub use resources::TokenCreationLimits;
 
-pub(crate) use lifecycle::execute_resource_transaction_with_pending_value;
 pub(crate) use lifecycle::{
     execute_resource_transaction_atomically, execute_token_instruction_atomically,
 };
+pub(crate) use lifecycle::{
+    execute_resource_transaction_with_pending_value, execute_token_instruction_with_pending_value,
+};
 
-pub(crate) use create_token::{create_tokens_with_entry_counters, multiplied_token_instruction};
+pub(crate) use create_token::{
+    create_tokens_with_entry_counters_with_outputs, multiplied_token_instruction,
+};

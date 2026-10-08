@@ -101,17 +101,28 @@ fn execute_transform_like_action(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-    game.clear_pending_decision_controllers();
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = execute_transform_like_action_inner(action, target, game, ctx);
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice());
-        context_checkpoint.restore(ctx);
+    execute_transform_like_action_with_outputs(action, target, game, ctx)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+fn execute_transform_like_action_with_outputs(
+    action: TransformLikeAction,
+    target: &ChooseSpec,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
-    result
+    game.clear_pending_decision_controllers();
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+        |game, ctx| execute_transform_like_action_inner(action, target, game, ctx),
+    )
 }
 
 fn execute_transform_like_action_inner(
@@ -119,7 +130,7 @@ fn execute_transform_like_action_inner(
     target: &ChooseSpec,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
     let target_id = if matches!(target.base(), ChooseSpec::Source) {
@@ -129,7 +140,9 @@ fn execute_transform_like_action_inner(
             .object(ctx.source)
             .is_some_and(|object| object.zone == Zone::Battlefield)
         {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
         ctx.source
     } else if let ChooseSpec::Tagged(tag) = target {
@@ -145,53 +158,73 @@ fn execute_transform_like_action_inner(
     };
 
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     if source_transform_like_action_is_stale(game, ctx, target_id) {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     if !game.can_transform(target_id) {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     let Some(target) = game.object(target_id) else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     if target.zone != Zone::Battlefield {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
     // CR 702.145b/e: only a permanent that currently has daybound/nightbound
     // (layer 6) is restricted to transforming via day/night. The restriction
     // applies to both transform and convert.
     if game.permanent_has_day_or_nightbound(target_id) {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     if !game
         .transform_permanent(target_id)
         .map_err(ExecutionError::ContinuousDiscovery)?
     {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
 
-    let observations = if matches!(action, TransformLikeAction::Transform) {
+    let (children, observations) = if matches!(action, TransformLikeAction::Transform) {
         let controller = game
             .current_controller(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        let (_, observations) = crate::effects::with_action_observations(game, |game| {
-            game.execute_as_transforms_effect_programs(target_id, controller, ctx.decision_maker)
+        let (children, observations) = crate::effects::with_action_observations(game, |game| {
+            game.execute_as_transforms_effect_programs_with_outputs(
+                target_id,
+                controller,
+                ctx.decision_maker,
+            )
         })?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
-        observations
+        (children, observations)
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
 
     let mut events = vec![action.event(target_id, ctx.provenance)];
@@ -202,7 +235,9 @@ fn execute_transform_like_action_inner(
     )?;
     let mut outcome = EffectOutcome::resolved();
     outcome.events = events;
-    Ok(outcome)
+    let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
+    outputs.retain_published_children(children);
+    Ok(outputs)
 }
 
 impl EffectExecutor for TransformEffect {
@@ -212,6 +247,19 @@ impl EffectExecutor for TransformEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         execute_transform_like_action(TransformLikeAction::Transform, &self.target, game, ctx)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_transform_like_action_with_outputs(
+            TransformLikeAction::Transform,
+            &self.target,
+            game,
+            ctx,
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -230,6 +278,19 @@ impl EffectExecutor for ConvertEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         execute_transform_like_action(TransformLikeAction::Convert, &self.target, game, ctx)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_transform_like_action_with_outputs(
+            TransformLikeAction::Convert,
+            &self.target,
+            game,
+            ctx,
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

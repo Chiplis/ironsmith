@@ -31,10 +31,6 @@ impl GrantObjectAbilityEffect {
     pub fn to_source(ability: Ability) -> Self {
         Self::new(ability, ChooseSpec::Source)
     }
-
-    fn ability_fingerprint(ability: &Ability) -> String {
-        format!("{:?}|{:?}", ability.kind, ability.functional_zones)
-    }
 }
 
 impl EffectExecutor for GrantObjectAbilityEffect {
@@ -54,22 +50,15 @@ impl EffectExecutor for GrantObjectAbilityEffect {
         }
 
         for target_id in targets {
-            let Some(target) = game.object_mut(target_id) else {
-                continue;
-            };
-
-            if !self.allow_duplicates {
-                let new_fp = Self::ability_fingerprint(&self.ability);
-                let already_present = target
-                    .abilities
-                    .iter()
-                    .any(|a| Self::ability_fingerprint(a) == new_fp);
-                if already_present {
-                    continue;
-                }
-            }
-
-            target.abilities_mut().push(self.ability.clone());
+            game.install_authored_object_ability(
+                target_id,
+                self.ability.clone(),
+                if self.allow_duplicates {
+                    crate::game_state::AuthoredAbilityDuplicatePolicy::PreserveAll
+                } else {
+                    crate::game_state::AuthoredAbilityDuplicatePolicy::SuppressEquivalentKindAndZones
+                },
+            );
         }
         Ok(EffectOutcome::default())
     }

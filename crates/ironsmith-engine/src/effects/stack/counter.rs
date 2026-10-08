@@ -4,22 +4,14 @@ use crate::ability::AbilityKind;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::CounterEffect;
-
-fn counter_one_stack_object(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    target_id: ObjectId,
-) -> Result<EffectOutcome, ExecutionError> {
-    counter_one_stack_object_of_kind(game, ctx, target_id, None)
-}
 
 /// The stack-object kind a stack-targeting effect's target is restricted to.
 pub(crate) fn counter_target_stack_kind(
@@ -31,23 +23,30 @@ pub(crate) fn counter_target_stack_kind(
     }
 }
 
-fn counter_one_stack_object_of_kind(
+fn counter_one_stack_object_of_kind_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     target_id: ObjectId,
     kind: Option<crate::filter::StackObjectKind>,
-) -> Result<EffectOutcome, ExecutionError> {
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let mut receipts = Vec::new();
-    let result = counter_one_stack_object_of_kind_inner(game, ctx, target_id, kind, &mut receipts)
-        .and_then(|original| crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts));
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-        return result.map(|_| EffectOutcome::count(0));
-    }
-    result
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let mut receipts = Vec::new();
+            let original =
+                counter_one_stack_object_of_kind_inner(game, ctx, target_id, kind, &mut receipts)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                game, ctx, original, receipts,
+            )
+        },
+    )
 }
 
 fn counter_one_stack_object_of_kind_inner(
@@ -55,7 +54,10 @@ fn counter_one_stack_object_of_kind_inner(
     ctx: &mut ExecutionContext,
     target_id: ObjectId,
     kind: Option<crate::filter::StackObjectKind>,
-    receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    receipts: &mut Vec<(
+        ObjectId,
+        crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    )>,
 ) -> Result<EffectOutcome, ExecutionError> {
     use crate::filter::StackObjectKind;
 
@@ -65,7 +67,7 @@ fn counter_one_stack_object_of_kind_inner(
         .iter()
         .position(|entry| entry.ability_id == Some(target_id))
     {
-        return counter_stack_entry_at(game, ctx, index);
+        return Ok(commit_countered_ability(game, index));
     }
 
     if !game.can_be_countered(target_id) {
@@ -95,10 +97,7 @@ fn counter_one_stack_object_of_kind_inner(
             .filter(|&index| game.stack[index].is_ability),
     };
     if let Some(index) = ability_index {
-        let entry = game.stack.remove(index);
-        let outcome = countered_ability_outcome(game, &entry);
-        super::copy_spell::discard_departed_ability_copy_object(game, &entry);
-        return Ok(outcome);
+        return Ok(commit_countered_ability(game, index));
     }
     if matches!(
         kind,
@@ -134,99 +133,111 @@ fn counter_one_stack_object_of_kind_inner(
     }
 
     // Find the stack entry for this object
-    Ok(if game
-        .stack
-        .iter()
-        .any(|e| e.object_id == target_id && !e.is_ability)
-    {
-        // Capture identity before the countered spell changes zones.
-        let countered_info = game.object(target_id).map(|obj| {
-            (
-                obj.stable_id,
-                game.current_controller(target_id).unwrap_or(obj.owner),
-            )
-        });
-        let countered_snapshot = game.object(target_id).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        });
-        let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-        let receipt = apply_zone_change_with_context_and_additional_effects(
-            game, target_id, Zone::Stack, Zone::Graveyard, ctx.cause.clone(),
-            ctx, &additional_effects,
-        )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-
-        let outcome = receipt.original.clone();
-        receipts.push((target_id, receipt));
-        let mut countered_spell = false;
-        match outcome {
-            EventOutcome::Prevented => return Ok(EffectOutcome::prevented()),
-            EventOutcome::Proceed(change) => {
-                // The common commit has already removed the departing spell
-                // from its zone index, preserving independent abilities that
-                // share its source id. Do not run entry replacements again.
-                countered_spell = change.new_object_id.is_some();
-                if change.final_zone == Zone::Exile {
-                    for new_id in change.new_object_ids {
-                        game.add_exiled_with_source_link(ctx.source, new_id);
-                    }
-                }
-            }
-            EventOutcome::Replaced => {
-                if let Some(idx) = game
-                    .stack
-                    .iter()
-                    .position(|e| e.object_id == target_id && !e.is_ability)
-                {
-                    let entry = game.stack.remove(idx);
-                    countered_spell = !entry.is_ability;
-                }
-            }
-            EventOutcome::NotApplicable => return Ok(EffectOutcome::target_invalid()),
-        }
-
-        if !game
+    Ok(
+        if game
             .stack
             .iter()
             .any(|e| e.object_id == target_id && !e.is_ability)
         {
-            if let Some((stable_id, controller)) = countered_info {
-                game.record_ui_effect_event(
-                    "spell_countered",
-                    Some(controller),
-                    None,
-                    vec![stable_id],
-                    None,
-                    None,
-                );
-                if countered_spell {
-                    let mut event = crate::triggers::TriggerEvent::new_with_provenance(
-                        crate::events::SpellCounteredEvent::new(
-                            target_id,
-                            controller,
-                            countered_snapshot,
-                        ).with_cause(ctx.cause.clone()).with_complete_source_lookback(),
-                        ctx.provenance,
-                    )
-                    .with_lookback_source_snapshots(lookback_source_snapshots);
-                    if game.object(ctx.source).is_none()
-                        && let Some(snapshot) = ctx.source_snapshot.clone() {
-                        event = event.with_source_snapshot(snapshot);
-                    }
-                    return Ok(EffectOutcome::resolved().with_event(event));
-                }
+            // Capture identity before the countered spell changes zones.
+            let countered_info = game.object(target_id).map(|obj| {
+                (
+                    obj.stable_id,
+                    game.current_controller(target_id).unwrap_or(obj.owner),
+                )
+            });
+            let countered_snapshot = game.object(target_id).map(|object| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    object, game,
+                )
+            });
+            let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
+            let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let receipt = apply_zone_change_with_context_and_additional_effects(
+                game,
+                target_id,
+                Zone::Stack,
+                Zone::Graveyard,
+                ctx.cause.clone(),
+                ctx,
+                &additional_effects,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-            EffectOutcome::resolved()
+
+            let outcome = receipt.original.clone();
+            receipts.push((target_id, receipt));
+            let mut countered_spell = false;
+            match outcome {
+                EventOutcome::Prevented => return Ok(EffectOutcome::prevented()),
+                EventOutcome::Proceed(change) => {
+                    // The common commit has already removed the departing spell
+                    // from its zone index, preserving independent abilities that
+                    // share its source id. Do not run entry replacements again.
+                    countered_spell = change.new_object_id.is_some();
+                    if change.final_zone == Zone::Exile {
+                        for new_id in change.new_object_ids {
+                            game.add_exiled_with_source_link(ctx.source, new_id);
+                        }
+                    }
+                }
+                EventOutcome::Replaced => {
+                    if let Some(idx) = game
+                        .stack
+                        .iter()
+                        .position(|e| e.object_id == target_id && !e.is_ability)
+                    {
+                        let entry = game.stack.remove(idx);
+                        countered_spell = !entry.is_ability;
+                    }
+                }
+                EventOutcome::NotApplicable => return Ok(EffectOutcome::target_invalid()),
+            }
+
+            if !game
+                .stack
+                .iter()
+                .any(|e| e.object_id == target_id && !e.is_ability)
+            {
+                if let Some((stable_id, controller)) = countered_info {
+                    game.record_ui_effect_event(
+                        "spell_countered",
+                        Some(controller),
+                        None,
+                        vec![stable_id],
+                        None,
+                        None,
+                    );
+                    if countered_spell {
+                        let mut event = crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::SpellCounteredEvent::new(
+                                target_id,
+                                controller,
+                                countered_snapshot,
+                            )
+                            .with_cause(ctx.cause.clone())
+                            .with_complete_source_lookback(),
+                            ctx.provenance,
+                        )
+                        .with_lookback_source_snapshots(lookback_source_snapshots);
+                        if game.object(ctx.source).is_none()
+                            && let Some(snapshot) = ctx.source_snapshot.clone()
+                        {
+                            event = event.with_source_snapshot(snapshot);
+                        }
+                        return Ok(EffectOutcome::resolved().with_event(event));
+                    }
+                }
+                EffectOutcome::resolved()
+            } else {
+                EffectOutcome::target_invalid()
+            }
         } else {
+            // Target is no longer on the stack
             EffectOutcome::target_invalid()
-        }
-    } else {
-        // Target is no longer on the stack
-        EffectOutcome::target_invalid()
-    })
+        },
+    )
 }
 
 /// Counter the stack object at `index` (CR 701.6a).
@@ -240,24 +251,52 @@ pub(crate) fn counter_stack_entry_at(
     ctx: &mut ExecutionContext,
     index: usize,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let Some(entry) = game.stack.get(index) else {
-        return Ok(EffectOutcome::target_invalid());
-    };
-    let object_id = entry.object_id;
-    if !entry.is_ability {
-        return counter_one_stack_object_of_kind(
-            game,
-            ctx,
-            object_id,
-            Some(crate::filter::StackObjectKind::Spell),
-        );
+    counter_stack_entry_at_with_outputs(game, ctx, index)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn counter_stack_entry_at_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    index: usize,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(entry) = game.stack.get(index) else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
+            };
+            let object_id = entry.object_id;
+            if !entry.is_ability {
+                return counter_one_stack_object_of_kind_with_outputs(
+                    game,
+                    ctx,
+                    object_id,
+                    Some(crate::filter::StackObjectKind::Spell),
+                );
+            }
+            Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                commit_countered_ability(game, index),
+            ))
+        },
+    )
+}
+
+/// One physical removal owner for exact and source-relative ability targets.
+/// The caller selects the entry before commitment; spell protection and zone
+/// replacements never participate in this ability removal.
+fn commit_countered_ability(game: &mut GameState, index: usize) -> EffectOutcome {
+    if !game.stack.get(index).is_some_and(|entry| entry.is_ability) {
+        return EffectOutcome::target_invalid();
     }
-    // "Can't be countered" protects spells; it never reaches an ability,
-    // even one whose source is such a spell (a storm trigger).
     let entry = game.stack.remove(index);
     let outcome = countered_ability_outcome(game, &entry);
     super::copy_spell::discard_departed_ability_copy_object(game, &entry);
-    Ok(outcome)
+    outcome
 }
 
 /// Effect that counters a target spell on the stack.
@@ -318,29 +357,54 @@ impl EffectExecutor for CounterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            if target_ids.is_empty() { return Ok(EffectOutcome::target_invalid()); }
-            let kind = counter_target_stack_kind(&self.target);
-            let mut outcomes = Vec::new();
-            let mut receipts = Vec::new();
-            for target_id in target_ids {
-                outcomes.push(counter_one_stack_object_of_kind_inner(game, ctx, target_id, kind, &mut receipts)?);
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
-            let original = EffectOutcome::aggregate(outcomes);
-            crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-            return result.map(|_| EffectOutcome::count(0));
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                if target_ids.is_empty() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
+                }
+                let kind = counter_target_stack_kind(&self.target);
+                let mut outcomes = Vec::new();
+                let mut receipts = Vec::new();
+                for target_id in target_ids {
+                    outcomes.push(counter_one_stack_object_of_kind_inner(
+                        game,
+                        ctx,
+                        target_id,
+                        kind,
+                        &mut receipts,
+                    )?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                }
+                let original = EffectOutcome::aggregate(outcomes);
+                crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                    game, ctx, original, receipts,
+                )
+            },
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

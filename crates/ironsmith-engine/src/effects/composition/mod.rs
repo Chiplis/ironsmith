@@ -30,8 +30,8 @@ pub(crate) mod choose_objects;
 pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
-mod compound;
 mod collect_mana_payments;
+mod compound;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -41,7 +41,6 @@ mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
 mod for_players;
-mod object_iteration;
 mod grant_repeatable_mana_payment_action;
 mod if_effect;
 mod iteration_program;
@@ -50,6 +49,7 @@ mod mana_restricted;
 mod mana_retained;
 mod may;
 pub(crate) mod mechanic_actions;
+mod object_iteration;
 mod prepared_branch;
 mod prepared_iteration;
 mod reflexive_trigger;
@@ -57,6 +57,7 @@ mod repeat_effects;
 pub(crate) use repeat_effects::{
     RepetitionScope, finish_repeated_sequence_outcomes, resolve_repeat_count,
 };
+pub(crate) mod original_observations;
 mod repeat_process;
 mod repeat_process_prompt;
 mod secret_choice;
@@ -94,7 +95,6 @@ mod vote;
 mod vote_runtime;
 mod with_id;
 
-pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
 pub use bid_life::{BidLifeEffect, LifeBidStart};
@@ -105,6 +105,7 @@ pub(crate) use choose_mode_runtime::{
 pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use collect_evidence::CollectEvidenceEffect;
+pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub(crate) use compound::{execute_compound, execute_transaction};
 pub use conditional::ConditionalEffect;
 pub use cumulative_upkeep::CumulativeUpkeepEffect;
@@ -113,7 +114,8 @@ pub use emit_keyword_action::EmitKeywordActionEffect;
 pub(crate) use emit_keyword_action::{
     complete_keyword_action, complete_keyword_action_with_outputs,
     complete_keyword_action_with_result, observe_keyword_action_completion,
-    publish_keyword_action_completion, publish_keyword_action_completion_receipt,
+    observe_keyword_action_completion_with_outputs, publish_keyword_action_completion,
+    publish_keyword_action_completion_receipt,
 };
 pub use execute_with_source::ExecuteWithSourceEffect;
 pub use for_each_correlated_result::ForEachObjectCorrelatedResultEffect;
@@ -148,6 +150,7 @@ pub use repeat_process_prompt::RepeatProcessPromptEffect;
 pub use secret_choice::{SecretChoiceEffect, SecretChoiceResult};
 pub use sequence::SequenceEffect;
 pub(crate) use sequence::execute_checked_program_with_outputs;
+pub(crate) use sequence::execute_observed_replacement_children_with_outputs;
 pub(crate) use simultaneous::{
     OriginalTriggerObservation, complete_prepared_original_with_outputs,
     execute_simultaneous_originals, execute_simultaneous_originals_with_default_outputs,
@@ -193,8 +196,9 @@ pub(crate) use keyword_action::{
 mod keyword_programs;
 
 pub(crate) use simultaneous::{
-    complete_committed_original_with_outputs, complete_standalone_original_with_outputs,
-    observe_original_completion, prepare_simultaneous_originals_with_participants,
+    complete_committed_original_with_outputs, complete_retained_originals_with_outputs,
+    complete_standalone_original_with_outputs, observe_original_completion,
+    prepare_simultaneous_originals_with_participants, prepare_standalone_completion_with_outputs,
 };
 
 #[cfg(test)]

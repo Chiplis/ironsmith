@@ -358,6 +358,18 @@ pub(crate) enum ResolutionControl {
     Stop,
 }
 
+/// Accepted object choices and the next request in a suspended selection.
+/// Declines and empty candidate sets advance the cursor without adding objects.
+/// This is instruction control state, not a completed game-action outcome.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ObjectSelectionProgress {
+    pub next_request: usize,
+    pub chosen: Vec<ObjectSnapshot>,
+}
+
+/// Source, controller, chooser, subject and authored selection tag bind a cursor.
+pub(crate) type ObjectSelectionProgressKey = (ObjectId, PlayerId, PlayerId, PlayerId, TagKey);
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
@@ -425,6 +437,10 @@ pub struct ExecutionContext<'a> {
     /// tag all destroyed creatures). Use `get_tagged_first()` for single-object patterns and
     /// `get_tagged_all()` for multi-object patterns.
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Suspended instruction-local selection cursors. Context checkpoints own
+    /// their rollback; payment frames start with their own selection state.
+    pub(crate) object_selection_progress:
+        HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
     /// Tagged players for cross-effect references.
     ///
     /// Effects can tag players using `ctx.tag_player("name", player_id)`, and subsequent effects
@@ -545,12 +561,16 @@ impl ExecutionContextCheckpoint {
     pub(crate) fn restore_ref_preserving_resolution_control(&self, ctx: &mut ExecutionContext<'_>) {
         let stopped = ctx.resolution_stopped() || self.resolution_stopped();
         self.restore_ref(ctx);
-        if stopped { ctx.stop_resolution(); }
+        if stopped {
+            ctx.stop_resolution();
+        }
     }
     pub(crate) fn restore_preserving_resolution_control(self, ctx: &mut ExecutionContext<'_>) {
         let stopped = ctx.resolution_stopped() || self.resolution_stopped();
         self.restore(ctx);
-        if stopped { ctx.stop_resolution(); }
+        if stopped {
+            ctx.stop_resolution();
+        }
     }
     pub(crate) fn replacement_scope(&self) -> &ReplacementExecutionContext {
         &self.replacement
@@ -595,6 +615,7 @@ execution_context_checkpoint! {
     target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     source_snapshot: Option<ObjectSnapshot>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    object_selection_progress: HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
     tagged_players: HashMap<TagKey, Vec<PlayerId>>,
     face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
     optional_identity_guard: Option<OptionalIdentityGuard>,
@@ -676,7 +697,7 @@ payment_execution_inputs! {
     local {
         source, controller, targets, announced_targets, targets_are_cost_choices,
         target_assignments, target_distributions, x_value, effect_outcomes,
-        optional_action, source_snapshot, tagged_objects, optional_identity_guard,
+        optional_action, source_snapshot, tagged_objects, object_selection_progress, optional_identity_guard,
         do_this_limit, chosen_modes, cause, provenance, replacement,
         executing_effect, shared_team_structure_operations, created_extra_turn_index,
         restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment,
@@ -734,8 +755,12 @@ impl std::fmt::Debug for ExecutionContext<'_> {
 }
 
 impl<'a> ExecutionContext<'a> {
-    pub(crate) fn stop_resolution(&mut self) { self.resolution_control = ResolutionControl::Stop; }
-    pub(crate) fn resolution_stopped(&self) -> bool { self.resolution_control == ResolutionControl::Stop }
+    pub(crate) fn stop_resolution(&mut self) {
+        self.resolution_control = ResolutionControl::Stop;
+    }
+    pub(crate) fn resolution_stopped(&self) -> bool {
+        self.resolution_control == ResolutionControl::Stop
+    }
 
     /// A speculative query may construct temporary bindings, but it cannot
     /// publish them into the instruction that asked the question. Restore on
@@ -780,6 +805,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
+            object_selection_progress: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             optional_identity_guard: None,
@@ -848,6 +874,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
+            object_selection_progress: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             optional_identity_guard: None,
@@ -906,6 +933,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: self.target_snapshots,
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,
+            object_selection_progress: self.object_selection_progress,
             tagged_players: self.tagged_players,
             face_down_exile_viewers: self.face_down_exile_viewers,
             optional_identity_guard: self.optional_identity_guard,
@@ -1024,12 +1052,18 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Retain the exact linked rules acquisition in this execution.
-    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+    pub fn with_linked_exile_owner(
+        mut self,
+        owner: Option<crate::linked_exile::LinkedExileOwner>,
+    ) -> Self {
         self.linked_exile_owner = owner;
         self
     }
 
-    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+    pub fn with_source_number_owner(
+        mut self,
+        owner: Option<crate::linked_exile::LinkedExileOwner>,
+    ) -> Self {
         self.source_number_owner = owner;
         self
     }
@@ -1051,14 +1085,24 @@ impl<'a> ExecutionContext<'a> {
     pub fn try_snapshot_targets(&mut self, game: &GameState) -> Result<(), super::ExecutionError> {
         let mut snapshots = self.target_snapshots.clone();
         for target in &self.targets {
-            let ResolvedTarget::Object(obj_id) = target else { continue; };
+            let ResolvedTarget::Object(obj_id) = target else {
+                continue;
+            };
             if let Some(obj) = game.object(*obj_id) {
-                snapshots.insert(*obj_id,
-                    ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)?);
+                snapshots.insert(
+                    *obj_id,
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)?,
+                );
             } else if let Some(entry) = game.stack_ability_entry(*obj_id) {
-                let snapshot = game.object(entry.object_id).map(|source|
-                    ObjectSnapshot::try_from_object_with_calculated_characteristics(source, game)
-                ).transpose()?.or_else(|| entry.source_snapshot.clone());
+                let snapshot = game
+                    .object(entry.object_id)
+                    .map(|source| {
+                        ObjectSnapshot::try_from_object_with_calculated_characteristics(
+                            source, game,
+                        )
+                    })
+                    .transpose()?
+                    .or_else(|| entry.source_snapshot.clone());
                 if let Some(mut snapshot) = snapshot {
                     snapshot.controller = entry.controller;
                     snapshot.zone = crate::zone::Zone::Stack;
@@ -1104,50 +1148,102 @@ impl<'a> ExecutionContext<'a> {
 
     /// Bind only when an instruction actually uses the role. Native choices
     /// and the existing enclosing checkpoint own suspension and rollback.
-    pub(crate) fn bind_defending_player(&mut self, game: &GameState) -> Result<bool, ExecutionError> {
+    pub(crate) fn bind_defending_player(
+        &mut self,
+        game: &GameState,
+    ) -> Result<bool, ExecutionError> {
         let reference = self.combat.defending_player_reference.or_else(|| {
-            self.combat.defending_player.is_none().then(|| self.triggering_event.as_ref()
-                .and_then(|event| game.defending_reference_for_event(event))).flatten()
+            self.combat
+                .defending_player
+                .is_none()
+                .then(|| {
+                    self.triggering_event
+                        .as_ref()
+                        .and_then(|event| game.defending_reference_for_event(event))
+                })
+                .flatten()
         });
-        if matches!(reference, Some(crate::combat_state::DefendingPlayerReference::Selected(_)
-            | crate::combat_state::DefendingPlayerReference::KnownAbsent)) { return Ok(true); }
+        if matches!(
+            reference,
+            Some(
+                crate::combat_state::DefendingPlayerReference::Selected(_)
+                    | crate::combat_state::DefendingPlayerReference::KnownAbsent
+            )
+        ) {
+            return Ok(true);
+        }
         let players = if let Some(reference) = reference {
             game.defending_player_candidates(reference)?
         } else if let Some(player) = self.combat.defending_player {
             vec![player]
-        } else { return Err(ExecutionError::IncompleteEvidence(
-            "defending player has no combat reference or selected actor".into())); };
+        } else {
+            return Err(ExecutionError::IncompleteEvidence(
+                "defending player has no combat reference or selected actor".into(),
+            ));
+        };
         let chosen = match players.as_slice() {
             [] => {
                 self.combat.defending_player = None;
-                self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::KnownAbsent);
+                self.combat.defending_player_reference =
+                    Some(crate::combat_state::DefendingPlayerReference::KnownAbsent);
                 return Ok(true);
             }
             [player] => *player,
             _ => {
-                let options = players.iter().filter_map(|id|
-                    game.player(*id).map(|player| (player.name.to_string(), *id))).collect::<Vec<_>>();
-                let choice = crate::decisions::ask_choose_one(game, &mut self.decision_maker,
-                    self.controller, self.source, &options);
-                if self.decision_maker.awaiting_choice() { return Ok(false); }
+                let options = players
+                    .iter()
+                    .filter_map(|id| {
+                        game.player(*id)
+                            .map(|player| (player.name.to_string(), *id))
+                    })
+                    .collect::<Vec<_>>();
+                let choice = crate::decisions::ask_choose_one(
+                    game,
+                    &mut self.decision_maker,
+                    self.controller,
+                    self.source,
+                    &options,
+                );
+                if self.decision_maker.awaiting_choice() {
+                    return Ok(false);
+                }
                 choice.ok_or(ExecutionError::UnresolvedPlayerDecision {
-                    player: self.controller, decision: "choose the defending player",
+                    player: self.controller,
+                    decision: "choose the defending player",
                 })?
             }
         };
         self.combat.defending_player = Some(chosen);
-        self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::Selected(chosen));
+        self.combat.defending_player_reference = Some(
+            crate::combat_state::DefendingPlayerReference::Selected(chosen),
+        );
         Ok(true)
     }
 
-    pub(crate) fn defending_players(&self, game: &GameState) -> Result<Vec<PlayerId>, ExecutionError> {
+    pub(crate) fn defending_players(
+        &self,
+        game: &GameState,
+    ) -> Result<Vec<PlayerId>, ExecutionError> {
         if let Some(reference) = self.combat.defending_player_reference {
             return game.defending_player_candidates(reference);
         }
-        self.combat.defending_player.map(|player| {
-            if game.player(player).is_some_and(|player| player.is_in_game()) { vec![player] } else { Vec::new() }
-        }).ok_or_else(|| ExecutionError::IncompleteEvidence(
-            "defending player has no combat reference or selected actor".into()))
+        self.combat
+            .defending_player
+            .map(|player| {
+                if game
+                    .player(player)
+                    .is_some_and(|player| player.is_in_game())
+                {
+                    vec![player]
+                } else {
+                    Vec::new()
+                }
+            })
+            .ok_or_else(|| {
+                ExecutionError::IncompleteEvidence(
+                    "defending player has no combat reference or selected actor".into(),
+                )
+            })
     }
 
     /// Set the X value.
@@ -1381,7 +1477,9 @@ impl<'a> ExecutionContext<'a> {
     /// voted with Bob, not players who voted with Alice.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.provenance = event.provenance();
-        if self.combat.defending_player.is_none() && self.combat.defending_player_reference.is_none() {
+        if self.combat.defending_player.is_none()
+            && self.combat.defending_player_reference.is_none()
+        {
             self.combat.defending_player_reference = event.defending_player_reference();
         }
         if let Some(attack) = event.downcast::<crate::events::PlayerAttackDeclarationEvent>() {
@@ -1410,10 +1508,14 @@ impl<'a> ExecutionContext<'a> {
             self.set_tagged_players(tag.clone(), players.clone());
         }
         if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
-            && let Some(snapshot) = event.source_snapshot().filter(|snapshot| snapshot.object_id == damage.source)
+            && let Some(snapshot) = event
+                .source_snapshot()
+                .filter(|snapshot| snapshot.object_id == damage.source)
         {
-            self.set_tagged_players(ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG,
-                vec![snapshot.controller]);
+            self.set_tagged_players(
+                ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG,
+                vec![snapshot.controller],
+            );
         }
         if let Some(controller) = event.cause().and_then(|cause| cause.source_controller) {
             self.set_tagged_players(
@@ -1473,12 +1575,18 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Retain the exact acquisition admitted by the activation owner.
-    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+    pub fn with_activation_origin(
+        mut self,
+        origin: Option<crate::continuous::AbilityOrigin>,
+    ) -> Self {
         self.activation_origin = origin;
         self
     }
 
-    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+    pub fn with_activation_definition(
+        mut self,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+    ) -> Self {
         self.activation_definition = definition;
         self
     }
@@ -1816,14 +1924,18 @@ impl<'a> ExecutionContext<'a> {
         let linked = match &self.linked_exile_owner {
             Some(owner) => match game.linked_exile_pair_members(owner) {
                 Ok(members) => members,
-                Err(error) => { game.record_token_resource_failure(&error); &[] }
+                Err(error) => {
+                    game.record_token_resource_failure(&error);
+                    &[]
+                }
             },
             None => game.get_exiled_with_source_links(self.source),
         };
         let source_exiled = linked
             .iter()
             .filter_map(|id| {
-                game.object(*id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                game.object(*id)
+                    .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             })
             .collect::<Vec<_>>();
         if self.linked_exile_owner.is_some() || !source_exiled.is_empty() {
@@ -1857,11 +1969,13 @@ impl<'a> ExecutionContext<'a> {
                         crate::game_state::Target::Object(_) => None,
                     }));
                 }
-                target_objects.extend(entry.targets.iter().filter_map(|target| match target {
-                    crate::game_state::Target::Object(target_id) => {
-                        game.object(*target_id).and_then(|object| ObjectSnapshot::capture_for_execution(object, game))
+                target_objects.extend(entry.targets.iter().filter_map(|target| {
+                    match target {
+                        crate::game_state::Target::Object(target_id) => game
+                            .object(*target_id)
+                            .and_then(|object| ObjectSnapshot::capture_for_execution(object, game)),
+                        crate::game_state::Target::Player(_) => None,
                     }
-                    crate::game_state::Target::Player(_) => None,
                 }));
             }
         }
@@ -1922,7 +2036,7 @@ impl<'a> ExecutionContext<'a> {
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&tagged_players)
             .with_effect_outcomes(&self.effect_outcomes);
-        filter_ctx.source_number_owner=self.source_number_owner.clone();
+        filter_ctx.source_number_owner = self.source_number_owner.clone();
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
@@ -1930,7 +2044,9 @@ impl<'a> ExecutionContext<'a> {
         }
         filter_ctx.defending_player_reference = self.combat.defending_player_reference;
         if let Some(reference) = self.combat.defending_player_reference {
-            filter_ctx.defending_players = game.defending_player_candidates(reference).unwrap_or_default();
+            filter_ctx.defending_players = game
+                .defending_player_candidates(reference)
+                .unwrap_or_default();
         }
         if self.combat.attacking_player.is_some() {
             filter_ctx.attacking_player = self.combat.attacking_player;
@@ -1973,7 +2089,8 @@ impl<'a> ExecutionContext<'a> {
             crate::events::DamageTarget::Player(player) => (Some(player), None),
             crate::events::DamageTarget::Object(object_id) => {
                 let snapshot = damage.target_snapshot.clone().or_else(|| {
-                    game.object(object_id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                    game.object(object_id)
+                        .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                 });
                 (None, snapshot)
             }
@@ -1995,10 +2112,12 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                game.object(blocked.attacker)
+                    .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshot = blocked.blocker_snapshot.clone().or_else(|| {
-                game.object(blocked.blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                game.object(blocked.blocker)
+                    .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             return Some(BlockEventContext {
                 attacker: blocked.attacker,
@@ -2012,14 +2131,16 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                game.object(blocked.attacker)
+                    .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshots = if blocked.blocker_snapshots.is_empty() {
                 blocked
                     .blockers
                     .iter()
                     .filter_map(|blocker| {
-                        game.object(*blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
+                        game.object(*blocker)
+                            .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                     })
                     .collect()
             } else {

@@ -7680,3 +7680,21 @@ html[data-hand-pointer-suspended="true"] * {
     text-overflow: ellipsis;
   }
 }
+
+/* Keep the labelled phase pass beside the main action, including compact HUDs. */
+.table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+.decision-quick-controls button.decision-phase-pass {
+  width: auto !important;
+  min-width: 52px !important;
+  flex: 0 0 auto !important;
+  padding: 0 10px !important;
+  background: #1559a6 !important;
+  border-color: #62b4ff !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+.table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+.decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
+  background: #2483db !important;
+  box-shadow: 0 0 0 2px #91ceff;
+}

@@ -1,8 +1,6 @@
 //! Destroy effect implementation.
 
-use crate::effect::{
-    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus,
-};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{apply_single_target_object_from_spec, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -86,7 +84,8 @@ impl DestroyEffect {
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
         let pre_snapshot = game
             .object(object_id)
-            .map(|obj| ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)).transpose()?;
+            .map(|obj| ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game))
+            .transpose()?;
         let result = process_destroy_with_regeneration(
             game,
             object_id,
@@ -105,7 +104,9 @@ impl DestroyEffect {
             }
         }
 
-        let Some(receipt) = result else { return Ok(None); };
+        let Some(receipt) = result else {
+            return Ok(None);
+        };
         let original = receipt.result.clone();
         receipts.push(receipt);
         match original {
@@ -123,25 +124,46 @@ impl DestroyEffect {
 /// they aren't used up by it: when the permanent survives (indestructible, a
 /// shield counter, "can't be destroyed"), its shields are still there.
 pub(crate) fn process_destroy_with_regeneration(
-    game: &mut GameState, object_id: crate::ids::ObjectId, source: Option<crate::ids::ObjectId>,
-    ctx: &mut ExecutionContext, can_be_regenerated: bool,
+    game: &mut GameState,
+    object_id: crate::ids::ObjectId,
+    source: Option<crate::ids::ObjectId>,
+    ctx: &mut ExecutionContext,
+    can_be_regenerated: bool,
 ) -> Result<Option<crate::events::processing::DestroyExecutionReceipt>, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
     game.clear_pending_decision_controllers();
     if can_be_regenerated {
-        return crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
+        return crate::events::processing::process_destroy_scoped(
+            game, object_id, source, ctx, None,
+        );
     }
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let suspended = game.effect_store.replacement_effects.suspend_regeneration_shields_from_source(object_id);
+    let suspended = game
+        .effect_store
+        .replacement_effects
+        .suspend_regeneration_shields_from_source(object_id);
     let shield_count = game.regeneration_shield_count(object_id);
     game.clear_regeneration_shields(object_id);
-    let result = crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
+    let result =
+        crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); return result;
+        game.restore_execution_checkpoint(
+            checkpoint,
+            result.is_ok() && ctx.decision_maker.awaiting_choice(),
+        );
+        context_checkpoint.restore(ctx);
+        return result;
     }
-    if game.object(object_id).is_some_and(|object| object.zone == Zone::Battlefield) {
-        game.effect_store.replacement_effects.restore_suspended_effects(suspended);
+    if game
+        .object(object_id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+    {
+        game.effect_store
+            .replacement_effects
+            .restore_suspended_effects(suspended);
         game.add_regeneration_shield(object_id, shield_count);
     }
     result
@@ -158,30 +180,71 @@ pub(crate) fn execute_single_target_destroy(
     spec: &ChooseSpec,
     can_be_regenerated: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    execute_single_target_destroy_with_outputs(game, ctx, spec, can_be_regenerated)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn execute_single_target_destroy_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    can_be_regenerated: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let mut receipts = Vec::new();
-    let result = (|| -> Result<EffectOutcome, ExecutionError> {
-    let mut destroyed_memory = None;
-    let outcome = apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
-        let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
-        let status = DestroyEffect::destroy_object(game, ctx, object_id, can_be_regenerated, &mut receipts)?;
-        if status.is_none() {
-            destroyed_memory = receipts.last().and_then(|receipt| receipt.snapshot.as_ref()).map(Clone::clone).or(pre_memory);
+    let result = (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let mut destroyed_memory = None;
+        let outcome =
+            apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
+                let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
+                let status = DestroyEffect::destroy_object(
+                    game,
+                    ctx,
+                    object_id,
+                    can_be_regenerated,
+                    &mut receipts,
+                )?;
+                if status.is_none() {
+                    destroyed_memory = receipts
+                        .last()
+                        .and_then(|receipt| receipt.snapshot.as_ref())
+                        .map(Clone::clone)
+                        .or(pre_memory);
+                }
+                Ok(status)
+            })?;
+        let original = match destroyed_memory {
+            Some(memory) => outcome.with_affected_object_memory(vec![memory]),
+            None => outcome,
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        Ok(status)
-    })?;
-    let original = match destroyed_memory {
-        Some(memory) => outcome.with_affected_object_memory(vec![memory]),
-        None => outcome,
-    };
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    crate::events::processing::finish_destroy_receipts(game, ctx, original, receipts)
+        crate::events::processing::finish_destroy_receipts_with_outputs(
+            game, ctx, original, receipts,
+        )
     })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() { game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); }
-    if result.is_ok() && ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(
+            checkpoint,
+            result.is_ok() && ctx.decision_maker.awaiting_choice(),
+        );
+        context_checkpoint.restore(ctx);
+    }
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
     result
 }
 
@@ -195,186 +258,247 @@ pub(crate) fn execute_simultaneous_destroy(
     spec: &ChooseSpec,
     can_be_regenerated: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    execute_simultaneous_destroy_with_outputs(game, ctx, spec, can_be_regenerated)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn execute_simultaneous_destroy_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    can_be_regenerated: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| -> Result<EffectOutcome, ExecutionError> {
-    let mut receipts = Vec::new();
-    let selected_objects = match resolve_objects_for_effect(game, ctx, spec) {
-        Ok(objects) => objects,
-        Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-        Err(error) => return Err(error),
-    };
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
-    }
-
-    // Stage the entire simultaneous destruction transaction on a clone.
-    // Owner order choices see `decision_view`, the immutable pre-event
-    // state, and the clone is committed only after every choice succeeds.
-    let decision_view = game.clone();
-    let mut staged_game = decision_view.clone();
-    let pinned_lookback =
-        crate::effects::helpers::begin_simultaneous_zone_change_lookback(&mut staged_game);
-    let opened_batch = staged_game.open_simultaneous_action();
-    let batch = staged_game
-        .simultaneous_action_batch()
-        .unwrap_or(ctx.provenance);
-    let pending_start = staged_game.effect_store.pending_trigger_events.len();
-    let mut destroyed_objects = Vec::new();
-    let mut destroyed_memory = Vec::new();
-    let mut graveyard_zone_changes = Vec::new();
-    let mut departed_snapshots = Vec::new();
-    let mut applied_count = 0usize;
-    for object_id in selected_objects {
-        let pre_snapshot = decision_view.object(object_id).map(|object| {
-            ObjectSnapshot::try_from_object_with_calculated_characteristics(object, &decision_view)
-        }).transpose()?;
-        let result = process_destroy_with_regeneration(
-            &mut staged_game,
-            object_id,
-            Some(ctx.source),
-            ctx,
-            can_be_regenerated,
-        )?;
+    let result = (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let mut receipts = Vec::new();
+        let selected_objects = match resolve_objects_for_effect(game, ctx, spec) {
+            Ok(objects) => objects,
+            Err(ExecutionError::InvalidTarget) => {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
+            }
+            Err(error) => return Err(error),
+        };
         if ctx.decision_maker.awaiting_choice() {
-            game.retain_pending_decision_controllers_from(&mut staged_game);
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        if let Some(snapshot) = pre_snapshot.as_ref()
-            && !staged_game
+
+        // Stage the entire simultaneous destruction transaction on a clone.
+        // Owner order choices see `decision_view`, the immutable pre-event
+        // state, and the clone is committed only after every choice succeeds.
+        let decision_view = game.clone();
+        let mut staged_game = decision_view.clone();
+        let pinned_lookback =
+            crate::effects::helpers::begin_simultaneous_zone_change_lookback(&mut staged_game);
+        let opened_batch = staged_game.open_simultaneous_action();
+        let batch = staged_game
+            .simultaneous_action_batch()
+            .unwrap_or(ctx.provenance);
+        let pending_start = staged_game.effect_store.pending_trigger_events.len();
+        let mut destroyed_objects = Vec::new();
+        let mut destroyed_memory = Vec::new();
+        let mut graveyard_zone_changes = Vec::new();
+        let mut departed_snapshots = Vec::new();
+        let mut applied_count = 0usize;
+        for object_id in selected_objects {
+            let pre_snapshot = decision_view
                 .object(object_id)
-                .is_some_and(|object| object.zone == Zone::Battlefield)
-        {
-            departed_snapshots.push(snapshot.clone());
-        }
-        let Some(receipt) = result else { return Ok(EffectOutcome::count(0)); };
-        let result = receipt.result.clone();
-        let object_id = receipt.permanent;
-        let pre_snapshot = receipt.snapshot.clone().or(pre_snapshot);
-        receipts.push(receipt);
-        if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
-            applied_count += 1;
-            if let Some(snapshot) = pre_snapshot.as_ref() {
-                destroyed_memory.push(Clone::clone(snapshot));
+                .map(|object| {
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(
+                        object,
+                        &decision_view,
+                    )
+                })
+                .transpose()?;
+            let result = process_destroy_with_regeneration(
+                &mut staged_game,
+                object_id,
+                Some(ctx.source),
+                ctx,
+                can_be_regenerated,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                game.retain_pending_decision_controllers_from(&mut staged_game);
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
-            let result_objects = staged_game.take_zone_change_results(object_id);
-            if let Some(snapshot) = pre_snapshot {
-                graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
-            }
-            destroyed_objects.extend(result_objects);
-        }
-    }
-
-    if !super::order_simultaneous_graveyard_batch(
-        &decision_view,
-        &mut staged_game,
-        &mut *ctx.decision_maker,
-        Some(ctx.source),
-        &destroyed_objects,
-    ) {
-        if ctx.decision_maker.awaiting_choice() {
-            // This prompt is asked against the immutable pre-event view.
-            let mut pending_view = decision_view.clone();
-            pending_view.capture_pending_decision_controllers();
-            game.retain_pending_decision_controllers_from(&mut pending_view);
-        }
-        return Ok(EffectOutcome::count(0));
-    }
-    staged_game.close_simultaneous_action(opened_batch);
-    crate::effects::helpers::end_simultaneous_zone_change_lookback(&mut staged_game, pinned_lookback);
-
-    if graveyard_zone_changes.len() > 1 {
-        let event_objects = graveyard_zone_changes
-            .iter()
-            .map(|(id, _, _)| *id)
-            .collect::<Vec<_>>();
-        let result_objects = graveyard_zone_changes
-            .iter()
-            .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
-            .collect::<Vec<_>>();
-        let snapshots = graveyard_zone_changes
-            .iter()
-            .map(|(_, _, snapshot)| snapshot.clone())
-            .collect::<Vec<_>>();
-
-        let removed =
-            staged_game.remove_pending_trigger_events_matching_from(pending_start, |event| {
-                let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
-                    return false;
-                };
-                zone_change.from == Zone::Battlefield
-                    && zone_change.to == Zone::Graveyard
-                    && zone_change.objects.len() == 1
-                    && event_objects.contains(&zone_change.objects[0])
-            });
-
-        if !removed.is_empty() {
-            let mut lookback_source_snapshots = Vec::new();
-            for snapshot in removed
-                .iter()
-                .flat_map(|event| event.lookback_source_snapshots())
+            if let Some(snapshot) = pre_snapshot.as_ref()
+                && !staged_game
+                    .object(object_id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
             {
-                if !lookback_source_snapshots
-                    .iter()
-                    .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
-                {
-                    lookback_source_snapshots.push(snapshot.clone());
-                }
+                departed_snapshots.push(snapshot.clone());
             }
-            let mut event = ZoneChangeEvent::batch_with_snapshots(
-                event_objects,
-                Zone::Battlefield,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                snapshots,
-            );
-            event.result_objects = result_objects;
-            // The destruction's other zone changes (a replacement's "exile
-            // it instead") belong to the same simultaneous event.
-            staged_game.queue_trigger_event(
-                ctx.provenance,
-                TriggerEvent::new_with_provenance(event, ctx.provenance)
-                    .with_simultaneous_batch(batch)
-                    .with_lookback_source_snapshots(lookback_source_snapshots),
-            );
+            let Some(receipt) = result else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            };
+            let result = receipt.result.clone();
+            let object_id = receipt.permanent;
+            let pre_snapshot = receipt.snapshot.clone().or(pre_snapshot);
+            receipts.push(receipt);
+            if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
+                applied_count += 1;
+                if let Some(snapshot) = pre_snapshot.as_ref() {
+                    destroyed_memory.push(Clone::clone(snapshot));
+                }
+                let result_objects = staged_game.take_zone_change_results(object_id);
+                if let Some(snapshot) = pre_snapshot {
+                    graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
+                }
+                destroyed_objects.extend(result_objects);
+            }
         }
-    }
 
-    *game = staged_game;
-    for snapshot in departed_snapshots {
-        ctx.refresh_target_snapshot(snapshot.clone());
-        if snapshot.object_id == ctx.source {
-            ctx.refresh_source_snapshot(snapshot);
+        if !super::order_simultaneous_graveyard_batch(
+            &decision_view,
+            &mut staged_game,
+            &mut *ctx.decision_maker,
+            Some(ctx.source),
+            &destroyed_objects,
+        ) {
+            if ctx.decision_maker.awaiting_choice() {
+                // This prompt is asked against the immutable pre-event view.
+                let mut pending_view = decision_view.clone();
+                pending_view.capture_pending_decision_controllers();
+                game.retain_pending_decision_controllers_from(&mut pending_view);
+            }
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-    }
+        staged_game.close_simultaneous_action(opened_batch);
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(
+            &mut staged_game,
+            pinned_lookback,
+        );
 
-    let mut outcome = EffectOutcome::count(applied_count as i32);
-    if !destroyed_objects.is_empty() {
-        outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
-        outcome = outcome.with_affected_object_memory(destroyed_memory);
-    }
+        if graveyard_zone_changes.len() > 1 {
+            let event_objects = graveyard_zone_changes
+                .iter()
+                .map(|(id, _, _)| *id)
+                .collect::<Vec<_>>();
+            let result_objects = graveyard_zone_changes
+                .iter()
+                .flat_map(|(_, result_ids, _)| result_ids.iter().copied())
+                .collect::<Vec<_>>();
+            let snapshots = graveyard_zone_changes
+                .iter()
+                .map(|(_, _, snapshot)| snapshot.clone())
+                .collect::<Vec<_>>();
 
-    crate::events::processing::finish_destroy_receipts(game, ctx, outcome, receipts)
+            let removed =
+                staged_game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                    let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
+                        return false;
+                    };
+                    zone_change.from == Zone::Battlefield
+                        && zone_change.to == Zone::Graveyard
+                        && zone_change.objects.len() == 1
+                        && event_objects.contains(&zone_change.objects[0])
+                });
+
+            if !removed.is_empty() {
+                let mut lookback_source_snapshots = Vec::new();
+                for snapshot in removed
+                    .iter()
+                    .flat_map(|event| event.lookback_source_snapshots())
+                {
+                    if !lookback_source_snapshots
+                        .iter()
+                        .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
+                    {
+                        lookback_source_snapshots.push(snapshot.clone());
+                    }
+                }
+                let mut event = ZoneChangeEvent::batch_with_snapshots(
+                    event_objects,
+                    Zone::Battlefield,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    snapshots,
+                );
+                event.result_objects = result_objects;
+                // The destruction's other zone changes (a replacement's "exile
+                // it instead") belong to the same simultaneous event.
+                staged_game.queue_trigger_event(
+                    ctx.provenance,
+                    TriggerEvent::new_with_provenance(event, ctx.provenance)
+                        .with_simultaneous_batch(batch)
+                        .with_lookback_source_snapshots(lookback_source_snapshots),
+                );
+            }
+        }
+
+        *game = staged_game;
+        for snapshot in departed_snapshots {
+            ctx.refresh_target_snapshot(snapshot.clone());
+            if snapshot.object_id == ctx.source {
+                ctx.refresh_source_snapshot(snapshot);
+            }
+        }
+
+        let mut outcome = EffectOutcome::count(applied_count as i32);
+        if !destroyed_objects.is_empty() {
+            outcome =
+                outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+            outcome = outcome.with_affected_object_memory(destroyed_memory);
+        }
+
+        crate::events::processing::finish_destroy_receipts_with_outputs(
+            game, ctx, outcome, receipts,
+        )
     })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() { game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice()); context_checkpoint.restore(ctx); }
-    if result.is_ok() && ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(
+            checkpoint,
+            result.is_ok() && ctx.decision_maker.awaiting_choice(),
+        );
+        context_checkpoint.restore(ctx);
+    }
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
     result
 }
 
 impl EffectExecutor for DestroyEffect {
-    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> { Some(crate::effect::PriorEffectAction::Destroyed) }
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Destroyed)
+    }
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         // Handle targeted effects with special single-target behavior
         if self.spec.is_target() && self.spec.is_single() {
-            return execute_single_target_destroy(game, ctx, &self.spec, true);
+            return execute_single_target_destroy_with_outputs(game, ctx, &self.spec, true);
         }
-        execute_simultaneous_destroy(game, ctx, &self.spec, true)
+        execute_simultaneous_destroy_with_outputs(game, ctx, &self.spec, true)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -977,7 +1101,6 @@ mod tests {
         assert!(raw.simultaneous_batch().is_some());
     }
 }
-
 
 #[cfg(test)]
 mod deferred_destroy_owner_contract_tests {

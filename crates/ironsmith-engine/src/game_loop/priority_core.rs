@@ -288,8 +288,14 @@ pub fn analyze_priority_context(
     }
     actions.extend(commander_actions);
 
-    Ok(crate::decisions::context::PriorityContext::new(game, priority_player, actions)
-        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?)
+    let mut ctx = crate::decisions::context::PriorityContext::new(game, priority_player, actions)
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    for player in game.priority_team_players() {
+        ctx.presentation_actions.extend(crate::decision::compute_actions_assuming_mana_for_presentation(
+            game, player, None,
+        )?);
+    }
+    Ok(ctx)
 }
 
 pub(super) fn priority_actor_for_action(

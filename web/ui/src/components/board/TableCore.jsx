@@ -124,6 +124,8 @@ export default function TableCore({
     multiplayer,
     surrenderRequested,
     autoResolveEnabled,
+    phasePassing,
+    togglePhasePassing,
     setAutoResolveEnabled,
   } = useGame();
   const { t } = useI18n();
@@ -347,6 +349,15 @@ export default function TableCore({
     && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
     <div className="battlefield-human-quick-controls decision-quick-controls">
+      <button
+        type="button"
+        className="decision-phase-pass"
+        aria-pressed={Boolean(phasePassing)}
+        aria-label={ui("Pass")}
+        title={ui("Pass through phases until a pause or the next turn")}
+        disabled={Boolean(state?.game_over)}
+        onClick={togglePhasePassing}
+      >{ui("Pass")}</button>
       <button
         type="button"
         className="battlefield-auto-pass-toggle"

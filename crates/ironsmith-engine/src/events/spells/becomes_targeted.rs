@@ -34,8 +34,14 @@ impl BecomesTargetedEvent {
     /// the ability being targeted/countered has its own immutable stack id.
     pub fn source_for_stack_entry(entry: &crate::game_state::StackEntry) -> ObjectId {
         if entry.is_ability {
-            entry.source_snapshot.as_ref().map(|snapshot| snapshot.object_id).unwrap_or(entry.object_id)
-        } else { entry.object_id }
+            entry
+                .source_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.object_id)
+                .unwrap_or(entry.object_id)
+        } else {
+            entry.object_id
+        }
     }
 
     pub fn from_stack_entry(target: Target, entry: &crate::game_state::StackEntry) -> Self {
@@ -55,18 +61,32 @@ impl BecomesTargetedEvent {
     pub fn with_participant_snapshots(mut self, game: &GameState) -> Self {
         use crate::snapshot::ObjectSnapshot;
         if self.target_snapshot.is_none() {
-            self.target_snapshot = self.target_object().and_then(|id| game.object(id))
-                .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+            self.target_snapshot =
+                self.target_object()
+                    .and_then(|id| game.object(id))
+                    .map(|object| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    });
         }
         if self.physical_source_snapshot.is_none() {
-            self.physical_source_snapshot = game.object(self.source)
+            self.physical_source_snapshot = game
+                .object(self.source)
                 .filter(|_| !game.is_phased_out(self.source))
-                .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                .or_else(|| game.turn_store.turn_history.departed_object_snapshot(self.source).cloned())
-                .or_else(|| self.stack_ability.and_then(|id| game.stack.iter()
-                    .find(|entry| entry.is_ability && entry.target_id() == id))
-                    .and_then(|entry| entry.source_snapshot.as_ref())
-                    .filter(|snapshot| snapshot.object_id == self.source).cloned());
+                .map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+                .or_else(|| game.source_last_known_snapshot(self.source).cloned())
+                .or_else(|| {
+                    self.stack_ability
+                        .and_then(|id| {
+                            game.stack
+                                .iter()
+                                .find(|entry| entry.is_ability && entry.target_id() == id)
+                        })
+                        .and_then(|entry| entry.source_snapshot.as_ref())
+                        .filter(|snapshot| snapshot.object_id == self.source)
+                        .cloned()
+                });
         }
         self
     }

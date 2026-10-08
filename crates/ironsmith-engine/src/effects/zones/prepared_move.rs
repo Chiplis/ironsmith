@@ -170,7 +170,9 @@ impl PreparedZoneMove {
             None,
             draws.as_deref_mut().map(|draws| &mut draws.draws),
         )?;
-        if let Some(draws) = draws { draws.record(self.object, draw_start); }
+        if let Some(draws) = draws {
+            draws.record(self.object, draw_start);
+        }
         Ok((self.object, prepared))
     }
 
@@ -202,16 +204,24 @@ pub(crate) fn prepare_zone_moves(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     requests: Vec<PreparedZoneMove>,
-) -> Result<(
-    Vec<(ObjectId, PreparedEventOutcome<crate::events::processing::PreparedZoneChange>)>,
-    super::ZoneInstructionDraws,
-), ExecutionError> {
+) -> Result<
+    (
+        Vec<(
+            ObjectId,
+            PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
+        )>,
+        super::ZoneInstructionDraws,
+    ),
+    ExecutionError,
+> {
     let additional = ctx.additional_replacement_effects_snapshot();
     let mut prepared = Vec::with_capacity(requests.len());
     let mut draws = super::ZoneInstructionDraws::default();
     for request in requests {
         prepared.push(request.prepare(game, ctx, &additional, Some(&mut draws))?);
-        if ctx.decision_maker.awaiting_choice() { return Ok((Vec::new(), draws)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok((Vec::new(), draws));
+        }
     }
     Ok((prepared, draws))
 }
@@ -225,12 +235,14 @@ pub(super) fn commit_prepared_zone_moves(
         ObjectId,
         PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
     )>,
+    draws: &mut super::ZoneInstructionDraws,
 ) -> Result<Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>, ExecutionError> {
     let mut receipts = Vec::with_capacity(proposals.len());
     for (object, proposal) in proposals {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
+        draws.commit_pending_replacement(game, object, &mut *ctx.decision_maker)?;
         let receipt =
             super::commit_zone_change_proposal(game, object, proposal, &mut *ctx.decision_maker)?;
         receipts.push((object, receipt));
@@ -307,8 +319,11 @@ pub(crate) fn commit_zone_moves<'a>(
         original,
         |game, ctx, outcome, receipts, draws| {
             let committed = draws.finish(outcome, receipts, ctx);
-            if deferred { Ok(committed) } else {
-                super::complete_zone_instruction(game, ctx, committed).map(crate::effects::SimultaneousEffectCommit::finished)
+            if deferred {
+                Ok(committed)
+            } else {
+                super::complete_zone_instruction(game, ctx, committed)
+                    .map(crate::effects::SimultaneousEffectCommit::finished)
             }
         },
     )
@@ -339,8 +354,8 @@ pub(crate) fn commit_zone_moves_with_completion<'a, R>(
         let pinned = moves.len() > 1
             && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
         let result: Result<(_, _, _), ExecutionError> = (|| {
-            let (proposals, draws) = prepare_zone_moves(game, ctx, moves)?;
-            let receipts = commit_prepared_zone_moves(game, ctx, proposals)?;
+            let (proposals, mut draws) = prepare_zone_moves(game, ctx, moves)?;
+            let receipts = commit_prepared_zone_moves(game, ctx, proposals, &mut draws)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok((crate::effect::EffectOutcome::count(0), Vec::new(), draws));
             }
@@ -432,6 +447,7 @@ pub(crate) fn group_zone_move_observations(
 
 /// Shared completion owner for both ordinary moves and battlefield entries.
 struct MovementCompletion {
+    published: Vec<crate::effects::PublishedEffectOutputs>,
     iterated_player: Option<crate::ids::PlayerId>,
     receipts: Option<Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>>,
     frozen: Option<super::FrozenZoneChangeReceipts>,
@@ -464,9 +480,13 @@ impl crate::effects::SimultaneousEffectCompletion for MovementCompletion {
                 "movement completion requires a frozen original batch".into(),
             )
         })?;
-        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+        let mut outputs = ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
             super::finish_zone_change_receipts_frozen_with_outputs(game, ctx, original, frozen)
-        })
+        })?;
+        if !ctx.decision_maker.awaiting_choice() {
+            outputs.retain_published_references(self.published);
+        }
+        Ok(outputs)
     }
 }
 
@@ -478,18 +498,52 @@ pub(crate) fn complete_movement_batch(
     receipts: Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
     deferred: bool,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    complete_movement_batch_with_outputs(
+        game,
+        ctx,
+        crate::effects::CompletedEffectOutputs::aggregate_only(original),
+        receipts,
+        deferred,
+        Vec::new(),
+    )
+    .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+}
+
+/// The actual original stays in the prepared commit; the same completion owner
+/// retains entry-published references until deferred zone programs finish.
+fn complete_movement_batch_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: crate::effects::CompletedEffectOutputs,
+    receipts: Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
+    deferred: bool,
+    published: Vec<crate::effects::PublishedEffectOutputs>,
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     if deferred {
         Ok(crate::effects::SimultaneousEffectCommit {
             outcome: original,
             completion: Some(Box::new(MovementCompletion {
+                published,
                 iterated_player: ctx.iteration.iterated_player,
                 receipts: Some(receipts),
                 frozen: None,
             })),
         })
     } else {
-        super::finish_zone_change_receipts(game, ctx, original, receipts)
-            .map(crate::effects::SimultaneousEffectCommit::finished)
+        let mut outputs = super::finish_zone_change_receipts_with_outputs(
+            game,
+            ctx,
+            original.outcome.clone(),
+            receipts,
+        )?;
+        if !ctx.decision_maker.awaiting_choice() {
+            outputs.retain_published_children([original]);
+            outputs.retain_published_references(published);
+        }
+        Ok(crate::effects::SimultaneousEffectCommit::finished(outputs))
     }
 }
 
@@ -506,6 +560,33 @@ pub(crate) fn execute_battlefield_entries<'a>(
         &[super::BattlefieldEntryReceipt],
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    execute_battlefield_entries_with_outputs(
+        game,
+        ctx,
+        requests,
+        deferred,
+        |game, ctx, receipts| {
+            original(game, ctx, receipts)
+                .map(crate::effects::CompletedEffectOutputs::aggregate_only)
+        },
+    )
+    .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+}
+
+pub(crate) fn execute_battlefield_entries_with_outputs<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    requests: Vec<(ObjectId, super::BattlefieldEntryOptions)>,
+    deferred: bool,
+    original: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        &[super::BattlefieldEntryReceipt],
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     let checkpoint = game.clone();
     let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
@@ -513,7 +594,9 @@ pub(crate) fn execute_battlefield_entries<'a>(
         let receipts = super::move_to_battlefield_batch_with_options(game, ctx, requests)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                crate::effect::EffectOutcome::count(0),
+                crate::effects::CompletedEffectOutputs::aggregate_only(
+                    crate::effect::EffectOutcome::count(0),
+                ),
             ));
         }
         if receipts.len() != expected.len() {
@@ -524,14 +607,18 @@ pub(crate) fn execute_battlefield_entries<'a>(
         let outcome = original(game, ctx, &receipts)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                crate::effect::EffectOutcome::count(0),
+                crate::effects::CompletedEffectOutputs::aggregate_only(
+                    crate::effect::EffectOutcome::count(0),
+                ),
             ));
         }
+        let mut published = Vec::new();
         let receipts = receipts
             .into_iter()
             .zip(expected)
             .map(|(receipt, expected)| {
-                let (id, receipt) = receipt.into_zone_receipt();
+                let ((id, receipt), packets) = receipt.into_zone_receipt_with_outputs();
+                crate::effects::PublishedEffectOutputs::append_distinct(&mut published, packets);
                 if id != expected {
                     return Err(ExecutionError::InternalError(
                         "entry program changed original identity".into(),
@@ -540,7 +627,7 @@ pub(crate) fn execute_battlefield_entries<'a>(
                 Ok((id, receipt))
             })
             .collect::<Result<Vec<_>, ExecutionError>>()?;
-        complete_movement_batch(game, ctx, outcome, receipts, deferred)
+        complete_movement_batch_with_outputs(game, ctx, outcome, receipts, deferred, published)
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(

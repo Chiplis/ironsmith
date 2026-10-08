@@ -7,11 +7,18 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::DealDamageEachEffect;
 impl EffectExecutor for DealDamageEachEffect {
-    fn supports_replacement_draw_continuation(&self) -> bool { true }
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 
@@ -117,12 +124,7 @@ impl ExecuteCapturedDamage for DealDamageEachEffect {
             .object(ctx.source)
             .filter(|_| !game.is_phased_out(ctx.source))
             .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-            .or_else(|| {
-                game.turn_store
-                    .turn_history
-                    .source_last_known_snapshot(ctx.source)
-                    .cloned()
-            })
+            .or_else(|| game.source_last_known_snapshot(ctx.source).cloned())
             .or_else(|| ctx.source_snapshot.clone());
         let tag = crate::tag::TagKey::from("__it__");
         let previous = ctx.tagged_objects.remove(&tag);

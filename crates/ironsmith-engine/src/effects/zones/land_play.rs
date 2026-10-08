@@ -79,23 +79,34 @@ impl LandPlayEntryReceipt {
         }
     }
 
-    fn into_zone_receipt(
+    fn into_zone_receipt_with_outputs(
         self,
         game: &mut GameState,
         card: ObjectId,
-    ) -> Result<PreparedEventOutcome<super::AppliedZoneChange>, ExecutionError> {
+    ) -> Result<
+        (
+            PreparedEventOutcome<super::AppliedZoneChange>,
+            Vec<crate::effects::PublishedEffectOutputs>,
+        ),
+        ExecutionError,
+    > {
         match self {
-            Self::Contextual(receipt) => Ok(receipt.into_zone_receipt().1),
+            Self::Contextual(receipt) => {
+                let ((_, receipt), outputs) = receipt.into_zone_receipt_with_outputs();
+                Ok((receipt, outputs))
+            }
             Self::Root(receipt) => {
+                let published = receipt.published_outputs;
                 let original = receipt.original.map(|entry| entry.new_id);
-                super::promote_committed_zone_change_receipt(
+                let receipt = super::promote_committed_zone_change_receipt(
                     game,
                     card,
                     PreparedEventOutcome {
                         original,
                         programs: receipt.programs,
                     },
-                )
+                )?;
+                Ok((receipt, published))
             }
         }
     }
@@ -147,7 +158,7 @@ pub(crate) fn execute_land_play_program<'a>(
     player: PlayerId,
     authorization: LandPlayAuthorization,
     timing: LandPlayObservationTiming,
-    mut observe: impl FnMut(
+    observe: impl FnMut(
         &mut GameState,
         &mut ExecutionContext<'a>,
         ObjectId,
@@ -155,190 +166,253 @@ pub(crate) fn execute_land_play_program<'a>(
         TriggerEvent,
     ) -> Result<(), ExecutionError>,
 ) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
-        let root = matches!(
-            authorization,
-            LandPlayAuthorization::SelectedPermission { .. }
-        );
-        let actual_from = game
-            .object(card)
-            .ok_or(ExecutionError::ObjectNotFound(card))?
-            .zone;
-        if root {
-            game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
-        }
-        if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
-            crate::special_actions::apply_land_play_face(game, card, *back_face);
-        }
-        let checked = game
-            .continuous_query_snapshot()
-            .map_err(ExecutionError::ContinuousDiscovery)?;
-        let legal = checked.is_active_player(player)
-            && checked
-                .player(player)
-                .is_some_and(|player| player.can_play_land())
-            && !land_play_restriction_applies(&checked, player, card)?;
-        if !legal {
-            return if root {
-                Err(ExecutionError::Impossible(
-                    "land action is prohibited or has no turn allowance".into(),
-                ))
-            } else {
-                Ok(EffectOutcome::impossible())
-            };
-        }
-        let permission = if let LandPlayAuthorization::SelectedPermission { opened_permission: Some(permission), .. } = &authorization {
-            crate::special_actions::opened_land_play_permission(game, player, card, permission)?
-        } else if root {
-            crate::special_actions::choose_land_play_permission(
-                game,
-                player,
-                card,
-                &mut ctx.decision_maker,
-            )?
-        } else {
-            crate::special_actions::LandPlayPermissionReceipt::default()
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        permission.reserve(game, player)?;
-        game.reserve_next_land_play_timing(player, card);
-        let receipt = if root {
-            let receipt = game
-                .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
-                    card,
-                    Zone::Battlefield,
-                    ctx.cause.clone(),
-                    &mut ctx.decision_maker,
-                    Some(player),
-                    permission.enters_tapped,
-                    true,
-                )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if receipt.pending {
-                return Err(ExecutionError::InternalError(
-                    "land entry reported pending without an outstanding choice".into(),
-                ));
-            }
-            if matches!(receipt.original, EventOutcome::NotApplicable) {
-                return Err(ExecutionError::ObjectNotFound(card));
-            }
-            LandPlayEntryReceipt::Root(receipt)
-        } else {
-            let entry = super::move_to_battlefield_with_options(
-                game,
-                ctx,
-                card,
-                super::BattlefieldEntryOptions::specific(player, permission.enters_tapped),
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            LandPlayEntryReceipt::Contextual(entry.ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "land entry lost its receipt without pending input".into(),
-                )
-            })?)
-        };
-        if matches!(
-            authorization,
-            LandPlayAuthorization::ResolvingInstruction {
-                temporary_copy: true,
-                ..
-            }
-        ) && matches!(&receipt, LandPlayEntryReceipt::Contextual(entry) if entry.outcome == super::BattlefieldEntryOutcome::Prevented)
-        {
-            game.remove_object(card);
-        }
-        let from_zone = match authorization {
-            LandPlayAuthorization::ResolvingInstruction { from_zone, .. } => from_zone,
-            _ => actual_from,
-        };
-        let completed_play = receipt.subject(game).map(|subject| {
-            let destination = game.object(subject).ok_or(ExecutionError::ObjectNotFound(subject))?.zone;
-            crate::events::LandPlayedEvent::with_current_snapshot(subject, player, from_zone, destination, game)
-                .map(|event| (subject, event))
-        }).transpose()?;
-        if matches!(timing, LandPlayObservationTiming::AfterHistory) {
-            record_land_play(game, player);
-        }
-        if let Some((subject, completed_play)) = completed_play {
-            // The contextual entry owner already freezes and queues its ETB.
-            // Root callers publish their entry here at their existing boundary.
-            if let LandPlayEntryReceipt::Root(entry) = &receipt
-                && let EventOutcome::Proceed(entry) = &entry.original
-                && game.object(subject).is_some_and(|object| object.zone == Zone::Battlefield)
-            {
-                let provenance = game
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                let event = super::battlefield_entry_observation(
-                    game,
-                    subject,
-                    actual_from,
-                    entry.enters_tapped,
-                    provenance,
-                    Vec::new(),
-                )?;
-                let mut event = game.ensure_trigger_event_provenance(event);
-                game.freeze_completed_entry_events(std::iter::once(&mut event))?;
-                observe(game, ctx, subject, LandPlayObservationKind::Entry, event)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-            }
-            let event = crate::effects::observe_action_completion(
-                game,
-                TriggerEvent::new_with_provenance(
-                    completed_play,
-                    crate::provenance::ProvNodeId::default(),
-                ),
-                if root { None } else { Some(ctx.provenance) },
-            )?;
-            if event.snapshot().is_none() {
-                return Err(ExecutionError::InternalError(
-                    "completed land play has no immutable subject snapshot".into(),
-                ));
-            }
-            observe(game, ctx, subject, LandPlayObservationKind::Played, event)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        if matches!(timing, LandPlayObservationTiming::BeforeHistory) {
-            record_land_play(game, player);
-        }
-        let original = receipt.original_summary();
-        let receipt = receipt.into_zone_receipt(game, card)?;
-        let mut outcome =
-            super::finish_zone_change_receipts(game, ctx, original, vec![(card, receipt)])?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if root {
-            crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-            for event in std::mem::take(&mut outcome.events) {
-                game.queue_trigger_event(event.provenance(), event);
-            }
-            game.finish_library_top_announcement(LibraryTopAnnouncement::Land(card));
-        }
-        permission.complete(game);
-        Ok(outcome)
-    })
+    execute_land_play_program_with_outputs(game, ctx, card, player, authorization, timing, observe)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
 }
 
-pub(crate) fn play_land_from_resolving_effect(
+pub(crate) fn execute_land_play_program_with_outputs<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    card: ObjectId,
+    player: PlayerId,
+    authorization: LandPlayAuthorization,
+    timing: LandPlayObservationTiming,
+    mut observe: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        ObjectId,
+        LandPlayObservationKind,
+        TriggerEvent,
+    ) -> Result<(), ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let root = matches!(
+                authorization,
+                LandPlayAuthorization::SelectedPermission { .. }
+            );
+            let actual_from = game
+                .object(card)
+                .ok_or(ExecutionError::ObjectNotFound(card))?
+                .zone;
+            if root {
+                game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
+            }
+            if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
+                crate::special_actions::apply_land_play_face(game, card, *back_face);
+            }
+            let checked = game
+                .continuous_query_snapshot()
+                .map_err(ExecutionError::ContinuousDiscovery)?;
+            let legal = checked.is_active_player(player)
+                && checked
+                    .player(player)
+                    .is_some_and(|player| player.can_play_land())
+                && !land_play_restriction_applies(&checked, player, card)?;
+            if !legal {
+                return if root {
+                    Err(ExecutionError::Impossible(
+                        "land action is prohibited or has no turn allowance".into(),
+                    ))
+                } else {
+                    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::impossible(),
+                    ))
+                };
+            }
+            let permission = if let LandPlayAuthorization::SelectedPermission {
+                opened_permission: Some(permission),
+                ..
+            } = &authorization
+            {
+                crate::special_actions::opened_land_play_permission(game, player, card, permission)?
+            } else if root {
+                crate::special_actions::choose_land_play_permission(
+                    game,
+                    player,
+                    card,
+                    &mut ctx.decision_maker,
+                )?
+            } else {
+                crate::special_actions::LandPlayPermissionReceipt::default()
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            permission.reserve(game, player)?;
+            game.reserve_next_land_play_timing(player, card);
+            let receipt = if root {
+                let receipt = game
+                    .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
+                        card,
+                        Zone::Battlefield,
+                        ctx.cause.clone(),
+                        &mut ctx.decision_maker,
+                        Some(player),
+                        permission.enters_tapped,
+                        true,
+                    )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                if receipt.pending {
+                    return Err(ExecutionError::InternalError(
+                        "land entry reported pending without an outstanding choice".into(),
+                    ));
+                }
+                if matches!(receipt.original, EventOutcome::NotApplicable) {
+                    return Err(ExecutionError::ObjectNotFound(card));
+                }
+                LandPlayEntryReceipt::Root(receipt)
+            } else {
+                let entry = super::move_to_battlefield_with_options(
+                    game,
+                    ctx,
+                    card,
+                    super::BattlefieldEntryOptions::specific(player, permission.enters_tapped),
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                LandPlayEntryReceipt::Contextual(entry.ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "land entry lost its receipt without pending input".into(),
+                    )
+                })?)
+            };
+            if matches!(
+                authorization,
+                LandPlayAuthorization::ResolvingInstruction {
+                    temporary_copy: true,
+                    ..
+                }
+            ) && matches!(&receipt, LandPlayEntryReceipt::Contextual(entry) if entry.outcome == super::BattlefieldEntryOutcome::Prevented)
+            {
+                game.remove_object(card);
+            }
+            let from_zone = match authorization {
+                LandPlayAuthorization::ResolvingInstruction { from_zone, .. } => from_zone,
+                _ => actual_from,
+            };
+            let completed_play = receipt
+                .subject(game)
+                .map(|subject| {
+                    let destination = game
+                        .object(subject)
+                        .ok_or(ExecutionError::ObjectNotFound(subject))?
+                        .zone;
+                    crate::events::LandPlayedEvent::with_current_snapshot(
+                        subject,
+                        player,
+                        from_zone,
+                        destination,
+                        game,
+                    )
+                    .map(|event| (subject, event))
+                })
+                .transpose()?;
+            if matches!(timing, LandPlayObservationTiming::AfterHistory) {
+                record_land_play(game, player);
+            }
+            if let Some((subject, completed_play)) = completed_play {
+                // The contextual entry owner already freezes and queues its ETB.
+                // Root callers publish their entry here at their existing boundary.
+                if let LandPlayEntryReceipt::Root(entry) = &receipt
+                    && let EventOutcome::Proceed(entry) = &entry.original
+                    && game
+                        .object(subject)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                {
+                    let provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(crate::events::EventKind::EnterBattlefield);
+                    let event = super::battlefield_entry_observation(
+                        game,
+                        subject,
+                        actual_from,
+                        entry.enters_tapped,
+                        provenance,
+                        Vec::new(),
+                    )?;
+                    let mut event = game.ensure_trigger_event_provenance(event);
+                    game.freeze_completed_entry_events(std::iter::once(&mut event))?;
+                    observe(game, ctx, subject, LandPlayObservationKind::Entry, event)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                }
+                let event = crate::effects::observe_action_completion(
+                    game,
+                    TriggerEvent::new_with_provenance(
+                        completed_play,
+                        crate::provenance::ProvNodeId::default(),
+                    ),
+                    if root { None } else { Some(ctx.provenance) },
+                )?;
+                if event.snapshot().is_none() {
+                    return Err(ExecutionError::InternalError(
+                        "completed land play has no immutable subject snapshot".into(),
+                    ));
+                }
+                observe(game, ctx, subject, LandPlayObservationKind::Played, event)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+            }
+            if matches!(timing, LandPlayObservationTiming::BeforeHistory) {
+                record_land_play(game, player);
+            }
+            let original = receipt.original_summary();
+            let (receipt, published) = receipt.into_zone_receipt_with_outputs(game, card)?;
+            let mut outputs = super::finish_zone_change_receipts_with_outputs(
+                game,
+                ctx,
+                original,
+                vec![(card, receipt)],
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            outputs.retain_published_references(published);
+            if root {
+                let outcome = &mut outputs.outcome;
+                crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
+                for event in std::mem::take(&mut outcome.events) {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+                game.finish_library_top_announcement(LibraryTopAnnouncement::Land(card));
+            }
+            permission.complete(game);
+            outputs.synchronize_observations();
+            Ok(outputs)
+        },
+    )
+}
+
+pub(crate) fn play_land_from_resolving_effect_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card: ObjectId,
     player: PlayerId,
     from_zone: Zone,
     temporary_copy: bool,
-) -> Result<EffectOutcome, ExecutionError> {
-    let result = execute_land_play_program(
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let result = execute_land_play_program_with_outputs(
         game,
         ctx,
         card,

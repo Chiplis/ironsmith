@@ -75,12 +75,14 @@ pub(crate) use draw_cards::{
 };
 
 // Internal receipt consumers share the same discard observation/commit boundary.
-pub(crate) use discard::{completed_discard_events, finish_discard_receipts};
+pub(crate) use discard::{commit_selected_discard_batch, prepare_selected_discard_batch};
 pub(crate) use discard_hand::discard_hand_cards;
 
 pub(crate) use draw_cards::execute_turn_draw_proposal;
 
-pub(crate) use reveal::{public_reveal_observation, public_reveal_view, reveal_objects};
+pub(crate) use reveal::{
+    public_reveal_observation, public_reveal_view, reveal_objects, reveal_objects_with_outputs,
+};
 
 mod library_arrangement;
 pub(crate) use library_arrangement::{
@@ -91,8 +93,12 @@ mod look;
 pub(crate) use library_arrangement::{
     execute_library_instruction_atomically, order_library_cards_top_to_bottom,
 };
-pub(crate) use look::look_at_cards;
+pub(crate) use look::{look_at_cards, look_at_cards_with_outputs};
 
-pub(crate) use shuffle_library::{shuffle_library, shuffle_library_action};
+pub(crate) use shuffle_library::{
+    commit_library_shuffle, shuffle_library, shuffle_library_action, shuffle_library_with_outputs,
+};
 
-pub(crate) use draw_cards::{PreparedDrawInstruction, prepare_draw_instruction, execute_prepared_draw_instruction};
+pub(crate) use draw_cards::{
+    PreparedDrawInstruction, execute_prepared_draw_instruction, prepare_draw_instruction,
+};

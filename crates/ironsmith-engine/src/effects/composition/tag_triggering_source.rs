@@ -12,13 +12,23 @@ impl EffectExecutor for TagTriggeringSourceEffect {
         Box::new(self.clone())
     }
 
-    fn is_resolution_prelude(&self) -> bool {
-        true
+    fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
+        Some(self)
     }
 
     fn execute(
         &self,
         game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::ResolutionPreludeBinding::bind_resolution_prelude(self, game, ctx)
+    }
+}
+
+impl crate::effects::ResolutionPreludeBinding for TagTriggeringSourceEffect {
+    fn bind_resolution_prelude(
+        &self,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let event = ctx.triggering_event.as_ref().ok_or_else(|| {
@@ -34,14 +44,23 @@ impl EffectExecutor for TagTriggeringSourceEffect {
         if let Some(targeted) = event.downcast::<crate::events::spells::BecomesTargetedEvent>()
             && targeted.by_ability
         {
-            let Some(ability_id) = targeted.stack_ability else { return Ok(EffectOutcome::count(0)); };
-            let Some(entry) = game.stack.iter().find(|entry| entry.is_ability && entry.target_id() == ability_id) else {
+            let Some(ability_id) = targeted.stack_ability else {
+                return Ok(EffectOutcome::count(0));
+            };
+            let Some(entry) = game
+                .stack
+                .iter()
+                .find(|entry| entry.is_ability && entry.target_id() == ability_id)
+            else {
                 // Once that exact ability is gone, never redirect the reference
                 // to a sibling activation or its physical source permanent.
                 return Ok(EffectOutcome::count(0));
             };
-            let snapshot = game.object(source_id)
-                .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+            let snapshot = game
+                .object(source_id)
+                .map(|source| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(source, game)
+                })
                 .or_else(|| entry.source_snapshot.clone());
             if let Some(mut snapshot) = snapshot {
                 snapshot.object_id = ability_id;
@@ -51,11 +70,17 @@ impl EffectExecutor for TagTriggeringSourceEffect {
             }
             return Ok(EffectOutcome::count(0));
         }
-        let snapshot = game.object(source_id)
+        let snapshot = game
+            .object(source_id)
             .filter(|_| !game.is_phased_out(source_id))
             .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
-            .or_else(|| event.source_snapshot().filter(|snapshot| snapshot.object_id == source_id).cloned())
-            .or_else(|| game.turn_store.turn_history.departed_object_snapshot(source_id).cloned());
+            .or_else(|| {
+                event
+                    .source_snapshot()
+                    .filter(|snapshot| snapshot.object_id == source_id)
+                    .cloned()
+            })
+            .or_else(|| game.source_last_known_snapshot(source_id).cloned());
         let Some(snapshot) = snapshot else {
             return Ok(EffectOutcome::count(0));
         };

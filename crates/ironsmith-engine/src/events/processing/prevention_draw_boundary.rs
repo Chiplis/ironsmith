@@ -25,14 +25,26 @@ pub(super) fn context<'a>(
     }
     let mut ctx = ExecutionContext::new(follow_up.source, follow_up.controller, dm)
         .with_triggering_event(event)
-        .with_cause(crate::events::cause::EventCause::from_effect(follow_up.source, follow_up.controller))
+        .with_cause(crate::events::cause::EventCause::from_effect(
+            follow_up.source,
+            follow_up.controller,
+        ))
         .with_provenance(pending.provenance);
     ctx.replacement = pending.replacement_scope.clone();
-    ctx.source_snapshot = game.object(follow_up.source)
+    ctx.source_snapshot = game
+        .object(follow_up.source)
         .filter(|_| !game.is_phased_out(follow_up.source))
-        .map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
-        .transpose().map_err(|error| DamageProcessingError { source: follow_up.source, error })?
-        .or_else(|| game.turn_store.turn_history.departed_object_snapshot(follow_up.source).cloned())
+        .map(|object| {
+            crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
+                object, game,
+            )
+        })
+        .transpose()
+        .map_err(|error| DamageProcessingError {
+            source: follow_up.source,
+            error,
+        })?
+        .or_else(|| game.source_last_known_snapshot(follow_up.source).cloned())
         .or_else(|| pending.source_snapshot.clone());
     if follow_up.targets.is_empty() {
         ctx.targets.push(match pending.damage.target {
@@ -52,22 +64,33 @@ fn aggregate(outputs: &[OwnedOutput]) -> EffectOutcome {
 
 fn retain_owned_outputs(outputs: Vec<OwnedOutput>) -> CompletedEffectOutputs {
     let mut retained = CompletedEffectOutputs::aggregate_only(aggregate(&outputs));
-    retained.shared = outputs.into_iter().map(|(scopes, outputs)| SharedEffectOutcome {
-        ownership: if scopes.is_empty() {
-            SharedOutcomeOwnership::Batch
-        } else {
-            SharedOutcomeOwnership::Participants(scopes)
-        },
-        outputs,
-    }).collect();
+    retained.shared = outputs
+        .into_iter()
+        .map(|(scopes, outputs)| SharedEffectOutcome {
+            ownership: if scopes.is_empty() {
+                SharedOutcomeOwnership::Batch
+            } else {
+                SharedOutcomeOwnership::Participants(scopes)
+            },
+            outputs: outputs.into(),
+        })
+        .collect();
     retained.synchronize_observations();
     retained
 }
 
-fn publish_new_events(game: &mut GameState, output: &CompletedEffectOutputs, published: &[TriggerEvent]) {
-    let mut events = output.outcome.events.iter()
+fn publish_new_events(
+    game: &mut GameState,
+    output: &CompletedEffectOutputs,
+    published: &[TriggerEvent],
+) {
+    let mut events = output
+        .outcome
+        .events
+        .iter()
         .filter(|event| !published.iter().any(|previous| previous.ptr_eq(event)))
-        .cloned().collect();
+        .cloned()
+        .collect();
     crate::effects::retain_unmatched_outcome_events(game, &mut events);
     for event in events {
         game.queue_trigger_event(event.provenance(), event);
@@ -87,14 +110,21 @@ impl CapturedPreventionFollowUps {
         dm: &mut dyn DecisionMaker,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, DamageProcessingError> {
         if dm.awaiting_choice() {
-            return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+            return Ok(SimultaneousEffectCommit::finished(
+                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
         }
-        let source = self.pending.first().map(|pending| pending.follow_up.source)
+        let source = self
+            .pending
+            .first()
+            .map(|pending| pending.follow_up.source)
             .unwrap_or(ObjectId::from_raw(0));
         let (root, meter) = game.begin_token_resource_scope();
         let checkpoint = game.clone();
         let mut result = prepare(game, dm, self.pending);
-        if result.is_ok() && let Some(error) = game.token_resource_failure() {
+        if result.is_ok()
+            && let Some(error) = game.token_resource_failure()
+        {
             result = Err(DamageProcessingError { source, error });
         }
         if result.is_err() || dm.awaiting_choice() {
@@ -102,7 +132,11 @@ impl CapturedPreventionFollowUps {
         }
         game.end_token_resource_scope(root, &meter);
         if dm.awaiting_choice() {
-            return result.map(|_| SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+            return result.map(|_| {
+                SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ))
+            });
         }
         result
     }
@@ -119,36 +153,61 @@ fn prepare(
         let source = next.follow_up.source;
         let mut ctx = context(game, &mut *dm, &next)?;
         for (index, effect) in next.follow_up.effects.iter().enumerate() {
-            crate::effects::capture_triggers_before_added_program(game, &ctx, Some(effect),
-                before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))
-                .map_err(|error| DamageProcessingError { source, error })?;
+            crate::effects::capture_triggers_before_added_program(
+                game,
+                &ctx,
+                Some(effect),
+                before
+                    .iter_mut()
+                    .flat_map(|(_, output)| output.outcome.events.iter_mut()),
+            )
+            .map_err(|error| DamageProcessingError { source, error })?;
             let first = crate::effects::with_per_event_trigger_matching(game, true, |game| {
                 crate::effects::replacement::prepare_replacement_child(game, &mut ctx, effect)
-            }).map_err(|error| DamageProcessingError { source, error })?;
+            })
+            .map_err(|error| DamageProcessingError { source, error })?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+                return Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
             }
             publish_new_events(game, &first.prefix, &[]);
             if let Some(resume) = first.resume {
-                let prefix = EffectOutcome::aggregate(before.iter().map(|(_, output)| output.outcome.clone())
-                    .chain(std::iter::once(first.prefix.outcome.clone())));
+                let prefix = EffectOutcome::aggregate(
+                    before
+                        .iter()
+                        .map(|(_, output)| output.outcome.clone())
+                        .chain(std::iter::once(first.prefix.outcome.clone())),
+                );
                 let scope = ExecutionContextCheckpoint::capture(&ctx);
                 return Ok(SimultaneousEffectCommit {
                     outcome: CompletedEffectOutputs::aggregate_only(prefix),
                     completion: Some(Box::new(PreventionDrawCompletion {
-                        before, first: first.prefix, resume, scopes: next.participant_scopes,
+                        before,
+                        first: first.prefix,
+                        resume,
+                        scopes: next.participant_scopes,
                         effects: next.follow_up.effects[index + 1..].to_vec(),
-                        remaining: pending.collect(), scope,
+                        remaining: pending.collect(),
+                        scope,
                     })),
                 });
             }
             before.push((next.participant_scopes.clone(), first.prefix));
         }
-        crate::effects::capture_triggers_before_added_program(game, &ctx, None,
-            before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))
-            .map_err(|error| DamageProcessingError { source, error })?;
+        crate::effects::capture_triggers_before_added_program(
+            game,
+            &ctx,
+            None,
+            before
+                .iter_mut()
+                .flat_map(|(_, output)| output.outcome.events.iter_mut()),
+        )
+        .map_err(|error| DamageProcessingError { source, error })?;
     }
-    Ok(SimultaneousEffectCommit::finished(retain_owned_outputs(before)))
+    Ok(SimultaneousEffectCommit::finished(retain_owned_outputs(
+        before,
+    )))
 }
 
 struct PreventionDrawCompletion {
@@ -163,89 +222,167 @@ struct PreventionDrawCompletion {
 
 impl SimultaneousEffectCompletion for PreventionDrawCompletion {
     fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext, original: EffectOutcome,
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        Ok(SimultaneousEffectCommit { outcome: CompletedEffectOutputs::aggregate_only(original), completion: Some(self) })
+        Ok(SimultaneousEffectCommit {
+            outcome: CompletedEffectOutputs::aggregate_only(original),
+            completion: Some(self),
+        })
     }
 
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        game.freeze_completed_entry_events(self.before.iter_mut()
-            .flat_map(|(_, output)| output.outcome.events.iter_mut())
-            .chain(self.first.outcome.events.iter_mut()))?;
+        game.freeze_completed_entry_events(
+            self.before
+                .iter_mut()
+                .flat_map(|(_, output)| output.outcome.events.iter_mut())
+                .chain(self.first.outcome.events.iter_mut()),
+        )?;
         self.resume.freeze(game)?;
         Ok(())
     }
 
-    fn observe_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: &mut EffectOutcome) -> Result<(), ExecutionError> {
+    fn observe_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), ExecutionError> {
         let parent = ExecutionContextCheckpoint::capture(ctx);
         self.scope.restore_ref(ctx);
         let result = (|| {
             for (_, output) in &mut self.before {
-                crate::effects::composition::inherit_original_observations(&mut output.outcome, &original.events);
+                crate::effects::composition::inherit_original_observations(
+                    &mut output.outcome,
+                    &original.events,
+                );
             }
-            crate::effects::composition::inherit_original_observations(&mut self.first.outcome, &original.events);
-            crate::effects::capture_triggers_before_added_program(game, ctx, None,
-                self.before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut())
-                    .chain(self.first.outcome.events.iter_mut()))?;
+            crate::effects::composition::inherit_original_observations(
+                &mut self.first.outcome,
+                &original.events,
+            );
+            crate::effects::capture_triggers_before_added_program(
+                game,
+                ctx,
+                None,
+                self.before
+                    .iter_mut()
+                    .flat_map(|(_, output)| output.outcome.events.iter_mut())
+                    .chain(self.first.outcome.events.iter_mut()),
+            )?;
             self.resume.observe_prefix(&self.first.outcome.events);
-            for (_, output) in &mut self.before { output.synchronize_observations(); }
+            for (_, output) in &mut self.before {
+                output.synchronize_observations();
+            }
             self.first.synchronize_observations();
-            *original = EffectOutcome::aggregate(self.before.iter().map(|(_, output)| output.outcome.clone())
-                .chain(std::iter::once(self.first.outcome.clone())));
+            *original = EffectOutcome::aggregate(
+                self.before
+                    .iter()
+                    .map(|(_, output)| output.outcome.clone())
+                    .chain(std::iter::once(self.first.outcome.clone())),
+            );
             Ok(())
         })();
         parent.restore(ctx);
         result
     }
 
-    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: EffectOutcome) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original).map(CompletedEffectOutputs::into_outcome)
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(CompletedEffectOutputs::into_outcome)
     }
 
-    fn complete_with_outputs(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: EffectOutcome) -> Result<CompletedEffectOutputs, ExecutionError> {
+    fn complete_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let parent = ExecutionContextCheckpoint::capture(ctx);
         self.scope.restore_ref(ctx);
-        let result = crate::effects::composition::execute_transaction(game, ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)), |game, ctx| {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
                 for (_, output) in &mut self.before {
-                    crate::effects::composition::inherit_original_observations(&mut output.outcome, &original.events);
+                    crate::effects::composition::inherit_original_observations(
+                        &mut output.outcome,
+                        &original.events,
+                    );
                 }
-                crate::effects::composition::inherit_original_observations(&mut self.first.outcome, &original.events);
+                crate::effects::composition::inherit_original_observations(
+                    &mut self.first.outcome,
+                    &original.events,
+                );
                 let published = self.first.outcome.events.clone();
                 self.resume.observe_prefix(&self.first.outcome.events);
-                let mut first = crate::effects::replacement::resume_replacement_child_with_outputs(game, ctx, self.resume)?;
+                let mut first = crate::effects::replacement::resume_replacement_child_with_outputs(
+                    game,
+                    ctx,
+                    self.resume,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
                 publish_new_events(game, &first, &published);
                 first.retain_owned_child(self.first);
                 self.before.push((self.scopes.clone(), first));
                 for effect in self.effects {
-                    crate::effects::capture_triggers_before_added_program(game, ctx, Some(&effect),
-                        self.before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))?;
+                    crate::effects::capture_triggers_before_added_program(
+                        game,
+                        ctx,
+                        Some(&effect),
+                        self.before
+                            .iter_mut()
+                            .flat_map(|(_, output)| output.outcome.events.iter_mut()),
+                    )?;
                     let output = crate::effects::execute_effect_with_outputs(game, &effect, ctx)?;
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
                     }
                     publish_new_events(game, &output, &[]);
                     self.before.push((self.scopes.clone(), output));
                 }
-                crate::effects::capture_triggers_before_added_program(game, ctx,
-                    self.remaining.first().and_then(|pending| pending.follow_up.effects.first()),
-                    self.before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))?;
+                crate::effects::capture_triggers_before_added_program(
+                    game,
+                    ctx,
+                    self.remaining
+                        .first()
+                        .and_then(|pending| pending.follow_up.effects.first()),
+                    self.before
+                        .iter_mut()
+                        .flat_map(|(_, output)| output.outcome.events.iter_mut()),
+                )?;
                 let remaining = self.remaining;
                 let suffix = crate::effects::with_per_event_trigger_matching(game, true, |game| {
-                    execute_prevention_follow_ups_with_owned_outputs(game, &mut *ctx.decision_maker, remaining)
-                }).map_err(|error| error.error)?;
+                    execute_prevention_follow_ups_with_owned_outputs(
+                        game,
+                        &mut *ctx.decision_maker,
+                        remaining,
+                    )
+                })
+                .map_err(|error| error.error)?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
                 self.before.extend(suffix);
                 Ok(retain_owned_outputs(self.before))
-            });
+            },
+        );
         parent.restore(ctx);
         result
     }

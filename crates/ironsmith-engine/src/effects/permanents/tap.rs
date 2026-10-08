@@ -71,18 +71,27 @@ impl TapAction {
         true
     }
 
-    pub(crate) fn finish(mut self, game: &mut GameState) -> EffectOutcome {
+    pub(crate) fn finish(self, game: &mut GameState) -> EffectOutcome {
+        self.finish_with_outputs(game).outcome
+    }
+
+    pub(crate) fn finish_with_outputs(
+        mut self,
+        game: &mut GameState,
+    ) -> crate::effects::CompletedEffectOutputs {
         crate::events::other::bind_before_tap_state_snapshots(&mut self.events, &self.before);
         crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance);
-        EffectOutcome::count(self.objects.len() as i32)
-            .with_events(self.events)
-            .with_action_objects(
-                crate::effect::PriorEffectAction::Tapped,
-                Some(self.actor),
-                self.memory.clone(),
-            )
-            .with_affected_objects(self.objects)
-            .with_affected_object_memory(self.memory)
+        crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(self.objects.len() as i32)
+                .with_events(self.events)
+                .with_action_objects(
+                    crate::effect::PriorEffectAction::Tapped,
+                    Some(self.actor),
+                    self.memory.clone(),
+                )
+                .with_affected_objects(self.objects)
+                .with_affected_object_memory(self.memory),
+        )
     }
 }
 

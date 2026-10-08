@@ -2762,7 +2762,7 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
         legalities
             .get(*format)
             .and_then(Value::as_str)
-            .is_some_and(|status| status == "legal")
+            .is_some_and(|status| matches!(status, "legal" | "restricted"))
     })
 }
 
@@ -4310,6 +4310,13 @@ CardDefinition {
     fn canonical_loader_skips_cards_without_supported_format_legality() {
         let cards = vec![
             serde_json::json!({
+                "name": "Ancestral Recall",
+                "oracle_text": "Target player draws three cards.",
+                "mana_cost": "{U}",
+                "type_line": "Instant",
+                "legalities": {"vintage": "restricted", "legacy": "banned"}
+            }),
+            serde_json::json!({
                 "name": "Lightning Bolt",
                 "oracle_text": "Lightning Bolt deals 3 damage to any target.",
                 "mana_cost": "{R}",
@@ -4344,6 +4351,7 @@ CardDefinition {
         ];
 
         let loaded = load_canonical_cards_from_values(cards);
+        assert!(loaded.contains_key("Ancestral Recall"));
         assert!(loaded.contains_key("Lightning Bolt"));
         assert!(!loaded.contains_key("Contract from Below"));
         assert!(loaded.contains_key("Fixture Without Legalities"));

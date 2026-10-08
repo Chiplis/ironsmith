@@ -211,6 +211,13 @@ pub(crate) fn observe_keyword_action_completion(
     game: &mut GameState,
     event: TriggerEvent,
 ) -> Result<EffectOutcome, ExecutionError> {
+    observe_keyword_action_completion_with_outputs(game, event).map(|outputs| outputs.outcome)
+}
+
+pub(crate) fn observe_keyword_action_completion_with_outputs(
+    game: &mut GameState,
+    event: TriggerEvent,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if event.downcast::<KeywordActionEvent>().is_none() {
         return Err(ExecutionError::InternalError(
             "keyword completion requires a keyword action observation".into(),
@@ -218,7 +225,9 @@ pub(crate) fn observe_keyword_action_completion(
     }
     let parent = event.provenance();
     let event = crate::effects::observe_action_completion(game, event, Some(parent))?;
-    Ok(EffectOutcome::resolved().with_event(event))
+    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+        EffectOutcome::resolved().with_event(event),
+    ))
 }
 
 pub(crate) fn complete_keyword_action(

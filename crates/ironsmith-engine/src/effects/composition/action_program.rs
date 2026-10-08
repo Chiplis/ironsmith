@@ -292,8 +292,11 @@ pub trait ActionProgramCursor: std::fmt::Debug + Send {
     }
     /// Stop a successfully interrupted program without selecting another child.
     /// Native owners unwind reserved scopes and retain actual prefix packets.
-    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
-        -> Result<ProgramCompletion, ExecutionError> {
+    fn finish_stopped(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
         self.finish_pending().map(ProgramCompletion::new)
     }
     fn ends_action_unit(&self) -> bool {
@@ -328,7 +331,11 @@ impl std::fmt::Debug for FinishedProgramCursor {
     }
 }
 impl ActionProgramCursor for FinishedProgramCursor {
-    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext) -> Result<ProgramCompletion, ExecutionError> {
+    fn finish_stopped(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
         Ok(self.completed)
     }
     fn next_action(
@@ -375,14 +382,20 @@ impl std::fmt::Debug for AdaptedChildProgramCursor {
     }
 }
 impl ActionProgramCursor for AdaptedChildProgramCursor {
-    fn finish_stopped(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<ProgramCompletion, ExecutionError> {
+    fn finish_stopped(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
         let outputs = match self.outputs.take() {
             Some(outputs) => match self.adapter.take() {
                 Some(adapter) => adapter.finish_with_outputs(game, ctx, Ok(outputs))?,
                 None => outputs,
             },
             None => {
-                if let Some(adapter) = self.adapter.take() { adapter.cancel(game, ctx); }
+                if let Some(adapter) = self.adapter.take() {
+                    adapter.cancel(game, ctx);
+                }
                 CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
             }
         };
@@ -462,7 +475,11 @@ impl std::fmt::Debug for PreparedProgramCursor {
     }
 }
 impl ActionProgramCursor for PreparedProgramCursor {
-    fn finish_stopped(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<ProgramCompletion, ExecutionError> {
+    fn finish_stopped(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
         self.inner.finish_stopped(game, ctx)
     }
     fn take_preparations(&mut self) -> Vec<ProgramPreparation> {
@@ -528,8 +545,14 @@ impl std::fmt::Debug for NativeProgramCursor {
     }
 }
 impl ActionProgramCursor for NativeProgramCursor {
-    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext) -> Result<ProgramCompletion, ExecutionError> {
-        Ok(ProgramCompletion::new(self.outputs.unwrap_or_else(|| CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)))))
+    fn finish_stopped(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
+        Ok(ProgramCompletion::new(self.outputs.unwrap_or_else(|| {
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
+        })))
     }
     fn next_action(
         &mut self,
@@ -647,8 +670,17 @@ impl NestedProgramCursor {
 }
 
 impl ActionProgramCursor for NestedProgramCursor {
-    fn finish_stopped(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<ProgramCompletion, ExecutionError> {
-        let Self { active, mut parents, mut completed_facts, .. } = *self;
+    fn finish_stopped(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
+        let Self {
+            active,
+            mut parents,
+            mut completed_facts,
+            ..
+        } = *self;
         let mut completed = active.finish_stopped(game, ctx)?;
         while let Some(mut parent) = parents.pop() {
             completed_facts.extend(completed.facts);
@@ -661,7 +693,9 @@ impl ActionProgramCursor for NestedProgramCursor {
             }
             let mut scope = parent.action.scope;
             scope.prepend_outer(outer);
-            completed = scope.run(game, ctx, |game, ctx| parent.cursor.finish_stopped(game, ctx))?;
+            completed = scope.run(game, ctx, |game, ctx| {
+                parent.cursor.finish_stopped(game, ctx)
+            })?;
         }
         completed_facts.extend(completed.facts);
         completed.facts = completed_facts;
@@ -802,23 +836,40 @@ struct ProgramOriginalObserver {
 
 impl SimultaneousEffectCompletion for ProgramOriginalObserver {
     fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
-        let Self { context, scope, inner } = *self;
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            context,
+            scope,
+            inner,
+        } = *self;
         let parent = ExecutionContextCheckpoint::capture(ctx);
         context.restore_ref(ctx);
-        let result = scope.run(game, ctx, |game, ctx| {
-            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
-        }).map(|mut receipt| {
-            receipt.completion = receipt.completion.map(|inner| Box::new(Self {
-                context: ExecutionContextCheckpoint::capture(ctx), scope, inner,
-            }) as Box<dyn SimultaneousEffectCompletion>);
-            receipt
-        });
+        let result = scope
+            .run(game, ctx, |game, ctx| {
+                inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+            })
+            .map(|mut receipt| {
+                receipt.completion = receipt.completion.map(|inner| {
+                    Box::new(Self {
+                        context: ExecutionContextCheckpoint::capture(ctx),
+                        scope,
+                        inner,
+                    }) as Box<dyn SimultaneousEffectCompletion>
+                });
+                receipt
+            });
         // The participant owns successful prefix result/tag writes. Its caller
         // captures them before another participant runs; failed attempts unwind.
-        if result.is_err() || ctx.decision_maker.awaiting_choice() { parent.restore(ctx); }
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            parent.restore(ctx);
+        }
         result
     }
 
@@ -899,7 +950,10 @@ fn program_original_groups(actions: Vec<PreparedProgramAction>) -> Vec<Vec<Prepa
 /// boundary for each wave; it never acknowledges a partially finished parent.
 pub(crate) enum ActionProgramsProgress {
     Complete(CompletedActionPrograms),
-    Paused { prefix: EffectOutcome, continuation: ActionProgramsContinuation },
+    Paused {
+        prefix: EffectOutcome,
+        continuation: ActionProgramsContinuation,
+    },
 }
 
 /// The selected cursors and every committed original remain with their owner;
@@ -915,9 +969,15 @@ pub(crate) struct ActionProgramsContinuation {
 impl ActionProgramsContinuation {
     pub(crate) fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         if let Some(originals) = &mut self.pending_originals {
-            game.freeze_completed_entry_events(originals.iter_mut().flat_map(|original| original.receipt.outcome.outcome.events.iter_mut()))?;
+            game.freeze_completed_entry_events(
+                originals
+                    .iter_mut()
+                    .flat_map(|original| original.receipt.outcome.outcome.events.iter_mut()),
+            )?;
             for original in originals {
-                if let Some(completion) = &mut original.receipt.completion { completion.freeze(game)?; }
+                if let Some(completion) = &mut original.receipt.completion {
+                    completion.freeze(game)?;
+                }
             }
         }
         Ok(())
@@ -926,7 +986,10 @@ impl ActionProgramsContinuation {
         super::inherit_observed_events(&mut self.events, observed);
         if let Some(originals) = &mut self.pending_originals {
             for original in originals {
-                super::inherit_original_observations(&mut original.receipt.outcome.outcome, observed);
+                super::inherit_original_observations(
+                    &mut original.receipt.outcome.outcome,
+                    observed,
+                );
                 original.receipt.outcome.synchronize_observations();
             }
         }
@@ -935,29 +998,46 @@ impl ActionProgramsContinuation {
             outputs.synchronize_observations();
         }
     }
-    pub(crate) fn resume(self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<Option<CompletedActionPrograms>, ExecutionError> {
+    pub(crate) fn resume(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<CompletedActionPrograms>, ExecutionError> {
         match run_action_programs(game, ctx, self, false)? {
             Some(ActionProgramsProgress::Complete(completed)) => Ok(Some(completed)),
             None => Ok(None),
             Some(ActionProgramsProgress::Paused { .. }) => Err(ExecutionError::InternalError(
-                "resumed selected programs paused twice".into())),
+                "resumed selected programs paused twice".into(),
+            )),
         }
     }
 }
 
 pub(crate) fn execute_action_programs(
-    game: &mut GameState, ctx: &mut ExecutionContext,
-    participants: Vec<ProgramParticipant>, defer_draws: bool,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: Vec<ProgramParticipant>,
+    defer_draws: bool,
 ) -> Result<Option<ActionProgramsProgress>, ExecutionError> {
-    run_action_programs(game, ctx, ActionProgramsContinuation {
-        participants, events: Vec::new(), facts: Vec::new(), shared: Vec::new(),
-        pending_originals: None, capture_between_units: defer_draws,
-    }, defer_draws)
+    run_action_programs(
+        game,
+        ctx,
+        ActionProgramsContinuation {
+            participants,
+            events: Vec::new(),
+            facts: Vec::new(),
+            shared: Vec::new(),
+            pending_originals: None,
+            capture_between_units: defer_draws,
+        },
+        defer_draws,
+    )
 }
 
 fn finish_stopped_participants(
-    game: &mut GameState, ctx: &mut ExecutionContext, participants: &mut [ProgramParticipant],
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
     facts: &mut Vec<ExecutionFact>,
 ) -> Result<(), ExecutionError> {
     ctx.stop_resolution();
@@ -975,11 +1055,19 @@ fn finish_stopped_participants(
 }
 
 fn run_action_programs(
-    game: &mut GameState, ctx: &mut ExecutionContext,
-    state: ActionProgramsContinuation, defer_draws: bool,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    state: ActionProgramsContinuation,
+    defer_draws: bool,
 ) -> Result<Option<ActionProgramsProgress>, ExecutionError> {
-    let ActionProgramsContinuation { mut participants, mut events, mut facts, mut shared,
-        mut pending_originals, capture_between_units } = state;
+    let ActionProgramsContinuation {
+        mut participants,
+        mut events,
+        mut facts,
+        mut shared,
+        mut pending_originals,
+        capture_between_units,
+    } = state;
     while participants
         .iter()
         .any(|participant| participant.cursor.is_some())
@@ -997,85 +1085,86 @@ fn run_action_programs(
                 return Ok(None);
             }
         }
-        let (mut originals, already_observed) = if let Some(originals) = pending_originals.take() {
-            (originals, true)
-        } else {
-        let mut actions = Vec::new();
-        let mut ready = vec![false; participants.len()];
-        let mut queued_actions: Vec<Option<ProgramAction>> =
-            (0..participants.len()).map(|_| None).collect();
-        // Retain this unit's prepared originals while selected declarations
-        // pause their bodies. All offers in a wave see the original world;
-        // their claims are recorded before even a read-only reveal executes.
-        while ready.iter().any(|ready| !ready) {
-            let mut preparations = Vec::new();
-            for (index, participant) in participants.iter_mut().enumerate() {
-                if ready[index] {
-                    continue;
-                }
-                if participant.cursor.is_none() {
-                    ready[index] = true;
-                    continue;
-                }
-                let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-                while let Some(cursor) = &mut participant.cursor {
-                    let next = if let Some(action) = queued_actions[index].take() {
-                        Some(action)
-                    } else {
-                        cursor.next_action(game, &mut local)?
-                    };
-                    let declared = cursor.take_preparations();
-                    if local.decision_maker.awaiting_choice() {
-                        return Ok(None);
-                    }
-                    if !declared.is_empty() {
-                        preparations.extend(declared);
-                        // Retain a yielded action, if any, while all other actors
-                        // select their offers. A None with declarations is a
-                        // barrier; retry traversal after preparing those claims.
-                        queued_actions[index] = next;
-                        break;
-                    }
-                    let Some(mut action) = next else {
-                        let completed =
-                            participant.cursor.take().expect("active cursor").finish()?;
-                        facts.extend(completed.facts);
-                        participant.result = Some(completed.outputs);
-                        ready[index] = true;
-                        break;
-                    };
-                    let purpose =
-                        action.execution_purpose(crate::effects::EffectExecutionPurpose::Action);
-                    if action.native.is_none()
-                        && action.effect.0.is_read_only_simultaneous_player_action()
-                    {
-                        let result = action.scope.run(game, &mut local, |game, ctx| {
-                            purpose.execute(game, &action.effect, ctx)
-                        });
-                        let outputs = map_program_action_result_for_purpose(
-                            cursor.as_ref(),
-                            purpose,
-                            result,
-                        )?;
-                        if local.decision_maker.awaiting_choice() {
-                            return Ok(None);
+        let (mut originals, already_observed) =
+            if let Some(originals) = pending_originals.take() {
+                (originals, true)
+            } else {
+                let mut actions = Vec::new();
+                let mut ready = vec![false; participants.len()];
+                let mut queued_actions: Vec<Option<ProgramAction>> =
+                    (0..participants.len()).map(|_| None).collect();
+                // Retain this unit's prepared originals while selected declarations
+                // pause their bodies. All offers in a wave see the original world;
+                // their claims are recorded before even a read-only reveal executes.
+                while ready.iter().any(|ready| !ready) {
+                    let mut preparations = Vec::new();
+                    for (index, participant) in participants.iter_mut().enumerate() {
+                        if ready[index] {
+                            continue;
                         }
-                        events.extend(outputs.outcome.events.clone());
-                        facts.extend(outputs.outcome.execution_facts.clone());
-                        cursor.accept_action(outputs)?;
-                        if local.resolution_stopped() || cursor.ends_action_unit() {
+                        if participant.cursor.is_none() {
                             ready[index] = true;
-                            break;
+                            continue;
                         }
-                        continue;
-                    }
-                    let native = action.native.take();
-                    let proposal = match native {
-                        Some(NativeProgramAction::SharedDamage(proposal)) => proposal,
-                        request => {
-                            match action
-                                .scope
-                                .run(game, &mut local, |game, ctx| match request {
+                        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+                        while let Some(cursor) = &mut participant.cursor {
+                            let next = if let Some(action) = queued_actions[index].take() {
+                                Some(action)
+                            } else {
+                                cursor.next_action(game, &mut local)?
+                            };
+                            let declared = cursor.take_preparations();
+                            if local.decision_maker.awaiting_choice() {
+                                return Ok(None);
+                            }
+                            if !declared.is_empty() {
+                                preparations.extend(declared);
+                                // Retain a yielded action, if any, while all other actors
+                                // select their offers. A None with declarations is a
+                                // barrier; retry traversal after preparing those claims.
+                                queued_actions[index] = next;
+                                break;
+                            }
+                            let Some(mut action) = next else {
+                                let completed =
+                                    participant.cursor.take().expect("active cursor").finish()?;
+                                facts.extend(completed.facts);
+                                participant.result = Some(completed.outputs);
+                                ready[index] = true;
+                                break;
+                            };
+                            let purpose = action
+                                .execution_purpose(crate::effects::EffectExecutionPurpose::Action);
+                            if action.native.is_none()
+                                && action.effect.0.is_read_only_simultaneous_player_action()
+                            {
+                                let result = action.scope.run(game, &mut local, |game, ctx| {
+                                    purpose.execute(game, &action.effect, ctx)
+                                });
+                                let outputs = map_program_action_result_for_purpose(
+                                    cursor.as_ref(),
+                                    purpose,
+                                    result,
+                                )?;
+                                if local.decision_maker.awaiting_choice() {
+                                    return Ok(None);
+                                }
+                                events.extend(outputs.outcome.events.clone());
+                                facts.extend(outputs.outcome.execution_facts.clone());
+                                cursor.accept_action(outputs)?;
+                                if local.resolution_stopped() || cursor.ends_action_unit() {
+                                    ready[index] = true;
+                                    break;
+                                }
+                                continue;
+                            }
+                            let native = action.native.take();
+                            let proposal =
+                                match native {
+                                    Some(NativeProgramAction::SharedDamage(proposal)) => proposal,
+                                    request => {
+                                        match action.scope.run(game, &mut local, |game, ctx| {
+                                            match request {
                                     Some(NativeProgramAction::TotalCost {
                                         cost,
                                         payer,
@@ -1090,143 +1179,174 @@ fn run_action_programs(
                                         ctx,
                                     ),
                                     Some(NativeProgramAction::SharedDamage(_)) => unreachable!(),
-                                }) {
-                                Ok(Some(proposal)) => proposal,
-                                Ok(None) if local.decision_maker.awaiting_choice() => {
-                                    return Ok(None);
                                 }
-                                Ok(None) => {
-                                    return Err(ExecutionError::InternalError(
-                                        "selected program action has no prepared owner".into(),
-                                    ));
-                                }
-                                Err(error) => Box::new(FinishedProgramAction {
-                                    outputs: map_program_action_result_for_purpose(
-                                        cursor.as_ref(),
-                                        purpose,
-                                        Err(error),
-                                    )?,
-                                }),
-                            }
+                                        }) {
+                                            Ok(Some(proposal)) => proposal,
+                                            Ok(None) if local.decision_maker.awaiting_choice() => {
+                                                return Ok(None);
+                                            }
+                                            Ok(None) => {
+                                                return Err(ExecutionError::InternalError(
+                                                    "selected program action has no prepared owner"
+                                                        .into(),
+                                                ));
+                                            }
+                                            Err(error) => Box::new(FinishedProgramAction {
+                                                outputs: map_program_action_result_for_purpose(
+                                                    cursor.as_ref(),
+                                                    purpose,
+                                                    Err(error),
+                                                )?,
+                                            }),
+                                        }
+                                    }
+                                };
+                            actions.push(PreparedProgramAction {
+                                participant: index,
+                                action,
+                                proposal,
+                            });
+                            ready[index] = true;
+                            break;
                         }
-                    };
-                    actions.push(PreparedProgramAction {
-                        participant: index,
-                        action,
-                        proposal,
-                    });
-                    ready[index] = true;
+                        if local.decision_maker.awaiting_choice() {
+                            return Ok(None);
+                        }
+                        participant.context = ExecutionContextCheckpoint::capture(&local);
+                        let stopped = local.resolution_stopped();
+                        drop(local);
+                        if stopped {
+                            ctx.stop_resolution();
+                            break;
+                        }
+                    }
+                    if ctx.resolution_stopped() {
+                        break;
+                    }
+                    for preparation in preparations {
+                        preparation.prepare(game)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(None);
+                        }
+                    }
+                }
+                if ctx.resolution_stopped() {
+                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
                     break;
                 }
-                if local.decision_maker.awaiting_choice() {
-                    return Ok(None);
+                // A paused earlier participant can become ready after a later one.
+                // Restore APNAP order before original preparation/sealing/cohorting.
+                actions.sort_by_key(|action| action.participant);
+                if actions.is_empty() {
+                    continue;
                 }
-                participant.context = ExecutionContextCheckpoint::capture(&local);
-                let stopped = local.resolution_stopped();
-                drop(local);
-                if stopped { ctx.stop_resolution(); break; }
-            }
-            if ctx.resolution_stopped() { break; }
-            for preparation in preparations {
-                preparation.prepare(game)?;
+                for action in &mut actions {
+                    let participant = &mut participants[action.participant];
+                    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+                    action.action.scope.run(game, &mut local, |game, ctx| {
+                        action.proposal.prepare_selection(game, ctx)
+                    })?;
+                    if local.decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    participant.context = ExecutionContextCheckpoint::capture(&local);
+                    let stopped = local.resolution_stopped();
+                    drop(local);
+                    if stopped {
+                        ctx.stop_resolution();
+                        break;
+                    }
+                }
+                if ctx.resolution_stopped() {
+                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
+                    break;
+                }
+                for action in &mut actions {
+                    let participant = &mut participants[action.participant];
+                    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+                    action.action.scope.run(game, &mut local, |game, ctx| {
+                        action.proposal.prepare_original(game, ctx)
+                    })?;
+                    if local.decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    participant.context = ExecutionContextCheckpoint::capture(&local);
+                    let stopped = local.resolution_stopped();
+                    drop(local);
+                    if stopped {
+                        ctx.stop_resolution();
+                        break;
+                    }
+                }
+                if ctx.resolution_stopped() {
+                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
+                    break;
+                }
+                if !crate::effects::can_pay_declared_resources(
+                    game,
+                    &actions
+                        .iter()
+                        .flat_map(|action| action.proposal.declared_payment_resources())
+                        .collect::<Vec<_>>(),
+                ) {
+                    return Err(ExecutionError::Impossible(
+                        "program unit exceeds shared resources".into(),
+                    ));
+                }
+                let simultaneous = actions.len() > 1
+                    || actions
+                        .iter()
+                        .any(|action| action.proposal.has_simultaneous_originals());
+                let opened = simultaneous && game.open_simultaneous_action();
+                let pinned = simultaneous
+                    && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+                let originals = commit_program_originals(game, ctx, &mut participants, actions);
+                crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
+                game.close_simultaneous_action(opened);
+                let originals = originals?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(None);
                 }
-            }
-        }
-        if ctx.resolution_stopped() {
-            finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
-            break;
-        }
-        // A paused earlier participant can become ready after a later one.
-        // Restore APNAP order before original preparation/sealing/cohorting.
-        actions.sort_by_key(|action| action.participant);
-        if actions.is_empty() {
-            continue;
-        }
-        for action in &mut actions {
-            let participant = &mut participants[action.participant];
-            let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-            action.action.scope.run(game, &mut local, |game, ctx| {
-                action.proposal.prepare_selection(game, ctx)
-            })?;
-            if local.decision_maker.awaiting_choice() { return Ok(None); }
-            participant.context = ExecutionContextCheckpoint::capture(&local);
-            let stopped = local.resolution_stopped();
-            drop(local);
-            if stopped { ctx.stop_resolution(); break; }
-        }
-        if ctx.resolution_stopped() {
-            finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
-            break;
-        }
-        for action in &mut actions {
-            let participant = &mut participants[action.participant];
-            let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-            action.action.scope.run(game, &mut local, |game, ctx| {
-                action.proposal.prepare_original(game, ctx)
-            })?;
-            if local.decision_maker.awaiting_choice() {
-                return Ok(None);
-            }
-            participant.context = ExecutionContextCheckpoint::capture(&local);
-            let stopped = local.resolution_stopped();
-            drop(local);
-            if stopped { ctx.stop_resolution(); break; }
-        }
-        if ctx.resolution_stopped() {
-            finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
-            break;
-        }
-        if !crate::effects::can_pay_declared_resources(
-            game,
-            &actions
-                .iter()
-                .flat_map(|action| action.proposal.declared_payment_resources())
-                .collect::<Vec<_>>(),
-        ) {
-            return Err(ExecutionError::Impossible(
-                "program unit exceeds shared resources".into(),
-            ));
-        }
-        let simultaneous = actions.len() > 1
-            || actions
-                .iter()
-                .any(|action| action.proposal.has_simultaneous_originals());
-        let opened = simultaneous && game.open_simultaneous_action();
-        let pinned =
-            simultaneous && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-        let originals = commit_program_originals(game, ctx, &mut participants, actions);
-        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
-        game.close_simultaneous_action(opened);
-        let originals = originals?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(None);
-        }
-        (originals, false)
-        };
+                (originals, false)
+            };
         if !already_observed {
             originals = super::simultaneous::prepare_simultaneous_originals_with_participants(
-                game, ctx, originals, |original| &mut original.receipt,
-                |game, ctx, originals| game.observe_prepared_life_payment_originals(ctx,
-                    originals.iter_mut().flat_map(|original| original.receipt.outcome.outcome.events.iter_mut())),
+                game,
+                ctx,
+                originals,
+                |original| &mut original.receipt,
+                |game, ctx, originals| {
+                    game.observe_prepared_life_payment_originals(
+                        ctx,
+                        originals.iter_mut().flat_map(|original| {
+                            original.receipt.outcome.outcome.events.iter_mut()
+                        }),
+                    )
+                },
             )?;
         }
         if defer_draws {
             let mut boundary = false;
             for original in &mut originals {
-                if boundary { break; }
-                let Some(completion) = original.receipt.completion.take() else { continue; };
+                if boundary {
+                    break;
+                }
+                let Some(completion) = original.receipt.completion.take() else {
+                    continue;
+                };
                 let participant = &mut participants[original.participant];
                 let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
                 let aggregate = original.receipt.outcome.outcome.clone();
-                let prepared = original.scope.run(game, &mut local, |game, ctx|
-                    completion.prepare_draw_boundary_with_outputs(game, ctx, aggregate))?;
+                let prepared = original.scope.run(game, &mut local, |game, ctx| {
+                    completion.prepare_draw_boundary_with_outputs(game, ctx, aggregate)
+                })?;
                 participant.context = ExecutionContextCheckpoint::capture(&local);
                 let prior = std::mem::replace(&mut original.receipt, prepared);
                 original.receipt.outcome.retain_owned_child(prior.outcome);
                 boundary = original.receipt.completion.is_some();
-                if local.decision_maker.awaiting_choice() { return Ok(None); }
+                if local.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
                 let stopped = local.resolution_stopped();
                 drop(local);
                 if stopped {
@@ -1236,21 +1356,39 @@ fn run_action_programs(
                 }
             }
             if boundary {
-                let mut prefix = EffectOutcome::resolved().with_events(events.clone()).with_execution_facts(facts.clone());
+                let mut prefix = EffectOutcome::resolved()
+                    .with_events(events.clone())
+                    .with_execution_facts(facts.clone());
                 for original in &originals {
-                    prefix = EffectOutcome::aggregate([prefix, original.receipt.outcome.outcome.clone()]);
+                    prefix = EffectOutcome::aggregate([
+                        prefix,
+                        original.receipt.outcome.outcome.clone(),
+                    ]);
                 }
                 return Ok(Some(ActionProgramsProgress::Paused {
                     prefix,
-                    continuation: ActionProgramsContinuation { participants, events, facts, shared,
-                        pending_originals: Some(originals), capture_between_units },
+                    continuation: ActionProgramsContinuation {
+                        participants,
+                        events,
+                        facts,
+                        shared,
+                        pending_originals: Some(originals),
+                        capture_between_units,
+                    },
                 }));
             }
         }
         let mut completed = Vec::with_capacity(originals.len());
         for original in originals {
-            completed.push(complete_program_original(game, ctx, &mut participants, original)?);
-            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            completed.push(complete_program_original(
+                game,
+                ctx,
+                &mut participants,
+                original,
+            )?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
         }
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
@@ -1279,25 +1417,43 @@ fn run_action_programs(
             break;
         }
     }
-    Ok(Some(ActionProgramsProgress::Complete(CompletedActionPrograms {
-        participants: participants
-            .into_iter()
-            .map(|participant| {
-                Ok(ProgramParticipantResult {
-                    context: participant.context,
-                    outputs: participant.result.ok_or_else(|| {
-                        ExecutionError::InternalError("program lost completed outputs".into())
-                    })?,
+    Ok(Some(ActionProgramsProgress::Complete(
+        CompletedActionPrograms {
+            participants: participants
+                .into_iter()
+                .map(|participant| {
+                    Ok(ProgramParticipantResult {
+                        context: participant.context,
+                        outputs: participant.result.ok_or_else(|| {
+                            ExecutionError::InternalError("program lost completed outputs".into())
+                        })?,
+                    })
                 })
-            })
-            .collect::<Result<_, ExecutionError>>()?,
-        events,
-        facts,
-        shared,
-    })))
+                .collect::<Result<_, ExecutionError>>()?,
+            events,
+            facts,
+            shared,
+        },
+    )))
 }
 
 fn commit_program_originals(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    actions: Vec<PreparedProgramAction>,
+) -> Result<Vec<CompletedProgramOriginal>, ExecutionError> {
+    let (mut originals, observations) = crate::effects::with_action_observations(game, |game| {
+        commit_program_originals_inner(game, ctx, participants, actions)
+    })?;
+    super::original_observations::retain_original_observations(
+        originals.iter_mut().map(|original| &mut original.receipt),
+        observations,
+    );
+    Ok(originals)
+}
+
+fn commit_program_originals_inner(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     participants: &mut [ProgramParticipant],
@@ -1339,7 +1495,9 @@ fn commit_program_originals(
         participant.context = ExecutionContextCheckpoint::capture(&local);
         let stopped = local.resolution_stopped();
         drop(local);
-        if stopped { ctx.stop_resolution(); }
+        if stopped {
+            ctx.stop_resolution();
+        }
         owners.push(PreparedProgramOwner {
             participant: index,
             scope,
@@ -1390,7 +1548,9 @@ fn commit_program_originals(
         }
         let stopped = local.resolution_stopped();
         drop(local);
-        if stopped { ctx.stop_resolution(); }
+        if stopped {
+            ctx.stop_resolution();
+        }
     }
     Ok(originals)
 }
@@ -1404,10 +1564,18 @@ fn complete_program_original(
     let stopped = ctx.resolution_stopped();
     let participant = &mut participants[original.participant];
     let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-    if stopped { local.stop_resolution(); }
-    let mut outputs = if stopped { original.receipt.outcome } else {
+    if stopped {
+        local.stop_resolution();
+    }
+    let mut outputs = if stopped {
+        original.receipt.outcome
+    } else {
         original.scope.run(game, &mut local, |game, ctx| {
-            super::simultaneous::complete_committed_original_with_outputs(game, ctx, original.receipt)
+            super::simultaneous::complete_committed_original_with_outputs(
+                game,
+                ctx,
+                original.receipt,
+            )
         })?
     };
     participant.context = ExecutionContextCheckpoint::capture(&local);
@@ -1419,7 +1587,9 @@ fn complete_program_original(
     }
     let stopped = local.resolution_stopped();
     drop(local);
-    if stopped { ctx.stop_resolution(); }
+    if stopped {
+        ctx.stop_resolution();
+    }
     let Some(bindings) = original.damage_bindings else {
         return Ok(CompletedProgramUnit {
             owner: None,
@@ -1523,7 +1693,11 @@ pub(super) fn execute_action_program_with_outputs(
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
     loop {
-        if ctx.resolution_stopped() { return cursor.finish_stopped(game, ctx).map(|completed| completed.outputs); }
+        if ctx.resolution_stopped() {
+            return cursor
+                .finish_stopped(game, ctx)
+                .map(|completed| completed.outputs);
+        }
 
         let next = cursor.next_action(game, ctx)?;
         if ctx.decision_maker.awaiting_choice() {

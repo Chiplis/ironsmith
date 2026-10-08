@@ -150,7 +150,11 @@ pub(crate) fn replacement_effect_supported(effect: &Effect) -> bool {
         return optional.effects.iter().all(replacement_effect_supported);
     }
     if let Some(condition) = effect.downcast_ref::<crate::effects::IfEffect>() {
-        return condition.then.iter().chain(&condition.else_).all(replacement_effect_supported);
+        return condition
+            .then
+            .iter()
+            .chain(&condition.else_)
+            .all(replacement_effect_supported);
     }
     if let Some(condition) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
         return condition
@@ -169,7 +173,10 @@ pub(crate) fn replacement_effect_supported(effect: &Effect) -> bool {
             .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
             .is_some()
     {
-        return effect.0.transparent_child_effect().is_some_and(replacement_effect_supported);
+        return effect
+            .0
+            .transparent_child_effect()
+            .is_some_and(replacement_effect_supported);
     }
     false
 }
@@ -178,7 +185,8 @@ pub(crate) fn replacement_effect_supported(effect: &Effect) -> bool {
 /// whether its retained completion has actually reached a draw; syntax alone
 /// cannot detect a draw created by an event replacement.
 pub(crate) fn prepare_committed_draw_boundary(
-    game: &mut GameState, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
     receipt: SimultaneousEffectCommit<CompletedEffectOutputs>,
 ) -> Result<PreparedReplacementChild, ExecutionError> {
     let receipt = prepare_committed_original_draw_with_outputs(game, ctx, receipt)?;
@@ -186,23 +194,38 @@ pub(crate) fn prepare_committed_draw_boundary(
 }
 
 fn prepare_committed_original_draw_with_outputs(
-    game: &mut GameState, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
     receipt: SimultaneousEffectCommit<CompletedEffectOutputs>,
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
     let mut original = receipt.outcome;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+        return Ok(SimultaneousEffectCommit::finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     }
-    if ctx.resolution_stopped() { return Ok(SimultaneousEffectCommit::finished(original)); }
-    let Some(mut completion) = receipt.completion else { return Ok(SimultaneousEffectCommit::finished(original)); };
+    if ctx.resolution_stopped() {
+        return Ok(SimultaneousEffectCommit::finished(original));
+    }
+    let Some(mut completion) = receipt.completion else {
+        return Ok(SimultaneousEffectCommit::finished(original));
+    };
     game.freeze_completed_entry_events(original.outcome.events.iter_mut())?;
     completion.freeze(game)?;
-    crate::effects::composition::observe_original_completion(game, ctx, completion.as_mut(), &mut original.outcome)?;
+    crate::effects::composition::observe_original_completion(
+        game,
+        ctx,
+        completion.as_mut(),
+        &mut original.outcome,
+    )?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+        return Ok(SimultaneousEffectCommit::finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     }
     original.synchronize_observations();
-    let mut prepared = completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
+    let mut prepared =
+        completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
     prepared.outcome.retain_owned_child(original);
     Ok(prepared)
 }
@@ -211,40 +234,76 @@ fn prepare_committed_original_draw_with_outputs(
 /// having a prepared proposal or from a preview of deferred child programs.
 pub(crate) fn prepare_native_draw_continuation_with_outputs(
     effect: &dyn crate::effects::EffectExecutor,
-    game: &mut GameState, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-    crate::effects::tokens::execute_resource_transaction_with_pending_value(game, ctx,
-        || SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+    crate::effects::tokens::execute_resource_transaction_with_pending_value(
+        game,
+        ctx,
+        || {
+            SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ))
+        },
         |game, ctx| {
             let proposal = effect.prepare_simultaneous_player_action(game, ctx)?;
-            let mut proposal = crate::effects::outcome_recording::record_proposal(proposal, effect.result_action());
+            let mut proposal = crate::effects::outcome_recording::record_proposal(
+                proposal,
+                effect.result_action(),
+            );
             proposal.prepare_selection(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)))); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
+            }
             proposal.prepare_original(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)))); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
+            }
             let opened = proposal.has_simultaneous_originals() && game.open_simultaneous_action();
             let result = (|| {
                 proposal.seal_original(game, ctx)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)))); }
-                proposal.commit_original_with_outputs(game, ctx)
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(SimultaneousEffectCommit::finished(
+                        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                    ));
+                }
+                let (mut receipt, observations) =
+                    crate::effects::with_action_observations(game, |game| {
+                        proposal.commit_original_with_outputs(game, ctx)
+                    })?;
+                crate::effects::composition::original_observations::retain_original_observations(
+                    std::iter::once(&mut receipt),
+                    observations,
+                );
+                Ok::<_, ExecutionError>(receipt)
             })();
             game.close_simultaneous_action(opened);
             prepare_committed_original_draw_with_outputs(game, ctx, result?)
-        })
+        },
+    )
 }
 
 fn retain_draw_boundary(
-    committed: SimultaneousEffectCommit<CompletedEffectOutputs>, ctx: &ExecutionContext,
+    committed: SimultaneousEffectCommit<CompletedEffectOutputs>,
+    ctx: &ExecutionContext,
 ) -> Result<PreparedReplacementChild, ExecutionError> {
     let Some(completion) = committed.completion else {
-        return Ok(PreparedReplacementChild::finished_with_outputs(committed.outcome));
+        return Ok(PreparedReplacementChild::finished_with_outputs(
+            committed.outcome,
+        ));
     };
     let prefix = CompletedEffectOutputs::aggregate_only(committed.outcome.outcome.clone());
     Ok(PreparedReplacementChild {
         prefix,
         resume: Some(Box::new(OriginalActionFrame {
-            original: committed.outcome, completion,
-            context: ExecutionContextCheckpoint::capture(ctx), frozen: false,
+            original: committed.outcome,
+            completion,
+            context: ExecutionContextCheckpoint::capture(ctx),
+            frozen: false,
         })),
     })
 }
@@ -365,18 +424,30 @@ impl ReplacementResume for DrawLeaf {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self { context, effect, prepared } = *self;
+        let Self {
+            context,
+            effect,
+            prepared,
+        } = *self;
         context.restore(ctx);
         // A prepared draw's quantity and actor were acquired when reached.
         let mut prepared = Some(prepared);
-        crate::effects::runtime::prepare_effect_original_with_outputs(game, &effect, ctx,
+        crate::effects::runtime::prepare_effect_original_with_outputs(
+            game,
+            &effect,
+            ctx,
             |_, game, ctx| {
-                let prepared = prepared.take().ok_or_else(|| ExecutionError::InternalError(
-                    "prepared draw was consumed before chooser replay".into()))?;
+                let prepared = prepared.take().ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "prepared draw was consumed before chooser replay".into(),
+                    )
+                })?;
                 crate::effects::cards::execute_prepared_draw_instruction(prepared, game, ctx)
                     .map(CompletedEffectOutputs::aggregate_only)
                     .map(SimultaneousEffectCommit::finished)
-            }).map(|receipt| receipt.outcome)
+            },
+        )
+        .map(|receipt| receipt.outcome)
     }
 }
 struct ProgramFrame {
@@ -939,35 +1010,60 @@ fn prepare_effect_inner(
     ctx: &mut ExecutionContext,
     effect: &Effect,
 ) -> Result<PreparedReplacementChild, ExecutionError> {
-    if ctx.resolution_stopped() || game.turn_store.end_turn_procedure_pending
+    if ctx.resolution_stopped()
+        || game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
     {
         return crate::effects::execute_effect_with_outputs(game, effect, ctx)
             .map(PreparedReplacementChild::finished_with_outputs);
     }
-    if effect.downcast_ref::<crate::effects::DrawCardsEffect>().is_some() {
+    if effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some()
+    {
         let mut retained = None;
-        let committed = crate::effects::runtime::prepare_effect_original_with_outputs(game, effect, ctx,
+        let committed = crate::effects::runtime::prepare_effect_original_with_outputs(
+            game,
+            effect,
+            ctx,
             |effect, game, ctx| {
-                let draw = effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+                let draw = effect
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
                     .expect("native draw instruction");
                 let prepared = crate::effects::cards::prepare_draw_instruction(draw, game, ctx)?;
                 // Dynamic zero has no boundary; its suffix remains an immediate prefix.
                 if prepared.requested_count == 0 {
-                    return crate::effects::cards::execute_prepared_draw_instruction(prepared, game, ctx)
-                        .map(CompletedEffectOutputs::aggregate_only).map(SimultaneousEffectCommit::finished);
+                    return crate::effects::cards::execute_prepared_draw_instruction(
+                        prepared, game, ctx,
+                    )
+                    .map(CompletedEffectOutputs::aggregate_only)
+                    .map(SimultaneousEffectCommit::finished);
                 }
                 retained = Some(prepared);
-                Ok(SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))))
-            })?;
-        if ctx.decision_maker.awaiting_choice() { retained = None; }
-        let resume = retained.map(|prepared| Box::new(DrawLeaf {
-            context: ExecutionContextCheckpoint::capture(ctx), effect: effect.clone(), prepared,
-        }) as Box<dyn ReplacementResume>);
-        return Ok(PreparedReplacementChild { prefix: committed.outcome, resume });
+                Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ))
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            retained = None;
+        }
+        let resume = retained.map(|prepared| {
+            Box::new(DrawLeaf {
+                context: ExecutionContextCheckpoint::capture(ctx),
+                effect: effect.clone(),
+                prepared,
+            }) as Box<dyn ReplacementResume>
+        });
+        return Ok(PreparedReplacementChild {
+            prefix: committed.outcome,
+            resume,
+        });
     }
     if effect.0.supports_replacement_draw_continuation() {
-        let committed = crate::effects::runtime::prepare_effect_draw_continuation_with_outputs(game, effect, ctx)?;
+        let committed = crate::effects::runtime::prepare_effect_draw_continuation_with_outputs(
+            game, effect, ctx,
+        )?;
         return retain_draw_boundary(committed, ctx);
     }
     if life_action(effect) {
@@ -1008,7 +1104,8 @@ fn prepare_effect_inner(
     }
     if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect>() {
         if optional.pay_as_cost {
-            return crate::effects::execute_effect_with_outputs(game, effect, ctx).map(PreparedReplacementChild::finished_with_outputs);
+            return crate::effects::execute_effect_with_outputs(game, effect, ctx)
+                .map(PreparedReplacementChild::finished_with_outputs);
         }
         let Some(branch) = optional.prepare_optional_execution(game, ctx)? else {
             return Ok(PreparedReplacementChild::finished(EffectOutcome::declined()));
@@ -1089,16 +1186,22 @@ fn prepare_effect_inner(
 }
 
 struct DrawContinuation {
-    replacement_projection: bool,
+    original: Option<EffectOutcome>,
     resume: Box<dyn ReplacementResume>,
     source: ObjectId,
     controller: PlayerId,
 }
 impl SimultaneousEffectCompletion for DrawContinuation {
-    fn prepare_draw_boundary_with_outputs(self: Box<Self>, _game: &mut GameState,
-        _ctx: &mut ExecutionContext, original: EffectOutcome,
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        Ok(SimultaneousEffectCommit { outcome: CompletedEffectOutputs::aggregate_only(original), completion: Some(self) })
+        Ok(SimultaneousEffectCommit {
+            outcome: CompletedEffectOutputs::aggregate_only(original),
+            completion: Some(self),
+        })
     }
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         self.resume.freeze(game)
@@ -1124,8 +1227,7 @@ impl SimultaneousEffectCompletion for DrawContinuation {
         let resume = self.resume;
         let outputs =
             crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-                let mut outputs =
-                    resume_replacement_child_with_outputs(game, &mut child, resume)?;
+                let mut outputs = resume_replacement_child_with_outputs(game, &mut child, resume)?;
                 crate::effects::runtime::capture_triggers_before_added_program(
                     game,
                     &child,
@@ -1134,9 +1236,13 @@ impl SimultaneousEffectCompletion for DrawContinuation {
                 )?;
                 Ok::<_, ExecutionError>(outputs)
             })?;
-        if !self.replacement_projection { return Ok(outputs); }
-        let mut original = EffectOutcome::replaced();
-        original.set_value(OutcomeValue::Count(0));
+        let Some(mut original) = self.original else {
+            return Ok(outputs);
+        };
+        crate::effects::composition::inherit_original_observations(
+            &mut original,
+            &original_prefix.events,
+        );
         // The resumed subtree includes its captured prefix once; do not append
         // the prefix receipt again or numeric event evidence would be doubled.
         let outcome =
@@ -1179,6 +1285,33 @@ pub(crate) fn prepare_draw_continuation_with_bindings_and_outputs(
     captured_source_snapshot: Option<ObjectSnapshot>,
     bindings: super::ReplacementProgramBindings,
 ) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
+    let mut original = EffectOutcome::replaced();
+    original.set_value(OutcomeValue::Count(0));
+    prepare_draw_continuation_with_original_and_outputs(
+        game,
+        parent,
+        effects,
+        source,
+        controller,
+        context,
+        captured_source_snapshot,
+        bindings,
+        original,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_draw_continuation_with_original_and_outputs(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    effects: &[Effect],
+    source: ObjectId,
+    controller: PlayerId,
+    context: &ReplacementEventContext,
+    captured_source_snapshot: Option<ObjectSnapshot>,
+    bindings: super::ReplacementProgramBindings,
+    original: EffectOutcome,
+) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
     if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
         return Ok(None);
     }
@@ -1192,79 +1325,81 @@ pub(crate) fn prepare_draw_continuation_with_bindings_and_outputs(
         captured_source_snapshot,
         bindings.object_tags,
         |game, child| {
-            let prepared =
-                crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-                    prepare_program(game, child, effects, Mode::Aggregate, None)
-                })?;
-            let mut original = EffectOutcome::replaced();
-            original.set_value(OutcomeValue::Count(0));
-            Ok(Some(SimultaneousEffectCommit {
-                outcome: {
-                    let aggregate = EffectOutcome::aggregate_replacement_outcomes(
-                        original,
-                        [prepared.prefix.outcome.clone()],
-                    );
-                    prepared.prefix.project_aggregate(aggregate)
-                },
-                completion: prepared.resume.map(|resume| {
-                    Box::new(DrawContinuation {
-                        replacement_projection: true,
-                        resume,
-                        source,
-                        controller,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                }),
-            }))
+            prepare_bound_program_draw_with_outputs(game, child, effects, Some(original)).map(Some)
         },
     )
+}
+
+/// One prefix/continuation owner for both original replacements and additions.
+/// Public adapters own eligibility, bindings and the authored result frame.
+fn prepare_bound_program_draw_with_outputs(
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
+    original: Option<EffectOutcome>,
+) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+    let source = child.source;
+    let controller = child.controller;
+    let prepared = crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+        prepare_program(game, child, effects, Mode::Aggregate, None)
+    })?;
+    let outcome = match &original {
+        Some(original) => {
+            let aggregate = EffectOutcome::aggregate_replacement_outcomes(
+                original.clone(),
+                [prepared.prefix.outcome.clone()],
+            );
+            prepared.prefix.project_aggregate(aggregate)
+        }
+        None => prepared.prefix,
+    };
+    Ok(SimultaneousEffectCommit {
+        outcome,
+        completion: prepared.resume.map(|resume| {
+            Box::new(DrawContinuation {
+                original,
+                resume,
+                source,
+                controller,
+            }) as Box<dyn SimultaneousEffectCompletion>
+        }),
+    })
 }
 
 /// Retain one already-bound program's own result, without inventing a
 /// replaced-original summary. Added programs and prevention queues use this.
 pub(crate) fn prepare_scoped_program_draw_boundary_with_outputs(
-    game: &mut GameState, child: &mut ExecutionContext, effects: &[Effect],
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
     if !effects.iter().all(replacement_effect_supported) {
-        return Err(ExecutionError::Impossible("program has no native draw-continuation owner".into()));
+        return Err(ExecutionError::Impossible(
+            "program has no native draw-continuation owner".into(),
+        ));
     }
-    let source = child.source;
-    let controller = child.controller;
-    let prepared = crate::effects::runtime::with_per_event_trigger_matching(game, true,
-        |game| prepare_program(game, child, effects, Mode::Aggregate, None))?;
-    Ok(SimultaneousEffectCommit {
-        outcome: prepared.prefix,
-        completion: prepared.resume.map(|resume| Box::new(DrawContinuation {
-            replacement_projection: false, resume, source, controller,
-        }) as Box<dyn SimultaneousEffectCompletion>),
-    })
+    prepare_bound_program_draw_with_outputs(game, child, effects, None)
 }
 
 /// Continue an already established replacement scope, preserving all captured
 /// source, target, local result and acquisition bindings.
 pub(crate) fn prepare_scoped_draw_continuation_with_outputs(
-    game: &mut GameState, child: &mut ExecutionContext, effects: &[Effect],
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
 ) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
     if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
         return Ok(None);
     }
-    let source = child.source;
-    let controller = child.controller;
-    let prepared = crate::effects::runtime::with_per_event_trigger_matching(game, true,
-        |game| prepare_program(game, child, effects, Mode::Aggregate, None))?;
     let mut original = EffectOutcome::replaced();
     original.set_value(OutcomeValue::Count(0));
-    let aggregate = EffectOutcome::aggregate_replacement_outcomes(original, [prepared.prefix.outcome.clone()]);
-    Ok(Some(SimultaneousEffectCommit {
-        outcome: prepared.prefix.project_aggregate(aggregate),
-        completion: prepared.resume.map(|resume| Box::new(DrawContinuation {
-            replacement_projection: true,
-            resume, source, controller,
-        }) as Box<dyn SimultaneousEffectCompletion>),
-    }))
+    prepare_bound_program_draw_with_outputs(game, child, effects, Some(original)).map(Some)
 }
 
 pub(crate) fn prepare_scoped_draw_continuation(
-    game: &mut GameState, child: &mut ExecutionContext, effects: &[Effect],
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
 ) -> Result<Option<SimultaneousEffectCommit>, ExecutionError> {
     prepare_scoped_draw_continuation_with_outputs(game, child, effects)
         .map(|prepared| prepared.map(SimultaneousEffectCommit::into_aggregate))

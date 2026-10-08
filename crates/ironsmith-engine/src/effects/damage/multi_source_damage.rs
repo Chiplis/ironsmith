@@ -14,11 +14,18 @@ use crate::triggers::TriggerEvent;
 pub use ironsmith_core::DealDamageBySourcesEffect;
 
 impl EffectExecutor for DealDamageBySourcesEffect {
-    fn supports_replacement_draw_continuation(&self) -> bool { true }
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 
@@ -213,9 +220,7 @@ impl ExecuteCapturedDamage for DealDamageBySourcesEffect {
                         }) {
                         ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
                     } else {
-                        game.turn_store
-                            .turn_history
-                            .source_last_known_snapshot(captured.object_id)
+                        game.source_last_known_snapshot(captured.object_id)
                             .cloned()
                             .ok_or_else(|| {
                                 ExecutionError::UnresolvableValue(
@@ -533,7 +538,8 @@ impl DamageParticipants {
 }
 
 type DamageParticipantResult = (
-    std::sync::Arc<crate::effects::ExecutionContextCheckpoint>, crate::effects::CompletedEffectOutputs,
+    std::sync::Arc<crate::effects::ExecutionContextCheckpoint>,
+    crate::effects::CompletedEffectOutputs,
 );
 
 struct DamageAssignmentOriginal {
@@ -740,17 +746,19 @@ impl PreparedDamageOriginals {
             for (index, observation, plan) in prepared {
                 let state = &states[index];
                 let mut ctx = state.execution_context(observation, &mut *parent.decision_maker);
-                let receipt =
-                    crate::rules::damage::commit_prepared_damage_original_with_outputs(game, &mut ctx, plan)?;
+                let receipt = crate::rules::damage::commit_prepared_damage_original_with_outputs(
+                    game, &mut ctx, plan,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
                 }
                 lost += u128::from(receipt.original.life_lost);
                 let mut receipt = crate::effects::SimultaneousEffectCommit {
-                    outcome: receipt
-                        .original
-                        .consequence_outcome
-                        .unwrap_or_else(|| crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved())),
+                    outcome: receipt.original.consequence_outcome.unwrap_or_else(|| {
+                        crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::resolved(),
+                        )
+                    }),
                     completion: receipt.completion,
                 };
                 bind_consequence_batch(&mut receipt.outcome.outcome, batch);
@@ -772,9 +780,10 @@ impl PreparedDamageOriginals {
             {
                 let state = &states[context_assignment];
                 let mut ctx = state.execution_context(observation, &mut *parent.decision_maker);
-                let mut receipt = crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
-                    game, &mut ctx, proposal,
-                )?;
+                let mut receipt =
+                    crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
+                        game, &mut ctx, proposal,
+                    )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
                 }
@@ -866,13 +875,20 @@ impl PreparedDamageBatch {
             for group in original_programs {
                 let mut participant = group.context.reborrow(&mut *parent.decision_maker);
                 for (assignment, program) in group.assignments.into_iter().zip(group.programs) {
-                    let receipt = super::commit_damage_replacement_original_with_outputs(game, &mut participant, program)?;
+                    let receipt = super::commit_damage_replacement_original_with_outputs(
+                        game,
+                        &mut participant,
+                        program,
+                    )?;
                     if participant.decision_maker.awaiting_choice() {
                         return Ok(Vec::new());
                     }
                     receipts.push(OwnedDamageConsequence {
                         origin: DamageConsequenceOrigin::Assignment(assignment),
-                        receipt: crate::effects::composition::with_original_execution_context(receipt, &participant),
+                        receipt: crate::effects::composition::with_original_execution_context(
+                            receipt,
+                            &participant,
+                        ),
                     });
                 }
             }
@@ -895,7 +911,11 @@ impl PreparedDamageBatch {
             payloads
                 .iter()
                 .map(|payload| payload.outputs.outcome.clone())
-                .chain(receipts.iter().map(|owned| owned.receipt.outcome.outcome.clone())),
+                .chain(
+                    receipts
+                        .iter()
+                        .map(|owned| owned.receipt.outcome.outcome.clone()),
+                ),
         );
         Ok(crate::effects::SimultaneousEffectCommit {
             outcome,
@@ -954,63 +974,108 @@ struct DamageBatchCompletion {
 
 impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
     fn prepare_draw_boundary_with_outputs(
-        mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         // Damage originals are already committed and observed. Advance each
         // consequence only to its own actual draw, retaining contribution IDs.
         self.inherit_prefix_observations(&original.events);
         let mut consequence_draw = false;
         for owned in &mut self.receipts {
             crate::effects::composition::inherit_original_observations(
-                &mut owned.receipt.outcome.outcome, &original.events,
+                &mut owned.receipt.outcome.outcome,
+                &original.events,
             );
             if let Some(completion) = owned.receipt.completion.take() {
-                let prefix = std::mem::replace(&mut owned.receipt.outcome,
-                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()));
-                let mut receipt = completion.prepare_draw_boundary_with_outputs(game, ctx, prefix.outcome.clone())?;
+                let prefix = std::mem::replace(
+                    &mut owned.receipt.outcome,
+                    crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
+                    ),
+                );
+                let mut receipt = completion.prepare_draw_boundary_with_outputs(
+                    game,
+                    ctx,
+                    prefix.outcome.clone(),
+                )?;
                 receipt.outcome.retain_owned_child(prefix);
                 owned.receipt = receipt;
             }
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
             }
-            if owned.receipt.completion.is_some() { consequence_draw = true; break; }
+            if owned.receipt.completion.is_some() {
+                consequence_draw = true;
+                break;
+            }
         }
-        if consequence_draw { return Ok(self.retained_draw_boundary(&original)); }
+        if consequence_draw {
+            return Ok(self.retained_draw_boundary(&original));
+        }
         self.capture_tail_steps()?;
         let mut remaining = std::mem::take(&mut self.staged_tail).into_iter();
         while let Some(step) = remaining.next() {
             let (owner, receipt) = match step {
                 DamageTailStep::Prepared { owner, receipt } => (owner, receipt),
-                DamageTailStep::Program { assignment, context, program } => {
+                DamageTailStep::Program {
+                    assignment,
+                    context,
+                    program,
+                } => {
                     let mut participant = context.reborrow(&mut *ctx.decision_maker);
                     let mut before = self.current_prefix(&original);
                     crate::effects::capture_triggers_before_added_program(
-                        game, &participant, program.effects.first(), before.events.iter_mut(),
+                        game,
+                        &participant,
+                        program.effects.first(),
+                        before.events.iter_mut(),
                     )?;
                     self.inherit_prefix_observations(&before.events);
-                    let bindings = super::deal_damage::damage_replacement_bindings(&program.context)?;
+                    let bindings =
+                        super::deal_damage::damage_replacement_bindings(&program.context)?;
                     let receipt = crate::effects::replacement::with_replacement_child(
-                        game, &mut participant, program.source, program.controller, &program.context,
-                        bindings.targets, program.source_snapshot, bindings.object_tags,
-                        |game, child| crate::effects::replacement::prepare_scoped_program_draw_boundary_with_outputs(
+                        game,
+                        &mut participant,
+                        program.source,
+                        program.controller,
+                        &program.context,
+                        bindings.targets,
+                        program.source_snapshot,
+                        bindings.object_tags,
+                        |game, child| {
+                            crate::effects::replacement::prepare_scoped_program_draw_boundary_with_outputs(
                             game, child, &program.effects,
-                        ),
+                        )
+                        },
                     )?;
-                    (DamageTailOwner::Assignment(assignment),
-                        crate::effects::composition::with_original_execution_context(receipt, &participant))
+                    (
+                        DamageTailOwner::Assignment(assignment),
+                        crate::effects::composition::with_original_execution_context(
+                            receipt,
+                            &participant,
+                        ),
+                    )
                 }
-                DamageTailStep::Prevention { owner, follow_ups } => {
-                    (owner, follow_ups.prepare_draw_boundary_with_outputs(game, &mut *ctx.decision_maker)?)
-                }
+                DamageTailStep::Prevention { owner, follow_ups } => (
+                    owner,
+                    follow_ups
+                        .prepare_draw_boundary_with_outputs(game, &mut *ctx.decision_maker)?,
+                ),
             };
             let at_draw = receipt.completion.is_some();
-            self.staged_tail.push(DamageTailStep::Prepared { owner, receipt });
+            self.staged_tail
+                .push(DamageTailStep::Prepared { owner, receipt });
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
             }
             if at_draw {
                 self.staged_tail.extend(remaining);
@@ -1038,9 +1103,15 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
         for step in &mut self.staged_tail {
             if let DamageTailStep::Prepared { receipt, .. } = step {
                 crate::effects::outcome_recording::complete_outcome(
-                    game, None, None, &mut receipt.outcome.outcome, Vec::new(),
+                    game,
+                    None,
+                    None,
+                    &mut receipt.outcome.outcome,
+                    Vec::new(),
                 );
-                if let Some(completion) = &mut receipt.completion { completion.freeze(game)?; }
+                if let Some(completion) = &mut receipt.completion {
+                    completion.freeze(game)?;
+                }
             }
         }
         Ok(())
@@ -1068,13 +1139,19 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
         for step in &mut self.staged_tail {
             if let DamageTailStep::Prepared { receipt, .. } = step {
                 crate::effects::composition::inherit_original_observations(
-                    &mut receipt.outcome.outcome, &original.events,
+                    &mut receipt.outcome.outcome,
+                    &original.events,
                 );
                 if let Some(completion) = &mut receipt.completion {
                     completion.observe_original(game, ctx, &mut receipt.outcome.outcome)?;
                 }
-                crate::effects::composition::inherit_original_observations(original, &receipt.outcome.outcome.events);
-                if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                crate::effects::composition::inherit_original_observations(
+                    original,
+                    &receipt.outcome.outcome.events,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
             }
         }
         crate::effects::runtime::capture_triggers_before_added_program(
@@ -1210,7 +1287,7 @@ impl CompletedDamageBatch {
                         ownership: crate::effects::SharedOutcomeOwnership::Contributions(
                             contributions,
                         ),
-                        outputs,
+                        outputs: outputs.into(),
                     })
                 }
                 SharedDamageOutput::BatchPrevention(outputs) => {
@@ -1221,7 +1298,7 @@ impl CompletedDamageBatch {
                                 .map(|participant| participant.scope.clone())
                                 .collect(),
                         ),
-                        outputs,
+                        outputs: outputs.into(),
                     })
                 }
             })
@@ -1239,16 +1316,25 @@ impl DamageBatchCompletion {
     fn inherit_prefix_observations(&mut self, events: &[TriggerEvent]) {
         crate::effects::composition::inherit_original_observations(&mut self.primary, events);
         for payload in &mut self.payloads {
-            crate::effects::composition::inherit_original_observations(&mut payload.outputs.outcome, events);
+            crate::effects::composition::inherit_original_observations(
+                &mut payload.outputs.outcome,
+                events,
+            );
             payload.outputs.synchronize_observations();
         }
         for owned in &mut self.receipts {
-            crate::effects::composition::inherit_original_observations(&mut owned.receipt.outcome.outcome, events);
+            crate::effects::composition::inherit_original_observations(
+                &mut owned.receipt.outcome.outcome,
+                events,
+            );
             owned.receipt.outcome.synchronize_observations();
         }
         for step in &mut self.staged_tail {
             if let DamageTailStep::Prepared { receipt, .. } = step {
-                crate::effects::composition::inherit_original_observations(&mut receipt.outcome.outcome, events);
+                crate::effects::composition::inherit_original_observations(
+                    &mut receipt.outcome.outcome,
+                    events,
+                );
                 receipt.outcome.synchronize_observations();
             }
         }
@@ -1257,18 +1343,29 @@ impl DamageBatchCompletion {
     fn current_prefix(&self, original: &EffectOutcome) -> EffectOutcome {
         let mut primary = self.primary.clone();
         crate::effects::composition::inherit_original_observations(&mut primary, &original.events);
-        EffectOutcome::aggregate_replacement_outcomes(primary,
-            self.payloads.iter().map(|payload| payload.outputs.outcome.clone())
-                .chain(self.receipts.iter().map(|owned| owned.receipt.outcome.outcome.clone()))
+        EffectOutcome::aggregate_replacement_outcomes(
+            primary,
+            self.payloads
+                .iter()
+                .map(|payload| payload.outputs.outcome.clone())
+                .chain(
+                    self.receipts
+                        .iter()
+                        .map(|owned| owned.receipt.outcome.outcome.clone()),
+                )
                 .chain(self.staged_tail.iter().filter_map(|step| match step {
-                    DamageTailStep::Prepared { receipt, .. } => Some(receipt.outcome.outcome.clone()),
+                    DamageTailStep::Prepared { receipt, .. } => {
+                        Some(receipt.outcome.outcome.clone())
+                    }
                     _ => None,
-                })))
+                })),
+        )
     }
 
-    fn retained_draw_boundary(self: Box<Self>, original: &EffectOutcome)
-        -> crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>
-    {
+    fn retained_draw_boundary(
+        self: Box<Self>,
+        original: &EffectOutcome,
+    ) -> crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs> {
         let prefix = self.current_prefix(original);
         crate::effects::SimultaneousEffectCommit {
             outcome: crate::effects::CompletedEffectOutputs::aggregate_only(prefix),
@@ -1279,21 +1376,39 @@ impl DamageBatchCompletion {
     fn capture_tail_steps(&mut self) -> Result<(), ExecutionError> {
         for group in std::mem::take(&mut self.programs) {
             if group.assignments.len() != group.programs.len() {
-                return Err(ExecutionError::InternalError("damage additions lost assignment ownership".into()));
+                return Err(ExecutionError::InternalError(
+                    "damage additions lost assignment ownership".into(),
+                ));
             }
             for (assignment, program) in group.assignments.into_iter().zip(group.programs) {
                 self.staged_tail.push(DamageTailStep::Program {
-                    assignment, context: group.context.clone(), program,
+                    assignment,
+                    context: group.context.clone(),
+                    program,
                 });
             }
         }
-        for (assignment, follow_ups) in self.assignment_follow_ups.take().into_iter().flatten().enumerate() {
+        for (assignment, follow_ups) in self
+            .assignment_follow_ups
+            .take()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
             if !follow_ups.is_empty() {
-                self.staged_tail.push(DamageTailStep::Prevention { owner: DamageTailOwner::Assignment(assignment), follow_ups });
+                self.staged_tail.push(DamageTailStep::Prevention {
+                    owner: DamageTailOwner::Assignment(assignment),
+                    follow_ups,
+                });
             }
         }
-        if let Some(follow_ups) = self.follow_ups.take() && !follow_ups.is_empty() {
-            self.staged_tail.push(DamageTailStep::Prevention { owner: DamageTailOwner::BatchPrevention, follow_ups });
+        if let Some(follow_ups) = self.follow_ups.take()
+            && !follow_ups.is_empty()
+        {
+            self.staged_tail.push(DamageTailStep::Prevention {
+                owner: DamageTailOwner::BatchPrevention,
+                follow_ups,
+            });
         }
         Ok(())
     }
@@ -1333,7 +1448,9 @@ impl DamageBatchCompletion {
                 &mut receipt.outcome.outcome,
                 &original.events,
             );
-            let outputs = crate::effects::composition::complete_committed_original_with_outputs(game, ctx, receipt)?;
+            let outputs = crate::effects::composition::complete_committed_original_with_outputs(
+                game, ctx, receipt,
+            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(None);
             }
@@ -1382,29 +1499,60 @@ impl DamageBatchCompletion {
             let (owner, completed) = match step {
                 DamageTailStep::Prepared { owner, mut receipt } => {
                     crate::effects::composition::inherit_original_observations(
-                        &mut receipt.outcome.outcome, &outcome.events,
+                        &mut receipt.outcome.outcome,
+                        &outcome.events,
                     );
-                    let completed = crate::effects::composition::complete_committed_original_with_outputs(game, ctx, receipt)?;
+                    let completed =
+                        crate::effects::composition::complete_committed_original_with_outputs(
+                            game, ctx, receipt,
+                        )?;
                     (owner, vec![completed])
                 }
-                DamageTailStep::Program { assignment, context, program } => {
-                    let group = ScopedDamagePrograms { assignments: vec![assignment], context, programs: vec![program] };
-                    let (original, completed) = group.complete(game, ctx.decision_maker, outcome)?;
+                DamageTailStep::Program {
+                    assignment,
+                    context,
+                    program,
+                } => {
+                    let group = ScopedDamagePrograms {
+                        assignments: vec![assignment],
+                        context,
+                        programs: vec![program],
+                    };
+                    let (original, completed) =
+                        group.complete(game, ctx.decision_maker, outcome)?;
                     outcome = original;
-                    (DamageTailOwner::Assignment(assignment), completed.into_iter().map(|payload| payload.outputs).collect())
+                    (
+                        DamageTailOwner::Assignment(assignment),
+                        completed
+                            .into_iter()
+                            .map(|payload| payload.outputs)
+                            .collect(),
+                    )
                 }
-                DamageTailStep::Prevention { owner, follow_ups } => {
-                    (owner, follow_ups.complete_with_outputs(game, ctx.decision_maker)?)
-                }
+                DamageTailStep::Prevention { owner, follow_ups } => (
+                    owner,
+                    follow_ups.complete_with_outputs(game, ctx.decision_maker)?,
+                ),
             };
-            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
             outcome = EffectOutcome::aggregate_replacement_outcomes(
-                outcome, completed.iter().map(|outputs| outputs.outcome.clone()),
+                outcome,
+                completed.iter().map(|outputs| outputs.outcome.clone()),
             );
             match owner {
-                DamageTailOwner::Assignment(index) => participant_payloads[participants.owner(index)?].extend(completed),
-                DamageTailOwner::BatchPrevention if participant_payloads.len() == 1 => participant_payloads[0].extend(completed),
-                DamageTailOwner::BatchPrevention => shared.extend(completed.into_iter().map(SharedDamageOutput::BatchPrevention)),
+                DamageTailOwner::Assignment(index) => {
+                    participant_payloads[participants.owner(index)?].extend(completed)
+                }
+                DamageTailOwner::BatchPrevention if participant_payloads.len() == 1 => {
+                    participant_payloads[0].extend(completed)
+                }
+                DamageTailOwner::BatchPrevention => shared.extend(
+                    completed
+                        .into_iter()
+                        .map(SharedDamageOutput::BatchPrevention),
+                ),
             }
         }
         for program_group in programs {
@@ -1569,10 +1717,17 @@ fn prepare_damage_batch_inputs(
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
     let combat = game.combat.clone();
-    let defending_references = events.iter().map(|event| event.is_combat.then(|| {
-        combat.as_ref().map(|combat| game.retain_combat_damage_role(combat, event.source))
-            .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing)
-    })).collect::<Vec<_>>();
+    let defending_references = events
+        .iter()
+        .map(|event| {
+            event.is_combat.then(|| {
+                combat
+                    .as_ref()
+                    .map(|combat| game.retain_combat_damage_role(combat, event.source))
+                    .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing)
+            })
+        })
+        .collect::<Vec<_>>();
     let mut original_assignments = Vec::with_capacity(events.len());
     for event in &events {
         let receipt = match event.target {
@@ -1643,12 +1798,7 @@ fn prepare_damage_batch_inputs(
                 .map(|object| {
                     ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
                 })
-                .or_else(|| {
-                    game.turn_store
-                        .turn_history
-                        .source_departure_snapshot(event.source)
-                        .cloned()
-                })
+                .or_else(|| game.source_departure_snapshot(event.source).cloned())
                 .or_else(|| event.source_snapshot.clone());
             let controller = snapshot
                 .as_ref()
@@ -1668,7 +1818,8 @@ fn prepare_damage_batch_inputs(
         .collect::<Vec<_>>();
     for (original, result) in original_assignments.iter_mut().zip(&processed) {
         original.prevented = result.replacement_prevented;
-        original.replaced = result.payload_outcome.is_some() || !result.original_payloads.is_empty();
+        original.replaced =
+            result.payload_outcome.is_some() || !result.original_payloads.is_empty();
     }
     let mut prepared = Vec::new();
     let mut reported = Vec::new();

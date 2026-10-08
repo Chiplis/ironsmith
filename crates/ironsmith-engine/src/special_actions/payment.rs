@@ -63,9 +63,15 @@ pub(super) fn check_special_action_payment(
 ) -> Result<(), ActionError> {
     if let ironsmith_core::TotalCostKind::OneOf(branches) = payment.cost.kind() {
         for cost in branches {
-            match check_special_action_payment(game, player, &SpecialActionPayment {
-                source: payment.source, cost: cost.clone(), reason: payment.reason,
-            }) {
+            match check_special_action_payment(
+                game,
+                player,
+                &SpecialActionPayment {
+                    source: payment.source,
+                    cost: cost.clone(),
+                    reason: payment.reason,
+                },
+            ) {
                 Ok(()) => return Ok(()),
                 Err(error @ ActionError::ExecutionFailure { .. }) => return Err(error),
                 Err(_) => {}
@@ -84,7 +90,10 @@ pub(super) fn check_special_action_payment(
             let mut combined = ManaCost::new();
             for cost in costs {
                 let adjusted = game.adjust_mana_cost_for_payment_reason(
-                    player, Some(payment.source), cost, payment.reason,
+                    player,
+                    Some(payment.source),
+                    cost,
+                    payment.reason,
                 );
                 combined = crate::decision::add_mana_cost(&combined, &adjusted);
             }
@@ -94,21 +103,29 @@ pub(super) fn check_special_action_payment(
                 payment.reason,
                 combined,
             )
-            .with_spend_policy(game.mana_spend_policy_for_reason(player, Some(payment.source), payment.reason));
+            .with_spend_policy(game.mana_spend_policy_for_reason(
+                player,
+                Some(payment.source),
+                payment.reason,
+            ));
             request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
                 && game.player_can_pay_black_with_life_for_reason(
                     player,
                     Some(payment.source),
                     payment.reason,
                 );
-            return crate::mana_payment::check_mana_payment(game, &request)
-                .map_err(|error| match error {
+            return crate::mana_payment::check_mana_payment(game, &request).map_err(|error| {
+                match error {
                     crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => {
                         game.record_token_resource_failure(&error);
-                        ActionError::ExecutionFailure { source: payment.source, error }
+                        ActionError::ExecutionFailure {
+                            source: payment.source,
+                            error,
+                        }
                     }
                     _ => ActionError::CantPayCost,
-                });
+                }
+            });
         }
     }
     // Reuse the choice-aware total-cost interpreter on a clone for non-mana
@@ -140,7 +157,9 @@ pub(super) fn check_special_action_payment_with_snapshot(
     ctx.interactive_mana_exclusions = Some(Vec::new());
     ctx.prospective_cost_payment = true;
     pay_total_cost_without_preflight_with_choice(
-        &mut preview, &normalized_payment_cost(&payment.cost), &mut ctx,
+        &mut preview,
+        &normalized_payment_cost(&payment.cost),
+        &mut ctx,
     )
     .map(|_| ())
     .map_err(|error| cost_error_to_action_error(error, payment.source))
@@ -158,19 +177,34 @@ pub(crate) fn pay_resolution_cost_with_snapshot(
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
     dm: &mut dyn DecisionMaker,
 ) -> bool {
-    let payment = SpecialActionPayment {
-        source,
-        cost: cost.clone(),
-        reason,
-    };
-    let result = check_special_action_payment_with_snapshot(game, player, &payment, snapshot.clone())
-        .and_then(|()| pay_special_action_payment_with_snapshot(game, player, &payment, snapshot, dm));
+    let result = pay_resolution_cost_with_outputs(game, player, source, cost, reason, snapshot, dm);
     if let Err(ActionError::ExecutionFailure { error, .. }) = &result {
         // This legacy boolean adapter participates in its caller's checked
         // execution scope. Unknown payment must not become an unpaid ward.
         game.record_token_resource_failure(error);
     }
     result.is_ok()
+}
+
+/// Resolution payment keeps the native owner's actual child receipts and typed
+/// failures. A pending funding prefix is not a completed payment; callers must
+/// inspect awaiting_choice before acknowledging or starting a consequence.
+pub(crate) fn pay_resolution_cost_with_outputs(
+    game: &mut GameState,
+    player: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    dm: &mut dyn DecisionMaker,
+) -> Result<CompletedCostPayment, ActionError> {
+    let payment = SpecialActionPayment {
+        source,
+        cost: cost.clone(),
+        reason,
+    };
+    check_special_action_payment_with_snapshot(game, player, &payment, snapshot.clone())?;
+    pay_special_action_payment_with_x_and_outputs(game, player, &payment, snapshot, None, dm)
 }
 
 /// Adjacent mana components are one payment, so paying a generic component
@@ -195,7 +229,9 @@ fn normalized_payment_cost(cost: &crate::cost::TotalCost) -> crate::cost::TotalC
                     normalized.push(component.clone());
                 }
             }
-            if !mana.is_empty() { normalized.push(crate::costs::Cost::mana(mana)); }
+            if !mana.is_empty() {
+                normalized.push(crate::costs::Cost::mana(mana));
+            }
             TotalCost::from_costs(normalized)
         }
     }
@@ -240,11 +276,7 @@ pub(super) fn special_action_payment_max_x(
         );
     Some(
         crate::decision::compute_potential_mana(game, player)
-            .max_x_for_cost_with_mana_spend_policy_and_black_life(
-                cost,
-                &policy,
-                allow_black_life,
-            ),
+            .max_x_for_cost_with_mana_spend_policy_and_black_life(cost, &policy, allow_black_life),
     )
 }
 
@@ -256,6 +288,18 @@ pub(super) fn pay_special_action_payment_with_x(
     x_value: Option<u32>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), ActionError> {
+    pay_special_action_payment_with_x_and_outputs(game, player, payment, snapshot, x_value, dm)
+        .map(|_| ())
+}
+
+fn pay_special_action_payment_with_x_and_outputs(
+    game: &mut GameState,
+    player: PlayerId,
+    payment: &SpecialActionPayment,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    x_value: Option<u32>,
+    dm: &mut dyn DecisionMaker,
+) -> Result<CompletedCostPayment, ActionError> {
     let provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: payment.source,
@@ -268,12 +312,11 @@ pub(super) fn pay_special_action_payment_with_x(
     ctx.source_snapshot = snapshot;
     ctx.x_value = x_value;
     ctx.interactive_mana_exclusions = Some(Vec::new());
-    pay_total_cost_without_preflight_with_choice(
+    pay_total_cost_without_preflight_with_outputs(
         game,
         &normalized_payment_cost(&payment.cost),
         &mut ctx,
     )
-    .map(|_| ())
     .map_err(|error| cost_error_to_action_error(error, payment.source))
 }
 

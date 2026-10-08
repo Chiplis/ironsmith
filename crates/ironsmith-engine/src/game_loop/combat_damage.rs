@@ -440,7 +440,9 @@ fn plan_general_combat_damage(
                 ),
             };
             planned.push(PlannedCombatDamage {
-                defending_player_reference: Some(game.retain_combat_damage_role(combat, attacker_id)),
+                defending_player_reference: Some(
+                    game.retain_combat_damage_role(combat, attacker_id),
+                ),
                 source: attacker_id,
                 source_snapshot:
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -523,7 +525,9 @@ fn plan_general_combat_damage(
                 continue;
             }
             planned.push(PlannedCombatDamage {
-                defending_player_reference: Some(game.retain_combat_damage_role(combat, blocker_id)),
+                defending_player_reference: Some(
+                    game.retain_combat_damage_role(combat, blocker_id),
+                ),
                 source: blocker_id,
                 source_snapshot:
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -577,13 +581,20 @@ fn prepare_combat_damage_processing(
     game: &mut GameState,
     events: &[crate::events::processing::SimultaneousDamageEvent],
     dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<Vec<crate::events::processing::ProcessedDamageResult>, crate::events::processing::DamageProcessingError> {
+) -> Result<
+    Vec<crate::events::processing::ProcessedDamageResult>,
+    crate::events::processing::DamageProcessingError,
+> {
     let scope = crate::effects::ReplacementExecutionContext::default();
     let scopes = vec![&scope; events.len()];
-    let (results, follow_ups) = crate::events::processing::prepare_simultaneous_damage_assignments_with_scopes(
-        game, events, dm, &scopes,
-    )?.into_parts();
-    for follow_up in follow_ups { follow_up.requeue(game); }
+    let (results, follow_ups) =
+        crate::events::processing::prepare_simultaneous_damage_assignments_with_scopes(
+            game, events, dm, &scopes,
+        )?
+        .into_parts();
+    for follow_up in follow_ups {
+        follow_up.requeue(game);
+    }
     Ok(results)
 }
 
@@ -617,10 +628,7 @@ fn execute_general_combat_damage_batch_path(
             },
         )
         .collect::<Vec<_>>();
-    let processed =
-        prepare_combat_damage_processing(
-            game, &batch, dm,
-        )
+    let processed = prepare_combat_damage_processing(game, &batch, dm)
         .map_err(CombatDamageAssignmentError::from)?;
     if dm.awaiting_choice() {
         game.turn_store.combat_damage_assignments = assignments_checkpoint;
@@ -1070,10 +1078,7 @@ fn execute_unblocked_player_damage_batch_path(
             source_snapshot: Some(plan.source_snapshot.clone()),
         })
         .collect::<Vec<_>>();
-    let processed =
-        prepare_combat_damage_processing(
-            game, &proposals, dm,
-        )
+    let processed = prepare_combat_damage_processing(game, &proposals, dm)
         .map_err(CombatDamageAssignmentError::from)?;
     if dm.awaiting_choice() {
         return Ok(Vec::new());
@@ -1211,12 +1216,7 @@ fn combat_damage_source_snapshot(
                 object, game,
             )
         })
-        .or_else(|| {
-            game.turn_store
-                .turn_history
-                .departed_object_snapshot(source)
-                .cloned()
-        })
+        .or_else(|| game.source_last_known_snapshot(source).cloned())
         .unwrap_or_else(|| proposed_snapshot.clone())
 }
 

@@ -18,6 +18,110 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
+/// Admission and view policies supplied by a search adapter. Mixed-zone
+/// selection may proceed when its library part cannot be searched.
+pub(crate) struct LibrarySearchRequest {
+    pub chooser: PlayerId,
+    pub library_owner: Option<PlayerId>,
+    pub search_library: bool,
+    pub require_library_access: bool,
+    pub restrict_initial_view: bool,
+    /// Reevaluate admission at each presentation/offer/observation boundary.
+    pub refresh_library_access: bool,
+}
+
+/// Actual search bindings supplied once by the shared admission owner.
+pub(crate) struct LibrarySearchScope {
+    pub chooser: PlayerId,
+    pub library_cards: Vec<ObjectId>,
+    pub found_card_policy: Option<OppositionAgentSearch>,
+    pub event: Option<crate::triggers::TriggerEvent>,
+}
+
+/// One owner for search admission, scoped control, initial library presentation,
+/// in-search casting offers and the search observation's creation boundary.
+/// The caller retains its selection/commit/rollback programme and result shape.
+pub(crate) fn execute_library_search_scope<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    request: LibrarySearchRequest,
+    body: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        LibrarySearchScope,
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    let found_card_policy = request
+        .library_owner
+        .and_then(|owner| opposition_agent_search(game, request.chooser, owner));
+    let can_search = request.library_owner.is_some_and(|owner| {
+        game.can_search_library_from_effect(request.chooser, owner, ctx.controller)
+    });
+    if request.require_library_access && request.library_owner.is_some() && !can_search {
+        return Ok(crate::effect::EffectOutcome::prevented());
+    }
+    let control = begin_opposition_agent_search_control(game, request.chooser, found_card_policy);
+    let result = (|| {
+        let mut library_cards = Vec::new();
+        let access_now = |game: &GameState, ctx: &ExecutionContext| {
+            if request.refresh_library_access {
+                request.library_owner.is_some_and(|owner| {
+                    game.can_search_library_from_effect(request.chooser, owner, ctx.controller)
+                })
+            } else {
+                can_search
+            }
+        };
+        if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
+            library_cards = game
+                .player(owner)
+                .map(|player| player.library.to_vec())
+                .unwrap_or_default();
+            if request.restrict_initial_view {
+                game.restrict_library_search_candidates(request.chooser, &mut library_cards);
+            }
+            crate::effects::helpers::view_hidden_candidate_objects(
+                game,
+                ctx,
+                request.chooser,
+                &library_cards,
+                "Search library",
+                false,
+            );
+        }
+        if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
+            offer_library_search_casts(game, ctx, owner)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effect::EffectOutcome::count(0));
+            }
+        }
+        let event = (request.search_library
+            && (request.library_owner.is_none() || access_now(game, ctx)))
+        .then(|| {
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::SearchLibraryEvent::new(request.chooser, request.library_owner),
+                ctx.provenance,
+            )
+        });
+        body(
+            game,
+            ctx,
+            LibrarySearchScope {
+                chooser: request.chooser,
+                library_cards,
+                found_card_policy,
+                event,
+            },
+        )
+    })();
+    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+        game.capture_pending_decision_controllers();
+    }
+    // The active control scope always unwinds; only captured pending routing survives.
+    finish_opposition_agent_search_control(game, control);
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OppositionAgentSearch {
     pub controller: PlayerId,
@@ -726,7 +830,11 @@ fn cast_from_library_while_searching(
     };
 
     let (event, mut captured) = crate::game_loop::capture_completed_spell_cast(
-        game, new_id, caster, Zone::Library, ctx.provenance,
+        game,
+        new_id,
+        caster,
+        Zone::Library,
+        ctx.provenance,
     )?;
     game.defer_trigger_entries(captured.take_all());
     game.queue_trigger_event(ctx.provenance, event);

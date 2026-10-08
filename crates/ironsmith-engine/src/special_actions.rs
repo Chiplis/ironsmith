@@ -4,7 +4,7 @@
 //! suspending/foretelling cards, and activating mana abilities.
 
 mod payment;
-pub(crate) use payment::pay_resolution_cost_with_snapshot;
+pub(crate) use payment::pay_resolution_cost_with_outputs;
 use payment::{
     SpecialActionPayment, check_special_action_payment, pay_special_action_payment_with_x,
     special_action_payment_max_x,
@@ -21,7 +21,7 @@ use crate::effects::ExecutionContext;
 use crate::events::cause::EventCause;
 use crate::events::other::KeywordActionEvent;
 use crate::events::permanents::SacrificeEvent;
-use crate::events::processing::{EventOutcome, execute_discard_with_scope};
+use crate::events::processing::EventOutcome;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
@@ -404,7 +404,9 @@ fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
         .find_map(|method| method.plot_cost().cloned())
 }
 
-fn suspend_spec(object: &crate::object::Object) -> Option<(ironsmith_core::SuspendTime, crate::mana::ManaCost)> {
+fn suspend_spec(
+    object: &crate::object::Object,
+) -> Option<(ironsmith_core::SuspendTime, crate::mana::ManaCost)> {
     object.alternative_casts.iter().find_map(|method| {
         method
             .suspend_spec()
@@ -766,23 +768,40 @@ pub fn perform(
         // X is announced once before payment. Morph retains it on the face-up
         // object; suspend uses it for this action's initial time counters,
         // independently of any later cast of the exiled card.
-        if matches!(action, SpecialAction::TurnFaceUp { .. } | SpecialAction::Suspend { .. })
-            && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
+        if matches!(
+            action,
+            SpecialAction::TurnFaceUp { .. } | SpecialAction::Suspend { .. }
+        ) && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
         {
             let min_x = if let SpecialAction::Suspend { card_id } = &action {
-                game.object(*card_id).and_then(suspend_spec)
-                    .and_then(|(time, _)| time.minimum_x()).unwrap_or(0)
-            } else { 0 };
-            if max_x < min_x { return Err(ActionError::CantPayCost); }
+                game.object(*card_id)
+                    .and_then(suspend_spec)
+                    .and_then(|(time, _)| time.minimum_x())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            if max_x < min_x {
+                return Err(ActionError::CantPayCost);
+            }
             let ctx = crate::decisions::context::NumberContext::x_value_with_min(
-                player, payment.source, min_x, max_x,
+                player,
+                payment.source,
+                min_x,
+                max_x,
             );
             let chosen = decision_maker.decide_number(game, &ctx);
-            let chosen = if matches!(action, SpecialAction::Suspend { .. }) { chosen } else { chosen.min(max_x) };
+            let chosen = if matches!(action, SpecialAction::Suspend { .. }) {
+                chosen
+            } else {
+                chosen.min(max_x)
+            };
             if decision_maker.awaiting_choice() {
                 return Ok(());
             }
-            if chosen < min_x || chosen > max_x { return Err(ActionError::InvalidTarget); }
+            if chosen < min_x || chosen > max_x {
+                return Err(ActionError::InvalidTarget);
+            }
             announced_x = Some(chosen);
         }
         if let Err(error) = pay_special_action_payment_with_x(
@@ -956,8 +975,13 @@ fn perform_repeatable_mana_payment_action(
     crate::effects::with_per_event_trigger_matching(game, true, |game| {
         let mut reported = Vec::new();
         for (index, effect) in action.effects.iter().enumerate() {
-            let outcome = crate::effects::execute_effect(game, effect, &mut ctx)
-                .map_err(|error| ActionError::ExecutionFailure { source: action.source, error })?;
+            let outcome =
+                crate::effects::execute_effect(game, effect, &mut ctx).map_err(|error| {
+                    ActionError::ExecutionFailure {
+                        source: action.source,
+                        error,
+                    }
+                })?;
             reported.extend(outcome.events);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(());
@@ -967,7 +991,11 @@ fn perform_repeatable_mana_payment_action(
                 &ctx,
                 action.effects.get(index + 1),
                 reported.iter(),
-            ).map_err(|error| ActionError::ExecutionFailure { source: action.source, error })? {
+            )
+            .map_err(|error| ActionError::ExecutionFailure {
+                source: action.source,
+                error,
+            })? {
                 reported.clear();
             }
         }
@@ -1292,8 +1320,12 @@ fn can_play_land(
             })?;
     let game = &checked;
     if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) {
-        return Err(ActionError::ExecutionFailure { source: card_id, error: crate::effects::ExecutionError::Impossible(
-            "Open this exiled card before announcing a land play".into()) });
+        return Err(ActionError::ExecutionFailure {
+            source: card_id,
+            error: crate::effects::ExecutionError::Impossible(
+                "Open this exiled card before announcing a land play".into(),
+            ),
+        });
     }
     // Must be the active player
     if !game.is_active_player(player) {
@@ -1339,7 +1371,10 @@ fn can_play_land(
     let timing_permission = game.next_play_timing_allows(player, object, true);
     let is_main_phase = game.turn.phase == Phase::FirstMain || game.turn.phase == Phase::NextMain;
     if !is_main_phase && !timing_permission {
-        return Err(ActionError::WrongPhase { required: Phase::FirstMain, actual: game.turn.phase });
+        return Err(ActionError::WrongPhase {
+            required: Phase::FirstMain,
+            actual: game.turn.phase,
+        });
     }
     if !game.stack_is_empty() && !timing_permission {
         return Err(ActionError::StackNotEmpty);
@@ -1427,15 +1462,23 @@ impl LandPlayPermissionReceipt {
     }
 }
 pub(crate) fn opened_land_play_permission(
-    game: &GameState, player: PlayerId, card: ObjectId,
+    game: &GameState,
+    player: PlayerId,
+    card: ObjectId,
     permission: &crate::alternative_cast::GrantSelection,
 ) -> Result<LandPlayPermissionReceipt, crate::effects::ExecutionError> {
     let grant = crate::alternative_cast::blind_play::resolve(game, card, player, permission)?;
     Ok(LandPlayPermissionReceipt {
-        shared: grant.shared_usage_id, identity: grant.permission_identity,
-        completion: crate::grant_registry::GrantUseCompletion::capture(game,
-            grant.source.source_id(), player, grant.on_use_effects),
-        permanent_grants: grant.permanent_this_way_grants, original_land: Some(card),
+        shared: grant.shared_usage_id,
+        identity: grant.permission_identity,
+        completion: crate::grant_registry::GrantUseCompletion::capture(
+            game,
+            grant.source.source_id(),
+            player,
+            grant.on_use_effects,
+        ),
+        permanent_grants: grant.permanent_this_way_grants,
+        original_land: Some(card),
         enters_tapped: grant.play_from_constraints.lands_enter_tapped,
     })
 }
@@ -1586,7 +1629,10 @@ pub(crate) fn execute_land_play_with_observer(
         &mut execution,
         card_id,
         player,
-        crate::effects::zones::LandPlayAuthorization::SelectedPermission { back_face, opened_permission: opened_permission.cloned() },
+        crate::effects::zones::LandPlayAuthorization::SelectedPermission {
+            back_face,
+            opened_permission: opened_permission.cloned(),
+        },
         timing,
         |game, execution, object, kind, event| {
             observe(game, execution.decision_maker, object, kind, event)
@@ -1770,33 +1816,18 @@ fn finish_turn_face_up(
         },
     );
 
-    if !game
-        .set_face_up(permanent_id)
-        .map_err(|error| ActionError::ExecutionFailure {
-            source: permanent_id,
-            error: crate::effects::ExecutionError::ContinuousDiscovery(error),
-        })?
-    {
-        return Err(ActionError::NoSuchAbility);
-    }
-
-    let (_, observations) = crate::effects::with_action_observations(game, |game| {
-        game.execute_as_enters_effect_programs_for_turn_face_up(
+    let (turned, observations) = crate::effects::with_action_observations(game, |game| {
+        let transition = crate::effects::permanents::turn_face_up_with_choices(
+            game,
             permanent_id,
-            player,
+            crate::effects::permanents::FaceUpChoiceController::Actor(player),
             decision_maker,
         )?;
-        if decision_maker.awaiting_choice() {
-            return Ok(());
+        if transition.is_none() {
+            return Ok(false);
         }
-
-        game.apply_power_toughness_choice_as_enters_or_turns_face_up(
-            permanent_id,
-            player,
-            decision_maker,
-        );
         if decision_maker.awaiting_choice() {
-            return Ok(());
+            return Ok(true);
         }
 
         // CR 702.37b: megamorph puts a +1/+1 counter on the permanent; that is an
@@ -1822,19 +1853,22 @@ fn finish_turn_face_up(
                 crate::effects::counters::execute_object_counter_placement(game, &mut ctx, event)
             }?;
             if decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(true);
             }
             for event in outcome.events {
                 game.queue_trigger_event(action_provenance, event);
             }
         }
 
-        Ok(())
+        Ok(true)
     })
     .map_err(|error| ActionError::ExecutionFailure {
         source: permanent_id,
         error,
     })?;
+    if !turned {
+        return Err(ActionError::NoSuchAbility);
+    }
     if decision_maker.awaiting_choice() {
         return Ok(());
     }
@@ -2070,12 +2104,18 @@ fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<
         return Err(ActionError::NoSuchAbility);
     };
     if let Some(minimum) = time.minimum_x() {
-        let cost = crate::mana::ManaCost::from_pips(GameState::expanded_payment_pips(&cost, minimum, false));
-        check_special_action_payment(game, player, &SpecialActionPayment {
-            source: card_id,
-            cost: crate::cost::TotalCost::mana(cost),
-            reason: crate::costs::PaymentReason::Other,
-        })?;
+        let cost = crate::mana::ManaCost::from_pips(GameState::expanded_payment_pips(
+            &cost, minimum, false,
+        ));
+        check_special_action_payment(
+            game,
+            player,
+            &SpecialActionPayment {
+                source: card_id,
+                cost: crate::cost::TotalCost::mana(cost),
+                reason: crate::costs::PaymentReason::Other,
+            },
+        )?;
     }
 
     if !crate::decision::can_begin_to_cast_from_hand_for_suspend(game, player, object) {
@@ -2096,7 +2136,9 @@ fn perform_suspend(
         let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
         suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
     };
-    let time = time.resolve(announced_x).ok_or(ActionError::InvalidTarget)?;
+    let time = time
+        .resolve(announced_x)
+        .ok_or(ActionError::InvalidTarget)?;
 
     // Move to exile
     let new_id = game
@@ -2145,25 +2187,46 @@ fn perform_suspend(
 /// control and layer-applied abilities matter; phased-out objects do not exist
 /// for this query. Ordinary spell reductions do not affect this special action.
 fn foretell_special_action_quote(
-    game: &GameState, player: PlayerId, card_id: ObjectId,
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
 ) -> Result<(crate::mana::ManaCost, bool), ActionError> {
-    let checked = game.continuous_query_snapshot().map_err(|error| ActionError::ExecutionFailure {
-        source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error),
-    })?;
+    let checked =
+        game.continuous_query_snapshot()
+            .map_err(|error| ActionError::ExecutionFailure {
+                source: card_id,
+                error: crate::effects::ExecutionError::ContinuousDiscovery(error),
+            })?;
     let mut reduction = 0u32;
     let mut any_turn = false;
     for source in checked.battlefield.iter().copied() {
-        if checked.is_phased_out(source) { continue; }
+        if checked.is_phased_out(source) {
+            continue;
+        }
         let Some(object) = checked.object(source) else {
-            return Err(ActionError::ExecutionFailure { source, error: crate::effects::ExecutionError::IncompleteEvidence(
-                "battlefield foretell provider is unavailable".into()) });
+            return Err(ActionError::ExecutionFailure {
+                source,
+                error: crate::effects::ExecutionError::IncompleteEvidence(
+                    "battlefield foretell provider is unavailable".into(),
+                ),
+            });
         };
-        if checked.controller_of(object) != player { continue; }
-        let abilities = checked.current_abilities(source).ok_or_else(|| ActionError::ExecutionFailure {
-            source, error: crate::effects::ExecutionError::IncompleteEvidence("foretell provider abilities are unavailable".into()),
-        })?;
+        if checked.controller_of(object) != player {
+            continue;
+        }
+        let abilities =
+            checked
+                .current_abilities(source)
+                .ok_or_else(|| ActionError::ExecutionFailure {
+                    source,
+                    error: crate::effects::ExecutionError::IncompleteEvidence(
+                        "foretell provider abilities are unavailable".into(),
+                    ),
+                })?;
         for ability in abilities {
-            if !ability.functions_in(&Zone::Battlefield) { continue; }
+            if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
             if let crate::ability::AbilityKind::Static(rule) = &ability.kind
                 && let Some((amount, timing)) = rule.foretell_special_action_modifier()
             {
@@ -2172,7 +2235,12 @@ fn foretell_special_action_quote(
             }
         }
     }
-    Ok((crate::mana::ManaCost::new().add_generic(2).reduce_generic(reduction), any_turn))
+    Ok((
+        crate::mana::ManaCost::new()
+            .add_generic(2)
+            .reduce_generic(reduction),
+        any_turn,
+    ))
 }
 
 fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
@@ -2453,9 +2521,15 @@ fn can_activate_mana_ability(
             let view = crate::derived_view::DerivedGameView::new(game);
             let mut execution = ExecutionContext::new(permanent_id, player, decision_maker);
             can_potentially_pay_total_cost_in_context_with_view(
-                game, player, permanent_id, &total_cost,
-                mana_ability.payment_reason(game, permanent_id, player), &mut execution, &view,
-            ).map_err(|error| cost_error_to_action_error(error, permanent_id))?;
+                game,
+                player,
+                permanent_id,
+                &total_cost,
+                mana_ability.payment_reason(game, permanent_id, player),
+                &mut execution,
+                &view,
+            )
+            .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
             Ok(())
         },
     )
@@ -2528,8 +2602,16 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
 ) -> Result<(), ActionError> {
-    can_activate_mana_ability_check_for_payment_with_view(game, player, permanent_id, ability_index,
-        ability, view, perf_ctx, None)
+    can_activate_mana_ability_check_for_payment_with_view(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        ability,
+        view,
+        perf_ctx,
+        None,
+    )
 }
 
 pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
@@ -2542,7 +2624,6 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
     payment: Option<&crate::mana_payment::ManaPaymentRequest>,
 ) -> Result<(), ActionError> {
-
     let object = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
@@ -2780,46 +2861,98 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
 /// total exactly once. Both root/pending and planner/direct mana owners use
 /// this procedure before flattening components or paying any resource.
 pub(crate) fn prepare_mana_activation_cost(
-    game: &GameState, player: PlayerId, source: ObjectId, ability_index: usize,
-    activated: &crate::ability::ActivatedAbility, decision_maker: &mut dyn DecisionMaker,
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    ability_index: usize,
+    activated: &crate::ability::ActivatedAbility,
+    decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Option<(crate::cost::TotalCost, Option<u32>)>, ActionError> {
     let mut facts = crate::decision::ActivationCostAbility::of(game, player, source, activated);
     facts.ability_index = Some(ability_index);
     let mut original = activated.mana_cost.clone();
     while let Some(branches) = original.as_one_of() {
-        let priced: Vec<_> = branches.iter().map(|branch|
-            crate::decision::calculate_effective_activation_total_cost_for_ability(
-                game, player, source, branch, &[], Some(facts))).collect();
+        let priced: Vec<_> = branches
+            .iter()
+            .map(|branch| {
+                crate::decision::calculate_effective_activation_total_cost_for_ability(
+                    game,
+                    player,
+                    source,
+                    branch,
+                    &[],
+                    Some(facts),
+                )
+            })
+            .collect();
         let mut payable = Vec::new();
         for (index, price) in priced.iter().enumerate() {
             if crate::cost::prospective_references::activation_branch_preflight_checked(
-                game, source, ability_index, player, None, price,
-            ).map_err(|error| ActionError::ExecutionFailure { source, error })? {
+                game,
+                source,
+                ability_index,
+                player,
+                None,
+                price,
+            )
+            .map_err(|error| ActionError::ExecutionFailure { source, error })?
+            {
                 payable.push(index);
             }
         }
-        let selected = choose_payable_branch(game, player, source, &priced, &payable, decision_maker);
-        if decision_maker.awaiting_choice() { return Ok(None); }
-        let selected = selected.map_err(|error| cost_error_to_action_error(error, source))?
+        let selected =
+            choose_payable_branch(game, player, source, &priced, &payable, decision_maker);
+        if decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let selected = selected
+            .map_err(|error| cost_error_to_action_error(error, source))?
             .ok_or(ActionError::CantPayCost)?;
         original = branches[selected].clone();
     }
     let mut announced_x = None;
-    if let Some(maximum) = crate::decision::maximum_x_for_activation_cost(
-        game, player, source, &original, &[], facts,
-    ).map_err(|error| ActionError::ExecutionFailure { source, error })? {
+    if let Some(maximum) =
+        crate::decision::maximum_x_for_activation_cost(game, player, source, &original, &[], facts)
+            .map_err(|error| ActionError::ExecutionFailure { source, error })?
+    {
         let minimum = activated.activation_x_minimum();
-        if maximum < minimum { return Err(ActionError::CantPayCost); }
-        let context = crate::decisions::context::NumberContext::x_value_with_min(player, source, minimum, maximum);
+        if maximum < minimum {
+            return Err(ActionError::CantPayCost);
+        }
+        let context = crate::decisions::context::NumberContext::x_value_with_min(
+            player, source, minimum, maximum,
+        );
         let chosen = decision_maker.decide_number(game, &context);
-        if decision_maker.awaiting_choice() { return Ok(None); }
-        if chosen < minimum || chosen > maximum { return Err(ActionError::InvalidTarget); }
+        if decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if chosen < minimum || chosen > maximum {
+            return Err(ActionError::InvalidTarget);
+        }
         announced_x = Some(chosen);
         original = crate::decision::activation_cost_with_locked_x(&original, chosen);
     }
     let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
-        game, player, source, &original, &[], Some(facts));
+        game,
+        player,
+        source,
+        &original,
+        &[],
+        Some(facts),
+    );
     Ok(Some((priced, announced_x)))
+}
+
+/// Native activation receipts keep full completed children alongside only
+/// the events its callers still need to queue. Payment events already owned
+/// by costs must not be emitted a second time through this projection.
+#[derive(Default)]
+pub(crate) struct CompletedManaActivation {
+    /// Captured effective acquisition and exact pre-cost source; no notification
+    /// occurrence is allocated until the caller reaches its publication boundary.
+    pub activation_notification: Option<crate::events::AbilityActivatedEvent>,
+    pub events: Vec<TriggerEvent>,
+    pub outputs: Vec<crate::effects::CompletedEffectOutputs>,
 }
 
 pub(crate) fn perform_mana_ability_with_payment_mode(
@@ -2832,188 +2965,270 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
     reserved_tap_sources: Vec<ObjectId>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Vec<TriggerEvent>, ActionError> {
-    let checkpoint = game.clone();
-    let result = (|| -> Result<Vec<TriggerEvent>, ActionError> {
-        use crate::effects::ExecutionContext;
+    perform_mana_ability_with_payment_outputs(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_color_restriction,
+        interactive_mana_exclusions,
+        reserved_tap_sources,
+        decision_maker,
+    )
+    .map(|completed| completed.events)
+}
 
-        // Get the mana ability details
-        let source_snapshot = {
-            let object = game
-                .object(permanent_id)
-                .ok_or(ActionError::ObjectNotFound)?;
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        };
-        let ability = game
-            .current_ability(permanent_id, ability_index)
-            .ok_or(ActionError::NoSuchAbility)?;
+pub(crate) fn perform_mana_ability_with_payment_outputs(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    reserved_tap_sources: Vec<ObjectId>,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<CompletedManaActivation, ActionError> {
+    let mut transaction_ctx =
+        crate::effects::ExecutionContext::new(permanent_id, player, decision_maker);
+    crate::effects::composition::execute_transaction(
+        game,
+        &mut transaction_ctx,
+        CompletedManaActivation::default,
+        |game, ctx| {
+            let decision_maker = &mut *ctx.decision_maker;
+            use crate::effects::ExecutionContext;
 
-        if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
-            && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
-        {
-            let Some((total_cost, announced_x)) = prepare_mana_activation_cost(
-                game, player, permanent_id, ability_index, mana_ability, decision_maker,
-            )? else { return Ok(Vec::new()); };
-            let mana_production_provenance =
-                mana_production_provenance_for_activation_cost(&total_cost);
-            let effects = mana_ability.effects.clone();
-            let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
-                permanent_id, effects.linked_exile_pair,
-                source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index)));
-            let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
-                permanent_id, effects.source_number_pair,
-                source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index)));
-            crate::linked_exile::validate_program_owner(effects.linked_exile_pair, linked_exile_owner.as_ref())
-                .map_err(|error| ActionError::ExecutionFailure { source: permanent_id, error })?;
-            let mana = mana_ability.mana_output.clone().unwrap_or_default();
-            let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
-            let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
-            let mut emitted_events = Vec::new();
+            // Get the mana ability details
+            let source_snapshot = {
+                let object = game
+                    .object(permanent_id)
+                    .ok_or(ActionError::ObjectNotFound)?;
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    object, game,
+                )
+            };
+            let ability = game
+                .current_ability(permanent_id, ability_index)
+                .ok_or(ActionError::NoSuchAbility)?;
 
-            let view = crate::derived_view::DerivedGameView::new(game);
-            if !crate::decision::exhaust_activation_allows(
-                game,
-                player,
-                permanent_id,
-                ability_index,
-                mana_ability,
-                &view,
-            ) {
-                return Err(ActionError::CantPayCost);
-            }
-            game.begin_exhaust_activation(permanent_id, ability_index);
-
-            let visibility_provenance = game.provenance_graph_mut().alloc_root(
-                crate::provenance::ProvenanceNodeKind::EffectExecution {
-                    source: permanent_id,
-                    controller: player,
-                },
-            );
-            game.begin_library_top_announcement(
-                crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
-            );
-            // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
-            let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
-                .with_reason(mana_ability.payment_reason(game, permanent_id, player));
-            cost_ctx.x_value = announced_x;
-            cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
-            cost_ctx.reserved_tap_sources = reserved_tap_sources;
-            let cost_summary =
-                pay_total_cost_without_preflight_with_choice(game, &total_cost, &mut cost_ctx)
-                    .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
-            let x_value_from_costs = cost_summary.x_value;
-            let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
-            let cost_tags = cost_ctx.tagged_objects.clone();
-            drop(cost_ctx);
-            if decision_maker.awaiting_choice() {
-                return Ok(Vec::new());
-            }
-
-            game.finish_library_top_announcement(
-                crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
-            );
-            let activation_origin = source_snapshot.ability_origins.as_ref()
-                .and_then(|origins| origins.get(ability_index).cloned());
-            game.record_ability_activation_with_origin(permanent_id, ability_index, activation_origin.clone(), effects.activation_definition);
-            // Use the same resolved-event owner as mana-producing effects.
-            let mut mana_ctx = ExecutionContext::new(permanent_id, player, &mut *decision_maker)
-                .with_activation_origin(activation_origin.clone())
-                .with_activation_definition(effects.activation_definition)
-                .with_ability_index(ability_index)
-                .with_linked_exile_owner(linked_exile_owner.clone())
-                .with_source_number_owner(source_number_owner.clone())
-                .with_mana_color_restriction(mana_color_restriction.clone())
-                .with_mana_usage_restrictions(mana_usage_restrictions.clone())
-                .with_mana_source_chosen_creature_type(source_chosen_creature_type)
-                .with_mana_production_provenance(mana_production_provenance)
-                .with_source_snapshot(source_snapshot.clone())
-                .with_tagged_objects(cost_tags.clone())
-                .with_effect_outcomes(cost_effect_outcomes.clone());
-            if let Some(x) = x_value_from_costs {
-                mana_ctx = mana_ctx.with_x(x);
-            }
-            let outcome = crate::effects::EffectExecutor::execute(
-                &crate::effects::AddManaEffect::new(
-                    mana,
-                    crate::target::PlayerFilter::Specific(player),
-                ),
-                game,
-                &mut mana_ctx,
-            )
-            .map_err(|error| ActionError::ExecutionFailure {
-                source: permanent_id,
-                error,
-            })?;
-            if mana_ctx.decision_maker.awaiting_choice() {
-                return Ok(Vec::new());
-            }
-            drop(mana_ctx);
-            emitted_events.extend(outcome.events);
-
-            // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
-            if !effects.is_empty() {
-                let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
-                    .with_activation_origin(activation_origin.clone())
-                .with_activation_definition(effects.activation_definition)
-                    .with_ability_index(ability_index)
-                    .with_linked_exile_owner(linked_exile_owner.clone())
-                    .with_source_number_owner(source_number_owner.clone())
-                    .with_mana_color_restriction(mana_color_restriction.clone())
-                    .with_mana_usage_restrictions(mana_usage_restrictions)
-                    .with_mana_source_chosen_creature_type(source_chosen_creature_type)
-                    .with_mana_production_provenance(mana_production_provenance)
-                    .with_source_snapshot(source_snapshot.clone())
-                    .with_tagged_objects(cost_tags.clone())
-                    .with_effect_outcomes(cost_effect_outcomes.clone());
-                if let Some(x) = x_value_from_costs {
-                    effect_ctx = effect_ctx.with_x(x);
-                }
-                let events = crate::game_loop::execute_resolution_program(
+            if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
+                && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
+            {
+                let Some((total_cost, announced_x)) = prepare_mana_activation_cost(
                     game,
-                    &mut effect_ctx,
                     player,
                     permanent_id,
-                    &effects,
-                    None,
-                    &[],
+                    ability_index,
+                    mana_ability,
+                    decision_maker,
+                )?
+                else {
+                    return Ok(CompletedManaActivation::default());
+                };
+                let mana_production_provenance =
+                    mana_production_provenance_for_activation_cost(&total_cost);
+                let effects = mana_ability.effects.clone();
+                let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    permanent_id,
+                    effects.linked_exile_pair,
+                    source_snapshot
+                        .ability_origins
+                        .as_ref()
+                        .and_then(|origins| origins.get(ability_index)),
+                );
+                let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    permanent_id,
+                    effects.source_number_pair,
+                    source_snapshot
+                        .ability_origins
+                        .as_ref()
+                        .and_then(|origins| origins.get(ability_index)),
+                );
+                crate::linked_exile::validate_program_owner(
+                    effects.linked_exile_pair,
+                    linked_exile_owner.as_ref(),
                 )
                 .map_err(|error| ActionError::ExecutionFailure {
                     source: permanent_id,
-                    error: match error {
-                        crate::game_loop::GameLoopError::ExecutionFailed(error) => error,
-                        other => crate::effects::ExecutionError::InternalError(other.to_string()),
-                    },
+                    error,
                 })?;
-                if effect_ctx.decision_maker.awaiting_choice() {
-                    return Ok(Vec::new());
-                }
-                emitted_events.extend(events);
-            }
+                let mana = mana_ability.mana_output.clone().unwrap_or_default();
+                let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+                let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
+                let mut completion = CompletedManaActivation::default();
 
-            let is_land_source = game
-                .object(permanent_id)
-                .map(|obj| obj.is_land())
-                .unwrap_or(source_snapshot.is_land());
-            if is_land_source {
-                game.turn_store
-                    .turn_history
-                    .players_tapped_land_for_mana_this_turn
-                    .insert(player);
+                let view = crate::derived_view::DerivedGameView::new(game);
+                if !crate::decision::exhaust_activation_allows(
+                    game,
+                    player,
+                    permanent_id,
+                    ability_index,
+                    mana_ability,
+                    &view,
+                ) {
+                    return Err(ActionError::CantPayCost);
+                }
+                game.begin_exhaust_activation(permanent_id, ability_index);
+
+                let visibility_provenance = game.provenance_graph_mut().alloc_root(
+                    crate::provenance::ProvenanceNodeKind::EffectExecution {
+                        source: permanent_id,
+                        controller: player,
+                    },
+                );
+                game.begin_library_top_announcement(
+                    crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
+                );
+                // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
+                let payment_reason = mana_ability.payment_reason(game, permanent_id, player);
+                let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
+                    .with_reason(payment_reason)
+                    .with_provenance(visibility_provenance);
+                cost_ctx.source_snapshot = Some(source_snapshot.clone());
+                cost_ctx.x_value = announced_x;
+                cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
+                cost_ctx.reserved_tap_sources = reserved_tap_sources;
+                let paid_cost =
+                    pay_total_cost_without_preflight_with_outputs(game, &total_cost, &mut cost_ctx)
+                        .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
+                let x_value_from_costs = paid_cost.summary.x_value;
+                let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
+                let cost_tags = cost_ctx.tagged_objects.clone();
+                drop(cost_ctx);
+                if decision_maker.awaiting_choice() {
+                    return Ok(CompletedManaActivation::default());
+                }
+
+                let spend_evidence =
+                    crate::events::mana::ManaSpendEvidence::from_completed_outputs(
+                        &paid_cost.outputs,
+                        visibility_provenance,
+                        player,
+                        Some(permanent_id),
+                        payment_reason.mana_payment_purpose(),
+                    )
+                    .map_err(|error| ActionError::ExecutionFailure {
+                        source: permanent_id,
+                        error,
+                    })?;
+                completion.activation_notification = Some(
+                    crate::events::AbilityActivatedEvent::from_effective_ability(
+                        permanent_id,
+                        player,
+                        true,
+                        Some(ability.clone()),
+                        Some(source_snapshot.clone()),
+                    )
+                    .with_activation_cost_has_x(announced_x.is_some())
+                    .with_x_value(x_value_from_costs)
+                    .with_mana_spend_evidence(spend_evidence)
+                    .map_err(|error| ActionError::ExecutionFailure {
+                        source: permanent_id,
+                        error,
+                    })?,
+                );
+                completion.outputs.extend(paid_cost.outputs);
+                game.finish_library_top_announcement(
+                    crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
+                );
+                let activation_origin = source_snapshot
+                    .ability_origins
+                    .as_ref()
+                    .and_then(|origins| origins.get(ability_index).cloned());
+                game.record_ability_activation_with_origin(
+                    permanent_id,
+                    ability_index,
+                    activation_origin.clone(),
+                    effects.activation_definition,
+                );
+                // Use the same resolved-event owner as mana-producing effects.
+                let mut mana_ctx =
+                    ExecutionContext::new(permanent_id, player, &mut *decision_maker)
+                        .with_activation_origin(activation_origin.clone())
+                        .with_activation_definition(effects.activation_definition)
+                        .with_ability_index(ability_index)
+                        .with_linked_exile_owner(linked_exile_owner.clone())
+                        .with_source_number_owner(source_number_owner.clone())
+                        .with_mana_color_restriction(mana_color_restriction.clone())
+                        .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                        .with_mana_source_chosen_creature_type(source_chosen_creature_type)
+                        .with_mana_production_provenance(mana_production_provenance)
+                        .with_source_snapshot(source_snapshot.clone())
+                        .with_tagged_objects(cost_tags.clone())
+                        .with_effect_outcomes(cost_effect_outcomes.clone());
+                if let Some(x) = x_value_from_costs {
+                    mana_ctx = mana_ctx.with_x(x);
+                }
+                let outputs = crate::effects::EffectExecutor::execute_with_outputs(
+                    &crate::effects::AddManaEffect::new(
+                        mana,
+                        crate::target::PlayerFilter::Specific(player),
+                    ),
+                    game,
+                    &mut mana_ctx,
+                )
+                .map_err(|error| ActionError::ExecutionFailure {
+                    source: permanent_id,
+                    error,
+                })?;
+                if mana_ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedManaActivation::default());
+                }
+                drop(mana_ctx);
+                completion
+                    .events
+                    .extend(outputs.outcome.events.iter().cloned());
+                completion.outputs.push(outputs);
+
+                // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
+                if !effects.is_empty() {
+                    let mut effect_ctx =
+                        ExecutionContext::new(permanent_id, player, decision_maker)
+                            .with_activation_origin(activation_origin.clone())
+                            .with_activation_definition(effects.activation_definition)
+                            .with_ability_index(ability_index)
+                            .with_linked_exile_owner(linked_exile_owner.clone())
+                            .with_source_number_owner(source_number_owner.clone())
+                            .with_mana_color_restriction(mana_color_restriction.clone())
+                            .with_mana_usage_restrictions(mana_usage_restrictions)
+                            .with_mana_source_chosen_creature_type(source_chosen_creature_type)
+                            .with_mana_production_provenance(mana_production_provenance)
+                            .with_source_snapshot(source_snapshot.clone())
+                            .with_tagged_objects(cost_tags.clone())
+                            .with_effect_outcomes(cost_effect_outcomes.clone());
+                    if let Some(x) = x_value_from_costs {
+                        effect_ctx = effect_ctx.with_x(x);
+                    }
+                    let program_outputs =
+                        crate::game_loop::execute_resolution_program_with_outputs_typed(
+                            game,
+                            &mut effect_ctx,
+                            player,
+                            permanent_id,
+                            &effects,
+                            None,
+                            &[],
+                        )
+                        .map_err(|error| {
+                            ActionError::ExecutionFailure {
+                                source: permanent_id,
+                                error,
+                            }
+                        })?;
+                    if effect_ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedManaActivation::default());
+                    }
+                    completion.events.extend(program_outputs.events);
+                    completion.outputs.extend(program_outputs.outputs);
+                }
+
+                game.record_land_mana_activation(permanent_id, player, Some(&source_snapshot));
+                Ok(completion)
+            } else {
+                Err(ActionError::NoSuchAbility)
             }
-            Ok(emitted_events)
-        } else {
-            Err(ActionError::NoSuchAbility)
-        }
-    })();
-    let pending = decision_maker.awaiting_choice();
-    if pending || result.is_err() {
-        *game = checkpoint;
-    }
-    if pending {
-        return Ok(Vec::new());
-    }
-    result
+        },
+    )
 }
 
 /// Pay a single cost component, resolving any required choices via decision specs.
@@ -3045,9 +3260,12 @@ pub(crate) fn pay_cost_component_with_choice_with_outputs(
     cost.with_payment_action_scope(game, |game| match cost.pay_with_outputs(game, ctx) {
         Ok(receipt) => match receipt.result {
             CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
-            CostPaymentResult::NeedsChoice(_) => {
-                resolve_cost_choice(game, cost, ctx).map(|()| receipt.outputs.into_iter().collect())
-            }
+            CostPaymentResult::NeedsChoice(_) => resolve_cost_choice_with_outputs(game, cost, ctx)
+                .map(|outputs| {
+                    let mut retained: Vec<_> = receipt.outputs.into_iter().collect();
+                    retained.extend(outputs);
+                    retained
+                }),
         },
         Err(error) => Err(error),
     })
@@ -3089,7 +3307,15 @@ pub(crate) fn pay_total_cost_with_choice(
     if result.is_err() || pending {
         game.restore_execution_checkpoint(checkpoint, pending);
     }
-    if pending { Ok(()) } else { result }
+    if pending { Ok(()) } else { result.map(|_| ()) }
+}
+
+/// Actual child packets paid by the native total-cost interpreter. Pending
+/// interactive funding may retain a completed prefix; awaiting_choice remains
+/// authoritative and this receipt does not acknowledge full payment.
+pub(crate) struct CompletedCostPayment {
+    pub summary: CostPaymentSummary,
+    pub outputs: Vec<crate::effects::CompletedEffectOutputs>,
 }
 
 pub(crate) fn pay_total_cost_without_preflight_with_choice(
@@ -3097,6 +3323,14 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
     cost: &crate::cost::TotalCost,
     cost_ctx: &mut CostContext<'_>,
 ) -> Result<CostPaymentSummary, CostPaymentError> {
+    pay_total_cost_without_preflight_with_outputs(game, cost, cost_ctx).map(|paid| paid.summary)
+}
+
+pub(crate) fn pay_total_cost_without_preflight_with_outputs(
+    game: &mut GameState,
+    cost: &crate::cost::TotalCost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<CompletedCostPayment, CostPaymentError> {
     let checkpoint = game.clone();
     let context = cost_ctx.checkpoint();
     let result = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx);
@@ -3105,8 +3339,11 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
     // Interactive mana funding deliberately exposes its completed prefix;
     // its enclosing replay owns restoring the full action before an answer.
     if cost_ctx.interactive_mana_exclusions.is_some() && pending {
-        return result.map(|_| CostPaymentSummary {
-            x_value: cost_ctx.x_value,
+        return result.map(|outputs| CompletedCostPayment {
+            summary: CostPaymentSummary {
+                x_value: cost_ctx.x_value,
+            },
+            outputs,
         });
     }
     if result.is_err() || pending {
@@ -3114,12 +3351,18 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
         context.restore(cost_ctx);
     }
     if pending {
-        Ok(CostPaymentSummary {
-            x_value: cost_ctx.x_value,
+        Ok(CompletedCostPayment {
+            summary: CostPaymentSummary {
+                x_value: cost_ctx.x_value,
+            },
+            outputs: Vec::new(),
         })
     } else {
-        result.map(|_| CostPaymentSummary {
-            x_value: cost_ctx.x_value,
+        result.map(|outputs| CompletedCostPayment {
+            summary: CostPaymentSummary {
+                x_value: cost_ctx.x_value,
+            },
+            outputs,
         })
     }
 }
@@ -3218,7 +3461,10 @@ enum CostQueryFunding<'view, 'game> {
     Available,
     NonManaOnly,
     DeferredMana,
-    PotentialMana(&'view crate::derived_view::DerivedGameView<'game>, Option<&'view crate::mana_payment::ManaPaymentRequest>),
+    PotentialMana(
+        &'view crate::derived_view::DerivedGameView<'game>,
+        Option<&'view crate::mana_payment::ManaPaymentRequest>,
+    ),
 }
 
 fn can_pay_total_cost_in_context_with_funding(
@@ -3282,10 +3528,14 @@ fn check_total_cost_in_query_scope(
                 let mut cost_ctx =
                     CostContext::from_execution_context(source, payer, reason, execution_ctx);
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
-                if costs.iter().any(|cost| cost.requires_tap()) { cost_ctx.reserved_tap_sources.push(source); }
+                if costs.iter().any(|cost| cost.requires_tap()) {
+                    cost_ctx.reserved_tap_sources.push(source);
+                }
                 match funding {
                     CostQueryFunding::DeferredMana if adjusted_component.is_mana_cost() => {}
-                    CostQueryFunding::PotentialMana(view, payment) if adjusted_component.is_mana_cost() => {
+                    CostQueryFunding::PotentialMana(view, payment)
+                        if adjusted_component.is_mana_cost() =>
+                    {
                         adjusted_component.0.can_potentially_pay_with_query(
                             game,
                             &cost_ctx,
@@ -3338,14 +3588,22 @@ fn check_total_cost_in_query_scope(
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             for branch in branches {
                 match can_pay_total_cost_in_context_with_funding(
-                    game, payer, source, branch, reason, execution_ctx, funding,
+                    game,
+                    payer,
+                    source,
+                    branch,
+                    reason,
+                    execution_ctx,
+                    funding,
                 ) {
                     Ok(()) => return Ok(()),
                     Err(error @ CostPaymentError::ExecutionFailed(_)) => return Err(error),
                     Err(_) => {}
                 }
             }
-            Err(CostPaymentError::Other("no payable alternative cost branch".into()))
+            Err(CostPaymentError::Other(
+                "no payable alternative cost branch".into(),
+            ))
         }
     }
 }
@@ -3578,9 +3836,10 @@ fn pay_total_cost_branch_without_execution_context(
     game: &mut GameState,
     cost: &crate::cost::TotalCost,
     cost_ctx: &mut CostContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
+            let mut outputs = Vec::new();
             let mut idx = 0usize;
             while idx < costs.len() {
                 if let Some(choose) = costs[idx]
@@ -3589,9 +3848,11 @@ fn pay_total_cost_branch_without_execution_context(
                     && let Some(next) = costs.get(idx + 1)
                     && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
                 {
-                    pay_activation_cost_step_without_execution_context(game, &step, cost_ctx)?;
+                    outputs.extend(pay_activation_cost_step_without_execution_context(
+                        game, &step, cost_ctx,
+                    )?);
                     if cost_ctx.decision_maker.awaiting_choice() {
-                        return Ok(());
+                        return Ok(outputs);
                     }
                     idx += 2;
                     continue;
@@ -3601,15 +3862,19 @@ fn pay_total_cost_branch_without_execution_context(
                 if costs[idx + 1..].iter().any(|cost| cost.requires_tap()) {
                     cost_ctx.reserved_tap_sources.push(cost_ctx.source);
                 }
-                let result = pay_component_without_execution_context(game, &costs[idx], cost_ctx);
+                let result = pay_component_without_execution_context_with_outputs(
+                    game,
+                    &costs[idx],
+                    cost_ctx,
+                );
                 cost_ctx.reserved_tap_sources = reserved;
-                result?;
+                outputs.extend(result?);
                 if cost_ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(outputs);
                 }
                 idx += 1;
             }
-            Ok(())
+            Ok(outputs)
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut payable = Vec::new();
@@ -3618,17 +3883,30 @@ fn pay_total_cost_branch_without_execution_context(
                     && !cost_ctx.reason.is_mana_ability()
                 {
                     payment::check_special_action_payment_with_snapshot(
-                        game, cost_ctx.payer,
-                        &SpecialActionPayment { source: cost_ctx.source, cost: branch.clone(), reason: cost_ctx.reason },
+                        game,
+                        cost_ctx.payer,
+                        &SpecialActionPayment {
+                            source: cost_ctx.source,
+                            cost: branch.clone(),
+                            reason: cost_ctx.reason,
+                        },
                         cost_ctx.source_snapshot.clone(),
-                    ).map_err(|error| match error {
-                        ActionError::ExecutionFailure { error, .. } => CostPaymentError::ExecutionFailed(error),
+                    )
+                    .map_err(|error| match error {
+                        ActionError::ExecutionFailure { error, .. } => {
+                            CostPaymentError::ExecutionFailed(error)
+                        }
                         error => CostPaymentError::Other(error.to_string()),
                     })
                 } else {
                     cost_ctx.with_execution_context(|execution| {
                         can_pay_total_cost_with_reason_in_context(
-                            game, cost_ctx.payer, cost_ctx.source, branch, cost_ctx.reason, execution,
+                            game,
+                            cost_ctx.payer,
+                            cost_ctx.source,
+                            branch,
+                            cost_ctx.reason,
+                            execution,
                         )
                     })
                 };
@@ -3660,10 +3938,10 @@ fn pay_activation_cost_step_without_execution_context(
     game: &mut GameState,
     step: &crate::game_loop::ActivationCostStep,
     cost_ctx: &mut CostContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     match step {
         crate::game_loop::ActivationCostStep::Cost(cost) => {
-            pay_component_without_execution_context(game, cost, cost_ctx)
+            pay_component_without_execution_context_with_outputs(game, cost, cost_ctx)
         }
         crate::game_loop::ActivationCostStep::Sacrifice {
             cost,
@@ -3706,7 +3984,7 @@ fn pay_activation_card_choice_without_execution_context(
     game: &mut GameState,
     choice: &crate::game_loop::ActivationCardCostChoice,
     cost_ctx: &mut CostContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     match choice {
         crate::game_loop::ActivationCardCostChoice::Discard {
             cost,
@@ -3796,7 +4074,7 @@ fn pay_activation_card_choice_without_execution_context(
             )
         }
         crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. } => {
-            resolve_cost_choice(game, cost, cost_ctx)
+            resolve_cost_choice_with_outputs(game, cost, cost_ctx)
         }
         crate::game_loop::ActivationCardCostChoice::ReturnToHand {
             cost,
@@ -3932,7 +4210,7 @@ fn pay_selected_cost_without_execution_context(
     chosen_id: ObjectId,
     choice_tag: Option<&crate::tag::TagKey>,
     cost_ctx: &mut CostContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     let source = cost_ctx.source;
     let payer = cost_ctx.payer;
     let reason = cost_ctx.reason;
@@ -3963,7 +4241,7 @@ fn pay_selected_cost_without_execution_context(
 
     game.validate_cost_for_payment_reason(payer, source, cost, reason)?;
 
-    let (paid_x_value, paid_tags, paid_outcomes, paid_inputs, completed_sacrifice) = {
+    let (paid_x_value, paid_tags, paid_outcomes, paid_inputs, completed_sacrifice, outputs) = {
         let requesting_effect_cause = cost_ctx.requesting_effect_cause.clone();
         let mut selected_ctx = CostContext::new(source, payer, &mut *cost_ctx.decision_maker)
             .with_reason(reason)
@@ -3981,14 +4259,18 @@ fn pay_selected_cost_without_execution_context(
         selected_ctx.reserved_tap_sources = cost_ctx.reserved_tap_sources.clone();
         selected_ctx.interactive_mana_exclusions = cost_ctx.interactive_mana_exclusions.clone();
 
-        match cost.pay(game, &mut selected_ctx)? {
-            CostPaymentResult::Paid if selected_ctx.decision_maker.awaiting_choice() => return Ok(()),
+        let receipt = cost.pay_with_outputs(game, &mut selected_ctx)?;
+        match receipt.result {
+            CostPaymentResult::Paid if selected_ctx.decision_maker.awaiting_choice() => {
+                return Ok(receipt.outputs.into_iter().collect());
+            }
             CostPaymentResult::Paid => (
                 selected_ctx.x_value,
                 selected_ctx.tagged_objects,
                 selected_ctx.effect_outcomes,
                 selected_ctx.execution_inputs,
                 selected_ctx.completed_sacrifice,
+                receipt.outputs.into_iter().collect(),
             ),
             CostPaymentResult::NeedsChoice(_) => {
                 return Err(CostPaymentError::Other(
@@ -4003,7 +4285,7 @@ fn pay_selected_cost_without_execution_context(
     cost_ctx.effect_outcomes = paid_outcomes;
     cost_ctx.execution_inputs = paid_inputs;
     cost_ctx.completed_sacrifice = completed_sacrifice;
-    Ok(())
+    Ok(outputs)
 }
 
 fn pay_total_cost_branch_in_context_with_outputs(
@@ -4027,7 +4309,11 @@ fn pay_total_cost_branch_in_context_with_outputs(
                     reason,
                     provenance,
                     execution_ctx,
-                    if costs[index + 1..].iter().any(|cost| cost.requires_tap()) { vec![source] } else { Vec::new() },
+                    if costs[index + 1..].iter().any(|cost| cost.requires_tap()) {
+                        vec![source]
+                    } else {
+                        Vec::new()
+                    },
                 )?);
                 if execution_ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
@@ -4039,7 +4325,12 @@ fn pay_total_cost_branch_in_context_with_outputs(
             let mut payable = Vec::new();
             for (index, branch) in branches.iter().enumerate() {
                 match can_pay_total_cost_with_reason_in_context(
-                    game, payer, source, branch, reason, execution_ctx,
+                    game,
+                    payer,
+                    source,
+                    branch,
+                    reason,
+                    execution_ctx,
                 ) {
                     Ok(()) => payable.push(index),
                     Err(error @ CostPaymentError::ExecutionFailed(_)) => return Err(error),
@@ -4112,14 +4403,6 @@ fn choose_payable_branch(
     }
 }
 
-fn pay_component_without_execution_context(
-    game: &mut GameState,
-    component: &crate::costs::Cost,
-    cost_ctx: &mut CostContext<'_>,
-) -> Result<(), CostPaymentError> {
-    pay_component_without_execution_context_with_outputs(game, component, cost_ctx).map(|_| ())
-}
-
 fn pay_component_without_execution_context_with_outputs(
     game: &mut GameState,
     component: &crate::costs::Cost,
@@ -4133,35 +4416,50 @@ fn pay_component_without_execution_context_with_outputs(
             cost_ctx.reason,
         );
         let execution = cost_ctx.capture_execution_context();
-        if cost_ctx.interactive_mana_exclusions.is_some() || adjusted_cost.has_waterbend_obligation() {
-            adjusted_cost.waterbend_capacity_checked(cost_ctx.x_value.unwrap_or(0)).ok_or_else(|| CostPaymentError::ExecutionFailed(
-                crate::effects::ExecutionError::IncompleteEvidence("Waterbend payment quantity overflows".into())))?;
-            let adjusted_cost = adjusted_cost.bind_x_payment_if_unbound(cost_ctx.x_value.unwrap_or(0));
-            let adjusted_cost = adjusted_cost.with_pips(GameState::expanded_payment_pips(&adjusted_cost, cost_ctx.x_value.unwrap_or(0), false));
-            return crate::mana_payment::pay_mana_interactively_in_context(
+        if cost_ctx.interactive_mana_exclusions.is_some()
+            || adjusted_cost.has_waterbend_obligation()
+        {
+            adjusted_cost
+                .waterbend_capacity_checked(cost_ctx.x_value.unwrap_or(0))
+                .ok_or_else(|| {
+                    CostPaymentError::ExecutionFailed(
+                        crate::effects::ExecutionError::IncompleteEvidence(
+                            "Waterbend payment quantity overflows".into(),
+                        ),
+                    )
+                })?;
+            let adjusted_cost =
+                adjusted_cost.bind_x_payment_if_unbound(cost_ctx.x_value.unwrap_or(0));
+            let adjusted_cost = adjusted_cost.with_pips(GameState::expanded_payment_pips(
+                &adjusted_cost,
+                cost_ctx.x_value.unwrap_or(0),
+                false,
+            ));
+            return crate::mana_payment::pay_mana_interactively_in_context_with_outputs(
                 game,
                 cost_ctx.payer,
                 cost_ctx.source,
                 adjusted_cost,
                 cost_ctx.reason,
-                cost_ctx.interactive_mana_exclusions.clone().unwrap_or_default(),
+                cost_ctx
+                    .interactive_mana_exclusions
+                    .clone()
+                    .unwrap_or_default(),
                 cost_ctx.reserved_tap_sources.clone(),
                 cost_ctx.decision_maker,
                 Some(&execution),
-            )
-            .map(|()| Vec::new());
+            );
         }
-        return crate::costs::pay_mana_cost_with_choices_in_context(
+        return crate::costs::pay_mana_cost_with_choices_and_outputs(
             game,
             cost_ctx.payer,
             Some(cost_ctx.source),
             &adjusted_cost,
-            0,
+            cost_ctx.x_value.unwrap_or(0),
             cost_ctx.reason,
             cost_ctx.decision_maker,
             Some(&execution),
-        )
-        .map(|()| Vec::new());
+        );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         let mut execution = ExecutionContext::new_default(cost_ctx.source, cost_ctx.payer)
@@ -4196,21 +4494,28 @@ fn pay_component_in_context_with_outputs(
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
         let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
         if adjusted_cost.has_waterbend_obligation() {
-            return crate::mana_payment::pay_mana_interactively_in_context(game, payer, source, adjusted_cost,
-                reason, Vec::new(), reserved_tap_sources, execution_ctx.decision_maker, Some(&execution))
-                .map(|()| Vec::new());
+            return crate::mana_payment::pay_mana_interactively_in_context_with_outputs(
+                game,
+                payer,
+                source,
+                adjusted_cost,
+                reason,
+                Vec::new(),
+                reserved_tap_sources,
+                execution_ctx.decision_maker,
+                Some(&execution),
+            );
         }
-        return crate::costs::pay_mana_cost_with_choices_in_context(
+        return crate::costs::pay_mana_cost_with_choices_and_outputs(
             game,
             payer,
             Some(source),
             &adjusted_cost,
-            0,
+            execution_ctx.x_value.unwrap_or(0),
             reason,
             execution_ctx.decision_maker,
             Some(&execution),
-        )
-        .map(|()| Vec::new());
+        );
     }
     let mut cost_ctx = CostContext::from_execution_context(source, payer, reason, execution_ctx)
         .with_provenance(provenance);
@@ -4460,85 +4765,97 @@ fn resolve_cost_choice(
     cost: &crate::costs::Cost,
     ctx: &mut CostContext,
 ) -> Result<(), CostPaymentError> {
+    resolve_cost_choice_with_outputs(game, cost, ctx).map(|_| ())
+}
+
+fn resolve_cost_choice_with_outputs(
+    game: &mut GameState,
+    cost: &crate::costs::Cost,
+    ctx: &mut CostContext,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     use crate::costs::CostProcessingMode;
 
     match cost.processing_mode() {
         CostProcessingMode::SacrificeTarget { filter } => {
             let checkpoint = game.clone();
-            let payment = (|| -> Result<(), CostPaymentError> {
-                let candidates = legal_sacrifice_targets(
-                    game,
-                    ctx.payer,
-                    ctx.source,
-                    &filter,
-                    ctx.reason,
-                    &ctx.event_cause(),
-                );
-                if candidates.is_empty() {
-                    return Err(CostPaymentError::NoValidSacrificeTarget);
-                }
+            let payment =
+                (|| -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
+                    let candidates = legal_sacrifice_targets(
+                        game,
+                        ctx.payer,
+                        ctx.source,
+                        &filter,
+                        ctx.reason,
+                        &ctx.event_cause(),
+                    );
+                    if candidates.is_empty() {
+                        return Err(CostPaymentError::NoValidSacrificeTarget);
+                    }
 
-                let spec = ChooseObjectsSpec::new(
-                    ctx.source,
-                    format!("Choose {} to sacrifice", describe_permanent_filter(&filter)),
-                    candidates.clone(),
-                    1,
-                    Some(1),
-                );
-                let chosen: Vec<ObjectId> =
-                    make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Err(CostPaymentError::Other(
-                        "awaiting sacrifice cost target".into(),
-                    ));
-                }
-                let Some(target_id) = normalize_selection(chosen, &candidates, 1).first().copied()
-                else {
-                    return Err(CostPaymentError::NoValidSacrificeTarget);
-                };
+                    let spec = ChooseObjectsSpec::new(
+                        ctx.source,
+                        format!("Choose {} to sacrifice", describe_permanent_filter(&filter)),
+                        candidates.clone(),
+                        1,
+                        Some(1),
+                    );
+                    let chosen: Vec<ObjectId> =
+                        make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Err(CostPaymentError::Other(
+                            "awaiting sacrifice cost target".into(),
+                        ));
+                    }
+                    let Some(target_id) =
+                        normalize_selection(chosen, &candidates, 1).first().copied()
+                    else {
+                        return Err(CostPaymentError::NoValidSacrificeTarget);
+                    };
 
-                let cause = ctx.event_cause();
-                // Legality precedes starting payment. Once a legal sacrifice cost
-                // starts, its replacement/prevention does not make it unpaid (118.11).
-                if !game.can_be_sacrificed_with_cause(target_id, &cause) {
-                    return Err(CostPaymentError::NoValidSacrificeTarget);
-                }
-                let snapshot = game.object(target_id).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                });
-                let sacrificing_player = snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.controller)
-                    .or(Some(ctx.payer));
-                let source_snapshot = ctx.source_snapshot.clone().or_else(|| {
-                    game.object(ctx.source).map(|object| {
+                    let cause = ctx.event_cause();
+                    // Legality precedes starting payment. Once a legal sacrifice cost
+                    // starts, its replacement/prevention does not make it unpaid (118.11).
+                    if !game.can_be_sacrificed_with_cause(target_id, &cause) {
+                        return Err(CostPaymentError::NoValidSacrificeTarget);
+                    }
+                    let snapshot = game.object(target_id).map(|object| {
                         ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                    })
-                });
-                let mut execution =
-                    ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
-                        .with_cause(cause.clone())
-                        .with_provenance(ctx.provenance)
-                        .with_tagged_objects(ctx.tagged_objects.clone());
-                execution.effect_outcomes = ctx.effect_outcomes.clone();
-                execution.announced_targets = Some(
-                    ctx.announced_targets
-                        .iter()
-                        .map(|target| match target {
-                            crate::game_state::Target::Object(id) => {
-                                crate::effects::ResolvedTarget::Object(*id)
-                            }
-                            crate::game_state::Target::Player(id) => {
-                                crate::effects::ResolvedTarget::Player(*id)
-                            }
+                    });
+                    let sacrificing_player = snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.controller)
+                        .or(Some(ctx.payer));
+                    let source_snapshot = ctx.source_snapshot.clone().or_else(|| {
+                        game.object(ctx.source).map(|object| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            )
                         })
-                        .collect(),
-                );
-                execution.source_snapshot = source_snapshot;
-                execution.replacement = ctx.replacement.clone();
-                execution.x_value = ctx.x_value;
-                let additional = execution.additional_replacement_effects_snapshot();
-                let receipt =
+                    });
+                    let mut execution =
+                        ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
+                            .with_cause(cause.clone())
+                            .with_provenance(ctx.provenance)
+                            .with_tagged_objects(ctx.tagged_objects.clone());
+                    execution.effect_outcomes = ctx.effect_outcomes.clone();
+                    execution.announced_targets = Some(
+                        ctx.announced_targets
+                            .iter()
+                            .map(|target| match target {
+                                crate::game_state::Target::Object(id) => {
+                                    crate::effects::ResolvedTarget::Object(*id)
+                                }
+                                crate::game_state::Target::Player(id) => {
+                                    crate::effects::ResolvedTarget::Player(*id)
+                                }
+                            })
+                            .collect(),
+                    );
+                    execution.source_snapshot = source_snapshot;
+                    execution.replacement = ctx.replacement.clone();
+                    execution.x_value = ctx.x_value;
+                    let additional = execution.additional_replacement_effects_snapshot();
+                    let receipt =
                     crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
                         game,
                         target_id,
@@ -4549,44 +4866,47 @@ fn resolve_cost_choice(
                         &additional,
                     )
                     .map_err(CostPaymentError::ExecutionFailed)?;
-                if execution.decision_maker.awaiting_choice() {
-                    return Err(CostPaymentError::Other(
-                        "awaiting sacrifice cost replacement".into(),
-                    ));
-                }
-                let performed = matches!(&receipt.original, EventOutcome::Proceed(_));
-                if performed {
-                    let provenance = game.alloc_child_event_provenance(
-                        ctx.provenance,
-                        crate::events::EventKind::Sacrifice,
-                    );
-                    game.queue_trigger_event(
-                        ctx.provenance,
-                        TriggerEvent::new_with_provenance(
-                            SacrificeEvent::new(target_id, Some(ctx.source))
-                                .with_snapshot(snapshot, sacrificing_player),
-                            provenance,
-                        ),
-                    );
-                }
-                let mut outcome = crate::effects::zones::finish_zone_change_receipts(
-                    game,
-                    &mut execution,
-                    crate::effect::EffectOutcome::count(i32::from(performed)),
-                    vec![(target_id, receipt)],
-                )
-                .map_err(CostPaymentError::ExecutionFailed)?;
-                if execution.decision_maker.awaiting_choice() {
-                    return Err(CostPaymentError::Other(
-                        "awaiting sacrifice cost added program".into(),
-                    ));
-                }
-                crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-                for event in outcome.events {
-                    game.queue_trigger_event(event.provenance(), event);
-                }
-                Ok(())
-            })();
+                    if execution.decision_maker.awaiting_choice() {
+                        return Err(CostPaymentError::Other(
+                            "awaiting sacrifice cost replacement".into(),
+                        ));
+                    }
+                    let performed = matches!(&receipt.original, EventOutcome::Proceed(_));
+                    if performed {
+                        let provenance = game.alloc_child_event_provenance(
+                            ctx.provenance,
+                            crate::events::EventKind::Sacrifice,
+                        );
+                        game.queue_trigger_event(
+                            ctx.provenance,
+                            TriggerEvent::new_with_provenance(
+                                SacrificeEvent::new(target_id, Some(ctx.source))
+                                    .with_snapshot(snapshot, sacrificing_player),
+                                provenance,
+                            ),
+                        );
+                    }
+                    let mut outputs =
+                        crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                            game,
+                            &mut execution,
+                            crate::effect::EffectOutcome::count(i32::from(performed)),
+                            vec![(target_id, receipt)],
+                        )
+                        .map_err(CostPaymentError::ExecutionFailed)?;
+                    if execution.decision_maker.awaiting_choice() {
+                        return Err(CostPaymentError::Other(
+                            "awaiting sacrifice cost added program".into(),
+                        ));
+                    }
+                    let mut reported = outputs.outcome.events.clone();
+                    crate::effects::retain_unmatched_outcome_events(game, &mut reported);
+                    for event in reported {
+                        game.queue_trigger_event(event.provenance(), event);
+                    }
+                    outputs.synchronize_observations();
+                    Ok(vec![outputs])
+                })();
             if payment.is_err() || ctx.decision_maker.awaiting_choice() {
                 *game = checkpoint;
             }
@@ -4602,7 +4922,7 @@ fn resolve_cost_choice(
                     return Err(CostPaymentError::InsufficientCardsInHand);
                 }
                 if required == 0 {
-                    return Ok(());
+                    return Ok(Vec::new());
                 }
 
                 let spec = ChooseObjectsSpec::new(
@@ -4636,70 +4956,6 @@ fn resolve_cost_choice(
                 }
 
                 let cause = ctx.event_cause();
-                let mut receipts = Vec::new();
-                let mut successful_discards = Vec::new();
-                for card_id in to_discard {
-                    let receipt = execute_discard_with_scope(
-                        game,
-                        card_id,
-                        ctx.payer,
-                        cause.clone(),
-                        false,
-                        ctx.provenance,
-                        ctx.decision_maker,
-                        &ctx.replacement,
-                        ctx.source_snapshot.as_ref(),
-                    )
-                    .map_err(CostPaymentError::ExecutionFailed)?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Err(CostPaymentError::Other(
-                            "awaiting discard cost replacement".into(),
-                        ));
-                    }
-                    if !receipt.result.prevented && receipt.result.new_id.is_some() {
-                        let event = receipt.resolved_event.as_ref().ok_or_else(|| {
-                            CostPaymentError::ExecutionFailed(
-                                crate::effects::ExecutionError::InternalError(
-                                    "completed discard cost has no resolved event".into(),
-                                ),
-                            )
-                        })?;
-                        if event.player != ctx.payer
-                            || event.card != card_id
-                            || event.cause != cause
-                        {
-                            return Err(CostPaymentError::ExecutionFailed(
-                                crate::effects::ExecutionError::InternalError(
-                                    "discard cost changed an unsupported batch identity".into(),
-                                ),
-                            ));
-                        }
-                        successful_discards.push((
-                            event.card,
-                            receipt.discarded_snapshot.clone(),
-                            receipt.result.final_zone,
-                            receipt.result.new_id,
-                        ));
-                    }
-                    // CR 118.11: a legal started payment remains paid when its
-                    // action is changed/prevented. Count actual original discards
-                    // separately from whether the cost has been paid.
-                    receipts.push(receipt);
-                }
-                let count = i32::try_from(successful_discards.len()).map_err(|_| {
-                    CostPaymentError::ExecutionFailed(
-                        crate::effects::ExecutionError::InternalError(
-                            "discard cost count overflow".into(),
-                        ),
-                    )
-                })?;
-                let events = crate::effects::cards::completed_discard_events(
-                    game,
-                    ctx.payer,
-                    cause.clone(),
-                    ctx.provenance,
-                    successful_discards,
-                );
                 let mut execution =
                     ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
                         .with_cause(cause)
@@ -4707,23 +4963,56 @@ fn resolve_cost_choice(
                 execution.source_snapshot = ctx.source_snapshot.clone();
                 execution.replacement = ctx.replacement.clone();
                 execution.x_value = ctx.x_value;
-                let mut outcome = crate::effects::cards::finish_discard_receipts(
+                let Some(prepared) = crate::effects::cards::prepare_selected_discard_batch(
                     game,
                     &mut execution,
-                    crate::effect::EffectOutcome::count(count).with_events(events),
-                    receipts,
+                    ctx.payer,
+                    to_discard,
+                    None,
+                    true,
+                )
+                .map_err(CostPaymentError::ExecutionFailed)?
+                else {
+                    return Err(CostPaymentError::Other(
+                        "awaiting discard cost replacement".into(),
+                    ));
+                };
+                let committed = crate::effects::cards::commit_selected_discard_batch(
+                    game,
+                    &mut execution,
+                    prepared,
                 )
                 .map_err(CostPaymentError::ExecutionFailed)?;
+                if execution.decision_maker.awaiting_choice() {
+                    return Err(CostPaymentError::Other(
+                        "awaiting discard cost replacement".into(),
+                    ));
+                }
+                // A legal started payment remains paid when its action is changed
+                // or prevented; the shared packet reports actual original discards.
+                let Some(originals) = committed
+                    .prepare_completion_with_outputs(game, &mut execution)
+                    .map_err(CostPaymentError::ExecutionFailed)?
+                else {
+                    return Err(CostPaymentError::Other(
+                        "awaiting discard cost replacement".into(),
+                    ));
+                };
+                let mut outputs = originals
+                    .complete_added_programs_with_outputs(game, &mut execution)
+                    .map_err(CostPaymentError::ExecutionFailed)?;
                 if execution.decision_maker.awaiting_choice() {
                     return Err(CostPaymentError::Other(
                         "awaiting discard cost added program".into(),
                     ));
                 }
-                crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-                for event in outcome.events {
+                let mut reported = outputs.outcome.events.clone();
+                crate::effects::retain_unmatched_outcome_events(game, &mut reported);
+                for event in reported {
                     game.queue_trigger_event(event.provenance(), event);
                 }
-                Ok(())
+                outputs.synchronize_observations();
+                Ok(vec![outputs])
             })();
             if result.is_err() || ctx.decision_maker.awaiting_choice() {
                 *game = checkpoint;
@@ -4764,8 +5053,9 @@ fn resolve_cost_choice(
             }
 
             ctx.pre_chosen_cards.extend(to_exile);
-            match cost.pay(game, ctx)? {
-                CostPaymentResult::Paid => Ok(()),
+            let receipt = cost.pay_with_outputs(game, ctx)?;
+            match receipt.result {
+                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Exile-from-hand cost still needs choice after preselection".to_string(),
                 )),
@@ -4797,8 +5087,9 @@ fn resolve_cost_choice(
             }
 
             ctx.pre_chosen_cards.extend(to_exile);
-            match cost.pay(game, ctx)? {
-                CostPaymentResult::Paid => Ok(()),
+            let receipt = cost.pay_with_outputs(game, ctx)?;
+            match receipt.result {
+                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Exile-from-graveyard cost still needs choice after preselection".to_string(),
                 )),
@@ -4839,8 +5130,9 @@ fn resolve_cost_choice(
             }
 
             ctx.pre_chosen_cards.extend(to_exile);
-            match cost.pay(game, ctx)? {
-                CostPaymentResult::Paid => Ok(()),
+            let receipt = cost.pay_with_outputs(game, ctx)?;
+            match receipt.result {
+                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Exile-object cost still needs choice after preselection".to_string(),
                 )),
@@ -4877,15 +5169,16 @@ fn resolve_cost_choice(
             let chosen: Vec<ObjectId> =
                 make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(Vec::new());
             }
             if !crate::effects::cards::is_exact_reveal_selection(&chosen, &candidates, required) {
                 return Err(CostPaymentError::InsufficientCardsToReveal);
             }
 
             ctx.pre_chosen_cards.extend(chosen);
-            match cost.pay(game, ctx)? {
-                CostPaymentResult::Paid => Ok(()),
+            let receipt = cost.pay_with_outputs(game, ctx)?;
+            match receipt.result {
+                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Reveal cost still needs choice after preselection".to_string(),
                 )),
@@ -4913,8 +5206,9 @@ fn resolve_cost_choice(
             };
 
             ctx.pre_chosen_cards.push(target);
-            match cost.pay(game, ctx)? {
-                CostPaymentResult::Paid => Ok(()),
+            let receipt = cost.pay_with_outputs(game, ctx)?;
+            match receipt.result {
+                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Return-to-hand cost still needs choice after preselection".to_string(),
                 )),
@@ -5079,7 +5373,13 @@ fn legal_reveal_cards(
     card_type: Option<crate::types::CardType>,
     color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
-    crate::effects::cards::legal_reveal_from_hand_cards(game, payer, source, card_type, color_filter)
+    crate::effects::cards::legal_reveal_from_hand_cards(
+        game,
+        payer,
+        source,
+        card_type,
+        color_filter,
+    )
 }
 
 fn resolve_cost_count(count: &crate::effect::Value, x_value: Option<u32>) -> u32 {

@@ -6,21 +6,18 @@ use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
 use crate::effects::cards::search_overrides::{
-    begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
-    finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
+    LibrarySearchRequest, execute_library_search_scope, exile_found_cards_for_opposition_agent,
 };
 use crate::effects::helpers::{
     normalize_chosen_distinct_mana_values, normalize_chosen_one_per_card_type,
     resolve_player_filter_to_list, resolve_value, view_hidden_candidate_objects,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::SearchLibraryEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::{ObjectFilter, ObjectRef, PlayerFilter};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 use super::choose_objects::{ChooseObjectsEffect, search_zones, top_only_selection_limit};
@@ -802,10 +799,14 @@ fn collect_candidates(
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
-    if !crate::object_query::require_captured_public_collections(game, &effect.filter,
-        &choice_filter_context(effect, game, ctx, chooser_id))
-    {
-        return Err(ExecutionError::IncompleteEvidence("public destination choice requires its producer collection".into()));
+    if !crate::object_query::require_captured_public_collections(
+        game,
+        &effect.filter,
+        &choice_filter_context(effect, game, ctx, chooser_id),
+    ) {
+        return Err(ExecutionError::IncompleteEvidence(
+            "public destination choice requires its producer collection".into(),
+        ));
     }
     let mut candidates = Vec::new();
     let zones = effective_search_zones(effect, game, chooser_id)?;
@@ -1493,672 +1494,649 @@ pub(crate) fn run_choose_objects(
         } else {
             None
         };
-        let search_override =
-            library_owner.and_then(|owner| opposition_agent_search(game, chooser_id, owner));
-
-        if effect.is_search
-            && search_zones == vec![Zone::Library]
-            && library_owner.is_some_and(|owner| {
-                !game.can_search_library_from_effect(chooser_id, owner, ctx.controller)
-            })
-        {
-            return Ok(EffectOutcome::prevented());
-        }
-        let search_control =
-            begin_opposition_agent_search_control(game, chooser_id, search_override);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let search_viewer = chooser_id;
-            if let Some(owner) = library_owner.filter(|owner| {
-                game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)
-            }) {
-                let library_cards = game
-                    .player(owner)
-                    .map(|player| player.library.clone())
-                    .unwrap_or_default();
-                view_hidden_candidate_objects(
-                    game,
-                    ctx,
-                    search_viewer,
-                    &library_cards,
-                    "Search library",
-                    false,
-                );
-            }
-
-            if let Some(owner) = library_owner.filter(|owner| {
-                game.can_search_library_from_effect(chooser_id, *owner, ctx.controller)
-            }) {
-                offer_library_search_casts(game, ctx, owner)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+        execute_library_search_scope(
+            game,
+            ctx,
+            LibrarySearchRequest {
+                chooser: chooser_id,
+                library_owner,
+                search_library: effect.is_search && search_zones.contains(&Zone::Library),
+                require_library_access: effect.is_search && search_zones == vec![Zone::Library],
+                // This adapter's existing initial presentation has its own policy;
+                // candidate restriction remains with its selected-object programme.
+                restrict_initial_view: false,
+                refresh_library_access: true,
+            },
+            |game, ctx, search| {
+                let search_viewer = search.chooser;
+                let search_override = search.found_card_policy;
+                let search_event = search.event;
+                let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+                let relation_cost = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+                    && super::selection_relations::has_relations(&effect.filter);
+                if relation_cost {
+                    candidates.retain(|id| !ctx.replacement.entry_reserved_objects.contains(id));
                 }
-            }
-            let search_event = (effect.is_search
-                && search_zones.contains(&Zone::Library)
-                && library_owner.is_none_or(|owner| {
-                    game.can_search_library_from_effect(chooser_id, owner, ctx.controller)
-                }))
-            .then(|| {
-                TriggerEvent::new_with_provenance(
-                    SearchLibraryEvent::new(chooser_id, library_owner),
-                    ctx.provenance,
-                )
-            });
 
-            let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
-            let relation_cost = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
-                && super::selection_relations::has_relations(&effect.filter);
-            if relation_cost {
-                candidates.retain(|id| !ctx.replacement.entry_reserved_objects.contains(id));
-            }
-
-            if !game.source_snapshot_is_exempt_from_range(
-                Some(ctx.source),
-                ctx.source_snapshot.as_ref(),
-            ) {
-                candidates.retain(|object| {
-                    game.object_is_within_range(chooser_id, *object, Some(ctx.source))
-                });
-            }
-            let hidden_library_candidates =
-                if effect.is_search && search_zones.contains(&Zone::Library) {
-                    library_owner
-                        .map(|owner| hidden_library_search_candidates(effect, game, ctx, owner))
-                        .unwrap_or_default()
-                } else {
-                    Vec::new()
-                };
-            for id in &hidden_library_candidates {
-                if !candidates.contains(id) {
-                    candidates.push(*id);
+                if !game.source_snapshot_is_exempt_from_range(
+                    Some(ctx.source),
+                    ctx.source_snapshot.as_ref(),
+                ) {
+                    candidates.retain(|object| {
+                        game.object_is_within_range(chooser_id, *object, Some(ctx.source))
+                    });
                 }
-            }
-            if candidates.is_empty() && effect.is_search && search_zones.contains(&Zone::Library) {
-                for player in &game.players {
-                    if !game.can_search_library_from_effect(chooser_id, player.id, ctx.controller) {
-                        continue;
+                let hidden_library_candidates =
+                    if effect.is_search && search_zones.contains(&Zone::Library) {
+                        library_owner
+                            .map(|owner| hidden_library_search_candidates(effect, game, ctx, owner))
+                            .unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    };
+                for id in &hidden_library_candidates {
+                    if !candidates.contains(id) {
+                        candidates.push(*id);
                     }
-                    for &id in &player.library {
-                        let is_hidden_library_card = game.is_hidden_card_placeholder(id)
-                            || game.object(id).is_some_and(|obj| {
-                                obj.zone == Zone::Library && obj.name == "Hidden Card"
-                            });
-                        if is_hidden_library_card && !candidates.contains(&id) {
-                            candidates.push(id);
+                }
+                if candidates.is_empty()
+                    && effect.is_search
+                    && search_zones.contains(&Zone::Library)
+                {
+                    for player in &game.players {
+                        if !game.can_search_library_from_effect(
+                            chooser_id,
+                            player.id,
+                            ctx.controller,
+                        ) {
+                            continue;
+                        }
+                        for &id in &player.library {
+                            let is_hidden_library_card = game.is_hidden_card_placeholder(id)
+                                || game.object(id).is_some_and(|obj| {
+                                    obj.zone == Zone::Library && obj.name == "Hidden Card"
+                                });
+                            if is_hidden_library_card && !candidates.contains(&id) {
+                                candidates.push(id);
+                            }
                         }
                     }
                 }
-            }
-            if effect.is_search && search_zones.contains(&Zone::Library) {
-                // The placeholders added above bypassed the zone scan's "search
-                // the top N cards instead" restriction (Aven Mindcensor).
-                game.restrict_library_search_candidates(chooser_id, &mut candidates);
-            }
-            // A random pick among qualifying hand cards ("exile a nonland card at
-            // random from your hand"): every peer must shuffle the same set, so
-            // the owners reveal the qualifying private cards first (see
-            // `game_state::hidden_hand_choices`).
-            if effect.count.is_random()
-                && effective_search_zones(effect, game, chooser_id)?.contains(&Zone::Hand)
-            {
-                let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-                let hand_ids = hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id)?;
-                if !game.settle_hidden_hand_random_pool(
-                    &mut *ctx.decision_maker,
-                    ctx.source,
-                    &hand_zone_filter(effect),
-                    &filter_ctx,
-                    &hand_ids,
-                    &mut candidates,
-                ) {
-                    ctx.clear_object_tag(effect.tag.as_str());
-                    return Ok(EffectOutcome::count(0));
+                if effect.is_search && search_zones.contains(&Zone::Library) {
+                    // The placeholders added above bypassed the zone scan's "search
+                    // the top N cards instead" restriction (Aven Mindcensor).
+                    game.restrict_library_search_candidates(chooser_id, &mut candidates);
                 }
-            }
-            // Symmetric across peers; see `game_state::hidden_hand_choices`.
-            let hidden_library_pool = hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
-            let hidden_identity_choice =
-                hidden_hand_choice(effect, game, ctx, chooser_id)? || hidden_library_pool;
-            // CR 107.3f: an X that appears
-            // only in the text and isn't defined is chosen by the controller as
-            // the ability resolves. For "reveal X cards" that choice is the
-            // number of objects chosen, so the choice itself binds X.
-            let binds_undefined_x = effect.count.dynamic_x
-                && effect.count_value.is_none()
-                && ctx.x_value.is_none()
-                && !effect.is_search;
-            if candidates.is_empty() && !hidden_identity_choice {
-                if binds_undefined_x {
-                    ctx.x_value = Some(0);
-                }
-                if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
-                    ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
-                } else {
-                    // An accumulating choice keeps earlier members, but an
-                    // actually completed empty choice still publishes its tag.
-                    ctx.tagged_objects.entry(effect.tag.clone()).or_default();
-                }
-                let outcome = EffectOutcome::count(0)
-                    .with_result_objects(Vec::new())
-                    .with_execution_fact(ExecutionFact::ChosenObjects(Vec::new()));
-                return Ok(if let Some(search_event) = search_event.clone() {
-                    outcome.with_event(search_event)
-                } else {
-                    outcome
-                });
-            }
-
-            let (base_min, max) = if binds_undefined_x {
-                (0, candidates.len())
-            } else if effect.count.dynamic_x || effect.count_value.is_some() {
-                let x = if let Some(count_value) = effect.count_value.as_ref() {
-                    let previous_iterated_player = ctx.iteration.iterated_player;
-                    if matches!(effect.chooser, PlayerFilter::Target(_))
-                        && value_mentions_iterated_player(count_value)
-                    {
-                        ctx.iteration.iterated_player = Some(chooser_id);
-                    }
-                    let resolved = resolve_value(game, count_value, ctx);
-                    ctx.iteration.iterated_player = previous_iterated_player;
-                    resolved?.max(0) as usize
-                } else {
-                    ctx.x_value.ok_or_else(|| {
-                        ExecutionError::UnresolvableValue("X value not set".to_string())
-                    })? as usize
-                };
-
-                let optional_dynamic_choice = effect.count.up_to_x
-                    || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
-                if optional_dynamic_choice {
-                    (0, x.min(candidates.len()))
-                } else {
-                    let bounded = x.min(candidates.len());
-                    (bounded, bounded)
-                }
-            } else {
-                compute_choice_bounds(effect.count, candidates.len())
-            };
-            if max == 0 && !hidden_identity_choice {
-                if binds_undefined_x {
-                    ctx.x_value = Some(0);
-                }
-                let outcome = EffectOutcome::count(0);
-                return Ok(if let Some(search_event) = search_event.clone() {
-                    outcome.with_event(search_event)
-                } else {
-                    outcome
-                });
-            }
-
-            let has_hidden_search_zones = effect.is_search
-                && (search_zones.iter().any(Zone::is_hidden)
-                    || !hidden_library_candidates.is_empty());
-            if has_hidden_search_zones && library_owner.is_none() {
-                view_hidden_candidate_objects(
-                    game,
-                    ctx,
-                    search_viewer,
-                    &candidates,
-                    "Search hidden zone",
-                    false,
-                );
-            }
-            let has_search_stated_quality = effect.filter.has_search_stated_quality();
-            let search_required_count = compute_search_required_count(effect.search_mode, max);
-            let allow_hidden_partial =
-                effect.is_search && has_hidden_search_zones && has_search_stated_quality;
-            let min = if effect.is_search {
-                if allow_hidden_partial {
-                    0
-                } else {
-                    search_required_count.max(base_min)
-                }
-            } else {
-                base_min
-            };
-            let required_public_count = if allow_hidden_partial {
-                let public_count = public_search_candidates(game, &candidates).len();
-                match effect.search_mode {
-                    SearchSelectionMode::Exact => search_required_count.min(public_count),
-                    SearchSelectionMode::Optional => 0,
-                    SearchSelectionMode::AllMatching => public_count,
-                }
-            } else {
-                0
-            };
-
-            let description = if effect.is_search
-                && matches!(
-                    effect.description.as_str(),
-                    "Choose" | "card" | "cards" | "objects"
-                )
-                && let Some(prompt) =
-                    friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
-            {
-                prompt
-            } else if effect.description == "Choose" {
-                let tag_str = effect.tag.as_str();
-                let verb = if tag_str.starts_with("sacrificed") {
-                    "sacrifice"
-                } else if tag_str.starts_with("discarded") {
-                    "discard"
-                } else if tag_str.starts_with("exiled") {
-                    "exile"
-                } else if tag_str.starts_with("returned") {
-                    "return"
-                } else {
-                    "choose"
-                };
-                describe_choose_from_filter(&effect.filter, min, max, verb)
-            } else {
-                effect.description.clone()
-            };
-            let aggregate_constraint = effect
-                .aggregate_constraint
-                .as_ref()
-                .map(|constraint| {
-                    let maximum = resolve_value(game, &constraint.maximum, ctx)?;
-                    let minimum = constraint
-                        .minimum
-                        .as_ref()
-                        .map(|minimum| resolve_value(game, minimum, ctx))
-                        .transpose()?;
-                    let mut resolved = crate::effect::ChoiceAggregateConstraint::at_most(
-                        constraint.metric,
-                        maximum,
-                    );
-                    resolved.minimum = minimum.map(crate::effect::Value::Fixed);
-                    Ok::<_, ExecutionError>(resolved)
-                })
-                .transpose()?;
-            let reveals_selection_publicly = effect.is_search
-                && has_hidden_search_zones
-                && (effect.reveal || ctx.public_search_reveal_tag.as_ref() == Some(&effect.tag));
-            let chosen: Vec<ObjectId> = if effect.count.is_random() {
-                let mut randomized = candidates.clone();
-                game.shuffle_slice(&mut randomized);
-                randomized.truncate(max);
-                randomized
-            } else {
-                let mut spec = ChooseObjectsSpec::new(
-                    ctx.source,
-                    description.clone(),
-                    candidates.clone(),
-                    min,
-                    Some(max),
-                );
-                if super::selection_relations::has_relations(&effect.filter) {
-                    spec = spec.with_relation_filter(effect.filter.clone());
-                }
-                if let Some(constraint) = aggregate_constraint.clone() {
-                    spec = spec.with_aggregate_constraint(constraint);
-                }
-                if allow_hidden_partial || hidden_identity_choice {
-                    spec = spec.allow_partial_completion();
-                }
-                if has_hidden_search_zones || hidden_identity_choice {
-                    spec = spec.require_explicit_choice();
-                }
-                if has_hidden_search_zones {
-                    spec = spec.with_hidden_card_visibility(
-                        DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
-                    );
-                }
-                if reveals_selection_publicly || relation_cost {
-                    // The chosen cards are revealed: open them on every peer
-                    // before the answer is replayed (as `SearchSpec` does for a
-                    // revealed search), so every engine filters the real cards.
-                    spec = spec.with_selection_reveal_policy(
-                        crate::decisions::context::SelectionRevealPolicy::Public,
-                    );
-                }
-                make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
-            };
-            if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
-                pending_selection_cleared_tag = true;
-                ctx.clear_object_tag(effect.tag.as_str());
-                let outcome = EffectOutcome::count(0);
-                return Ok(if let Some(search_event) = search_event {
-                    outcome.with_event(search_event)
-                } else {
-                    outcome
-                });
-            }
-            if (effect.is_search || hidden_library_pool)
-                && !effect.count.is_random()
-                && let Some(rejected) = chosen.iter().copied().find(|id| {
-                    !candidates.contains(id)
-                        && game
-                            .object(*id)
-                            .is_some_and(|object| object.zone == Zone::Library)
-                })
-            {
-                // A library card that is not a candidate was chosen: on a peer
-                // this is a card opened before the replay (a publicly revealed
-                // selection) that fails the search's filter. Reject it as a
-                // violated hidden choice instead of silently dropping it, which
-                // would desync this engine from the chooser's.
-                let name = game
-                    .object(rejected)
-                    .map(|object| object.name.to_string())
-                    .unwrap_or_default();
-                return Err(ExecutionError::Impossible(format!(
-                    "{}: {name} does not satisfy the hidden choice \"{description}\"",
-                    crate::game_state::HIDDEN_IDENTITY_VIOLATION_PREFIX
-                )));
-            }
-            // A payment selects an exact legal set. Resolution normalization
-            // must not fill, truncate, deduplicate or substitute what was paid.
-            let exact_cost_choice = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
-                && !effect.is_search;
-            if exact_cost_choice {
-                let mut seen = std::collections::HashSet::new();
-                if chosen.len() < min || chosen.len() > max
-                    || chosen.iter().any(|id| !candidates.contains(id) || !seen.insert(*id))
+                // A random pick among qualifying hand cards ("exile a nonland card at
+                // random from your hand"): every peer must shuffle the same set, so
+                // the owners reveal the qualifying private cards first (see
+                // `game_state::hidden_hand_choices`).
+                if effect.count.is_random()
+                    && effective_search_zones(effect, game, chooser_id)?.contains(&Zone::Hand)
                 {
-                    return Err(ExecutionError::Impossible(
-                        "cost choice must contain the required distinct legal objects".into(),
-                    ));
+                    let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+                    let hand_ids = hand_candidate_ids(effect, game, ctx, &filter_ctx, chooser_id)?;
+                    if !game.settle_hidden_hand_random_pool(
+                        &mut *ctx.decision_maker,
+                        ctx.source,
+                        &hand_zone_filter(effect),
+                        &filter_ctx,
+                        &hand_ids,
+                        &mut candidates,
+                    ) {
+                        ctx.clear_object_tag(effect.tag.as_str());
+                        return Ok(EffectOutcome::count(0));
+                    }
                 }
-            }
-            let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
-                value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
-            });
-            // Never fill a hidden identity choice up to its minimum: the fill would
-            // pick different cards on the owner and on peers holding placeholders.
-            let fill_to_min = !allow_hidden_partial && !hidden_identity_choice;
-            let chosen = normalize_chosen_objects(
-                chosen,
-                &candidates,
-                min,
-                max,
-                fill_to_min,
-                preserve_order,
-            );
-            if binds_undefined_x {
-                ctx.x_value = Some(chosen.len() as u32);
-            }
-            if hidden_identity_choice && chosen.iter().any(|id| !candidates.contains(id)) {
-                // A known card outside the candidates failed the filter (for a
-                // peer, after the chosen card was opened): reject the choice.
-                return Err(ExecutionError::InvalidTarget);
-            }
-            // Identity-dependent normalizations (names, mana values, powers,
-            // types, aggregate bounds) cannot be evaluated for placeholders. For
-            // an honest choice they are no-ops on the owner, so skip them wherever
-            // a placeholder was chosen instead of rewriting the choice differently
-            // from the owner.
-            //
-            // A library search that picked placeholders is the same: the owner's
-            // engine knows the cards, peers only see "Hidden Card" (which every
-            // name-based normalization would collapse).
-            let chose_library_placeholder = effect.is_search
-                && chosen.iter().any(|id| {
-                    game.is_hidden_card_placeholder(*id)
-                        && game
-                            .object(*id)
-                            .is_some_and(|object| object.zone == Zone::Library)
-                });
-            let chose_placeholder = (hidden_identity_choice
-                && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id)))
-                || chose_library_placeholder;
-            let allow_hidden_partial = allow_hidden_partial || hidden_identity_choice;
-            let chosen = enforce_public_search_choice_constraint(
-                game,
-                &candidates,
-                chosen,
-                required_public_count,
-                max,
-            );
-            let chosen = enforce_single_graveyard_choice_constraint(
-                effect,
-                game,
-                &candidates,
-                chosen,
-                min,
-                max,
-            );
-            if (effect.filter.shares_name || effect.filter.shares_color || relation_cost)
-                && !super::selection_relations::allows(
-                    game,
-                    &effect.filter,
-                    &chosen,
-                    chose_placeholder && !relation_cost,
-                )
-            {
-                return Err(ExecutionError::Impossible(
-                    "chosen objects do not satisfy the whole-selection relation".into(),
-                ));
-            }
-            let chosen = if effect.filter.distinct_names && !chose_placeholder {
-                normalize_chosen_distinct_names(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if effect.filter.distinct_mana_values && !chose_placeholder {
-                normalize_chosen_distinct_mana_values(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if effect.filter.distinct_powers && !chose_placeholder {
-                normalize_chosen_distinct_powers(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if effect.filter.distinct_creature_types && !chose_placeholder {
-                normalize_chosen_distinct_creature_types(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if effect.filter.shares_land_type && !chose_placeholder {
-                normalize_chosen_shared_land_type(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if effect.filter.one_per_card_type && !chose_placeholder {
-                normalize_chosen_one_per_card_type(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                    &effect.filter.card_types,
-                )
-            } else {
-                chosen
-            };
-            let chosen = if let Some(constraint) = aggregate_constraint.clone()
-                && !chose_placeholder
-            {
-                normalize_chosen_aggregate_constraint(
-                    game,
-                    chosen,
-                    &candidates,
-                    min,
-                    max,
-                    !allow_hidden_partial,
-                    constraint,
-                )
-            } else {
-                chosen
-            };
-            if let Some(constraint) = aggregate_constraint.as_ref()
-                && !chose_placeholder
-                && let Some(crate::effect::Value::Fixed(minimum)) =
-                    constraint.minimum.as_ref().map(|value| value.unhinted())
-            {
-                let chosen_total = crate::targeting::aggregate_object_set_value(
-                    game,
-                    chosen.iter().copied(),
-                    constraint.metric,
-                );
-                if chosen_total < *minimum {
-                    return Err(ExecutionError::Impossible(format!(
-                        "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
-                    )));
+                // Symmetric across peers; see `game_state::hidden_hand_choices`.
+                let hidden_library_pool =
+                    hidden_library_pool_choice(effect, game, ctx, chooser_id)?;
+                let hidden_identity_choice =
+                    hidden_hand_choice(effect, game, ctx, chooser_id)? || hidden_library_pool;
+                // CR 107.3f: an X that appears
+                // only in the text and isn't defined is chosen by the controller as
+                // the ability resolves. For "reveal X cards" that choice is the
+                // number of objects chosen, so the choice itself binds X.
+                let binds_undefined_x = effect.count.dynamic_x
+                    && effect.count_value.is_none()
+                    && ctx.x_value.is_none()
+                    && !effect.is_search;
+                if candidates.is_empty() && !hidden_identity_choice {
+                    if binds_undefined_x {
+                        ctx.x_value = Some(0);
+                    }
+                    if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str())
+                    {
+                        ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
+                    } else {
+                        // An accumulating choice keeps earlier members, but an
+                        // actually completed empty choice still publishes its tag.
+                        ctx.tagged_objects.entry(effect.tag.clone()).or_default();
+                    }
+                    let outcome = EffectOutcome::count(0)
+                        .with_result_objects(Vec::new())
+                        .with_execution_fact(ExecutionFact::ChosenObjects(Vec::new()));
+                    return Ok(if let Some(search_event) = search_event.clone() {
+                        outcome.with_event(search_event)
+                    } else {
+                        outcome
+                    });
                 }
-            }
-            // Claims enter the shared ledger, so their description must be the
-            // same on every peer; the prompt text above embeds locally clamped
-            // bounds and names.
-            let claim_description = if effect.description == "Choose" {
-                format!("Choose {}", effect.filter.description())
-            } else {
-                effect.description.clone()
-            };
-            if effect.is_search && !effect.count.is_random() {
-                // Every library card chosen by a filtered search must satisfy the
-                // search's own filter once opened (moved to a public zone,
-                // revealed, or disclosed at the end of the match). The chosen
-                // list is identical on every peer, so the claim subjects (and
-                // library anchors, should the card be shuffled back) are
-                // symmetric; only peers holding placeholders record obligations.
-                // An unfiltered search ("search for a card") records nothing.
-                let library_choices: Vec<ObjectId> = chosen
-                    .iter()
-                    .copied()
-                    .filter(|id| {
-                        game.hidden_card_info(*id).is_some()
+
+                let (base_min, max) = if binds_undefined_x {
+                    (0, candidates.len())
+                } else if effect.count.dynamic_x || effect.count_value.is_some() {
+                    let x = if let Some(count_value) = effect.count_value.as_ref() {
+                        let previous_iterated_player = ctx.iteration.iterated_player;
+                        if matches!(effect.chooser, PlayerFilter::Target(_))
+                            && value_mentions_iterated_player(count_value)
+                        {
+                            ctx.iteration.iterated_player = Some(chooser_id);
+                        }
+                        let resolved = resolve_value(game, count_value, ctx);
+                        ctx.iteration.iterated_player = previous_iterated_player;
+                        resolved?.max(0) as usize
+                    } else {
+                        ctx.x_value.ok_or_else(|| {
+                            ExecutionError::UnresolvableValue("X value not set".to_string())
+                        })? as usize
+                    };
+
+                    let optional_dynamic_choice = effect.count.up_to_x
+                        || (effect.is_search
+                            && effect.search_mode == SearchSelectionMode::Optional);
+                    if optional_dynamic_choice {
+                        (0, x.min(candidates.len()))
+                    } else {
+                        let bounded = x.min(candidates.len());
+                        (bounded, bounded)
+                    }
+                } else {
+                    compute_choice_bounds(effect.count, candidates.len())
+                };
+                if max == 0 && !hidden_identity_choice {
+                    if binds_undefined_x {
+                        ctx.x_value = Some(0);
+                    }
+                    let outcome = EffectOutcome::count(0);
+                    return Ok(if let Some(search_event) = search_event.clone() {
+                        outcome.with_event(search_event)
+                    } else {
+                        outcome
+                    });
+                }
+
+                let has_hidden_search_zones = effect.is_search
+                    && (search_zones.iter().any(Zone::is_hidden)
+                        || !hidden_library_candidates.is_empty());
+                if has_hidden_search_zones && library_owner.is_none() {
+                    view_hidden_candidate_objects(
+                        game,
+                        ctx,
+                        search_viewer,
+                        &candidates,
+                        "Search hidden zone",
+                        false,
+                    );
+                }
+                let has_search_stated_quality = effect.filter.has_search_stated_quality();
+                let search_required_count = compute_search_required_count(effect.search_mode, max);
+                let allow_hidden_partial =
+                    effect.is_search && has_hidden_search_zones && has_search_stated_quality;
+                let min = if effect.is_search {
+                    if allow_hidden_partial {
+                        0
+                    } else {
+                        search_required_count.max(base_min)
+                    }
+                } else {
+                    base_min
+                };
+                let required_public_count = if allow_hidden_partial {
+                    let public_count = public_search_candidates(game, &candidates).len();
+                    match effect.search_mode {
+                        SearchSelectionMode::Exact => search_required_count.min(public_count),
+                        SearchSelectionMode::Optional => 0,
+                        SearchSelectionMode::AllMatching => public_count,
+                    }
+                } else {
+                    0
+                };
+
+                let description = if effect.is_search
+                    && matches!(
+                        effect.description.as_str(),
+                        "Choose" | "card" | "cards" | "objects"
+                    )
+                    && let Some(prompt) =
+                        friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
+                {
+                    prompt
+                } else if effect.description == "Choose" {
+                    let tag_str = effect.tag.as_str();
+                    let verb = if tag_str.starts_with("sacrificed") {
+                        "sacrifice"
+                    } else if tag_str.starts_with("discarded") {
+                        "discard"
+                    } else if tag_str.starts_with("exiled") {
+                        "exile"
+                    } else if tag_str.starts_with("returned") {
+                        "return"
+                    } else {
+                        "choose"
+                    };
+                    describe_choose_from_filter(&effect.filter, min, max, verb)
+                } else {
+                    effect.description.clone()
+                };
+                let aggregate_constraint = effect
+                    .aggregate_constraint
+                    .as_ref()
+                    .map(|constraint| {
+                        let maximum = resolve_value(game, &constraint.maximum, ctx)?;
+                        let minimum = constraint
+                            .minimum
+                            .as_ref()
+                            .map(|minimum| resolve_value(game, minimum, ctx))
+                            .transpose()?;
+                        let mut resolved = crate::effect::ChoiceAggregateConstraint::at_most(
+                            constraint.metric,
+                            maximum,
+                        );
+                        resolved.minimum = minimum.map(crate::effect::Value::Fixed);
+                        Ok::<_, ExecutionError>(resolved)
+                    })
+                    .transpose()?;
+                let reveals_selection_publicly = effect.is_search
+                    && has_hidden_search_zones
+                    && (effect.reveal
+                        || ctx.public_search_reveal_tag.as_ref() == Some(&effect.tag));
+                let chosen: Vec<ObjectId> = if effect.count.is_random() {
+                    let mut randomized = candidates.clone();
+                    game.shuffle_slice(&mut randomized);
+                    randomized.truncate(max);
+                    randomized
+                } else {
+                    let mut spec = ChooseObjectsSpec::new(
+                        ctx.source,
+                        description.clone(),
+                        candidates.clone(),
+                        min,
+                        Some(max),
+                    );
+                    if super::selection_relations::has_relations(&effect.filter) {
+                        spec = spec.with_relation_filter(effect.filter.clone());
+                    }
+                    if let Some(constraint) = aggregate_constraint.clone() {
+                        spec = spec.with_aggregate_constraint(constraint);
+                    }
+                    if allow_hidden_partial || hidden_identity_choice {
+                        spec = spec.allow_partial_completion();
+                    }
+                    if has_hidden_search_zones || hidden_identity_choice {
+                        spec = spec.require_explicit_choice();
+                    }
+                    if has_hidden_search_zones {
+                        spec = spec.with_hidden_card_visibility(
+                            DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                        );
+                    }
+                    if reveals_selection_publicly || relation_cost {
+                        // The chosen cards are revealed: open them on every peer
+                        // before the answer is replayed (as `SearchSpec` does for a
+                        // revealed search), so every engine filters the real cards.
+                        spec = spec.with_selection_reveal_policy(
+                            crate::decisions::context::SelectionRevealPolicy::Public,
+                        );
+                    }
+                    make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
+                };
+                if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
+                    pending_selection_cleared_tag = true;
+                    ctx.clear_object_tag(effect.tag.as_str());
+                    let outcome = EffectOutcome::count(0);
+                    return Ok(if let Some(search_event) = search_event {
+                        outcome.with_event(search_event)
+                    } else {
+                        outcome
+                    });
+                }
+                if (effect.is_search || hidden_library_pool)
+                    && !effect.count.is_random()
+                    && let Some(rejected) = chosen.iter().copied().find(|id| {
+                        !candidates.contains(id)
                             && game
                                 .object(*id)
                                 .is_some_and(|object| object.zone == Zone::Library)
                     })
-                    .collect();
-                if !library_choices.is_empty() {
+                {
+                    // A library card that is not a candidate was chosen: on a peer
+                    // this is a card opened before the replay (a publicly revealed
+                    // selection) that fails the search's filter. Reject it as a
+                    // violated hidden choice instead of silently dropping it, which
+                    // would desync this engine from the chooser's.
+                    let name = game
+                        .object(rejected)
+                        .map(|object| object.name.to_string())
+                        .unwrap_or_default();
+                    return Err(ExecutionError::Impossible(format!(
+                        "{}: {name} does not satisfy the hidden choice \"{description}\"",
+                        crate::game_state::HIDDEN_IDENTITY_VIOLATION_PREFIX
+                    )));
+                }
+                // A payment selects an exact legal set. Resolution normalization
+                // must not fill, truncate, deduplicate or substitute what was paid.
+                let exact_cost_choice = ctx.cause.cause_type
+                    == crate::events::cause::CauseType::Cost
+                    && !effect.is_search;
+                if exact_cost_choice {
+                    let mut seen = std::collections::HashSet::new();
+                    if chosen.len() < min
+                        || chosen.len() > max
+                        || chosen
+                            .iter()
+                            .any(|id| !candidates.contains(id) || !seen.insert(*id))
+                    {
+                        return Err(ExecutionError::Impossible(
+                            "cost choice must contain the required distinct legal objects".into(),
+                        ));
+                    }
+                }
+                let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
+                    value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
+                });
+                // Never fill a hidden identity choice up to its minimum: the fill would
+                // pick different cards on the owner and on peers holding placeholders.
+                let fill_to_min = !allow_hidden_partial && !hidden_identity_choice;
+                let chosen = normalize_chosen_objects(
+                    chosen,
+                    &candidates,
+                    min,
+                    max,
+                    fill_to_min,
+                    preserve_order,
+                );
+                if binds_undefined_x {
+                    ctx.x_value = Some(chosen.len() as u32);
+                }
+                if hidden_identity_choice && chosen.iter().any(|id| !candidates.contains(id)) {
+                    // A known card outside the candidates failed the filter (for a
+                    // peer, after the chosen card was opened): reject the choice.
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                // Identity-dependent normalizations (names, mana values, powers,
+                // types, aggregate bounds) cannot be evaluated for placeholders. For
+                // an honest choice they are no-ops on the owner, so skip them wherever
+                // a placeholder was chosen instead of rewriting the choice differently
+                // from the owner.
+                //
+                // A library search that picked placeholders is the same: the owner's
+                // engine knows the cards, peers only see "Hidden Card" (which every
+                // name-based normalization would collapse).
+                let chose_library_placeholder = effect.is_search
+                    && chosen.iter().any(|id| {
+                        game.is_hidden_card_placeholder(*id)
+                            && game
+                                .object(*id)
+                                .is_some_and(|object| object.zone == Zone::Library)
+                    });
+                let chose_placeholder = (hidden_identity_choice
+                    && chosen.iter().any(|id| game.is_hidden_card_placeholder(*id)))
+                    || chose_library_placeholder;
+                let allow_hidden_partial = allow_hidden_partial || hidden_identity_choice;
+                let chosen = enforce_public_search_choice_constraint(
+                    game,
+                    &candidates,
+                    chosen,
+                    required_public_count,
+                    max,
+                );
+                let chosen = enforce_single_graveyard_choice_constraint(
+                    effect,
+                    game,
+                    &candidates,
+                    chosen,
+                    min,
+                    max,
+                );
+                if (effect.filter.shares_name || effect.filter.shares_color || relation_cost)
+                    && !super::selection_relations::allows(
+                        game,
+                        &effect.filter,
+                        &chosen,
+                        chose_placeholder && !relation_cost,
+                    )
+                {
+                    return Err(ExecutionError::Impossible(
+                        "chosen objects do not satisfy the whole-selection relation".into(),
+                    ));
+                }
+                let chosen = if effect.filter.distinct_names && !chose_placeholder {
+                    normalize_chosen_distinct_names(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if effect.filter.distinct_mana_values && !chose_placeholder {
+                    normalize_chosen_distinct_mana_values(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if effect.filter.distinct_powers && !chose_placeholder {
+                    normalize_chosen_distinct_powers(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if effect.filter.distinct_creature_types && !chose_placeholder {
+                    normalize_chosen_distinct_creature_types(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if effect.filter.shares_land_type && !chose_placeholder {
+                    normalize_chosen_shared_land_type(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if effect.filter.one_per_card_type && !chose_placeholder {
+                    normalize_chosen_one_per_card_type(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                        &effect.filter.card_types,
+                    )
+                } else {
+                    chosen
+                };
+                let chosen = if let Some(constraint) = aggregate_constraint.clone()
+                    && !chose_placeholder
+                {
+                    normalize_chosen_aggregate_constraint(
+                        game,
+                        chosen,
+                        &candidates,
+                        min,
+                        max,
+                        !allow_hidden_partial,
+                        constraint,
+                    )
+                } else {
+                    chosen
+                };
+                if let Some(constraint) = aggregate_constraint.as_ref()
+                    && !chose_placeholder
+                    && let Some(crate::effect::Value::Fixed(minimum)) =
+                        constraint.minimum.as_ref().map(|value| value.unhinted())
+                {
+                    let chosen_total = crate::targeting::aggregate_object_set_value(
+                        game,
+                        chosen.iter().copied(),
+                        constraint.metric,
+                    );
+                    if chosen_total < *minimum {
+                        return Err(ExecutionError::Impossible(format!(
+                            "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
+                        )));
+                    }
+                }
+                // Claims enter the shared ledger, so their description must be the
+                // same on every peer; the prompt text above embeds locally clamped
+                // bounds and names.
+                let claim_description = if effect.description == "Choose" {
+                    format!("Choose {}", effect.filter.description())
+                } else {
+                    effect.description.clone()
+                };
+                if effect.is_search && !effect.count.is_random() {
+                    // Every library card chosen by a filtered search must satisfy the
+                    // search's own filter once opened (moved to a public zone,
+                    // revealed, or disclosed at the end of the match). The chosen
+                    // list is identical on every peer, so the claim subjects (and
+                    // library anchors, should the card be shuffled back) are
+                    // symmetric; only peers holding placeholders record obligations.
+                    // An unfiltered search ("search for a card") records nothing.
+                    let library_choices: Vec<ObjectId> = chosen
+                        .iter()
+                        .copied()
+                        .filter(|id| {
+                            game.hidden_card_info(*id).is_some()
+                                && game
+                                    .object(*id)
+                                    .is_some_and(|object| object.zone == Zone::Library)
+                        })
+                        .collect();
+                    if !library_choices.is_empty() {
+                        let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+                        game.record_hidden_identity_obligations(
+                            &library_choices,
+                            &library_zone_filter(effect),
+                            &filter_ctx,
+                            &claim_description,
+                        );
+                    }
+                }
+                if hidden_identity_choice {
+                    // Symmetric condition (the owner chooses no placeholder), so every
+                    // peer records the same claims about the chosen private cards.
                     let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+                    let hidden_choices: Vec<ObjectId> = chosen
+                        .iter()
+                        .copied()
+                        .filter(|id| game.hidden_card_info(*id).is_some())
+                        .collect();
                     game.record_hidden_identity_obligations(
-                        &library_choices,
-                        &library_zone_filter(effect),
+                        &hidden_choices,
+                        &if hidden_library_pool {
+                            library_zone_filter(effect)
+                        } else {
+                            hand_zone_filter(effect)
+                        },
                         &filter_ctx,
                         &claim_description,
                     );
                 }
-            }
-            if hidden_identity_choice {
-                // Symmetric condition (the owner chooses no placeholder), so every
-                // peer records the same claims about the chosen private cards.
-                let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-                let hidden_choices: Vec<ObjectId> = chosen
+                if effect.reveal && !chosen.is_empty() {
+                    view_hidden_candidate_objects(
+                        game,
+                        ctx,
+                        search_viewer,
+                        &chosen,
+                        "Reveal chosen hidden card",
+                        true,
+                    );
+                }
+                let chosen_memory: Vec<_> = chosen
                     .iter()
-                    .copied()
-                    .filter(|id| game.hidden_card_info(*id).is_some())
+                    .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
                     .collect();
-                game.record_hidden_identity_obligations(
-                    &hidden_choices,
-                    &if hidden_library_pool {
-                        library_zone_filter(effect)
-                    } else {
-                        hand_zone_filter(effect)
-                    },
-                    &filter_ctx,
-                    &claim_description,
-                );
-            }
-            if effect.reveal && !chosen.is_empty() {
-                view_hidden_candidate_objects(
-                    game,
-                    ctx,
-                    search_viewer,
-                    &chosen,
-                    "Reveal chosen hidden card",
-                    true,
-                );
-            }
-            let chosen_memory: Vec<_> = chosen
-                .iter()
-                .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
-                .collect();
-            if search_zones.iter().any(Zone::is_hidden) {
-                ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
-            }
-
-            let (objects_for_tags, outcome_objects, receipts) = if search_override.is_some() {
-                let found = exile_found_cards_for_opposition_agent(game, ctx, &chosen, chooser_id)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+                if search_zones.iter().any(Zone::is_hidden) {
+                    ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
                 }
-                (Vec::new(), found.moved_ids, found.receipts)
-            } else {
-                (chosen.clone(), chosen.clone(), Vec::new())
-            };
 
-            let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
-            if effect.remember_as_chosen_object
-                && let [chosen] = snapshots.as_slice()
-            {
-                game.set_chosen_object(ctx.source, chosen.clone());
-            }
-            if !snapshots.is_empty() {
-                if effect.replace_tagged_objects
-                    || (is_implicit_object_tag(effect.tag.as_str())
-                        && !should_accumulate_implicit_choice_tag(effect))
-                {
-                    ctx.set_tagged_objects(effect.tag.clone(), snapshots);
+                let (objects_for_tags, outcome_objects, receipts) = if search_override.is_some() {
+                    let found =
+                        exile_found_cards_for_opposition_agent(game, ctx, &chosen, chooser_id)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    (Vec::new(), found.moved_ids, found.receipts)
                 } else {
-                    ctx.tag_objects(effect.tag.clone(), snapshots);
+                    (chosen.clone(), chosen.clone(), Vec::new())
+                };
+
+                let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
+                if effect.remember_as_chosen_object
+                    && let [chosen] = snapshots.as_slice()
+                {
+                    game.set_chosen_object(ctx.source, chosen.clone());
                 }
-            } else if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
-                ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
-            } else {
-                ctx.tagged_objects.entry(effect.tag.clone()).or_default();
-            }
+                if !snapshots.is_empty() {
+                    if effect.replace_tagged_objects
+                        || (is_implicit_object_tag(effect.tag.as_str())
+                            && !should_accumulate_implicit_choice_tag(effect))
+                    {
+                        ctx.set_tagged_objects(effect.tag.clone(), snapshots);
+                    } else {
+                        ctx.tag_objects(effect.tag.clone(), snapshots);
+                    }
+                } else if effect.replace_tagged_objects
+                    || is_implicit_object_tag(effect.tag.as_str())
+                {
+                    ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
+                } else {
+                    ctx.tagged_objects.entry(effect.tag.clone()).or_default();
+                }
 
-            let outcome = EffectOutcome::with_objects(outcome_objects.clone())
-                .with_result_objects(outcome_objects.clone())
-                .with_execution_fact(ExecutionFact::ChosenObjects(outcome_objects))
-                .with_chosen_object_memory(chosen_memory);
-            let original = if let Some(search_event) = search_event {
-                outcome.with_event(search_event)
-            } else {
-                outcome
-            };
-            // Tags, chosen-object memory and permission links belong to the
-            // original instruction and must be complete before additions run.
-            crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
-        })();
-
-        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
-            game.capture_pending_decision_controllers();
-        }
-        // Active scopes always unwind. Only the pending routing view survives.
-        finish_opposition_agent_search_control(game, search_control);
-        result
+                let outcome = EffectOutcome::with_objects(outcome_objects.clone())
+                    .with_result_objects(outcome_objects.clone())
+                    .with_execution_fact(ExecutionFact::ChosenObjects(outcome_objects))
+                    .with_chosen_object_memory(chosen_memory);
+                let original = if let Some(search_event) = search_event {
+                    outcome.with_event(search_event)
+                } else {
+                    outcome
+                };
+                // Tags, chosen-object memory and permission links belong to the
+                // original instruction and must be complete before additions run.
+                crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
+            },
+        )
     })();
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || instruction.is_err() {

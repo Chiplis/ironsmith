@@ -6,6 +6,8 @@ export const priorityStepKey = state => state?.combat_damage_step === 'first_str
   && normalizeStepKey(state?.step) === 'CombatDamage' ? 'FirstStrikeDamage' : normalizeStepKey(state?.step);
 const isLocalPriority = state => state?.decision?.kind === 'priority'
   && Number(state.decision.player) === Number(state.perspective);
+const isLocalTurnDecision = state => ['priority', 'attackers', 'blockers'].includes(state?.decision?.kind)
+  && Number(state.decision.player) === Number(state.perspective);
 const stackKey = state => (state?.stack_objects || []).map(entry => String(entry.id)).join(',');
 const priorityKey = state => [state?.turn_number, state?.active_player, state?.phase, state?.step, state?.combat_damage_step,
   state?.decision?.player, stackKey(state)].join('|');
@@ -57,7 +59,7 @@ export function createPriorityStops({ now = () => performance.now() } = {}) {
   ];
   const stopReason = state => {
     observe(state);
-    if (!isLocalPriority(state)) return null;
+    if (!isLocalTurnDecision(state)) return null;
     if (window || pending) return 'post-action priority window';
     if (heldKey) return 'priority held after action';
     const stop = candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`));
@@ -100,7 +102,7 @@ export function createPriorityStops({ now = () => performance.now() } = {}) {
           : action.index === command.action_index)
         : null;
       const kind = action?.kind || command?.action_ref?.kind;
-      if (isLocalPriority(state)) {
+      if (isLocalTurnDecision(state)) {
         releaseStops(state);
         heldKey = null;
         if (window) { window = null; publish(); }
@@ -118,6 +120,11 @@ export function createPriorityStops({ now = () => performance.now() } = {}) {
       window = null;
       publish();
       return true;
+    },
+    resume(state) {
+      observe(state);
+      heldKey = null;
+      if (window) { window = null; publish(); }
     },
     armWindow(id) {
       if (!window || window.id !== id || window.startedAt !== null) return;

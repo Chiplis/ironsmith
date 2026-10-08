@@ -1,5 +1,7 @@
 // All interface copy for es. Preserve interpolation placeholders.
 export const messages = {
+  "Pass through phases until a pause or the next turn": "Pasar fases hasta una pausa o el próximo turno",
+  "Generate a 1v1 board from two lobby catalog decks. Each card comes from its deck; the remaining cards stay in the library.": "Genera un tablero 1v1 con dos mazos del catálogo del lobby. Cada carta proviene de su mazo; las restantes quedan en la biblioteca.",
   "Payment options could not be loaded.": "No se pudieron cargar las opciones de pago.",
   "Loading payment options…": "Cargando opciones de pago…",
   "Replacement": "Reemplazo",

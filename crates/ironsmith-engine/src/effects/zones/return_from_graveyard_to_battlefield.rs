@@ -137,16 +137,29 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::with_objects(Vec::new()));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::with_objects(Vec::new()),
+            ));
         }
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        let instruction = (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
             if matches!(self.target.base(), ChooseSpec::Source)
                 && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none()
             {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
             }
             let target_ids = match resolve_graveyard_return_targets(game, ctx, &self.target) {
                 Ok(selected) => selected,
@@ -157,12 +170,16 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                             matches!(target, crate::effects::ResolvedTarget::Object(_))
                         }) =>
                 {
-                    return Ok(EffectOutcome::target_invalid());
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
                 }
                 Err(error) => return Err(error),
             };
             if target_ids.is_empty() {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
             }
 
             let mut memories = Vec::new();
@@ -178,7 +195,9 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                 let source_in_exile =
                     matches!(self.target.base(), ChooseSpec::Source) && obj.zone == Zone::Exile;
                 if obj.zone != Zone::Graveyard && !source_in_exile {
-                    return Ok(EffectOutcome::target_invalid());
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
                 }
                 memories.push(Clone::clone(&ObjectSnapshot::from_object(obj, game)));
             }
@@ -186,7 +205,11 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
             let attachment_target = if let Some(as_aura) = &self.as_aura {
                 match choose_aura_attachment_target(game, ctx, as_aura)? {
                     Some(target) => Some(target),
-                    None => return Ok(EffectOutcome::target_invalid()),
+                    None => {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::target_invalid(),
+                        ));
+                    }
                 }
             } else {
                 None
@@ -219,42 +242,54 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            super::execute_battlefield_entries(game, ctx, requests, false, |_, _, receipts| {
-                let mut moved = Vec::new();
-                let chosen_memory = memories.clone();
-                let mut affected_memory = Vec::new();
-                for (receipt, memory) in receipts.iter().zip(memories) {
-                    match &receipt.outcome {
-                        BattlefieldEntryOutcome::Moved(new_id) => {
-                            moved.push(*new_id);
-                            affected_memory.push(memory);
-                        }
-                        BattlefieldEntryOutcome::Redirected(change) => {
-                            if !change.new_object_ids.is_empty() {
+            super::execute_battlefield_entries_with_outputs(
+                game,
+                ctx,
+                requests,
+                false,
+                |_, _, receipts| {
+                    let mut moved = Vec::new();
+                    let chosen_memory = memories.clone();
+                    let mut affected_memory = Vec::new();
+                    for (receipt, memory) in receipts.iter().zip(memories) {
+                        match &receipt.outcome {
+                            BattlefieldEntryOutcome::Moved(new_id) => {
+                                moved.push(*new_id);
                                 affected_memory.push(memory);
                             }
-                            moved.extend(change.new_object_ids.iter().copied());
+                            BattlefieldEntryOutcome::Redirected(change) => {
+                                if !change.new_object_ids.is_empty() {
+                                    affected_memory.push(memory);
+                                }
+                                moved.extend(change.new_object_ids.iter().copied());
+                            }
+                            BattlefieldEntryOutcome::Prevented => {}
                         }
-                        BattlefieldEntryOutcome::Prevented => {}
                     }
-                }
-                Ok(if moved.is_empty() {
-                    EffectOutcome::impossible()
-                } else {
-                    EffectOutcome::with_objects(moved)
-                        .with_affected_object_memory(affected_memory)
-                        .with_chosen_object_memory(chosen_memory)
-                })
-            })
+                    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        if moved.is_empty() {
+                            EffectOutcome::impossible()
+                        } else {
+                            EffectOutcome::with_objects(moved)
+                                .with_affected_object_memory(affected_memory)
+                                .with_chosen_object_memory(chosen_memory)
+                        },
+                    ))
+                },
+            )
             .map(|commit| commit.outcome)
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if pending || instruction.is_err() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok());
             context_checkpoint.restore(ctx);
         }
         if pending {
-            return instruction.map(|_| EffectOutcome::with_objects(Vec::new()));
+            return instruction.map(|_| {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            });
         }
         instruction
     }

@@ -241,10 +241,12 @@ pub struct ScopedEffectOutcome {
 
 /// A contributing quantity retains its owner's scope. Its unit is defined by
 /// the semantic action owner (for example actual damage contributing lifelink).
+#[derive(Clone)]
 pub struct EffectOutcomeContribution {
     pub scope: EffectOutcomeScope,
     pub amount: u32,
 }
+#[derive(Clone)]
 pub enum SharedOutcomeOwnership {
     /// The child owner already published its chronological observations.
     /// Retain this packet as an alternative view, never another parent history.
@@ -262,7 +264,90 @@ pub struct SharedEffectOutcome {
     pub ownership: SharedOutcomeOwnership,
     /// The shared action owns its aggregate and any nested projections. Those
     /// children are alternatives within this receipt, never extra peer outputs.
-    pub outputs: CompletedEffectOutputs,
+    pub outputs: SharedEffectOutputView,
+}
+
+/// Immutable reference to one already-published completion. Cloning this
+/// handle preserves its actual packet and authored scope identities; it cannot
+/// execute an action or publish another chronological history.
+#[derive(Clone)]
+pub struct PublishedEffectOutputs(std::sync::Arc<CompletedEffectOutputs>);
+
+impl std::fmt::Debug for PublishedEffectOutputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PublishedEffectOutputs")
+            .field("participants", &self.0.participants.len())
+            .field("shared", &self.0.shared.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl PublishedEffectOutputs {
+    pub(crate) fn retain(outputs: CompletedEffectOutputs) -> Self {
+        Self(std::sync::Arc::new(outputs))
+    }
+
+    pub(crate) fn same_completion(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    /// Metadata aliases retain one producer, never one packet per copy.
+    pub(crate) fn append_distinct(
+        retained: &mut Vec<Self>,
+        incoming: impl IntoIterator<Item = Self>,
+    ) {
+        for owner in incoming {
+            if !retained.iter().any(|prior| prior.same_completion(&owner)) {
+                retained.push(owner);
+            }
+        }
+    }
+}
+
+/// A shared child's mutable routing projection. An already-published child
+/// also retains its immutable producer packet; parent observation annotations
+/// affect only this view, never the producer or another parent's view.
+pub struct SharedEffectOutputView {
+    outputs: CompletedEffectOutputs,
+    published_owner: Option<PublishedEffectOutputs>,
+}
+
+impl From<CompletedEffectOutputs> for SharedEffectOutputView {
+    fn from(outputs: CompletedEffectOutputs) -> Self {
+        Self {
+            outputs,
+            published_owner: None,
+        }
+    }
+}
+
+impl std::ops::Deref for SharedEffectOutputView {
+    type Target = CompletedEffectOutputs;
+    fn deref(&self) -> &Self::Target {
+        &self.outputs
+    }
+}
+
+impl std::ops::DerefMut for SharedEffectOutputView {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.outputs
+    }
+}
+
+impl SharedEffectOutputView {
+    fn from_published(owner: PublishedEffectOutputs) -> Self {
+        Self {
+            outputs: owner.0.clone_projection(),
+            published_owner: Some(owner),
+        }
+    }
+
+    fn clone_projection(&self) -> Self {
+        Self {
+            outputs: self.outputs.clone_projection(),
+            published_owner: self.published_owner.clone(),
+        }
+    }
 }
 
 /// Completion keeps its authoritative chronological aggregate alongside any
@@ -277,7 +362,45 @@ pub struct CompletedEffectOutputs {
     pub participants: Vec<ScopedEffectOutcome>,
     pub shared: Vec<SharedEffectOutcome>,
 }
+impl std::fmt::Debug for CompletedEffectOutputs {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CompletedEffectOutputs")
+            .field("projections_complete", &self.projections_complete)
+            .field("outcome", &self.outcome)
+            .field("participant_count", &self.participants.len())
+            .field("shared_count", &self.shared.len())
+            .finish()
+    }
+}
+
 impl CompletedEffectOutputs {
+    /// Copy an alternative routing view of existing completed data. Scope
+    /// Arcs and event identities are retained; no original, continuation or
+    /// publisher is cloned, and this operation never appends event history.
+    fn clone_projection(&self) -> Self {
+        Self {
+            projections_complete: self.projections_complete,
+            outcome: self.outcome.clone(),
+            participants: self
+                .participants
+                .iter()
+                .map(|participant| ScopedEffectOutcome {
+                    scope: participant.scope.clone(),
+                    outputs: participant.outputs.clone_projection(),
+                })
+                .collect(),
+            shared: self
+                .shared
+                .iter()
+                .map(|shared| SharedEffectOutcome {
+                    ownership: shared.ownership.clone(),
+                    outputs: shared.outputs.clone_projection(),
+                })
+                .collect(),
+        }
+    }
+
     /// Resolve a view supplied by this owner, without falling back to its
     /// collective aggregate or borrowing a nested instruction's result.
     pub(crate) fn participant_output(
@@ -348,11 +471,31 @@ impl CompletedEffectOutputs {
     /// Retain a cost/root-action packet whose observations are already owned by
     /// its publisher. Do not concatenate its events into the parent's history.
     pub(crate) fn retain_published_children(&mut self, children: impl IntoIterator<Item = Self>) {
-        for outputs in children {
-            self.projections_complete &= outputs.projections_complete;
+        self.retain_published_references(children.into_iter().map(PublishedEffectOutputs::retain));
+    }
+
+    /// Metadata and prospective copies may share producer handles. This parent
+    /// retains those exact published packets with its own annotation view;
+    /// their observations are never another part of the parent's history.
+    pub(crate) fn retain_published_references(
+        &mut self,
+        children: impl IntoIterator<Item = PublishedEffectOutputs>,
+    ) {
+        for owner in children {
+            if self.shared.iter().any(|shared| {
+                matches!(shared.ownership, SharedOutcomeOwnership::Published)
+                    && shared
+                        .outputs
+                        .published_owner
+                        .as_ref()
+                        .is_some_and(|prior| prior.same_completion(&owner))
+            }) {
+                continue;
+            }
+            self.projections_complete &= owner.0.projections_complete;
             self.shared.push(SharedEffectOutcome {
                 ownership: SharedOutcomeOwnership::Published,
-                outputs,
+                outputs: SharedEffectOutputView::from_published(owner),
             });
         }
     }
@@ -364,11 +507,22 @@ impl CompletedEffectOutputs {
         completed: crate::effects::replacement::CompletedReplacementPrograms,
     ) -> Self {
         let (original, additions) = completed.into_outputs();
+        self.outcome = original;
+        self.append_replacement_outputs(additions)
+    }
+
+    /// Retain completed replacement packets as alternate routing views of the
+    /// same observations, preserving the enclosing authored instruction result.
+    pub(crate) fn append_replacement_outputs(
+        mut self,
+        replacements: impl IntoIterator<Item = Self>,
+    ) -> Self {
+        let replacements = replacements.into_iter().collect::<Vec<_>>();
         self.outcome = EffectOutcome::aggregate_replacement_outcomes(
-            original,
-            additions.iter().map(|outputs| outputs.outcome.clone()),
+            self.outcome,
+            replacements.iter().map(|outputs| outputs.outcome.clone()),
         );
-        self.retain_batch_children(additions);
+        self.retain_batch_children(replacements);
         self
     }
 
@@ -378,7 +532,7 @@ impl CompletedEffectOutputs {
         self.shared
             .extend(children.into_iter().map(|outputs| SharedEffectOutcome {
                 ownership: SharedOutcomeOwnership::Batch,
-                outputs,
+                outputs: outputs.into(),
             }));
         self.synchronize_observations();
     }
@@ -532,14 +686,19 @@ pub trait SimultaneousEffectCompletion: Send {
     /// Run only the non-draw prefix, retaining the owner's actual draw and tail.
     /// Existing completion owners without a draw boundary finish normally.
     fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original).map(SimultaneousEffectCommit::finished)
+        self.complete_with_outputs(game, ctx, original)
+            .map(SimultaneousEffectCommit::finished)
     }
 
     fn prepare_draw_boundary(
-        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit, ExecutionError> {
         self.prepare_draw_boundary_with_outputs(game, ctx, original)
@@ -710,8 +869,13 @@ pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
 
     /// Resolve mutable preflight and selection for every participant before
     /// any participant runs a replacement program or commits an original.
-    fn prepare_selection(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
-        -> Result<(), ExecutionError> { Ok(()) }
+    fn prepare_selection(
+        &mut self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        Ok(())
+    }
 
     /// Resolve a prepared proposal's replacement choices against the shared
     /// pre-mutation world. Owners run this for every participant before any
@@ -803,6 +967,18 @@ impl SimultaneousEffectProposal for DeferredPlayerActionProposal {
     }
 }
 
+/// A context-only resolution prelude has one binding owner shared by real
+/// execution and applicability queries. Binding reads the current world and
+/// retained evidence without executing actions or requesting decisions.
+/// Its scalar result belongs to ordinary execution; a query discards it.
+pub trait ResolutionPreludeBinding {
+    fn bind_resolution_prelude(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
+}
+
 pub trait EffectExecutor:
     std::fmt::Debug + Any + Send + Sync + EffectExecutorClone + 'static
 {
@@ -843,16 +1019,23 @@ pub trait EffectExecutor:
     }
 
     /// Native action owners retain dynamically introduced draws and their tails.
-    fn supports_replacement_draw_continuation(&self) -> bool { false }
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        false
+    }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        self.execute_with_outputs(game, ctx).map(SimultaneousEffectCommit::finished)
+        self.execute_with_outputs(game, ctx)
+            .map(SimultaneousEffectCommit::finished)
     }
 
     fn prepare_replacement_draw_continuation(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<SimultaneousEffectCommit, ExecutionError> {
         self.prepare_replacement_draw_continuation_with_outputs(game, ctx)
             .map(SimultaneousEffectCommit::into_aggregate)
@@ -1281,21 +1464,27 @@ pub trait EffectExecutor:
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
         let mut has_children = false;
         self.visit_child_effects(&mut |_| has_children = true);
-        if has_children { Vec::new() } else { self.get_target_spec().cloned().into_iter().collect() }
+        if has_children {
+            Vec::new()
+        } else {
+            self.get_target_spec().cloned().into_iter().collect()
+        }
     }
 
     /// Direct role use, excluding optional/conditional children until they run.
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         let mut has_children = false;
         self.visit_child_effects(&mut |_| has_children = true);
-        !has_children && self.get_target_spec().is_some_and(|spec| spec.mentions_player_filter(needle))
+        !has_children
+            && self
+                .get_target_spec()
+                .is_some_and(|spec| spec.mentions_player_filter(needle))
     }
     fn mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         let mut found = self.directly_mentions_player_filter(needle);
         self.visit_child_effects(&mut |effect| found |= effect.0.mentions_player_filter(needle));
         found
     }
-
 
     /// Visit complete definitions directly owned by this executor. Composition
     /// traversal remains the caller's responsibility through child effects.
@@ -1318,10 +1507,11 @@ pub trait EffectExecutor:
         }
     }
 
-    /// Whether this effect is a resolution prelude that only prepares context
-    /// for following effects, such as tagging an object for a self-replacement.
-    fn is_resolution_prelude(&self) -> bool {
-        false
+    /// Expose the context-only binding owner when this effect is a resolution
+    /// prelude. A boolean declaration alone cannot authorize speculative action
+    /// execution; applicability calls this read-only owner directly.
+    fn as_resolution_prelude(&self) -> Option<&dyn ResolutionPreludeBinding> {
+        None
     }
 
     /// Whether this effect can consume an X value when used as a cost.

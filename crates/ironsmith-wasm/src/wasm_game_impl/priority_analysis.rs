@@ -8,6 +8,7 @@ pub(super) struct PriorityAnalysisJob {
     candidates: std::collections::VecDeque<PriorityCandidate>,
     actions: Vec<LegalAction>,
     provisional_actions: Vec<LegalAction>,
+    presentation_actions: Vec<LegalAction>,
 }
 
 struct PriorityCandidate {
@@ -15,6 +16,7 @@ struct PriorityCandidate {
     source: Option<ObjectId>,
     session: ironsmith::decision::ManaAnalysisSession,
     work_units: usize,
+    presentation_checked: bool,
 }
 
 impl WasmGame {
@@ -27,6 +29,19 @@ impl WasmGame {
         }
         let Some(mut candidate) = job.candidates.pop_front() else { return Ok(Some(true)); };
         let id_counters = snapshot_id_counters();
+        if !candidate.presentation_checked {
+            let eligible = match candidate.source {
+                Some(source) => ironsmith::decision::compute_actions_assuming_mana_for_presentation(
+                    &job.game, candidate.player, Some(source),
+                ),
+                None => Ok(Vec::new()),
+            };
+            restore_id_counters(id_counters);
+            for action in eligible.map_err(ironsmith::game_loop::GameLoopError::from)? {
+                if !job.presentation_actions.contains(&action) { job.presentation_actions.push(action); }
+            }
+            candidate.presentation_checked = true;
+        }
         let (actions, complete) = candidate.session.run_for_game(&job.game, budget.clamp(1, 64), || {
             match candidate.source {
                 Some(source) => ironsmith::decision::compute_actions_for_source(&job.game, candidate.player, Some(source)),
@@ -63,6 +78,7 @@ impl WasmGame {
         let mut ctx = ironsmith::decisions::context::PriorityContext::new(
             &job.game, job.player, displayed,
         ).map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
+        ctx.presentation_actions = job.presentation_actions.clone();
         ctx.analysis_complete = finished;
         ctx.payment_proven_actions = Some(job.actions.clone());
         self.pending_decision = Some(DecisionContext::Priority(ctx));
@@ -81,7 +97,12 @@ impl WasmGame {
         let result = (|| {
             let mut eligible = Vec::new();
             for actor in self.game.priority_team_players() {
-                eligible.extend(ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, actor, None)?);
+                let mut sources: Vec<_> = cached.iter().filter_map(ironsmith::decision::legal_action_source).collect();
+                sources.sort_unstable();
+                sources.dedup();
+                for source in sources {
+                    eligible.extend(ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, actor, Some(source))?);
+                }
             }
             Ok(eligible)
         })();
@@ -150,17 +171,17 @@ impl WasmGame {
     /// references never become authoritative legal actions or bypass payment.
     #[wasm_bindgen(js_name = rememberPriorityAffordability)]
     pub fn remember_priority_affordability(&mut self, references: JsValue) -> Result<(), JsValue> {
-        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else { return Ok(()); };
+        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.clone() else { return Ok(()); };
         let player = ctx.player;
         let references: Vec<PriorityActionRef> = serde_wasm_bindgen::from_value(references)
             .map_err(|error| JsValue::from_str(&format!("invalid affordability references: {error}")))?;
         let mut confirmed = Vec::new();
         let counters = snapshot_id_counters();
         let result = (|| {
-            for actor in self.game.priority_team_players() {
-                for action in ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, actor, None)? {
-                    if references.iter().any(|reference| priority_action_ref(&action) == action_ref_for_matching(reference))
-                        && !confirmed.contains(&action) { confirmed.push(action); }
+            for reference in &references {
+                if let Some(action) = resolve_priority_action(&self.game, &ctx, None, Some(reference))?
+                    && !confirmed.contains(&action) {
+                    confirmed.push(action);
                 }
             }
             self.remember_confirmed_affordability(player, confirmed)
@@ -233,9 +254,9 @@ impl WasmGame {
         let mut candidates = std::collections::VecDeque::new();
         for player in self.game.priority_team_players() {
             for source in ironsmith::decision::priority_analysis_sources(&self.game, player) {
-                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default(), work_units: 0 });
+                candidates.push_back(PriorityCandidate { player, source: Some(source), session: Default::default(), work_units: 0, presentation_checked: false });
             }
-            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default(), work_units: 0 });
+            candidates.push_back(PriorityCandidate { player, source: None, session: Default::default(), work_units: 0, presentation_checked: false });
         }
         self.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
             token,
@@ -244,6 +265,7 @@ impl WasmGame {
             player: ctx.player,
             candidates,
             actions: vec![LegalAction::PassPriority],
+            presentation_actions: Vec::new(),
             provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
         }));
         true
@@ -369,7 +391,18 @@ mod priority_analysis_tests {
                 .card_types(vec![ironsmith::types::CardType::Sorcery])
                 .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Red])).build();
             let spell = wasm.game.create_object_from_card(&card, alice, ironsmith::Zone::Hand);
-            let ctx = ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap();
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            let deferred_view = DecisionView::from_context(&wasm.game, wasm.pending_decision.as_ref().unwrap(), alice, None, None);
+            let DecisionView::Priority { actions: pending, analysis_complete, .. } = deferred_view else { panic!("expected priority"); };
+            assert!(!analysis_complete);
+            assert!(!pending.iter().any(|action| action.object_id == Some(spell.0)), "snapshot must not enumerate undiscovered candidates");
+            assert!(wasm.begin_priority_analysis("unfunded".into()));
+            let mut finished = false;
+            for _ in 0..1000 {
+                if wasm.advance_priority_analysis("unfunded", 8).unwrap() == Some(true) { finished = true; break; }
+            }
+            assert!(finished, "unfunded eligibility analysis must finish");
+            let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.clone() else { panic!() };
             let view = DecisionView::from_context(&wasm.game, &DecisionContext::Priority(ctx.clone()), alice, None, None);
             let DecisionView::Priority { actions, .. } = view else { panic!("expected priority"); };
             let action = actions.iter().find(|action| action.object_id == Some(spell.0)).expect("unfunded sorcery must appear at main-phase timing");
@@ -474,9 +507,10 @@ mod priority_analysis_tests {
             wasm.pending_decision = Some(DecisionContext::Priority(context));
             wasm.priority_analysis_job = Some(Box::new(PriorityAnalysisJob {
                 token: "resource".into(), key: wasm.priority_analysis_key(), game: wasm.game.clone(), player,
-                candidates: std::collections::VecDeque::from([PriorityCandidate { player, source: Some(spell), session: Default::default(), work_units: 0 }]),
+                candidates: std::collections::VecDeque::from([PriorityCandidate { player, source: Some(spell), session: Default::default(), work_units: 0, presentation_checked: false }]),
                 actions: vec![LegalAction::PassPriority],
                 provisional_actions: Vec::new(),
+                presentation_actions: Vec::new(),
             }));
             let mut failed = false;
             for _ in 0..256 {

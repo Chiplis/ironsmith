@@ -2881,6 +2881,7 @@ struct OptionView {
     description: String,
     legal: bool,
     repeatable: bool,
+    point_cost: u32,
     max_count: Option<u32>,
     object_id: Option<u64>,
     object_controller: Option<u8>,
@@ -3283,6 +3284,7 @@ impl DecisionView {
                         description: "Yes".to_string(),
                         legal: boolean.can_accept,
                         repeatable: false,
+                        point_cost: 1,
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
@@ -3293,6 +3295,7 @@ impl DecisionView {
                         description: "No".to_string(),
                         legal: true,
                         repeatable: false,
+                        point_cost: 1,
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
@@ -3320,22 +3323,14 @@ impl DecisionView {
                 for (view, action) in actions.iter_mut().zip(priority.actions.iter()) {
                     view.payment_proven = Some(priority.payment_proven_actions.as_ref().is_none_or(|proven| proven.contains(action)));
                 }
-                let gameplay_priority = !priority.actions.iter().any(|action| matches!(action,
-                    LegalAction::KeepOpeningHand | LegalAction::TakeMulligan
-                    | LegalAction::ContinuePregame | LegalAction::BeginGame
-                    | LegalAction::UsePregameAction { .. }));
-                for actor in game.priority_team_players().into_iter().filter(|_| gameplay_priority) {
-                    let eligible = ironsmith::decision::compute_actions_assuming_mana_for_presentation(game, actor, None)
-                        .unwrap_or_default();
-                    for candidate in eligible {
-                        if !matches!(candidate, LegalAction::CastSpell { .. } | LegalAction::ActivateAbility { .. } | LegalAction::ActivateManaAbility { .. })
-                            || priority.actions.iter().any(|action| action == &candidate) {
-                            continue;
-                        }
-                        let mut action = build_action_view(game, perspective, viewed_cards, actions.len(), &candidate, None);
-                        action.payment_proven = Some(false);
-                        actions.push(action);
+                for candidate in &priority.presentation_actions {
+                    if !matches!(candidate, LegalAction::CastSpell { .. } | LegalAction::ActivateAbility { .. } | LegalAction::ActivateManaAbility { .. })
+                        || priority.actions.iter().any(|action| action == candidate) {
+                        continue;
                     }
+                    let mut action = build_action_view(game, perspective, viewed_cards, actions.len(), candidate, None);
+                    action.payment_proven = Some(false);
+                    actions.push(action);
                 }
                 if decision_player == perspective
                     && let Some(stable_id) = undo_land_stable_id
@@ -3440,6 +3435,7 @@ impl DecisionView {
                                 ),
                                 legal: opt.legal,
                                 repeatable,
+                                point_cost: opt.point_cost,
                                 max_count,
                                 object_id: visible_object_id.map(|id| id.0),
                                 object_controller: visible_object_id
@@ -3473,6 +3469,7 @@ impl DecisionView {
                         description: mode.description.clone(),
                         legal: mode.legal,
                         repeatable: modes.spec.allow_repeated_modes,
+                        point_cost: mode.point_cost,
                         max_count: Some(modes.spec.max_modes.min(u32::MAX as usize) as u32),
                         object_id: None,
                         object_controller: None,
@@ -3504,6 +3501,7 @@ impl DecisionView {
                         description: opt.label.clone(),
                         legal: true,
                         repeatable: false,
+                        point_cost: 1,
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
@@ -3544,6 +3542,7 @@ impl DecisionView {
                             },
                             legal: true,
                             repeatable: false,
+                            point_cost: 1,
                             max_count: Some(1),
                             object_id: visible.then_some(object_id.0),
                             object_controller: visible
@@ -3593,6 +3592,7 @@ impl DecisionView {
                             },
                             legal: true,
                             repeatable: true,
+                            point_cost: 1,
                             max_count: Some(distribute.total),
                             object_id: visible_object_id.map(|object_id| object_id.0),
                             object_controller: visible_object_id
@@ -3631,6 +3631,7 @@ impl DecisionView {
                             description: color_name(color).to_string(),
                             legal: true,
                             repeatable: repeatable_colors,
+                            point_cost: 1,
                             max_count: Some(if repeatable_colors { colors.count } else { 1 }),
                             object_id: None,
                             object_controller: None,
@@ -3664,6 +3665,7 @@ impl DecisionView {
                         ),
                         legal: *available > 0,
                         repeatable: *available > 1,
+                        point_cost: 1,
                         max_count: Some(*available),
                         object_id: None,
                         object_controller: None,
@@ -3724,6 +3726,7 @@ impl DecisionView {
                         description: format!("Permanent: {name}"),
                         legal: true,
                         repeatable: false,
+                        point_cost: 1,
                         max_count: Some(1),
                         object_id: proliferate
                             .eligible_permanents
@@ -3745,6 +3748,7 @@ impl DecisionView {
                             description: format!("Player: {name}"),
                             legal: true,
                             repeatable: false,
+                            point_cost: 1,
                             max_count: Some(1),
                             object_id: None,
                             object_controller: None,
@@ -4746,6 +4750,8 @@ struct GrandMeleeHostLane {
 
 #[wasm_bindgen]
 pub struct WasmGame {
+    /// Internal dispatch output policy; never persisted in a gameplay savepoint.
+    previewing_crypto_requirements: bool,
     runtime_identity_origin_available: bool,
     runtime_savepoints: HashMap<u32, Box<wasm_game_impl::RuntimeSavepoint>>,
     next_runtime_savepoint: u32,

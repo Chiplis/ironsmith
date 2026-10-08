@@ -17,10 +17,10 @@ pub struct RawEvent {
     /// refer to this same occurrence.
     occurrence: Arc<()>,
     provenance: ProvNodeId,
-    /// Receipt proof: both ordinary and delayed triggers were matched before
-    /// a later instruction. Keep the physical event for quantities/history,
-    /// but never discover those triggers again when the receipt is published.
-    triggers_captured: bool,
+    /// Branch-local proof of the requested observer families. Ordinary-only
+    /// matching must not suppress a later request for delayed observers.
+    ordinary_triggers_captured: bool,
+    delayed_triggers_captured: bool,
     /// Proof owned by the completion boundary, copied by value across branches.
     /// A clone can carry the completed receipt without sharing mutable state
     /// with a checkpoint or an alias that predates completion.
@@ -43,12 +43,35 @@ pub struct RawEvent {
 }
 
 impl RawEvent {
+    /// Physical departure evidence for this exact incarnation. Contextual
+    /// source decorations are not departure receipts; phasing is not departure.
+    pub(crate) fn source_departure_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        if let Some(event) = self.downcast::<super::zones::ObjectLeavesGameEvent>() {
+            return (event.object == object).then_some(&event.snapshot);
+        }
+        self.downcast::<super::zones::ZoneChangeEvent>()?
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.object_id == object)
+    }
+
+    /// Exact physical source evidence, including characteristics at phasing.
+    pub(crate) fn source_last_known_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        if let Some(event) = self.downcast::<super::PermanentPhasedOutEvent>() {
+            return (event.permanent == object)
+                .then_some(event.snapshot.as_ref())
+                .flatten();
+        }
+        self.source_departure_snapshot(object)
+    }
+
     pub fn new<E: GameEventType + 'static>(event: E, provenance: ProvNodeId) -> Self {
         Self {
             inner: Arc::new(event),
             occurrence: Arc::new(()),
             provenance,
-            triggers_captured: false,
+            ordinary_triggers_captured: false,
+            delayed_triggers_captured: false,
             completed_action_provenance: None,
             simultaneous_batch: None,
             counter_trigger_amount: None,
@@ -64,7 +87,8 @@ impl RawEvent {
             inner: Arc::from(event),
             occurrence: Arc::new(()),
             provenance,
-            triggers_captured: false,
+            ordinary_triggers_captured: false,
+            delayed_triggers_captured: false,
             completed_action_provenance: None,
             simultaneous_batch: None,
             counter_trigger_amount: None,
@@ -157,11 +181,16 @@ impl RawEvent {
         &self.player_tags
     }
 
-    pub fn defending_player_reference(&self) -> Option<crate::combat_state::DefendingPlayerReference> {
+    pub fn defending_player_reference(
+        &self,
+    ) -> Option<crate::combat_state::DefendingPlayerReference> {
         self.defending_player_reference
     }
     #[must_use]
-    pub fn with_defending_player_reference(mut self, reference: crate::combat_state::DefendingPlayerReference) -> Self {
+    pub fn with_defending_player_reference(
+        mut self,
+        reference: crate::combat_state::DefendingPlayerReference,
+    ) -> Self {
         self.defending_player_reference = Some(reference);
         self
     }
@@ -189,12 +218,54 @@ impl RawEvent {
     }
 
     pub(crate) fn triggers_captured(&self) -> bool {
-        self.triggers_captured
+        self.ordinary_triggers_captured && self.delayed_triggers_captured
+    }
+
+    pub(crate) fn ordinary_triggers_captured(&self) -> bool {
+        self.ordinary_triggers_captured
+    }
+    pub(crate) fn delayed_triggers_captured(&self) -> bool {
+        self.delayed_triggers_captured
+    }
+    pub(crate) fn mark_ordinary_triggers_captured(&mut self) {
+        self.ordinary_triggers_captured = true;
+    }
+    pub(crate) fn mark_delayed_triggers_captured(&mut self) {
+        self.delayed_triggers_captured = true;
+    }
+
+    /// Enrich an alias of this exact occurrence without sharing mutable proof
+    /// across speculative branches or changing its payload/provenance.
+    pub(crate) fn inherit_trigger_capture(&mut self, receipt: &Self) {
+        if self.ptr_eq(receipt) {
+            self.ordinary_triggers_captured |= receipt.ordinary_triggers_captured;
+            self.delayed_triggers_captured |= receipt.delayed_triggers_captured;
+        }
     }
 
     /// Only the matching boundary may assert this receipt proof.
     pub(crate) fn mark_triggers_captured(&mut self) {
-        self.triggers_captured = true;
+        self.mark_ordinary_triggers_captured();
+        self.mark_delayed_triggers_captured();
+    }
+
+    /// An ordinary matching receipt owns its normalized physical observation.
+    /// Preserve a newly completed semantic receipt over an older raw row, and
+    /// preserve this wrapper's contextual bindings through the shared restorer.
+    pub(crate) fn with_retained_trigger_capture(&self, receipt: &Self) -> Self {
+        if !self.ptr_eq(receipt) {
+            return self.clone();
+        }
+        if receipt.ordinary_triggers_captured()
+            && (receipt.completed_action_provenance().is_some()
+                || self.completed_action_provenance().is_none())
+        {
+            self.with_completed_action_receipt(receipt)
+        } else {
+            let mut event = self.clone();
+            event.inherit_trigger_capture(receipt);
+            event
+        }
     }
 
     pub(crate) fn completed_action_provenance(&self) -> Option<ProvNodeId> {
@@ -226,7 +297,7 @@ impl RawEvent {
         event.provenance = completed.provenance;
         event.completed_action_provenance = completed.completed_action_provenance.clone();
         event.simultaneous_batch = completed.simultaneous_batch;
-        event.triggers_captured |= completed.triggers_captured;
+        event.inherit_trigger_capture(completed);
         if event.source_snapshot.is_none() {
             event.source_snapshot = completed.source_snapshot.clone();
         }
@@ -252,9 +323,11 @@ impl RawEvent {
         self.counter_trigger_amount.map(Ok).unwrap_or_else(|| {
             self.downcast::<super::MarkersChangedEvent>()
                 .map(|event| i64::from(event.amount))
-                .ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
-                    "counter trigger group lost its placement receipt".into(),
-                ))
+                .ok_or_else(|| {
+                    crate::effects::ExecutionError::IncompleteEvidence(
+                        "counter trigger group lost its placement receipt".into(),
+                    )
+                })
         })
     }
 
@@ -320,7 +393,8 @@ impl RawEvent {
             inner: Arc::new(event),
             occurrence: self.occurrence.clone(),
             provenance: self.provenance,
-            triggers_captured: self.triggers_captured,
+            ordinary_triggers_captured: self.ordinary_triggers_captured,
+            delayed_triggers_captured: self.delayed_triggers_captured,
             completed_action_provenance: self.completed_action_provenance.clone(),
             simultaneous_batch: self.simultaneous_batch,
             counter_trigger_amount: self.counter_trigger_amount,
@@ -341,13 +415,20 @@ impl std::fmt::Debug for RawEvent {
         f.debug_struct("RawEvent")
             .field("kind", &self.kind())
             .field("provenance", &self.provenance)
-            .field("triggers_captured", &self.triggers_captured)
+            .field(
+                "ordinary_triggers_captured",
+                &self.ordinary_triggers_captured,
+            )
+            .field("delayed_triggers_captured", &self.delayed_triggers_captured)
             .field(
                 "completed_action_provenance",
                 &self.completed_action_provenance,
             )
             .field("simultaneous_batch", &self.simultaneous_batch)
-            .field("defending_player_reference", &self.defending_player_reference)
+            .field(
+                "defending_player_reference",
+                &self.defending_player_reference,
+            )
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)
             .field("player_tags", &self.player_tags)

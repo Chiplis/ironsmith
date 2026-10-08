@@ -30,16 +30,22 @@ pub(crate) fn freeze_completed_lifecycle_events(
                 ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
                     object, &observed, &effects,
                 )
-            }).transpose()?;
+            })
+            .transpose()?;
         if let Some(inner) = event.downcast::<crate::events::EnterBattlefieldEvent>() {
             let mut entry = inner.clone();
             entry.completed_snapshot = snapshot;
             if entry.from == crate::zone::Zone::Stack {
-                entry.emerge_sacrifice = observed.object(entry.object)
+                entry.emerge_sacrifice = observed
+                    .object(entry.object)
                     .filter(|object| object.optional_costs_paid.was_paid_label("Emerge"))
-                    .and_then(|object| object.cast_tagged_objects.get(
-                        crate::tag::SOURCE_EMERGE_SACRIFICE_TAG))
-                    .filter(|receipts| receipts.len() <= 1).cloned();
+                    .and_then(|object| {
+                        object
+                            .cast_tagged_objects
+                            .get(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG)
+                    })
+                    .filter(|receipts| receipts.len() <= 1)
+                    .cloned();
             }
             *event = event.with_inner_event(entry);
         } else {
@@ -119,9 +125,18 @@ pub(crate) fn retain_departed_lifecycle_snapshots(
         {
             continue;
         }
+        // These are actual sibling-original receipts supplied by the group
+        // owner, not a lookup in later mutable history or the trigger queue.
         let snapshot = observations
             .iter()
             .rev()
+            .chain(
+                game.effect_store
+                    .retained_original_observation_scopes
+                    .iter()
+                    .rev()
+                    .flat_map(|scope| scope.iter().rev()),
+            )
             .filter_map(|observation| observation.downcast::<crate::events::ZoneChangeEvent>())
             .filter(|change| change.from == crate::zone::Zone::Battlefield)
             .flat_map(|change| change.snapshots())

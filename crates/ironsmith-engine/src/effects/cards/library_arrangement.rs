@@ -109,21 +109,5 @@ pub(crate) fn execute_library_instruction_atomically<'a>(
         &mut crate::effects::ExecutionContext<'a>,
     ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effect::EffectOutcome::count(0));
-    }
-    let checkpoint = game.clone();
-    let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = body(game, ctx);
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context.restore(ctx);
-    }
-    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effect::EffectOutcome::count(0));
-    }
-    result
+    crate::effects::composition::execute_compound(game, ctx, body)
 }

@@ -28,13 +28,23 @@ impl EffectExecutor for TagTriggeringDamageTargetEffect {
         Box::new(self.clone())
     }
 
-    fn is_resolution_prelude(&self) -> bool {
-        true
+    fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
+        Some(self)
     }
 
     fn execute(
         &self,
         game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::ResolutionPreludeBinding::bind_resolution_prelude(self, game, ctx)
+    }
+}
+
+impl crate::effects::ResolutionPreludeBinding for TagTriggeringDamageTargetEffect {
+    fn bind_resolution_prelude(
+        &self,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let event = ctx.triggering_event.as_ref().ok_or_else(|| {

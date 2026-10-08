@@ -164,3 +164,12 @@ test('first-strike and regular damage have distinct recurring stops', () => {
   assert.equal(stops.stopReason(regular), null);
   assert.equal(stops.stopReason({ ...damage, turn_number: 3 }), 'stop at FirstStrikeDamage');
 });
+
+test('resuming phase passing releases a manual hold but preserves phase stops', () => {
+  const { stops } = castWindow();
+  stops.hold(onStack());
+  stops.cycleStop('phase:Upkeep', onStack());
+  stops.resume(onStack());
+  assert.equal(stops.stopReason(onStack()), 'stop at Upkeep');
+  assert.equal(stops.getSnapshot().stops['phase:Upkeep'], 'once');
+});

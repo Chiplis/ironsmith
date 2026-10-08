@@ -117,7 +117,21 @@ impl EffectExecutor for BeholdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        super::execute_compound(game, ctx, |game, ctx| self.execute_behold(game, ctx))
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| self.execute_behold_with_outputs(game, ctx),
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -130,11 +144,11 @@ impl EffectExecutor for BeholdEffect {
 }
 
 impl BeholdEffect {
-    fn execute_behold(
+    fn execute_behold_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
@@ -143,7 +157,9 @@ impl BeholdEffect {
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let required = self.count as usize;
         if required == 0 {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
 
         let (pool, hidden_hand_choice) = candidates(game, chooser, ctx.source, self.subtype);
@@ -155,7 +171,9 @@ impl BeholdEffect {
             if ctx.optional_action {
                 // "You may behold a Dragon. If you do, ...": beholding nothing
                 // is simply not doing it.
-                return Ok(EffectOutcome::impossible());
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::impossible(),
+                ));
             }
             return Err(ExecutionError::Impossible(format!(
                 "Not enough objects to behold ({} needed, {} available)",
@@ -190,7 +208,9 @@ impl BeholdEffect {
             make_decision(game, ctx.decision_maker, chooser, Some(ctx.source), spec)
         };
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let chosen = if hidden_hand_choice {
             // No fill-up: it would pick different cards on peers holding
@@ -233,7 +253,9 @@ impl BeholdEffect {
             game.mark_hidden_cards_publicly_revealed(&revealed_from_hand);
         }
         if chosen.len() < required {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         }
 
         let chosen_memory = chosen
@@ -245,7 +267,7 @@ impl BeholdEffect {
             .filter(|snapshot| revealed_from_hand.contains(&snapshot.object_id))
             .cloned()
             .collect();
-        let reveal = crate::effects::cards::reveal_objects(
+        let reveal = crate::effects::cards::reveal_objects_with_outputs(
             game,
             ctx,
             revealed,
@@ -254,11 +276,18 @@ impl BeholdEffect {
             None,
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::with_objects(chosen).with_chosen_object_memory(chosen_memory),
+        Ok(crate::effects::CompletedEffectOutputs::from_children(
             [reveal],
+            |children| {
+                EffectOutcome::aggregate_with_primary_result(
+                    EffectOutcome::with_objects(chosen).with_chosen_object_memory(chosen_memory),
+                    children,
+                )
+            },
         ))
     }
 }

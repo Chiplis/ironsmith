@@ -20,38 +20,75 @@ impl EffectExecutor for LookAtObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if self.permit_while_exiled {
             let [reference] = self.filter.tagged_constraints.as_slice() else {
-                return Err(ExecutionError::IncompleteEvidence("private exile permission has no single exact antecedent".into()));
+                return Err(ExecutionError::IncompleteEvidence(
+                    "private exile permission has no single exact antecedent".into(),
+                ));
             };
-            let mut remaining = self.filter.clone(); remaining.tagged_constraints.clear(); remaining.zone = None;
+            let mut remaining = self.filter.clone();
+            remaining.tagged_constraints.clear();
+            remaining.zone = None;
             if self.filter.zone != Some(Zone::Exile)
                 || reference.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
                 || reference.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
                 || remaining != crate::target::ObjectFilter::default()
-            { return Err(ExecutionError::IncompleteEvidence("private exile permission has an unsupported object scope".into())); }
-            let snapshots = ctx.get_tagged_all(&reference.tag).cloned().ok_or_else(||
-                ExecutionError::IncompleteEvidence("private exile permission lost its exact antecedent".into()))?;
-            let viewers = resolve_player_filter_to_list(game, &self.viewer, &ctx.filter_context(game), ctx)?;
+            {
+                return Err(ExecutionError::IncompleteEvidence(
+                    "private exile permission has an unsupported object scope".into(),
+                ));
+            }
+            let snapshots = ctx.get_tagged_all(&reference.tag).cloned().ok_or_else(|| {
+                ExecutionError::IncompleteEvidence(
+                    "private exile permission lost its exact antecedent".into(),
+                )
+            })?;
+            let viewers =
+                resolve_player_filter_to_list(game, &self.viewer, &ctx.filter_context(game), ctx)?;
             let mut entitled = 0;
             for snapshot in snapshots {
-                if snapshot.zone != Zone::Exile || !game.object(snapshot.object_id).is_some_and(|object| object.zone == Zone::Exile)
-                    || !game.is_face_down(snapshot.object_id) { continue; }
-                for viewer in &viewers { game.grant_face_down_exile_view(snapshot.object_id, *viewer); }
+                if snapshot.zone != Zone::Exile
+                    || !game
+                        .object(snapshot.object_id)
+                        .is_some_and(|object| object.zone == Zone::Exile)
+                    || !game.is_face_down(snapshot.object_id)
+                {
+                    continue;
+                }
+                for viewer in &viewers {
+                    game.grant_face_down_exile_view(snapshot.object_id, *viewer);
+                }
                 entitled += 1;
             }
-            return Ok(EffectOutcome::count(entitled));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(entitled),
+            ));
         }
         let filter_ctx = ctx.filter_context(game);
         let subjects = match resolve_player_filter_to_list(game, &self.subject, &filter_ctx, ctx) {
             Ok(subjects) => subjects,
-            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(ExecutionError::InvalidTarget) => {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
+            }
             Err(err) => return Err(err),
         };
         let viewers = resolve_player_filter_to_list(game, &self.viewer, &filter_ctx, ctx)?;
 
         if subjects.is_empty() || viewers.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         // An existing object reference can name a card outside the battlefield.
@@ -79,7 +116,9 @@ impl EffectExecutor for LookAtObjectsEffect {
         }
 
         if viewed.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let mut groups: Vec<(Zone, Vec<ObjectId>)> = Vec::new();
@@ -96,7 +135,7 @@ impl EffectExecutor for LookAtObjectsEffect {
         for subject in subjects {
             for viewer in &viewers {
                 for (zone, cards) in &groups {
-                    observations.push(super::look_at_cards(
+                    observations.push(super::look_at_cards_with_outputs(
                         game,
                         ctx,
                         *viewer,
@@ -104,9 +143,11 @@ impl EffectExecutor for LookAtObjectsEffect {
                         *zone,
                         cards,
                         description.clone(),
-                    ));
+                    )?);
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
                     }
                 }
             }
@@ -122,11 +163,16 @@ impl EffectExecutor for LookAtObjectsEffect {
             })
             .map(|snapshot| Clone::clone(&snapshot))
             .collect::<Vec<_>>();
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::count(viewed.len() as i32)
-                .with_chosen_object_memory(memory.clone())
-                .with_affected_object_memory(memory),
+        Ok(crate::effects::CompletedEffectOutputs::from_children(
             observations,
+            |children| {
+                EffectOutcome::aggregate_with_primary_result(
+                    EffectOutcome::count(viewed.len() as i32)
+                        .with_chosen_object_memory(memory.clone())
+                        .with_affected_object_memory(memory),
+                    children,
+                )
+            },
         ))
     }
 }

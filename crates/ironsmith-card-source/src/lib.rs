@@ -279,7 +279,7 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
             legalities
                 .get(*format)
                 .and_then(Value::as_str)
-                .is_some_and(|status| status == "legal")
+                .is_some_and(|status| matches!(status, "legal" | "restricted"))
         })
 }
 
@@ -345,6 +345,25 @@ fn nonempty(value: Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restricted_card_is_registered_without_explicit_include() {
+        let mut card = serde_json::json!({
+            "name": "Ancestral Recall",
+            "mana_cost": "{U}",
+            "type_line": "Instant",
+            "oracle_text": "Target player draws three cards.",
+            "legalities": {"vintage": "restricted", "legacy": "banned"}
+        });
+        let includes = BTreeSet::new();
+        let record = build_registry_card_record(&card, &includes).unwrap();
+        assert_eq!(record.name, "Ancestral Recall");
+        card["legalities"]["vintage"] = Value::from("banned");
+        assert!(build_registry_card_record(&card, &includes).is_none());
+        card["legalities"]["vintage"] = Value::from("restricted");
+        card["digital"] = Value::from(true);
+        assert!(build_registry_card_record(&card, &includes).is_none());
+    }
 
     #[test]
     fn normalizes_split_separator() {

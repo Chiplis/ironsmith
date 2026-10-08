@@ -1,4 +1,5 @@
-import { createPriorityStops } from "@/lib/priority-stops";
+import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
+import { COMBAT_STEPS, createPriorityStops } from "@/lib/priority-stops";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
 import { improvePayment } from "@/lib/payment-analysis.js";
@@ -202,7 +203,9 @@ function decodeAttackTargetChoice(choice) {
     if ("Player" in choice) return { kind: "player", player: Number(choice.Player) };
     if ("Planeswalker" in choice)
       return { kind: "planeswalker", object: Number(choice.Planeswalker) };
+    if ("Battle" in choice) return { kind: "battle", object: Number(choice.Battle) };
     if (choice.kind === "player") return { kind: "player", player: Number(choice.player) };
+    if (choice.kind === "battle") return { kind: "battle", object: Number(choice.object) };
     if (choice.kind === "planeswalker")
       return { kind: "planeswalker", object: Number(choice.object) };
   }
@@ -214,7 +217,7 @@ function defaultOpponentAttackerDeclarations(decision) {
   for (const option of decision.attacker_options || []) {
     if (!option.must_attack) continue;
     const firstTarget = (option.valid_targets || [])[0];
-    if (!firstTarget) continue;
+    if (firstTarget == null) continue;
     declarations.push({
       creature: Number(option.creature),
       target: decodeAttackTargetChoice(firstTarget),
@@ -827,6 +830,7 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [autoResolveEnabled, setAutoResolveEnabled] = useState(false);
+  const [phasePassing, setPhasePassing] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
   const [priorityStops] = useState(createPriorityStops);
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
@@ -1256,7 +1260,18 @@ export function GameProvider({ children }) {
           if (st.decision.kind === "priority") {
             const isLocalOffTurnPriority = samePlayerId(st.decision.player, st.perspective);
             const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-            if (!passAction) { holdReason = "no pass action available"; break; }
+            if (!passAction) {
+              if (isLocalOffTurnPriority) { holdReason = "no pass action available"; break; }
+              if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
+              const command = await buildOpponentDecisionCommand(st, currentGame);
+              if (!command) { holdReason = "no automatic priority response available"; break; }
+              const decisionBefore = summarizeDecision(st.decision);
+              st = await currentGame.dispatch(command);
+              autoPasses += 1;
+              trace.push({ kind: "opponent_required_priority_choice", decision_before: decisionBefore,
+                decision_after: summarizeDecision(st?.decision || null) });
+              continue;
+            }
             const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
             if (!isLocalOffTurnPriority && isCustomPassAction) {
               if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
@@ -1303,12 +1318,19 @@ export function GameProvider({ children }) {
             });
             continue;
           }
+          if (samePlayerId(st.decision.player, st.perspective)) {
+            holdReason = "local decision requires input";
+            break;
+          }
           if (autoDeclares >= 40) { holdReason = "auto-declare safety limit reached"; break; }
           if (st.decision.kind === "attackers") {
-            const declarations = defaultOpponentAttackerDeclarations(st.decision);
+            const command = currentGame.getDefaultSelectionCommand
+              ? await currentGame.getDefaultSelectionCommand()
+              : { type: "declare_attackers", declarations: defaultOpponentAttackerDeclarations(st.decision) };
+            if (!command) { holdReason = "no legal attacker response available"; break; }
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await currentGame.dispatch({ type: "declare_attackers", declarations });
+            st = await currentGame.dispatch(command);
             autoDeclares += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1325,7 +1347,11 @@ export function GameProvider({ children }) {
           if (st.decision.kind === "blockers") {
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await currentGame.dispatch({ type: "declare_blockers", declarations: [] });
+            const command = currentGame.getDefaultSelectionCommand
+              ? await currentGame.getDefaultSelectionCommand()
+              : { type: "declare_blockers", declarations: [] };
+            if (!command) { holdReason = "no legal blocker response available"; break; }
+            st = await currentGame.dispatch(command);
             autoDeclares += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1339,8 +1365,16 @@ export function GameProvider({ children }) {
             });
             continue;
           }
-          holdReason = "opponent has non-priority decision";
-          break;
+          const command = await buildOpponentDecisionCommand(st, currentGame);
+          if (!command) { holdReason = "no automatic response available"; break; }
+          const decisionBefore = summarizeDecision(st.decision);
+          st = command.type === "cancel_decision"
+            ? await currentGame.cancelDecision()
+            : await currentGame.dispatch(command);
+          autoDeclares += 1;
+          trace.push({ kind: "opponent_effect_decision", decision_before: decisionBefore,
+            decision_after: summarizeDecision(st?.decision || null) });
+          continue;
         }
         if (holdReason) break;
         if (!st || st.game_over || st.decision) break;
@@ -1839,7 +1873,7 @@ export function GameProvider({ children }) {
       multiplayerAutomationAttemptRef.current = "";
       return;
     }
-    if (multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
+    if (phasePassing || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
     if (stateRef.current !== state) return;
 
     const currentState = state;
@@ -1901,6 +1935,7 @@ export function GameProvider({ children }) {
   }, [
     autoPassEnabled,
     autoResolveEnabled,
+    phasePassing,
     priorityStops,
     priorityStopsState,
     finishMultiplayerSubmission,
@@ -2323,6 +2358,7 @@ export function GameProvider({ children }) {
   const resolveAllRef = useRef(null);
   const stopResolveAll = useCallback(() => {
     resolveAllRef.current = null;
+    setPhasePassing(false);
   }, []);
   const startResolveAll = useCallback(() => {
     const current = stateRef.current;
@@ -2339,8 +2375,32 @@ export function GameProvider({ children }) {
       inFlight: false,
       dispatchedFrom: null,
     };
+    setPhasePassing(false);
     setResolveAllTick((tick) => tick + 1);
   }, [stateRef, priorityStops]);
+
+  const togglePhasePassing = useCallback(() => {
+    if (resolveAllRef.current?.phases) {
+      stopResolveAll();
+      return;
+    }
+    const current = stateRef.current;
+    if (!current || current.game_over) return;
+    // Explicitly resume automation, but leave phase/step stops intact.
+    priorityStops.resume(current);
+    setAutoPassEnabled(true);
+    setHoldRule("never");
+    resolveAllRef.current = {
+      phases: true,
+      turn: current.turn_number ?? null,
+      stackSize: Number(current.stack_size || 0),
+      passes: 0,
+      inFlight: false,
+      dispatchedFrom: null,
+    };
+    setPhasePassing(true);
+    setResolveAllTick(tick => tick + 1);
+  }, [stateRef, stopResolveAll, priorityStops]);
 
   useEffect(() => {
     const run = resolveAllRef.current;
@@ -2349,7 +2409,7 @@ export function GameProvider({ children }) {
     if (
       !state
       || state.game_over
-      || stackSize <= 0
+      || (stackSize <= 0 && !run?.phases)
       || (run && (state.turn_number ?? null) !== run.turn)
       || (run && run.passes >= 200)
     ) {
@@ -2357,17 +2417,33 @@ export function GameProvider({ children }) {
       return;
     }
     const top = Array.isArray(state.stack_objects) ? state.stack_objects[0] : null;
-    if (run && stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
+    if (run && !run.phases && stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
       stopResolveAll();
       return;
     }
     if (run) run.stackSize = stackSize;
     const decision = state.decision;
-    if (decision?.kind !== "priority" || !samePlayerId(decision.player, state.perspective)) return;
+    if (!samePlayerId(decision?.player, state.perspective)) return;
+    const passCombat = run?.phases && decision?.kind === "attackers";
+    if (decision?.kind !== "priority" && !passCombat) return;
+    if (passCombat && (
+      (decision.attacker_options || []).some(option => option.must_attack)
+      || priorityStopsState.stops['phase:Combat']
+      || COMBAT_STEPS.some(step => priorityStopsState.stops[`step:${step}`])
+    )) {
+      // A combat stop also opts out of declaring no attackers automatically:
+      // otherwise that declaration would remove the later blocking window.
+      stopResolveAll();
+      return;
+    }
     if (run?.dispatchedFrom === state) return;
-    if (priorityStops.stopReason(state) || holdRule === "always") return;
+    if (priorityStops.stopReason(state) || holdRule === "always") {
+      if (run?.phases) stopResolveAll();
+      return;
+    }
+    if (run?.phases && state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return;
     const passAction = findPassPriorityAction(decision);
-    if (!passAction || (passAction.label && passAction.label !== "Pass priority")) {
+    if (!passCombat && (!passAction || (passAction.label && passAction.label !== "Pass priority"))) {
       stopResolveAll();
       return;
     }
@@ -2390,8 +2466,9 @@ export function GameProvider({ children }) {
         run.passes += 1;
       }
       Promise.resolve(dispatch(
-        { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
-        passAction.label
+        passCombat ? { type: "declare_attackers", declarations: [] }
+          : { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
+        passCombat ? "No attackers declared" : passAction.label
       ))
         .catch(() => {
           stopResolveAll();
@@ -2404,7 +2481,7 @@ export function GameProvider({ children }) {
     }, 25);
     return () => clearTimeout(timer);
   }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
-    resolveAllTick, state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule]);
+    resolveAllTick, phasePassing, state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule]);
 
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.
@@ -3081,6 +3158,8 @@ export function GameProvider({ children }) {
       cancelBackgroundDispatch,
       setExternalAutoPassGate,
       startResolveAll,
+      phasePassing,
+      togglePhasePassing,
     }),
     [
       setState,
@@ -3118,6 +3197,8 @@ export function GameProvider({ children }) {
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
       startResolveAll,
+      phasePassing,
+      togglePhasePassing,
     ]
   );
 

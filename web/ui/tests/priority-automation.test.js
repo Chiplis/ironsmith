@@ -261,13 +261,13 @@ test("multiplayer smart auto-pass does not confirm custom pass actions", () => {
   assert.equal(result.holdReason, CUSTOM_PASS_ACTION_HOLD_REASON);
 });
 
-test('off-turn combat priority waits for hand analysis before passing', () => {
+test('off-turn never-hold passes even when background analysis stalls', () => {
   const decision = { kind: 'priority', player: 1, analysis_complete: false,
     actions: [{ index: 0, kind: 'pass_priority', label: 'Pass priority' }] };
   const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'never', decision,
     currentState: { perspective: 1, active_player: 0, phase: 'combat', stack_size: 0 } });
-  assert.equal(result.command, null);
-  assert.equal(result.holdReason, 'checking playable actions');
+  assert.deepEqual(result.command, { type: 'priority_action', action_index: 0 });
+  assert.equal(result.holdReason, null);
 });
 
 test('off-turn priority respects never-hold even with playable actions', () => {
@@ -301,4 +301,25 @@ test('off-turn priority still passes when only mana and undo actions remain', ()
   const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'never', decision,
     currentState: { perspective: 1, active_player: 0, phase: 'combat', stack_size: 0 } });
   assert.deepEqual(result.command, { type: 'priority_action', action_index: 0 });
+});
+
+test('an unrelated hold setting never blocks off-turn phase progression on analysis', () => {
+  for (const [holdRule, phase] of [['never', 'combat'], ['stack', 'FirstMain'],
+    ['main', 'combat'], ['combat', 'FirstMain'], ['ending', 'FirstMain']]) {
+    const decision = { kind: 'priority', player: 1, analysis_complete: false,
+      actions: [{ index: 0, kind: 'pass_priority', label: 'Pass priority', action_ref: { kind: 'pass_priority' } }] };
+    const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule, decision,
+      currentState: { perspective: 1, active_player: 0, phase, stack_size: 0 } });
+    assert.deepEqual(result.command, { type: 'priority_action', action_index: 0,
+      action_ref: { kind: 'pass_priority' } }, `${holdRule} in ${phase}`);
+  }
+});
+
+test('an explicit playable-action hold still waits for unfinished analysis', () => {
+  const decision = { kind: 'priority', player: 1, analysis_complete: false,
+    actions: [{ index: 0, kind: 'pass_priority', label: 'Pass priority' }] };
+  const result = buildMultiplayerSmartAutoPass({ autoPassEnabled: true, holdRule: 'if_actions', decision,
+    currentState: { perspective: 1, active_player: 0, phase: 'combat', stack_size: 0 } });
+  assert.equal(result.command, null);
+  assert.equal(result.holdReason, 'checking playable actions');
 });

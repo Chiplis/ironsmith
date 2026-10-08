@@ -247,11 +247,7 @@ pub(super) fn generate_damage_triggers(
         // Delayed triggers ("whenever that creature deals combat damage to a
         // player this turn") watch these events too; the simultaneous path
         // only consults abilities on objects.
-        for trigger in
-            crate::triggers::check_delayed_triggers_for_simultaneous_events(game, &trigger_events)
-        {
-            trigger_queue.add(trigger);
-        }
+        queue_delayed_triggers_for_simultaneous_events(game, trigger_queue, &trigger_events);
         queue_triggers_for_simultaneous_events(game, trigger_queue, trigger_events);
         game.clear_combat_damage_player_batch_hits();
         game.clear_combat_damage_object_batch_hits();

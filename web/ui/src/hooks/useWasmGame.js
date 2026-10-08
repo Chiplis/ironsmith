@@ -49,6 +49,7 @@ const WORKER_METHODS = [
   "finishPuzzleSetup",
   "forfeitPlayer",
   "getCardSemanticScore",
+  "getDefaultSelectionCommand",
   "getExternalCardRoutes",
   "getEmbeddedCardCatalogIndexJson",
   "getEmbeddedCardSourceJson",

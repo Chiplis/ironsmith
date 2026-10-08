@@ -1,8 +1,8 @@
 //! Generic counters placed on players.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_player_filter, resolve_nonnegative_u32};
+use crate::effects::CompletedEffectOutputs;
+use crate::effects::helpers::{resolve_nonnegative_u32, resolve_player_filter};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -24,6 +24,34 @@ impl PlayerCountersEffect {
             player,
         }
     }
+    /// Resolve the actual request at its authored selection boundary. Both
+    /// ordinary and staged gateways use this selector before counter handling.
+    pub(crate) fn selected_counter_event(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::events::Event>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let count = resolve_nonnegative_u32(game, &self.count, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        Ok(Some(
+            crate::events::Event::put_player_counters(
+                player,
+                self.counter_type,
+                count,
+                ctx.cause.clone(),
+            )
+            .with_provenance(ctx.provenance),
+        ))
+    }
 }
 
 impl EffectExecutor for PlayerCountersEffect {
@@ -36,11 +64,20 @@ impl EffectExecutor for PlayerCountersEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Replacement choices are deferred until the counter event is applied.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(crate::effects::counters::prepare_player_counter_instruction(self.clone(), ctx))
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 
     fn execute(
@@ -68,20 +105,11 @@ impl EffectExecutor for PlayerCountersEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let player = resolve_player_filter(game, &self.player, ctx)?;
-                if ctx.decision_maker.awaiting_choice() {
+                let Some(event) = self.selected_counter_event(game, ctx)? else {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
-                }
-                let count = resolve_nonnegative_u32(game, &self.count, ctx)?;
-                let event = crate::events::Event::put_player_counters(
-                    player,
-                    self.counter_type,
-                    count,
-                    ctx.cause.clone(),
-                )
-                .with_provenance(ctx.provenance);
+                };
                 crate::effects::counters::execute_player_counter_placement_with_outputs(
                     game, ctx, event,
                 )

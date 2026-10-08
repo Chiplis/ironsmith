@@ -25,42 +25,58 @@ impl EffectExecutor for UmbraArmorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
-            let attached_to = game.object(self.aura).and_then(|aura| aura.attached_to);
-            let mut children = Vec::new();
-            if let Some(permanent) = attached_to.and_then(|target| target.object_id()) {
-                children.push(
-                    crate::effects::ClearDamageEffect::specific(permanent)
-                        .execute_child(game, ctx)?,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let attached_to = game.object(self.aura).and_then(|aura| aura.attached_to);
+                let mut children = Vec::new();
+                if let Some(permanent) = attached_to.and_then(|target| target.object_id()) {
+                    children.push(
+                        crate::effects::ClearDamageEffect::specific(permanent)
+                            .execute_child_with_outputs(game, ctx)?,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
                 }
-            }
-            let Some(receipt) = crate::events::processing::process_destroy_scoped(
-                game,
-                self.aura,
-                Some(ctx.source),
-                ctx,
-                None,
-            )?
-            else {
-                return Ok(EffectOutcome::aggregate_with_primary_result(
-                    EffectOutcome::count(0),
-                    children,
-                ));
-            };
-            let destroyed = crate::events::processing::finish_destroy_receipts(
-                game,
-                ctx,
-                EffectOutcome::resolved(),
-                vec![receipt],
-            )?;
-            let summary = destroyed.summary_projection();
-            children.push(destroyed);
-            Ok(EffectOutcome::aggregate_with_primary_result(
-                summary, children,
-            ))
-        })
+                let Some(receipt) = crate::events::processing::process_destroy_scoped(
+                    game,
+                    self.aura,
+                    Some(ctx.source),
+                    ctx,
+                    None,
+                )?
+                else {
+                    return Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
+                        EffectOutcome::count(0),
+                        children,
+                    ));
+                };
+                let destroyed = crate::events::processing::finish_destroy_receipts_with_outputs(
+                    game,
+                    ctx,
+                    EffectOutcome::resolved(),
+                    vec![receipt],
+                )?;
+                let summary = destroyed.outcome.summary_projection();
+                children.push(destroyed);
+                Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
+                    summary, children,
+                ))
+            },
+        )
     }
 }

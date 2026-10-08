@@ -22,10 +22,32 @@ impl crate::effects::SimultaneousEffectProposal for DiscardHandProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-            game.mark_hidden_cards_publicly_revealed(&self.revealed);
-            discard_hand_cards(game, ctx, self.player, self.cards)
-        })
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                game.mark_hidden_cards_publicly_revealed(&self.revealed);
+                discard_hand_cards_with_outputs(game, ctx, self.player, self.cards)
+            },
+        )
+        .map(crate::effects::SimultaneousEffectCommit::finished)
     }
 }
 
@@ -107,17 +129,35 @@ impl EffectExecutor for DiscardHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         // The opening and the physical discard share the native instruction
         // transaction. A later replacement pause/error must restore both;
         // externally published information remains pinned by the existing
         // payment-disclosure owner outside this GameState checkpoint.
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-            // CR 603.2c: one event for "one or more" discard triggers.
-            let opened_batch = game.open_simultaneous_action();
-            let outcome = execute_discard_hand(self, game, ctx);
-            game.close_simultaneous_action(opened_batch);
-            outcome
-        })
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                // CR 603.2c: one event for "one or more" discard triggers.
+                let opened_batch = game.open_simultaneous_action();
+                let outcome = execute_discard_hand(self, game, ctx);
+                game.close_simultaneous_action(opened_batch);
+                outcome
+            },
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -129,7 +169,7 @@ fn execute_discard_hand(
     this: &DiscardHandEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let player_id = resolve_player_filter(game, &this.player, ctx)?;
 
     let hand_cards: Vec<_> = game
@@ -152,20 +192,36 @@ fn execute_discard_hand(
             .collect();
         let opened = if ctx.targets_are_cost_choices {
             game.reveal_private_hidden_cards_publicly_as_cost(
-                &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", ctx.prospective_cost_payment,
+                &mut *ctx.decision_maker,
+                player_id,
+                ctx.source,
+                &to_reveal,
+                "Reveal the cards you discard",
+                ctx.prospective_cost_payment,
             )
         } else {
             game.reveal_private_hidden_cards_publicly(
-                &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", false,
+                &mut *ctx.decision_maker,
+                player_id,
+                ctx.source,
+                &to_reveal,
+                "Reveal the cards you discard",
+                false,
             )
         };
         if opened.is_none() {
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            return Err(ExecutionError::IncompleteEvidence("discard-hand payment needs the exact opened hand".into()));
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            return Err(ExecutionError::IncompleteEvidence(
+                "discard-hand payment needs the exact opened hand".into(),
+            ));
         }
     }
 
-    discard_hand_cards(game, ctx, player_id, hand_cards)
+    discard_hand_cards_with_outputs(game, ctx, player_id, hand_cards)
 }
 
 pub(crate) fn discard_hand_cards(
@@ -174,6 +230,16 @@ pub(crate) fn discard_hand_cards(
     player: PlayerId,
     cards: Vec<ObjectId>,
 ) -> Result<EffectOutcome, ExecutionError> {
+    discard_hand_cards_with_outputs(game, ctx, player, cards)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn discard_hand_cards_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: PlayerId,
+    cards: Vec<ObjectId>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = discard_hand_cards_inner(game, ctx, player, cards);
@@ -181,7 +247,9 @@ pub(crate) fn discard_hand_cards(
         *game = checkpoint;
         context_checkpoint.restore(ctx);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
     }
     result
@@ -192,12 +260,12 @@ fn discard_hand_cards_inner(
     ctx: &mut ExecutionContext,
     player: PlayerId,
     cards: Vec<ObjectId>,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let cards = cards
         .into_iter()
         .filter(|card| game.player(player).is_some_and(|p| p.hand.contains(card)))
         .collect();
-    super::discard::discard_selected_cards(game, ctx, player, cards, None, true)
+    super::discard::discard_selected_cards_with_outputs(game, ctx, player, cards, None, true)
 }
 
 impl CostExecutableEffect for DiscardHandEffect {

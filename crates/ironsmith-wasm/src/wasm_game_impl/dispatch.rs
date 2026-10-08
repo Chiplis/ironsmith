@@ -1131,6 +1131,19 @@ impl WasmGame {
         }
     }
 
+    fn preview_typed_crypto_requirements(&mut self, command: UiCommand) -> Result<Vec<CryptoRequirementView>, JsValue> {
+        // Exchange an exact local branch so speculative dispatch cannot disturb
+        // live continuations, audit state, IDs, analysis jobs or rendering caches.
+        let mut live = RuntimeSavepoint::capture(self);
+        live.exchange(self);
+        let previous_policy = std::mem::replace(&mut self.previewing_crypto_requirements, true);
+        let result = self.dispatch_typed_command(command, 0.0)
+            .map(|_| self.last_crypto_requirements.clone());
+        self.previewing_crypto_requirements = previous_policy;
+        live.exchange(self);
+        result
+    }
+
     fn finish_dispatch_with_snapshot(
         &mut self,
         started_at: PerfTimer,
@@ -1465,62 +1478,12 @@ impl WasmGame {
             .collect()
     }
 
-    /// Construct a demo game with two players.
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    // Keep runtime construction independent of catalog loading so native
+    // scenarios can supply just the definitions they exercise.
+    fn new_with_registry(registry: CardRegistry) -> Self {
         let priority_state = PriorityLoopState::new(2);
-        // Source-enabled hosts retain the builtin dungeon catalog, baked at
-        // build time so fresh worker creation does not invoke the compiler.
-        #[cfg(feature = "dynamic-compile")]
-        if let Err(error) = Self::register_baked_builtin_dungeons() {
-            eprintln!("[ironsmith] builtin dungeon artifacts failed to load: {error}");
-        }
-        #[cfg(test)]
-        let registry = {
-            static FIXTURE_REGISTRY: std::sync::OnceLock<CardRegistry> =
-                std::sync::OnceLock::new();
-            FIXTURE_REGISTRY
-                .get_or_init(|| {
-                    let mut registry = CardRegistry::new();
-                    ironsmith_registry_test::cards::register_builtin_handwritten_cards_if(
-                        &mut registry,
-                        |constructor| {
-                            matches!(
-                                constructor,
-                                "basic_forest"
-                                    | "basic_island"
-                                    | "basic_mountain"
-                                    | "basic_plains"
-                                    | "basic_swamp"
-                                    | "black_lotus"
-                                    | "blood_artist"
-                                    | "breaking"
-                                    | "command_tower"
-                                    | "culling_the_weak"
-                                    | "emrakul_the_promised_end"
-                                    | "entering"
-                                    | "gemstone_caverns"
-                                    | "grizzly_bears"
-                                    | "lightning_bolt"
-                                    | "ornithopter"
-                                    | "phyrexian_tower"
-                                    | "polluted_delta"
-                                    | "serum_powder"
-                                    | "sol_ring"
-                                    | "stoke_the_flames"
-                                    | "tainted_pact"
-                                    | "urzas_saga"
-                                    | "yawgmoth_thran_physician"
-                            )
-                        },
-                    );
-                    registry
-                })
-                .clone()
-        };
-        #[cfg(not(test))]
-        let registry = CardRegistry::new();
         Self {
+            previewing_crypto_requirements: false,
             runtime_identity_origin_available: true,
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
             registry,
@@ -1585,6 +1548,63 @@ impl WasmGame {
             defer_mana_options: false,
             mana_activation_inventory_cache: Default::default(),
         }
+    }
+
+    /// Construct a demo game with two players.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        // Source-enabled hosts retain the builtin dungeon catalog, baked at
+        // build time so fresh worker creation does not invoke the compiler.
+        #[cfg(feature = "dynamic-compile")]
+        if let Err(error) = Self::register_baked_builtin_dungeons() {
+            eprintln!("[ironsmith] builtin dungeon artifacts failed to load: {error}");
+        }
+        #[cfg(test)]
+        let registry = {
+            static FIXTURE_REGISTRY: std::sync::OnceLock<CardRegistry> =
+                std::sync::OnceLock::new();
+            FIXTURE_REGISTRY
+                .get_or_init(|| {
+                    let mut registry = CardRegistry::new();
+                    ironsmith_registry_test::cards::register_builtin_handwritten_cards_if(
+                        &mut registry,
+                        |constructor| {
+                            matches!(
+                                constructor,
+                                "basic_forest"
+                                    | "basic_island"
+                                    | "basic_mountain"
+                                    | "basic_plains"
+                                    | "basic_swamp"
+                                    | "black_lotus"
+                                    | "blood_artist"
+                                    | "breaking"
+                                    | "command_tower"
+                                    | "culling_the_weak"
+                                    | "emrakul_the_promised_end"
+                                    | "entering"
+                                    | "gemstone_caverns"
+                                    | "grizzly_bears"
+                                    | "lightning_bolt"
+                                    | "ornithopter"
+                                    | "phyrexian_tower"
+                                    | "polluted_delta"
+                                    | "serum_powder"
+                                    | "sol_ring"
+                                    | "stoke_the_flames"
+                                    | "tainted_pact"
+                                    | "urzas_saga"
+                                    | "yawgmoth_thran_physician"
+                            )
+                        },
+                    );
+                    registry
+                })
+                .clone()
+        };
+        #[cfg(not(test))]
+        let registry = CardRegistry::new();
+        Self::new_with_registry(registry)
     }
 
     #[wasm_bindgen(js_name = setAutoChooseSingleObjectDecisions)]
@@ -3042,7 +3062,7 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = previewCryptoRequirements)]
     pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
-        let typed: UiCommand = serde_wasm_bindgen::from_value(command.clone())
+        let typed: UiCommand = serde_wasm_bindgen::from_value(command)
             .map_err(|error| payment_disclosure_error(&format!("invalid preview command: {error}")))?;
         if let Some(requirements) = self.blind_exile_opening_requirements(&typed)? {
             // This action opens before any face-dependent proposal. Dispatching
@@ -3051,67 +3071,7 @@ impl WasmGame {
                 .map_err(|error| payment_disclosure_error(&error.to_string()));
         }
         let crypto_before = self.capture_crypto_audit_state();
-        let checkpoint = self.capture_replay_checkpoint();
-        let pregame = self.pregame.clone();
-        let pending_decision = self.pending_decision.clone();
-        let pending_replay_action = self.pending_replay_action.clone();
-        let pending_action_checkpoint = self.pending_action_checkpoint.clone();
-        let pending_live_action_root = self.pending_live_action_root.clone();
-        let payment_disclosure = self.payment_disclosure.clone();
-        let payment_disclosure_generation = self.payment_disclosure_generation;
-        let priority_epoch_undo_locked_by_disclosure = self.priority_epoch_undo_locked_by_disclosure;
-        let pending_live_continuation = self.pending_live_continuation.clone();
-        let runner = self.runner.clone();
-        let runner_awaiting_priority = self.runner_awaiting_priority;
-        let runner_pending_decision = self.runner_pending_decision;
-        let priority_epoch_checkpoint = self.priority_epoch_checkpoint.clone();
-        let priority_epoch_has_undoable_action = self.priority_epoch_has_undoable_action;
-        let priority_epoch_undo_locked_by_mana = self.priority_epoch_undo_locked_by_mana;
-        let priority_epoch_undo_land_stable_id = self.priority_epoch_undo_land_stable_id;
-        let active_viewed_cards = self.active_viewed_cards.clone();
-        let pending_decision_game = self.pending_decision_game.clone();
-        let active_audit_viewed_cards = self.active_audit_viewed_cards.clone();
-        let active_resolving_stack_object = self.active_resolving_stack_object.clone();
-        let snapshot_serial = self.snapshot_serial;
-        let last_snapshot_perf = self.last_snapshot_perf.clone();
-        let last_replay_execution_perf = self.last_replay_execution_perf.clone();
-        let last_advance_until_decision_perf = self.last_advance_until_decision_perf.clone();
-        let last_dispatch_perf = self.last_dispatch_perf.clone();
-
-        let preview_result = self.dispatch(command);
-        let requirements = match preview_result {
-            Ok(_) => Ok(self.last_crypto_requirements.clone()),
-            Err(err) => Err(err),
-        };
-
-        self.restore_replay_checkpoint(&checkpoint);
-        self.pregame = pregame;
-        self.pending_decision = pending_decision;
-        self.pending_replay_action = pending_replay_action;
-        self.pending_action_checkpoint = pending_action_checkpoint;
-        self.pending_live_action_root = pending_live_action_root;
-        self.payment_disclosure = payment_disclosure;
-        self.payment_disclosure_generation = payment_disclosure_generation;
-        self.priority_epoch_undo_locked_by_disclosure = priority_epoch_undo_locked_by_disclosure;
-        self.pending_live_continuation = pending_live_continuation;
-        self.runner = runner;
-        self.runner_awaiting_priority = runner_awaiting_priority;
-        self.runner_pending_decision = runner_pending_decision;
-        self.priority_epoch_checkpoint = priority_epoch_checkpoint;
-        self.priority_epoch_has_undoable_action = priority_epoch_has_undoable_action;
-        self.priority_epoch_undo_locked_by_mana = priority_epoch_undo_locked_by_mana;
-        self.priority_epoch_undo_land_stable_id = priority_epoch_undo_land_stable_id;
-        self.active_viewed_cards = active_viewed_cards;
-        self.pending_decision_game = pending_decision_game;
-        self.active_audit_viewed_cards = active_audit_viewed_cards;
-        self.active_resolving_stack_object = active_resolving_stack_object;
-        self.snapshot_serial = snapshot_serial;
-        self.last_snapshot_perf = last_snapshot_perf;
-        self.last_replay_execution_perf = last_replay_execution_perf;
-        self.last_advance_until_decision_perf = last_advance_until_decision_perf;
-        self.last_dispatch_perf = last_dispatch_perf;
-
-        let mut requirements = requirements?;
+        let mut requirements = self.preview_typed_crypto_requirements(typed)?;
         prepare_preview_public_move_openings(&mut requirements, &crypto_before);
         for requirement in &mut requirements {
             if requirement.requirement_type == "public_open" && requirement.from.is_some()
@@ -3531,6 +3491,18 @@ impl WasmGame {
     pub fn snapshot(&mut self) -> Result<JsValue, JsValue> {
         if let Some(error) = self.game.verified_hidden_library_epoch_error() {
             return Err(JsValue::from_str(&error));
+        }
+        // A crypto preview needs the audit delta, not card views, menus, payment
+        // suggestions, transition consumption or JS encoding.
+        if self.previewing_crypto_requirements {
+            // Continuous permissions can introduce visibility requirements.
+            // Keep that rules boundary even when no display is requested.
+            self.prepare_snapshot_continuous_state()
+                .map_err(|error| payment_disclosure_error(&format!("crypto preview refresh failed: {error}")))?;
+            if let Some(before) = self.pending_crypto_audit_before.take() {
+                self.update_crypto_requirements_from(before);
+            }
+            return Ok(JsValue::NULL);
         }
         let snapshot_started_at = PerfTimer::start();
         self.prepare_snapshot_continuous_state()
@@ -4980,6 +4952,20 @@ impl WasmGame {
     }
 
     fn dispatch_routed_command(&mut self, command: UiCommand, command_decode_ms: f64) -> Result<JsValue, JsValue> {
+        // Capture runner submissions before consuming their prompt or clearing
+        // its decision view. Late combat validation and snapshot construction
+        // belong to the same transaction as applying the response.
+        let before = self.runner_pending_decision.then(|| RuntimeSavepoint::capture(self));
+        let result = self.dispatch_routed_command_inner(command, command_decode_ms);
+        if result.is_err()
+            && let Some(before) = before
+        {
+            before.restore(self);
+        }
+        result
+    }
+
+    fn dispatch_routed_command_inner(&mut self, command: UiCommand, command_decode_ms: f64) -> Result<JsValue, JsValue> {
         let dispatch_started_at = PerfTimer::start();
         self.last_dispatch_perf = None;
 
@@ -5866,5 +5852,98 @@ mod narrow_hidden_metadata_tests {
         assert!(wasm.game.object(second).is_some());
         assert!(wasm.committed_hidden_metadata(second).is_none());
         assert_eq!(wasm.committed_hidden_metadata_at_position(0, 7, "same").len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod crypto_preview_output_tests {
+    use super::*;
+
+    fn fixture() -> WasmGame {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["A".into(), "B".into()], 20, 1);
+        wasm.game.turn.priority_player = Some(PlayerId(0));
+        wasm.pending_decision = Some(DecisionContext::Priority(
+            ironsmith::decisions::context::PriorityContext::new(
+                &wasm.game, PlayerId(0), vec![LegalAction::PassPriority],
+            ).unwrap(),
+        ));
+        wasm
+    }
+
+    fn pass() -> UiCommand {
+        UiCommand::PriorityAction {
+            action_index: None,
+            action_ref: Some(PriorityActionRef::PassPriority),
+        }
+    }
+
+    #[test]
+    fn crypto_preview_restores_live_state_and_does_not_render() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = fixture();
+        if let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_mut() {
+            ctx.analysis_complete = false;
+        }
+        assert!(wasm.begin_priority_analysis("live-preview-job".into()));
+        let job = &**wasm.priority_analysis_job.as_ref().unwrap() as *const _;
+        let before = wasm.build_public_audit_checkpoint();
+        let decision = hash_debug_value(&wasm.pending_decision);
+        let serial = wasm.snapshot_serial;
+        let views = &*wasm.snapshot_object_view_cache as *const _;
+        for _ in 0..2 {
+            assert!(wasm.preview_typed_crypto_requirements(pass()).unwrap().is_empty());
+            assert_eq!(serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap(), serde_json::to_value(&before).unwrap());
+            assert_eq!(hash_debug_value(&wasm.pending_decision), decision);
+            assert_eq!(wasm.snapshot_serial, serial);
+            assert_eq!(&*wasm.snapshot_object_view_cache as *const _, views);
+            assert!(!wasm.previewing_crypto_requirements);
+            assert_eq!(&**wasm.priority_analysis_job.as_ref().unwrap() as *const _, job);
+        }
+        // Observe the speculative output boundary directly, before rollback:
+        // a pass executes, but no display snapshot is constructed.
+        wasm.previewing_crypto_requirements = true;
+        wasm.dispatch_typed_command(pass(), 0.0).unwrap();
+        assert_eq!(wasm.snapshot_serial, serial);
+        assert!(wasm.pending_crypto_audit_before.is_none());
+        wasm.previewing_crypto_requirements = false;
+        wasm.snapshot().unwrap();
+        assert!(wasm.snapshot_serial > serial);
+    }
+
+    #[test]
+    fn crypto_preview_error_restores_output_policy_and_live_caches() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = fixture();
+        wasm.pending_decision = None;
+        let views = &*wasm.snapshot_object_view_cache as *const _;
+        let before = hash_debug_value(&wasm.game);
+        assert!(wasm.preview_typed_crypto_requirements(pass()).is_err());
+        assert!(!wasm.previewing_crypto_requirements);
+        assert!(wasm.pending_decision.is_none());
+        assert_eq!(hash_debug_value(&wasm.game), before);
+        assert_eq!(&*wasm.snapshot_object_view_cache as *const _, views);
+        let serial = wasm.snapshot_serial;
+        wasm.snapshot().unwrap();
+        assert!(wasm.snapshot_serial > serial);
+    }
+
+    #[test]
+    fn crypto_preview_output_retains_hidden_move_requirements() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = fixture();
+        let hidden = wasm.game.create_hidden_card_placeholder(PlayerId(0), Zone::Library, 0, "preview-card".into());
+        let before = wasm.capture_crypto_audit_state();
+        wasm.game.move_object_by_effect(hidden, Zone::Hand).unwrap();
+        wasm.pending_crypto_audit_before = Some(before.clone());
+        wasm.previewing_crypto_requirements = true;
+        wasm.snapshot().unwrap();
+        let preview = serde_json::to_value(&wasm.last_crypto_requirements).unwrap();
+        assert!(!wasm.last_crypto_requirements.is_empty());
+        assert_eq!(wasm.snapshot_serial, 0);
+        wasm.previewing_crypto_requirements = false;
+        wasm.pending_crypto_audit_before = Some(before);
+        wasm.snapshot().unwrap();
+        assert_eq!(serde_json::to_value(&wasm.last_crypto_requirements).unwrap(), preview);
     }
 }

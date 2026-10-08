@@ -52,10 +52,13 @@ default-members = [
 ]
 resolver = "2"
 
+[profile.dev]
+incremental = true
+
 [profile.release]
 lto = false
 codegen-units = 16
-incremental = false
+incremental = true
 
 # These crates are executed only for the lightweight native registry preflight.
 # Keeping them cheap to code-generate does not slow the card compiler or baker.

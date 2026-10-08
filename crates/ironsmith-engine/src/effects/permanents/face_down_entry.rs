@@ -118,52 +118,57 @@ pub(crate) fn prepare_manifest_entry(
     Ok((original, Some(receipt)))
 }
 
-pub(crate) fn manifest_card(
+pub(crate) fn manifest_card_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card_id: ObjectId,
     controller: PlayerId,
     cloak: bool,
     action: KeywordActionKind,
-) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
-    }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let (mut original, receipt) =
-            prepare_manifest_entry(game, ctx, card_id, controller, cloak)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if receipt
-            .as_ref()
-            .is_some_and(|receipt| matches!(receipt.outcome, BattlefieldEntryOutcome::Moved(_)))
-        {
-            original = crate::effects::composition::complete_keyword_action_with_result(
-                game,
-                ctx,
-                original,
-                KeywordActionEvent::new(action, controller, ctx.source, 1),
-            )?;
-        }
-        crate::effects::zones::finish_battlefield_entry_receipts(
-            game,
-            ctx,
-            original,
-            receipt.into_iter().collect(),
-        )
-    })();
-    if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            instruction.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(ctx);
-    }
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
-    }
-    instruction
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let (mut original, receipt) =
+                prepare_manifest_entry(game, ctx, card_id, controller, cloak)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            let mut keyword_outputs = None;
+            if receipt
+                .as_ref()
+                .is_some_and(|receipt| matches!(receipt.outcome, BattlefieldEntryOutcome::Moved(_)))
+            {
+                let keyword = crate::effects::composition::complete_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    crate::effects::CompletedEffectOutputs::aggregate_only(original),
+                    KeywordActionEvent::new(action, controller, ctx.source, 1),
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                original = keyword.outcome.clone();
+                keyword_outputs = Some(keyword);
+            }
+            let mut outputs =
+                crate::effects::zones::finish_battlefield_entry_receipts_with_outputs(
+                    game,
+                    ctx,
+                    original,
+                    receipt.into_iter().collect(),
+                )?;
+            if !ctx.decision_maker.awaiting_choice() {
+                // This keyword history already belongs to the zone aggregate.
+                outputs.retain_published_children(keyword_outputs);
+            }
+            Ok(outputs)
+        },
+    )
 }

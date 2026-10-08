@@ -1,5 +1,4 @@
-import { collectRandomGameCards, resolveNamedCards } from "./random-game-catalog.js";
-import { cardMatchesFilters, generateRandomGamePayload, randomGameDefaults } from "./random-game.js";
+import { buildCatalogRandomGame } from "./catalog-random-game.js";
 import { baseAssetUrl } from "./asset-base.js";
 import { CARD_ASSETS_REUSABLE, CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
 import { cardRouteKey } from "./scryfall.js";
@@ -33,48 +32,13 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
   rng = Math.random,
   fetchImpl = globalThis.fetch,
 } = {}) {
-  const defaults = randomGameDefaults();
-  const config = {
-    ...defaults,
-    playerCount: playerNames.length,
-    startingLife,
-    minScore: semanticThreshold / 100,
-    types: { ...defaults.types, Battle: true },
-    singleFacedOnly: false,
-    manaValue: { min: 0, max: Number.MAX_SAFE_INTEGER },
-    zones: { ...defaults.zones, exile: { count: 2, basics: 0 } },
-  };
-  const [{ cards }, guaranteedCards, guaranteedHandCards] = await Promise.all([
-    collectRandomGameCards({
-      config,
-      rng,
-      accept: (card) => cardMatchesFilters(card, config),
-      fetchImpl,
-    }),
-    resolveNamedCards(config.alwaysOnMyBattlefield, { fetchImpl }),
-    resolveNamedCards(config.alwaysInMyHand, { fetchImpl }),
-  ]);
-  const { payload, eligibleCount, shortfalls, unavailableGuaranteed, unavailableGuaranteedHand } = generateRandomGamePayload({
-    config, cards, guaranteedCards, guaranteedHandCards, rng,
+  return buildCatalogRandomGame({
+    playerNames, startingLife, minScore: semanticThreshold / 100, rng, fetchImpl,
   });
-  if (unavailableGuaranteed.length > 0 || unavailableGuaranteedHand.length > 0) {
-    const unavailable = [
-      ...unavailableGuaranteed.map((name) => `${name} (battlefield)`),
-      ...unavailableGuaranteedHand.map((name) => `${name} (hand)`),
-    ];
-    throw new Error(`Could not place required starting cards: ${unavailable.join(", ")}`);
-  }
-  if (!eligibleCount || shortfalls.length > 0) {
-    throw new Error("Could not find enough supported cards to generate a starting board");
-  }
-  payload.players.forEach((player, index) => {
-    player.name = playerNames[index];
-  });
-  return payload;
 }
 
 /**
- * Start generating the startup board from the small classified pool while the
+ * Start generating the startup board from supported lobby decks while the
  * engine loads. Legacy engines without an embedded catalogue warm HTTP assets.
  */
 export function prefetchRandomStartingBoard(playerNames, startingLife, semanticThreshold) {

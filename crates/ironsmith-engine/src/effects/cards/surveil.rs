@@ -1,8 +1,8 @@
 //! Surveil effect implementation.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::decisions::{SurveilSpec, make_decision};
 use crate::effect::{EffectOutcome, Value};
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -95,19 +95,17 @@ impl EffectExecutor for SurveilEffect {
                 if top_cards_top_to_bottom.is_empty() {
                     // CR 701.25d: surveilling with an empty library is still a
                     // surveil for "whenever you surveil" triggers.
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        crate::effects::composition::complete_keyword_action_with_result(
-                            game,
-                            ctx,
-                            EffectOutcome::count(0),
-                            KeywordActionEvent::new(
-                                KeywordActionKind::Surveil,
-                                player_id,
-                                ctx.source,
-                                0,
-                            ),
-                        )?,
-                    ));
+                    return crate::effects::composition::complete_keyword_action_with_outputs(
+                        game,
+                        ctx,
+                        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Surveil,
+                            player_id,
+                            ctx.source,
+                            0,
+                        ),
+                    );
                 }
 
                 let surveil_count = top_cards_top_to_bottom.len();
@@ -119,7 +117,7 @@ impl EffectExecutor for SurveilEffect {
                     })
                     .collect::<Vec<_>>();
 
-                let observation = super::look_at_cards(
+                let observation = super::look_at_cards_with_outputs(
                     game,
                     ctx,
                     player_id,
@@ -127,7 +125,7 @@ impl EffectExecutor for SurveilEffect {
                     Zone::Library,
                     &top_cards_top_to_bottom,
                     format!("Surveil {surveil_count} card(s)"),
-                );
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
@@ -189,7 +187,8 @@ impl EffectExecutor for SurveilEffect {
                     })
                     .collect();
                 let opened_batch = game.open_simultaneous_action();
-                crate::effects::zones::execute_zone_moves_with_outputs(
+                let mut keyword_outputs = None;
+                let mut outputs = crate::effects::zones::execute_zone_moves_with_outputs(
                     game,
                     ctx,
                     moves,
@@ -205,11 +204,13 @@ impl EffectExecutor for SurveilEffect {
                         let mut object_tags = HashMap::new();
                         object_tags
                             .insert(TagKey::from(SURVEILLED_THIS_TURN_TAG), surveilled_snapshots);
-                        Ok(EffectOutcome::aggregate_with_primary_result(
-                            crate::effects::composition::complete_keyword_action_with_result(
+                        let keyword =
+                            crate::effects::composition::complete_keyword_action_with_outputs(
                                 game,
                                 ctx,
-                                EffectOutcome::count(surveil_count as i32),
+                                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                                    surveil_count as i32,
+                                )),
                                 KeywordActionEvent::new(
                                     KeywordActionKind::Surveil,
                                     player_id,
@@ -217,11 +218,23 @@ impl EffectExecutor for SurveilEffect {
                                     surveil_count as u32,
                                 )
                                 .with_object_tags(object_tags),
-                            )?,
-                            [observation],
-                        ))
+                            )?;
+                        let outcome = EffectOutcome::aggregate_with_primary_result(
+                            keyword.outcome.clone(),
+                            [observation.outcome.clone()],
+                        );
+                        keyword_outputs = Some(keyword);
+                        Ok(outcome)
                     },
-                )
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                outputs.retain_published_children([observation]);
+                outputs.retain_published_children(keyword_outputs);
+                Ok(outputs)
             },
         )
     }

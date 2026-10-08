@@ -53,14 +53,32 @@ pub struct DiscardEffect {
 }
 
 fn validate_discard_payment_selection(
-    game: &GameState, selected: &[ObjectId], candidates: &[ObjectId], min: usize, max: usize, prospective: bool,
+    game: &GameState,
+    selected: &[ObjectId],
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    prospective: bool,
 ) -> Result<(), ExecutionError> {
-    if selected.len() < min || selected.len() > max
-        || selected.iter().enumerate().any(|(index, id)| !candidates.contains(id) || selected[..index].contains(id)) {
-        return Err(ExecutionError::Impossible("discard payment needs the exact legal selection".into()));
+    if selected.len() < min
+        || selected.len() > max
+        || selected
+            .iter()
+            .enumerate()
+            .any(|(index, id)| !candidates.contains(id) || selected[..index].contains(id))
+    {
+        return Err(ExecutionError::Impossible(
+            "discard payment needs the exact legal selection".into(),
+        ));
     }
-    if !prospective && selected.iter().any(|id| game.is_hidden_card_placeholder(*id)) {
-        return Err(ExecutionError::IncompleteEvidence("discard payment is awaiting its selected public identity opening".into()));
+    if !prospective
+        && selected
+            .iter()
+            .any(|id| game.is_hidden_card_placeholder(*id))
+    {
+        return Err(ExecutionError::IncompleteEvidence(
+            "discard payment is awaiting its selected public identity opening".into(),
+        ));
     }
     Ok(())
 }
@@ -155,8 +173,11 @@ impl DiscardEffect {
         }
         let filter_ctx = ctx.filter_context(game);
         let eligible = hand.iter().copied().filter(|id| {
-            game.object(*id).is_some_and(|object| object.kind == crate::object::ObjectKind::Card && object.zone == crate::Zone::Hand && object.owner == player)
-                && !ctx.replacement.entry_reserved_objects.contains(id)
+            game.object(*id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::Card
+                    && object.zone == crate::Zone::Hand
+                    && object.owner == player
+            }) && !ctx.replacement.entry_reserved_objects.contains(id)
                 && !(reason == crate::costs::PaymentReason::CastSpell && *id == ctx.source)
         });
         let candidates: Vec<_> = eligible
@@ -292,24 +313,49 @@ fn tracks_same_selected_objects(count: &Value, card_filter: Option<&ObjectFilter
     !count_tags.is_empty() && count_tags == card_tags
 }
 
-/// A nonrandom discard choice frozen before any participant's cards move.
-#[derive(Debug)]
+#[derive(Clone)]
+struct SelectedDiscardCards {
+    player_id: crate::ids::PlayerId,
+    cards: Vec<ObjectId>,
+}
+
+/// A selected discard instruction retains admission and originals in separate phases.
 struct DiscardProposal {
     effect: DiscardEffect,
-    selected: Vec<crate::ids::ObjectId>,
-    /// Cards chosen under a public selection reveal policy: the peer front
-    /// end opened them before replaying the choice.
-    revealed_by_choice: Vec<crate::ids::ObjectId>,
+    selected: Vec<ObjectId>,
+    revealed_by_choice: Vec<ObjectId>,
+    selection_ready: bool,
+    selection: Option<SelectedDiscardCards>,
+    original_ready: bool,
+    prepared: Option<PreparedDiscardBatch>,
+}
+
+impl std::fmt::Debug for DiscardProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscardProposal")
+            .field("effect", &self.effect)
+            .field("selected", &self.selected)
+            .field("selection_ready", &self.selection_ready)
+            .field("original_ready", &self.original_ready)
+            .finish_non_exhaustive()
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
-    fn commit(
-        self: Box<Self>,
+    fn has_simultaneous_originals(&self) -> bool {
+        true
+    }
+
+    fn prepare_selection(
+        &mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<(), ExecutionError> {
+        if self.selection_ready || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         game.mark_hidden_cards_publicly_revealed(&self.revealed_by_choice);
-        let mut effect = self.effect;
+        let mut effect = self.effect.clone();
         effect.count = Value::Fixed(self.selected.len() as i32);
         let mut filter = ObjectFilter::default();
         filter.any_of = self
@@ -327,9 +373,79 @@ impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
                 .map(crate::effects::ResolvedTarget::Object)
                 .collect(),
         );
-        let outcome = effect.execute(game, ctx);
+        let result = effect.select_discard_cards(game, ctx);
         ctx.targets = previous_targets;
-        outcome
+        self.selection = result?;
+        self.selection_ready = !ctx.decision_maker.awaiting_choice();
+        Ok(())
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.original_ready || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        self.prepare_selection(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if let Some(selected) = &self.selection {
+            self.prepared = prepare_selected_discard_batch(
+                game,
+                ctx,
+                selected.player_id,
+                selected.cards.clone(),
+                self.effect.tag.as_ref(),
+                false,
+            )?;
+        }
+        self.original_ready = !ctx.decision_maker.awaiting_choice();
+        Ok(())
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() || self.prepared.is_none() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let prepared = self.prepared.take().ok_or_else(|| {
+            ExecutionError::InternalError("discard original was not retained".into())
+        })?;
+        let committed = commit_selected_discard_batch(game, ctx, prepared)?;
+        Ok(retain_discard_completion(
+            committed.outcome,
+            committed.receipts,
+        ))
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, true)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
     }
 }
 
@@ -338,7 +454,7 @@ impl DiscardEffect {
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = self.execute_in_simultaneous_batch_inner(game, ctx);
@@ -346,7 +462,9 @@ impl DiscardEffect {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
         }
         result
@@ -356,11 +474,30 @@ impl DiscardEffect {
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Some(selected) = self.select_discard_cards(game, ctx)? else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        };
+        discard_selected_cards_with_outputs(
+            game,
+            ctx,
+            selected.player_id,
+            selected.cards,
+            self.tag.as_ref(),
+            false,
+        )
+    }
+
+    fn select_discard_cards(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<SelectedDiscardCards>, ExecutionError> {
         use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
-        use crate::events::processing::execute_discard_with_scope;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let resolved_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let one_or_more = self
@@ -383,8 +520,13 @@ impl DiscardEffect {
             })
             .unwrap_or_default();
         if ctx.targets_are_cost_choices {
-            hand_cards.retain(|id| game.object(*id).is_some_and(|object|
-                object.kind == crate::object::ObjectKind::Card && object.zone == Zone::Hand && object.owner == player_id));
+            hand_cards.retain(|id| {
+                game.object(*id).is_some_and(|object| {
+                    object.kind == crate::object::ObjectKind::Card
+                        && object.zone == Zone::Hand
+                        && object.owner == player_id
+                })
+            });
         }
         // A filtered discard from a hand holding hidden cards depends on
         // identities only the owner knows. Peers keep their placeholders
@@ -424,7 +566,7 @@ impl DiscardEffect {
                     &mut hand_cards,
                 )
             {
-                return Ok(EffectOutcome::count(0));
+                return Ok(None);
             }
             hidden_filter_ctx = Some(filter_ctx);
         }
@@ -440,10 +582,12 @@ impl DiscardEffect {
 
         let required = count.min(hand_cards.len());
         if ctx.targets_are_cost_choices && !self.any_number && required != count {
-            return Err(ExecutionError::Impossible("not enough cards for the full discard payment".into()));
+            return Err(ExecutionError::Impossible(
+                "not enough cards for the full discard payment".into(),
+            ));
         }
         if required == 0 && !self.any_number && !hidden_hand_choice {
-            return Ok(EffectOutcome::count(0));
+            return Ok(None);
         }
 
         // Only object targets that are actually cards in this hand select the
@@ -472,9 +616,18 @@ impl DiscardEffect {
             hand_cards.clone()
         } else if !explicit_cards.is_empty() {
             if ctx.targets_are_cost_choices {
-                validate_discard_payment_selection(game, &explicit_cards, &hand_cards, required, required, ctx.prospective_cost_payment)?;
+                validate_discard_payment_selection(
+                    game,
+                    &explicit_cards,
+                    &hand_cards,
+                    required,
+                    required,
+                    ctx.prospective_cost_payment,
+                )?;
                 explicit_cards
-            } else { normalize_object_selection(explicit_cards, &hand_cards, required) }
+            } else {
+                normalize_object_selection(explicit_cards, &hand_cards, required)
+            }
         } else if self.discards_source_as_cost() && hand_cards.contains(&ctx.source) {
             vec![ctx.source]
         } else if self.random {
@@ -486,7 +639,7 @@ impl DiscardEffect {
             // Both are optional choices, so neither requires the player to
             // select the maximum number of eligible cards.
             if one_or_more && hand_cards.is_empty() && !hidden_hand_choice {
-                return Ok(EffectOutcome::count(0));
+                return Ok(None);
             }
             let min_required = usize::from(one_or_more && !hidden_hand_choice);
             let spec = ChooseObjectsSpec::new(
@@ -501,22 +654,38 @@ impl DiscardEffect {
                 Some(required),
             );
             let spec = if hidden_hand_choice {
-                if ctx.targets_are_cost_choices { spec.require_explicit_choice() }
-                else { spec.allow_partial_completion().require_explicit_choice() }
-            } else { spec };
+                if ctx.targets_are_cost_choices {
+                    spec.require_explicit_choice()
+                } else {
+                    spec.allow_partial_completion().require_explicit_choice()
+                }
+            } else {
+                spec
+            };
             let spec = if reveal_chosen_publicly {
                 spec.with_selection_reveal_policy(SelectionRevealPolicy::Public)
             } else {
                 spec
             };
-            let spec = if ctx.targets_are_cost_choices { spec.with_cost_payment(ctx.source, ctx.controller) } else { spec };
+            let spec = if ctx.targets_are_cost_choices {
+                spec.with_cost_payment(ctx.source, ctx.controller)
+            } else {
+                spec
+            };
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(None);
             }
             if ctx.targets_are_cost_choices {
-                validate_discard_payment_selection(game, &chosen, &hand_cards, min_required, required, ctx.prospective_cost_payment)?;
+                validate_discard_payment_selection(
+                    game,
+                    &chosen,
+                    &hand_cards,
+                    min_required,
+                    required,
+                    ctx.prospective_cost_payment,
+                )?;
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
@@ -553,22 +722,38 @@ impl DiscardEffect {
                 Some(required),
             );
             let spec = if hidden_hand_choice {
-                if ctx.targets_are_cost_choices { spec.require_explicit_choice() }
-                else { spec.allow_partial_completion().require_explicit_choice() }
-            } else { spec };
+                if ctx.targets_are_cost_choices {
+                    spec.require_explicit_choice()
+                } else {
+                    spec.allow_partial_completion().require_explicit_choice()
+                }
+            } else {
+                spec
+            };
             let spec = if reveal_chosen_publicly {
                 spec.with_selection_reveal_policy(SelectionRevealPolicy::Public)
             } else {
                 spec
             };
-            let spec = if ctx.targets_are_cost_choices { spec.with_cost_payment(ctx.source, ctx.controller) } else { spec };
+            let spec = if ctx.targets_are_cost_choices {
+                spec.with_cost_payment(ctx.source, ctx.controller)
+            } else {
+                spec
+            };
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(None);
             }
             if ctx.targets_are_cost_choices {
-                validate_discard_payment_selection(game, &chosen, &hand_cards, required, required, ctx.prospective_cost_payment)?;
+                validate_discard_payment_selection(
+                    game,
+                    &chosen,
+                    &hand_cards,
+                    required,
+                    required,
+                    ctx.prospective_cost_payment,
+                )?;
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
@@ -621,27 +806,37 @@ impl DiscardEffect {
                 .collect();
             let opened = if ctx.targets_are_cost_choices {
                 game.reveal_private_hidden_cards_publicly_as_cost(
-                    &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", ctx.prospective_cost_payment,
+                    &mut *ctx.decision_maker,
+                    player_id,
+                    ctx.source,
+                    &to_reveal,
+                    "Reveal the cards you discard",
+                    ctx.prospective_cost_payment,
                 )
             } else {
                 game.reveal_private_hidden_cards_publicly(
-                    &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", false,
+                    &mut *ctx.decision_maker,
+                    player_id,
+                    ctx.source,
+                    &to_reveal,
+                    "Reveal the cards you discard",
+                    false,
                 )
             };
             if opened.is_none() {
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                return Err(ExecutionError::IncompleteEvidence("discard payment needs the exact opened selection".into()));
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                return Err(ExecutionError::IncompleteEvidence(
+                    "discard payment needs the exact opened selection".into(),
+                ));
             }
         }
 
-        discard_selected_cards(
-            game,
-            ctx,
+        Ok(Some(SelectedDiscardCards {
             player_id,
-            cards_to_discard,
-            self.tag.as_ref(),
-            false,
-        )
+            cards: cards_to_discard,
+        }))
     }
 }
 
@@ -655,11 +850,42 @@ pub(crate) fn discard_selected_cards(
     tag: Option<&TagKey>,
     require_arrival: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    use crate::events::processing::execute_discard_with_scope;
-    let mut discarded = 0;
-    let mut discarded_cards = Vec::new();
-    let mut discarded_snapshots = Vec::new();
-    let mut successful_discards = Vec::new();
+    discard_selected_cards_with_outputs(
+        game,
+        ctx,
+        player_id,
+        cards_to_discard,
+        tag,
+        require_arrival,
+    )
+    .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// Selected discard inputs and replacement proposals captured before originals commit.
+/// Selection, disclosure and payment validation remain with the instruction owner.
+pub(crate) struct PreparedDiscardBatch {
+    player_id: crate::ids::PlayerId,
+    cause: crate::events::EventCause,
+    chosen_cards: Vec<ObjectId>,
+    chosen_memory: Vec<ObjectSnapshot>,
+    tag: Option<TagKey>,
+    require_arrival: bool,
+    prepared_discards: Vec<(
+        ObjectId,
+        Option<ObjectSnapshot>,
+        Option<ObjectSnapshot>,
+        crate::events::processing::PreparedDiscard,
+    )>,
+}
+
+pub(crate) fn prepare_selected_discard_batch(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: crate::ids::PlayerId,
+    cards_to_discard: Vec<ObjectId>,
+    tag: Option<&TagKey>,
+    require_arrival: bool,
+) -> Result<Option<PreparedDiscardBatch>, ExecutionError> {
     // Commit the frozen selection using the discard action owner. The cause is inherited from
     // the execution context so discard-as-cost stays cost-caused.
     let cause = ctx.cause.clone();
@@ -668,29 +894,146 @@ pub(crate) fn discard_selected_cards(
         .iter()
         .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
         .collect();
-    let mut affected_memory = Vec::new();
-    let mut receipts = Vec::new();
+    let mut prepared_discards = Vec::new();
     for card_id in cards_to_discard {
         let pre_memory = ObjectSnapshot::from_object_id(game, card_id);
         let pre_discard_snapshot = game
             .object(card_id)
             .map(|obj| ObjectSnapshot::from_object(obj, game));
-        let receipt = execute_discard_with_scope(
+        let Some(prepared) = crate::events::processing::prepare_discard_with_scope(
             game,
             card_id,
             player_id,
             cause.clone(),
-            false,
             ctx.provenance,
             &mut *ctx.decision_maker,
             &ctx.replacement,
             ctx.source_snapshot.as_ref(),
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
+        )?
+        else {
+            return Ok(None);
+        };
+        prepared_discards.push((card_id, pre_memory, pre_discard_snapshot, prepared));
+    }
+    Ok(Some(PreparedDiscardBatch {
+        player_id,
+        cause,
+        chosen_cards,
+        chosen_memory,
+        tag: tag.cloned(),
+        require_arrival,
+        prepared_discards,
+    }))
+}
+
+/// One original discard batch, with its real packets and commit-time Madness arrivals.
+pub(crate) struct CommittedDiscardBatch {
+    outcome: EffectOutcome,
+    receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
+    madness_cards: Vec<ObjectId>,
+    results: Vec<(ObjectId, crate::events::processing::DiscardResult)>,
+}
+impl CommittedDiscardBatch {
+    /// Retain originals at the shared freeze/observation boundary. Exact result
+    /// readers run here, before any added program can change those arrivals.
+    pub(crate) fn prepare_completion_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<ObservedDiscardOriginals>, ExecutionError> {
+        let Some(receipt) =
+            crate::effects::composition::prepare_standalone_completion_with_outputs(
+                game,
+                ctx,
+                retain_discard_completion(self.outcome, self.receipts),
+            )?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(ObservedDiscardOriginals {
+            receipt,
+            madness_cards: self.madness_cards,
+            results: self.results,
+        }))
+    }
+
+    pub(crate) fn complete_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Some(originals) = self.prepare_completion_with_outputs(game, ctx)? else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        };
+        originals.complete_added_programs_with_outputs(game, ctx)
+    }
+}
+
+/// Real observed original results and their still-unexecuted additions.
+/// This phase record owns existing receipts, without reconstructing outputs.
+pub(crate) struct ObservedDiscardOriginals {
+    receipt: crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    pub(crate) madness_cards: Vec<ObjectId>,
+    results: Vec<(ObjectId, crate::events::processing::DiscardResult)>,
+}
+impl ObservedDiscardOriginals {
+    /// Exact requested-card result, independent of counts and added actions.
+    pub(crate) fn result_for(
+        &self,
+        card: ObjectId,
+    ) -> Option<&crate::events::processing::DiscardResult> {
+        self.results
+            .iter()
+            .find_map(|(requested, result)| (*requested == card).then_some(result))
+    }
+
+    pub(crate) fn complete_added_programs_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::complete_committed_original_with_outputs(
+            game,
+            ctx,
+            self.receipt,
+        )
+    }
+}
+
+/// Project actual completed discard receipts at their own arrival boundary.
+/// Physical commitment supplies actual receipts here. Deferred original owners
+/// can use this same boundary to capture arrival snapshots and Madness.
+struct DiscardBatchProjection {
+    player_id: crate::ids::PlayerId,
+    cause: crate::events::cause::EventCause,
+    chosen_cards: Vec<ObjectId>,
+    chosen_memory: Vec<ObjectSnapshot>,
+    tag: Option<TagKey>,
+    require_arrival: bool,
+    discarded: i32,
+    discarded_cards: Vec<ObjectId>,
+    discarded_snapshots: Vec<ObjectSnapshot>,
+    successful_discards: Vec<(ObjectId, Option<ObjectSnapshot>, Zone, Option<ObjectId>)>,
+    affected_memory: Vec<ObjectSnapshot>,
+    receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
+    madness_cards: Vec<ObjectId>,
+    results: Vec<(ObjectId, crate::events::processing::DiscardResult)>,
+}
+impl DiscardBatchProjection {
+    fn retain_completed_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        card_id: ObjectId,
+        pre_memory: Option<ObjectSnapshot>,
+        pre_discard_snapshot: Option<ObjectSnapshot>,
+        receipt: crate::events::processing::DiscardExecutionReceipt,
+    ) -> Result<(), ExecutionError> {
+        self.results.push((card_id, receipt.result.clone()));
         let result = &receipt.result;
-        if !result.prevented && (!require_arrival || result.new_id.is_some()) {
+        if !result.prevented && (!self.require_arrival || result.new_id.is_some()) {
             if card_id == ctx.source
                 && let Some(x) = ctx.x_value
                 && let Some(new_id) = result.new_id
@@ -702,7 +1045,10 @@ pub(crate) fn discard_selected_cards(
                 obj.x_value = Some(x);
             }
             if let Some(event) = &receipt.resolved_event {
-                if event.player != player_id || event.card != card_id || event.cause != cause {
+                if event.player != self.player_id
+                    || event.card != card_id
+                    || event.cause != self.cause
+                {
                     return Err(ExecutionError::InternalError(
                         "discard receipt changed an unsupported batch identity".into(),
                     ));
@@ -712,12 +1058,15 @@ pub(crate) fn discard_selected_cards(
                     "completed discard has no resolved event".into(),
                 ));
             }
-            discarded += 1;
-            discarded_cards.push(card_id);
+            self.discarded = self
+                .discarded
+                .checked_add(1)
+                .ok_or_else(|| ExecutionError::InternalError("discard count overflow".into()))?;
+            self.discarded_cards.push(card_id);
             if let Some(memory) = pre_memory {
-                affected_memory.push(memory);
+                self.affected_memory.push(memory);
             }
-            successful_discards.push((
+            self.successful_discards.push((
                 card_id,
                 pre_discard_snapshot,
                 result.final_zone,
@@ -725,31 +1074,148 @@ pub(crate) fn discard_selected_cards(
             ));
             let snapshot_id = result.new_id.unwrap_or(card_id);
             if let Some(obj) = game.object(snapshot_id) {
-                discarded_snapshots.push(ObjectSnapshot::from_object(obj, game));
+                self.discarded_snapshots
+                    .push(ObjectSnapshot::from_object(obj, game));
             }
         }
-        receipts.push(receipt);
+        if let Some(id) = receipt.result.new_id
+            && game.is_madness_exiled(id)
+        {
+            self.madness_cards.push(id);
+        }
+        self.receipts.push(receipt);
+        Ok(())
     }
 
-    let discard_events =
-        completed_discard_events(game, player_id, cause, ctx.provenance, successful_discards);
+    fn finish(self, game: &mut GameState, ctx: &mut ExecutionContext) -> CommittedDiscardBatch {
+        let Self {
+            player_id,
+            cause,
+            chosen_cards,
+            chosen_memory,
+            tag,
+            require_arrival: _,
+            discarded,
+            discarded_cards,
+            discarded_snapshots,
+            successful_discards,
+            affected_memory,
+            receipts,
+            madness_cards,
+            results,
+        } = self;
+        let discard_events =
+            completed_discard_events(game, player_id, cause, ctx.provenance, successful_discards);
 
-    if let Some(tag) = tag
-        && !discarded_snapshots.is_empty()
-    {
-        ctx.tag_objects(tag.clone(), discarded_snapshots);
+        if let Some(tag) = tag.as_ref()
+            && !discarded_snapshots.is_empty()
+        {
+            ctx.tag_objects(tag.clone(), discarded_snapshots);
+        }
+
+        let mut outcome = EffectOutcome::count(discarded)
+            .with_events(discard_events)
+            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_cards))
+            .with_chosen_object_memory(chosen_memory);
+        if !discarded_cards.is_empty() {
+            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(discarded_cards));
+            outcome = outcome.with_affected_object_memory(affected_memory);
+        }
+
+        CommittedDiscardBatch {
+            outcome,
+            receipts,
+            madness_cards,
+            results,
+        }
     }
+}
 
-    let mut outcome = EffectOutcome::count(discarded)
-        .with_events(discard_events)
-        .with_execution_fact(ExecutionFact::ChosenObjects(chosen_cards))
-        .with_chosen_object_memory(chosen_memory);
-    if !discarded_cards.is_empty() {
-        outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(discarded_cards));
-        outcome = outcome.with_affected_object_memory(affected_memory);
+pub(crate) fn commit_selected_discard_batch(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    prepared: PreparedDiscardBatch,
+) -> Result<CommittedDiscardBatch, ExecutionError> {
+    let PreparedDiscardBatch {
+        player_id,
+        cause,
+        chosen_cards,
+        chosen_memory,
+        tag,
+        require_arrival,
+        prepared_discards,
+    } = prepared;
+    let mut projection = DiscardBatchProjection {
+        player_id,
+        cause,
+        chosen_cards,
+        chosen_memory,
+        tag,
+        require_arrival,
+        discarded: 0,
+        discarded_cards: Vec::new(),
+        discarded_snapshots: Vec::new(),
+        successful_discards: Vec::new(),
+        affected_memory: Vec::new(),
+        receipts: Vec::new(),
+        madness_cards: Vec::new(),
+        results: Vec::new(),
+    };
+    // Resolve every selected event before the first sibling physical discard.
+    for (card_id, pre_memory, pre_discard_snapshot, prepared) in prepared_discards {
+        let receipt = crate::events::processing::commit_prepared_discard(
+            game,
+            prepared,
+            &mut *ctx.decision_maker,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CommittedDiscardBatch {
+                outcome: EffectOutcome::count(0),
+                receipts: Vec::new(),
+                madness_cards: Vec::new(),
+                results: Vec::new(),
+            });
+        }
+        projection.retain_completed_original(
+            game,
+            ctx,
+            card_id,
+            pre_memory,
+            pre_discard_snapshot,
+            receipt,
+        )?;
     }
+    Ok(projection.finish(game, ctx))
+}
 
-    finish_discard_receipts(game, ctx, outcome, receipts)
+pub(crate) fn discard_selected_cards_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: crate::ids::PlayerId,
+    cards_to_discard: Vec<ObjectId>,
+    tag: Option<&TagKey>,
+    require_arrival: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let Some(prepared) = prepare_selected_discard_batch(
+        game,
+        ctx,
+        player_id,
+        cards_to_discard,
+        tag,
+        require_arrival,
+    )?
+    else {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    };
+    let committed = commit_selected_discard_batch(game, ctx, prepared)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    committed.complete_with_outputs(game, ctx)
 }
 
 impl EffectExecutor for DiscardEffect {
@@ -839,6 +1305,10 @@ impl EffectExecutor for DiscardEffect {
             effect,
             selected,
             revealed_by_choice,
+            selection_ready: false,
+            selection: None,
+            original_ready: false,
+            prepared: None,
         }))
     }
 
@@ -851,6 +1321,15 @@ impl EffectExecutor for DiscardEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         // CR 701.9a / 603.2c: the cards one instruction discards are discarded
         // at the same time, as one event.
         let opened_batch = game.open_simultaneous_action();
@@ -1597,7 +2076,7 @@ mod tests {
 }
 
 /// Report each completed discard once, including its event-time batch and destination.
-pub(crate) fn completed_discard_events(
+fn completed_discard_events(
     game: &mut GameState,
     player_id: crate::ids::PlayerId,
     cause: crate::events::cause::EventCause,
@@ -1657,19 +2136,87 @@ pub(crate) fn completed_discard_events(
     discard_events
 }
 
-/// Finish programs captured by completed discards. The original batch's
-/// observations and primary value are already supplied by the owning caller.
-/// Selection, movement, all earlier cards and this phase share its checkpoint.
-pub(crate) fn finish_discard_receipts(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    mut outcome: EffectOutcome,
-    receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
-) -> Result<EffectOutcome, ExecutionError> {
+/// Actual replacement originals belong to the original packet; additions are deferred.
+fn retain_discard_completion(
+    outcome: EffectOutcome,
+    mut receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
+) -> crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs> {
     let primary = outcome.value.clone();
+    let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
+    for receipt in &mut receipts {
+        if let Some(payload) = receipt.payload_outcome.take() {
+            outputs = outputs.append_replacement_outputs([payload]);
+        }
+    }
+    outputs.outcome.value = primary;
+    let completion = receipts
+        .iter()
+        .any(|receipt| !receipt.programs.is_empty())
+        .then(|| {
+            Box::new(DiscardBatchCompletion {
+                receipts: Some(receipts),
+                frozen: None,
+            }) as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+    crate::effects::SimultaneousEffectCommit {
+        outcome: outputs,
+        completion,
+    }
+}
+
+struct DiscardBatchCompletion {
+    receipts: Option<Vec<crate::events::processing::DiscardExecutionReceipt>>,
+    frozen: Option<FrozenDiscardPrograms>,
+}
+impl crate::effects::SimultaneousEffectCompletion for DiscardBatchCompletion {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        if self.frozen.is_none() {
+            let receipts = self.receipts.take().ok_or_else(|| {
+                ExecutionError::InternalError("discard completion lost original receipts".into())
+            })?;
+            self.frozen = Some(freeze_discard_receipts(game, receipts)?);
+        }
+        Ok(())
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let frozen = self.frozen.ok_or_else(|| {
+            ExecutionError::InternalError(
+                "discard completion was not frozen after originals".into(),
+            )
+        })?;
+        finish_frozen_discard_receipts_with_outputs(game, ctx, original, frozen)
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+}
+
+type FrozenDiscardPrograms = Vec<(
+    crate::events::processing::PreparedReplacementProgram,
+    crate::effects::replacement::ReplacementProgramBindings,
+)>;
+
+fn freeze_discard_receipts(
+    game: &GameState,
+    receipts: Vec<crate::events::processing::DiscardExecutionReceipt>,
+) -> Result<FrozenDiscardPrograms, ExecutionError> {
+    let mut frozen = Vec::new();
     for receipt in receipts {
-        if let Some(payload) = receipt.payload_outcome {
-            outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [payload]);
+        if receipt.payload_outcome.is_some() {
+            return Err(ExecutionError::InternalError(
+                "discard original payload reached addition binding capture".into(),
+            ));
         }
         let original_id = receipt
             .discarded_snapshot
@@ -1677,48 +2224,64 @@ pub(crate) fn finish_discard_receipts(
             .map(|snapshot| snapshot.object_id);
         let moved_id = receipt.result.new_id;
         let lki = receipt.discarded_snapshot;
-        outcome = crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
-            game,
-            ctx,
-            outcome,
-            receipt.programs,
-            |game, context, _| {
-                let discarded =
-                    crate::events::downcast_event::<DiscardEvent>(context.event.inner())
-                        .ok_or_else(|| {
-                            ExecutionError::InternalError(
-                                "discard addition lost its discard event".into(),
-                            )
-                        })?;
-                let object = if original_id == Some(discarded.card) {
-                    moved_id.unwrap_or(discarded.card)
-                } else {
-                    discarded.card
-                };
-                let snapshot = game
-                    .object(object)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
-                    .or_else(|| {
-                        lki.as_ref()
-                            .filter(|snapshot| snapshot.object_id == discarded.card)
-                            .cloned()
-                    });
-                let tags = snapshot.map_or_else(Vec::new, |snapshot| {
-                    vec![
-                        ("it".to_owned(), vec![snapshot.clone()]),
-                        ("__it__".to_owned(), vec![snapshot]),
-                    ]
+        for program in receipt.programs {
+            let discarded =
+                crate::events::downcast_event::<DiscardEvent>(program.context.event.inner())
+                    .ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "discard addition lost its discard event".into(),
+                        )
+                    })?;
+            let object = if original_id == Some(discarded.card) {
+                moved_id.unwrap_or(discarded.card)
+            } else {
+                discarded.card
+            };
+            let snapshot = game
+                .object(object)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+                .or_else(|| {
+                    lki.as_ref()
+                        .filter(|snapshot| snapshot.object_id == discarded.card)
+                        .cloned()
                 });
-                Ok(crate::effects::replacement::ReplacementProgramBindings {
-                    targets: Some(vec![crate::effects::ResolvedTarget::Object(object)]),
-                    object_tags: tags,
-                })
-            },
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            let tags = snapshot.map_or_else(Vec::new, |snapshot| {
+                vec![
+                    ("it".to_owned(), vec![snapshot.clone()]),
+                    ("__it__".to_owned(), vec![snapshot]),
+                ]
+            });
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: Some(vec![crate::effects::ResolvedTarget::Object(object)]),
+                object_tags: tags,
+            };
+            frozen.push((program, bindings));
         }
     }
-    outcome.value = primary;
-    Ok(outcome)
+    Ok(frozen)
+}
+
+fn finish_frozen_discard_receipts_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outcome: EffectOutcome,
+    programs: FrozenDiscardPrograms,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let primary = outcome.value.clone();
+    let completed = crate::effects::replacement::complete_bound_replacement_programs_with_outputs(
+        game,
+        ctx,
+        outcome.clone(),
+        programs,
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome)
+        .append_batch_program_outputs(completed);
+    outputs.outcome.value = primary;
+    outputs.synchronize_observations();
+    Ok(outputs)
 }

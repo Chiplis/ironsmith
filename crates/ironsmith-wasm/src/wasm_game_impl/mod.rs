@@ -1,6 +1,7 @@
 use super::*;
 
 include!("helpers.rs");
+include!("opponent_choices.rs");
 include!("external_registry.rs");
 include!("dispatch.rs");
 include!("undo.rs");
@@ -82,3 +83,6 @@ mod activation_kind_cost_savepoints;
 
 #[cfg(test)]
 mod combat_participant_savepoint_tests;
+
+#[cfg(test)]
+mod runner_decision_rollback_tests;

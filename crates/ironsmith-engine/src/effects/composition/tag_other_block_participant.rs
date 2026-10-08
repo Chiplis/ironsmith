@@ -11,13 +11,23 @@ impl EffectExecutor for TagOtherBlockParticipantEffect {
         Box::new(self.clone())
     }
 
-    fn is_resolution_prelude(&self) -> bool {
-        true
+    fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
+        Some(self)
     }
 
     fn execute(
         &self,
         game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::ResolutionPreludeBinding::bind_resolution_prelude(self, game, ctx)
+    }
+}
+
+impl crate::effects::ResolutionPreludeBinding for TagOtherBlockParticipantEffect {
+    fn bind_resolution_prelude(
+        &self,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let block_context = ctx.block_event_context(game).ok_or_else(|| {

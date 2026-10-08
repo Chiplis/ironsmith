@@ -186,6 +186,95 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await page.evaluate(state => window.publish(state), { ...stoppedStack, snapshot_id: 52, turn_number: 2 });
     await page.waitForTimeout(150);
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'recurring stop returns next turn');
+    // Reproduce the multiplayer stall: no pause, opponent turn, unfinished analysis.
+    await load(priority(60, { active_player: 1,
+      decision: { kind: 'priority', player: 0, analysis_complete: false, actions } }));
+    await page.waitForFunction(() => window.submissions.length === 1);
+
+    // A stack-only hold must not strand empty-stack phases either. Keep
+    // analysis unfinished across successive snapshots; no manual clicks.
+    await load(priority(62));
+    await page.evaluate(() => window.context.setHoldRule('stack'));
+    for (const [id, phase, step] of [[63, 'first main phase', null],
+      [65, 'combat phase', 'begin combat'], [67, 'second main phase', null]]) {
+      const before = await page.evaluate(() => window.submissions.length);
+      await page.evaluate(state => window.publish(state), priority(id, { active_player: 1, phase, step,
+        decision: { kind: 'priority', player: 0, analysis_complete: false, actions } }));
+      await page.waitForFunction(count => window.submissions.length === count + 1, before);
+    }
+
+    // Pass continues across empty-stack phases, yields to the remote player,
+    // and stops at the configured step without consuming that stop.
+    await load(priority(70));
+    await page.evaluate(() => {
+      window.context.cyclePriorityStop('step:DeclareBlockers');
+      window.context.togglePhasePassing();
+    });
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'never submits remote priority');
+    await page.evaluate(state => window.publish(state), priority(72, { phase: 'combat phase', step: 'begin combat' }));
+    await page.waitForFunction(() => window.submissions.length === 2);
+    await page.evaluate(state => window.publish(state), priority(74, { phase: 'combat phase', step: 'declare blockers' }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 2);
+    assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'once');
+
+    await load(priority(76));
+    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(78, {
+      phase: 'combat phase', step: 'declare attackers',
+      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: false }] },
+    }));
+    await page.waitForFunction(() => window.submissions.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.submissions[1].command),
+      { type: 'declare_attackers', declarations: [] });
+
+    // An attackers-step stop must take effect before the empty declaration.
+    await load(priority(90));
+    await page.evaluate(() => {
+      window.context.cyclePriorityStop('step:DeclareAttackers');
+      window.context.togglePhasePassing();
+    });
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(92, {
+      phase: 'combat phase', step: 'declare attackers',
+      decision: { kind: 'attackers', player: 0, attacker_options: [] },
+    }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1);
+
+    // Even a later blockers pause overrides automatic no-attack combat.
+    await load(priority(93));
+    await page.evaluate(() => {
+      window.context.cyclePriorityStop('step:DeclareBlockers');
+      window.context.togglePhasePassing();
+    });
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(95, {
+      phase: 'combat phase', step: 'declare attackers',
+      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: false }] },
+    }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'blockers pause overrides no-attack shortcut');
+
+    await load(priority(94));
+    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(96, {
+      phase: 'combat phase', step: 'declare attackers',
+      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: true }] },
+    }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'mandatory attacks remain manual');
+
+    await load(priority(80));
+    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(82, { turn_number: 2 }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'does not pass the next turn');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await server.close(); }
 });

@@ -164,7 +164,7 @@ pub(crate) fn group_tap_state_events(
     };
     let Some(kind) = events
         .iter()
-        .find(|event| state_change(event))
+        .find(|event| state_change(event) && event.simultaneous_batch().is_none())
         .map(|event| event.kind())
     else {
         return;

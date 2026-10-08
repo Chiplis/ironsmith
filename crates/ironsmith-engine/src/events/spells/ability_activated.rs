@@ -38,6 +38,9 @@ pub struct AbilityActivatedEvent {
     /// Total mana spent to activate this ability ("by spending four or more
     /// mana to activate it").
     pub mana_spent_total: u32,
+    /// Actual acknowledged cost receipts. Legacy builders may supply only the
+    /// compatibility projections above; None does not assert zero spending.
+    pub mana_spend_evidence: Option<crate::events::mana::ManaSpendEvidence>,
 }
 
 impl AbilityActivatedEvent {
@@ -56,7 +59,34 @@ impl AbilityActivatedEvent {
             activated_ability: None,
             mana_sources_spent: Vec::new(),
             mana_spent_total: 0,
+            mana_spend_evidence: None,
         }
+    }
+
+    /// Bind the effective acquisition and source captured by the activation
+    /// owner. Publication must not rediscover an ability after its costs act.
+    pub(crate) fn from_effective_ability(
+        source: ObjectId,
+        activator: PlayerId,
+        is_mana_ability: bool,
+        ability: Option<Ability>,
+        snapshot: Option<ObjectSnapshot>,
+    ) -> Self {
+        let (is_loyalty, has_tap) =
+            ability
+                .as_ref()
+                .map_or((false, false), |ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(activated) => (
+                        !is_mana_ability && activated.is_loyalty_ability(),
+                        activated.has_tap_cost(),
+                    ),
+                    _ => (false, false),
+                });
+        Self::new(source, activator, is_mana_ability)
+            .with_loyalty_ability(is_loyalty)
+            .with_activation_cost_has_tap(has_tap)
+            .with_activated_ability(ability)
+            .with_snapshot(snapshot)
     }
 
     /// Mark whether the activated ability was a loyalty ability.
@@ -103,6 +133,50 @@ impl AbilityActivatedEvent {
     pub fn with_mana_sources_spent(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
         self.mana_sources_spent = snapshots;
         self
+    }
+
+    pub(crate) fn with_mana_spend_evidence(
+        mut self,
+        evidence: crate::events::mana::ManaSpendEvidence,
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let purpose = if self.is_mana_ability {
+            crate::ability::ManaPaymentPurpose::ActivateManaAbility
+        } else {
+            crate::ability::ManaPaymentPurpose::ActivateAbility
+        };
+        if evidence.payer != self.activator
+            || evidence.payment_source != Some(self.source)
+            || evidence.purpose != purpose
+        {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "activation mana payment evidence belongs to another action".into(),
+            ));
+        }
+        self.mana_spent_total = evidence.total()?;
+        self.mana_sources_spent = evidence
+            .units
+            .iter()
+            .filter_map(|unit| unit.source_snapshot.clone())
+            .collect();
+        self.mana_spend_evidence = Some(evidence);
+        Ok(self)
+    }
+
+    pub(crate) fn spent_mana_total(&self) -> Result<u32, crate::effects::ExecutionError> {
+        match self.mana_spend_evidence.as_ref() {
+            Some(evidence) => evidence.total(),
+            None => Ok(self.mana_spent_total),
+        }
+    }
+
+    pub(crate) fn spent_mana_source_matches(
+        &self,
+        predicate: impl FnMut(&ObjectSnapshot) -> bool,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        match self.mana_spend_evidence.as_ref() {
+            Some(evidence) => evidence.source_matches(predicate),
+            None => Ok(self.mana_sources_spent.iter().any(predicate)),
+        }
     }
 
     pub fn with_mana_spent_total(mut self, total: u32) -> Self {

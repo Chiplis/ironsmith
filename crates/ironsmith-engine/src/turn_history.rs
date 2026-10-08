@@ -115,6 +115,23 @@ impl TurnEventRecords {
         self.0.set(index, record);
         true
     }
+    pub(crate) fn retain_trigger_capture_receipt(
+        &mut self,
+        event: &TriggerEvent,
+    ) -> Option<Arc<TurnEventRecord>> {
+        let index = self.iter().position(|record| record.event.ptr_eq(event))?;
+        let previous = &self[index];
+        let mut observation = previous.event.clone();
+        observation.inherit_trigger_capture(event);
+        let record = Arc::new(TurnEventRecord {
+            event: observation,
+            object_snapshot: previous.object_snapshot.clone(),
+            source_snapshot: previous.source_snapshot.clone(),
+        });
+        self.0.set(index, record.clone());
+        Some(record)
+    }
+
     /// Enrich an already ingested occurrence without incrementing its counters
     /// or appending another observation. Collection replacement is branch-local.
     pub(crate) fn refresh_completed_action_record(
@@ -190,7 +207,16 @@ pub struct TurnHistory {
     /// Actual activations, keyed by acquisition instead of a mutable display slot.
     /// None is unretained history, never a completed zero. Fresh games and
     /// new turns explicitly establish a complete empty ledger.
-    pub ability_activation_counts: Option<HashMap<(ObjectId, crate::continuous::AbilityOrigin, Option<ironsmith_core::LinkedExileDefinition>), u32>>,
+    pub ability_activation_counts: Option<
+        HashMap<
+            (
+                ObjectId,
+                crate::continuous::AbilityOrigin,
+                Option<ironsmith_core::LinkedExileDefinition>,
+            ),
+            u32,
+        >,
+    >,
     pub loyalty_abilities_activated_this_turn: HashSet<ObjectId>,
     pub activated_abilities_resolved_this_turn: HashMap<(ObjectId, usize), u32>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
@@ -353,6 +379,18 @@ impl TurnHistory {
             .chain(self.staged_event_records.iter())
     }
 
+    pub(crate) fn retain_trigger_capture_receipt(&mut self, event: &TriggerEvent) -> bool {
+        let committed = self.event_records.retain_trigger_capture_receipt(event);
+        let staged = self
+            .staged_event_records
+            .retain_trigger_capture_receipt(event);
+        let retained = committed.is_some() || staged.is_some();
+        if let Some(record) = committed.or(staged) {
+            self.retain_draw_occurrence(record, false);
+        }
+        retained
+    }
+
     /// Compose the immutable collection's receipt enrichment without recounting.
     pub(crate) fn refresh_completed_action_record(
         &mut self,
@@ -360,8 +398,11 @@ impl TurnHistory {
         object_snapshot: Option<ObjectSnapshot>,
         source_snapshot: Option<ObjectSnapshot>,
     ) -> Option<Arc<TurnEventRecord>> {
-        let record = self.event_records
-            .refresh_completed_action_record(event, object_snapshot, source_snapshot)?;
+        let record = self.event_records.refresh_completed_action_record(
+            event,
+            object_snapshot,
+            source_snapshot,
+        )?;
         self.retain_draw_occurrence(record.clone(), false);
         Some(record)
     }
@@ -370,11 +411,20 @@ impl TurnHistory {
     /// promotion, receipt enrichment, and aliases from enclosing aggregates.
     /// An alias cannot change its drawing player or actual drawn cards.
     fn retain_draw_occurrence(&mut self, record: Arc<TurnEventRecord>, allow_new: bool) {
-        let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else { return; };
-        let Some(records) = self.draw_occurrences.as_mut() else { return; };
-        let previous = records.iter().find(|previous| previous.event.ptr_eq(&record.event)).cloned();
+        let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else {
+            return;
+        };
+        let Some(records) = self.draw_occurrences.as_mut() else {
+            return;
+        };
+        let previous = records
+            .iter()
+            .find(|previous| previous.event.ptr_eq(&record.event))
+            .cloned();
         if let Some(previous) = previous {
-            if !previous.event.downcast::<CardsDrawnEvent>()
+            if !previous
+                .event
+                .downcast::<CardsDrawnEvent>()
                 .is_some_and(|old| old.player == draw.player && old.cards == draw.cards)
             {
                 // Do not rebuild uncertain chronology from publication order.
@@ -387,7 +437,9 @@ impl TurnHistory {
                     object_snapshot: previous.object_snapshot,
                     source_snapshot: previous.source_snapshot,
                 })
-            } else { record };
+            } else {
+                record
+            };
             records.replace_shared(record);
         } else if allow_new {
             records.push_shared(record);
@@ -399,27 +451,41 @@ impl TurnHistory {
     /// Require the native observation owner; public or manually reconstructed
     /// aggregate journals cannot silently supply an empty ordinal history.
     pub(crate) fn ordered_draw_occurrences(&self) -> Result<&TurnEventRecords, ExecutionError> {
-        let incomplete = || ExecutionError::IncompleteEvidence(
+        let incomplete = || {
+            ExecutionError::IncompleteEvidence(
             "numbered draw trigger lacks complete native draw chronology; native recovery or replay required".into(),
-        );
+        )
+        };
         let records = self.draw_occurrences.as_ref().ok_or_else(incomplete)?;
-        let retained: HashMap<_, _> = records.iter()
-            .map(|record| (record.event.occurrence_key(), &record.event)).collect();
+        let retained: HashMap<_, _> = records
+            .iter()
+            .map(|record| (record.event.occurrence_key(), &record.event))
+            .collect();
         for record in self.projected_records() {
-            let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else { continue; };
-            if !retained.get(&record.event.occurrence_key())
+            let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else {
+                continue;
+            };
+            if !retained
+                .get(&record.event.occurrence_key())
                 .and_then(|event| event.downcast::<CardsDrawnEvent>())
                 .is_some_and(|old| old.player == draw.player && old.cards == draw.cards)
-            { return Err(incomplete()); }
+            {
+                return Err(incomplete());
+            }
         }
         Ok(records)
     }
 
     /// First/nonfirst needs occurrence evidence, not a narrowed numeric sum.
     /// Only the native owner can prove that an empty current history is empty.
-    pub(crate) fn has_drawn_cards_this_turn(&self, player: PlayerId) -> Result<bool, ExecutionError> {
+    pub(crate) fn has_drawn_cards_this_turn(
+        &self,
+        player: PlayerId,
+    ) -> Result<bool, ExecutionError> {
         Ok(self.ordered_draw_occurrences()?.iter().any(|record| {
-            record.event.downcast::<CardsDrawnEvent>()
+            record
+                .event
+                .downcast::<CardsDrawnEvent>()
                 .is_some_and(|draw| draw.player == player && !draw.cards.is_empty())
         }))
     }
@@ -1163,45 +1229,17 @@ impl TurnHistory {
     /// A true departure receipt for an exact object incarnation. Phasing does
     /// not make a new object or freeze later noncopiable choices on that object.
     pub fn source_departure_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
-        self.projected_records().rev().find_map(|record| {
-            if let Some(event) = record
-                .event
-                .downcast::<crate::events::zones::ObjectLeavesGameEvent>()
-            {
-                return (event.object == object).then_some(&event.snapshot);
-            }
-            let event = record.event.downcast::<ZoneChangeEvent>()?;
-            event
-                .snapshots()
-                .iter()
-                .find(|snapshot| snapshot.object_id == object)
-        })
+        self.projected_records()
+            .rev()
+            .find_map(|record| record.event.source_departure_snapshot(object))
     }
 
     /// Characteristics immediately before this source left its zone, left the
     /// game, or phased out this turn. Timed programs can outlive these transitions.
     pub fn source_last_known_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
-        self.projected_records().rev().find_map(|record| {
-            if let Some(event) = record
-                .event
-                .downcast::<crate::events::PermanentPhasedOutEvent>()
-            {
-                return (event.permanent == object)
-                    .then_some(event.snapshot.as_ref())
-                    .flatten();
-            }
-            if let Some(event) = record
-                .event
-                .downcast::<crate::events::zones::ObjectLeavesGameEvent>()
-            {
-                return (event.object == object).then_some(&event.snapshot);
-            }
-            let event = record.event.downcast::<ZoneChangeEvent>()?;
-            event
-                .snapshots()
-                .iter()
-                .find(|snapshot| snapshot.object_id == object)
-        })
+        self.projected_records()
+            .rev()
+            .find_map(|record| record.event.source_last_known_snapshot(object))
     }
 
     /// Whether this object fought this turn (CR 701.14): a fight keyword
@@ -1304,10 +1342,10 @@ impl TurnHistory {
         _source_stable_id: Option<StableId>,
     ) -> bool {
         self.projected_records().any(|record| {
-            record.event.downcast::<DamageEvent>().is_some_and(|event| {
-                event.amount > 0
-                    && event.source == source
-            })
+            record
+                .event
+                .downcast::<DamageEvent>()
+                .is_some_and(|event| event.amount > 0 && event.source == source)
         })
     }
 
@@ -1351,28 +1389,50 @@ impl TurnHistory {
     ) -> Result<bool, crate::effects::ExecutionError> {
         let mut missing_source = false;
         for record in self.projected_records() {
-            let Some(event) = record.event.downcast::<DamageEvent>() else { continue; };
-            if !event.is_combat || event.amount == 0
+            let Some(event) = record.event.downcast::<DamageEvent>() else {
+                continue;
+            };
+            if !event.is_combat
+                || event.amount == 0
                 || !matches!(event.target, crate::events::DamageTarget::Player(_))
-            { continue; }
-            let snapshot = record.source_snapshot.as_ref()
+            {
+                continue;
+            }
+            let snapshot = record
+                .source_snapshot
+                .as_ref()
                 .filter(|snapshot| snapshot.object_id == event.source)
-                .or_else(|| record.object_snapshot.as_ref()
-                    .filter(|snapshot| snapshot.object_id == event.source));
-            let Some(snapshot) = snapshot else { missing_source = true; continue; };
-            if qualifies(snapshot) { return Ok(true); }
+                .or_else(|| {
+                    record
+                        .object_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == event.source)
+                });
+            let Some(snapshot) = snapshot else {
+                missing_source = true;
+                continue;
+            };
+            if qualifies(snapshot) {
+                return Ok(true);
+            }
         }
         if missing_source {
             Err(crate::effects::ExecutionError::IncompleteEvidence(
-                "combat qualification is missing event-time source characteristics".into()))
-        } else { Ok(false) }
+                "combat qualification is missing event-time source characteristics".into(),
+            ))
+        } else {
+            Ok(false)
+        }
     }
 
     pub fn player_dealt_combat_damage_to_player_with_subtype_this_turn(
-        &self, dealer: PlayerId, subtype: Subtype,
+        &self,
+        dealer: PlayerId,
+        subtype: Subtype,
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
-            snapshot.controller == dealer && snapshot.card_types.contains(&CardType::Creature)
+            snapshot.controller == dealer
+                && snapshot.card_types.contains(&CardType::Creature)
                 && snapshot_had_subtype(snapshot, subtype)
         })
     }
@@ -1380,19 +1440,26 @@ impl TurnHistory {
     /// Prowl checks the event-time source against all current creature types
     /// of the proposed spell. Source departure cannot erase the damage fact.
     pub fn player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
-        &self, dealer: PlayerId, subtypes: &[Subtype],
+        &self,
+        dealer: PlayerId,
+        subtypes: &[Subtype],
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
             snapshot.controller == dealer
-                && subtypes.iter().any(|subtype| snapshot_had_subtype(snapshot, *subtype))
+                && subtypes
+                    .iter()
+                    .any(|subtype| snapshot_had_subtype(snapshot, *subtype))
         })
     }
 
     pub fn player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
-        &self, dealer: PlayerId, subtype: Subtype,
+        &self,
+        dealer: PlayerId,
+        subtype: Subtype,
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
-            snapshot.controller == dealer && snapshot.card_types.contains(&CardType::Creature)
+            snapshot.controller == dealer
+                && snapshot.card_types.contains(&CardType::Creature)
                 && (snapshot_had_subtype(snapshot, subtype) || snapshot.is_commander)
         })
     }
@@ -1496,14 +1563,20 @@ impl TurnHistory {
     /// Retained declaration events outlive removal from combat, but not the
     /// exact object incarnation or combat phase. Missing phase evidence cannot
     /// silently turn an earlier combat into the current one.
-    pub fn creature_attacked_or_blocked_in_combat(&self, creature: ObjectId, combat_phase: u32) -> Option<bool> {
+    pub fn creature_attacked_or_blocked_in_combat(
+        &self,
+        creature: ObjectId,
+        combat_phase: u32,
+    ) -> Option<bool> {
         let mut missing_phase = false;
         for record in self.projected_records() {
             let phase = if let Some(event) = record.event.downcast::<CreatureAttackedEvent>() {
                 (event.attacker == creature).then_some(event.combat_phase)
             } else if let Some(event) = record.event.downcast::<CreatureBlockedEvent>() {
                 (event.blocker == creature).then_some(event.combat_phase)
-            } else { None };
+            } else {
+                None
+            };
             match phase {
                 Some(Some(phase)) if phase == combat_phase => return Some(true),
                 Some(None) => missing_phase = true,
@@ -1573,11 +1646,16 @@ impl TurnHistory {
     }
 
     pub fn completed_coin_flip_count(&self, player: PlayerId) -> u32 {
-        self.completed_coin_flips_this_turn.get(&player).copied().unwrap_or(0)
+        self.completed_coin_flips_this_turn
+            .get(&player)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub(crate) fn check_completed_coin_flip_capacity(
-        &self, player: PlayerId, count: usize,
+        &self,
+        player: PlayerId,
+        count: usize,
     ) -> Result<u32, crate::effects::ExecutionError> {
         let total = u128::from(self.completed_coin_flip_count(player)) + count as u128;
         let after = i32::try_from(total).map_err(|_| {
@@ -1591,7 +1669,9 @@ impl TurnHistory {
     }
 
     pub(crate) fn record_completed_coin_flips(
-        &mut self, player: PlayerId, count: usize,
+        &mut self,
+        player: PlayerId,
+        count: usize,
     ) -> Result<u32, crate::effects::ExecutionError> {
         let after = self.check_completed_coin_flip_capacity(player, count)?;
         let first = self.completed_coin_flip_count(player) + 1;
@@ -1826,18 +1906,32 @@ impl TurnHistory {
         let mut order = 0u32;
         let mut casts = Vec::new();
         for record in self.projected_records() {
-            let Some(event) = record.event.downcast::<SpellCastEvent>() else { continue; };
-            order = order.checked_add(1).ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
-                "cast history order is not representable".into(),
-            ))?;
-            if !players.contains(&event.caster) || exclude == Some(event.spell) { continue; }
-            let snapshot = event.snapshot.as_ref().or(record.object_snapshot.as_ref()).ok_or_else(|| {
-                crate::effects::ExecutionError::IncompleteEvidence(format!("cast {:?} has no retained stack snapshot", event.spell))
+            let Some(event) = record.event.downcast::<SpellCastEvent>() else {
+                continue;
+            };
+            order = order.checked_add(1).ok_or_else(|| {
+                crate::effects::ExecutionError::IncompleteEvidence(
+                    "cast history order is not representable".into(),
+                )
             })?;
+            if !players.contains(&event.caster) || exclude == Some(event.spell) {
+                continue;
+            }
+            let snapshot = event
+                .snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .ok_or_else(|| {
+                    crate::effects::ExecutionError::IncompleteEvidence(format!(
+                        "cast {:?} has no retained stack snapshot",
+                        event.spell
+                    ))
+                })?;
             if snapshot.object_id != event.spell || snapshot.zone != Zone::Stack {
-                return Err(crate::effects::ExecutionError::IncompleteEvidence(
-                    format!("cast {:?} has mismatched retained stack evidence", event.spell),
-                ));
+                return Err(crate::effects::ExecutionError::IncompleteEvidence(format!(
+                    "cast {:?} has mismatched retained stack evidence",
+                    event.spell
+                )));
             }
             let mut snapshot = snapshot.clone();
             snapshot.cast_order_this_turn = Some(order);

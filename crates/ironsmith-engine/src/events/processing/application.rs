@@ -1961,9 +1961,7 @@ pub(super) fn resolve_trait_redirect_target(
             let controller = if game.object(source).is_some() && !game.is_phased_out(source) {
                 game.current_controller(source)
             } else {
-                game.turn_store
-                    .turn_history
-                    .source_last_known_snapshot(source)
+                game.source_last_known_snapshot(source)
                     .or_else(|| event.0.source_snapshot())
                     .filter(|snapshot| snapshot.object_id == source)
                     .map(|snapshot| snapshot.controller)
@@ -2228,12 +2226,7 @@ fn queue_prevention_follow_up(
                 .filter(|snapshot| snapshot.object_id == damage.source)
                 .cloned()
         })
-        .or_else(|| {
-            game.turn_store
-                .turn_history
-                .departed_object_snapshot(damage.source)
-                .cloned()
-        });
+        .or_else(|| game.source_last_known_snapshot(damage.source).cloned());
     let source_snapshot = game
         .object(follow_up.source)
         .filter(|_| !game.is_phased_out(follow_up.source))
@@ -2242,12 +2235,7 @@ fn queue_prevention_follow_up(
                 object, game,
             )
         })
-        .or_else(|| {
-            game.turn_store
-                .turn_history
-                .departed_object_snapshot(follow_up.source)
-                .cloned()
-        });
+        .or_else(|| game.source_last_known_snapshot(follow_up.source).cloned());
     game.effect_store
         .prevention_effects
         .queue_follow_up_with_snapshots(

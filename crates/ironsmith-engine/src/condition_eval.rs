@@ -1,5 +1,5 @@
-mod context;
 mod combat_participants;
+mod context;
 use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
@@ -415,7 +415,8 @@ fn this_spell_was_cast_from_zone(
                 })
                 .is_some_and(|cast_zone| cast_zone == zone)
         }
-        crate::alternative_cast::CastingMethod::AlternativePrice { .. } | crate::alternative_cast::CastingMethod::ExactPermission { .. } => false,
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. }
+        | crate::alternative_cast::CastingMethod::ExactPermission { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -432,7 +433,8 @@ fn this_spell_was_cast_from_non_hand(
         return false;
     }
     match ctx.casting_method.origin_method() {
-        crate::alternative_cast::CastingMethod::AlternativePrice { .. } | crate::alternative_cast::CastingMethod::ExactPermission { .. } => false,
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. }
+        | crate::alternative_cast::CastingMethod::ExactPermission { .. } => false,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -2210,12 +2212,17 @@ fn triggering_event_object_matches(
     filter: &crate::target::ObjectFilter,
 ) -> bool {
     let Some(event) = ctx.triggering_event else {
-        game.record_token_resource_failure(&ExecutionError::IncompleteEvidence("triggered characteristic predicate has no triggering event".into()));
+        game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+            "triggered characteristic predicate has no triggering event".into(),
+        ));
         return false;
     };
     // The legacy global filter-source option does not erase a linked source
     // operand in an event-object characteristic predicate.
-    let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.filter_source.unwrap_or(ctx.source)));
+    let filter_ctx = game.filter_context_for(
+        ctx.controller,
+        Some(ctx.filter_source.unwrap_or(ctx.source)),
+    );
     if ctx.options.triggering_object_current {
         triggering_event_object_matches_at_resolution(game, event, filter, &filter_ctx)
     } else {
@@ -2230,25 +2237,50 @@ fn triggering_event_object_identity(event: &TriggerEvent) -> Result<ObjectId, Ex
     if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
         && change.to == Zone::Battlefield
     {
-        if let Some(id) = change.result_objects.first().copied() { return Ok(id); }
+        if let Some(id) = change.result_objects.first().copied() {
+            return Ok(id);
+        }
         if let Some(id) = change.objects.first().copied()
-            && change.destination_snapshot(id).is_some_and(|snapshot| snapshot.zone == Zone::Battlefield)
-        { return Ok(id); }
-        return Err(ExecutionError::IncompleteEvidence("triggered entry predicate lacks an exact completed destination identity".into()));
+            && change
+                .destination_snapshot(id)
+                .is_some_and(|snapshot| snapshot.zone == Zone::Battlefield)
+        {
+            return Ok(id);
+        }
+        return Err(ExecutionError::IncompleteEvidence(
+            "triggered entry predicate lacks an exact completed destination identity".into(),
+        ));
     }
-    event.object_id().or_else(|| event.snapshot().map(|snapshot| snapshot.object_id))
-        .ok_or_else(|| ExecutionError::IncompleteEvidence("triggered characteristic predicate has no event-object identity".into()))
+    event
+        .object_id()
+        .or_else(|| event.snapshot().map(|snapshot| snapshot.object_id))
+        .ok_or_else(|| {
+            ExecutionError::IncompleteEvidence(
+                "triggered characteristic predicate has no event-object identity".into(),
+            )
+        })
 }
 
 fn triggering_event_object_zone(event: &TriggerEvent) -> Option<Zone> {
     if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>() {
-        return Some(if change.to == Zone::Battlefield { Zone::Battlefield } else { change.from });
+        return Some(if change.to == Zone::Battlefield {
+            Zone::Battlefield
+        } else {
+            change.from
+        });
     }
     if let Some(played) = event.downcast::<crate::events::LandPlayedEvent>() {
         return played.completed_destination;
     }
-    if event.downcast::<crate::events::EnterBattlefieldEvent>().is_some() { return Some(Zone::Battlefield); }
-    if event.downcast::<crate::events::SpellCastEvent>().is_some() { return Some(Zone::Stack); }
+    if event
+        .downcast::<crate::events::EnterBattlefieldEvent>()
+        .is_some()
+    {
+        return Some(Zone::Battlefield);
+    }
+    if event.downcast::<crate::events::SpellCastEvent>().is_some() {
+        return Some(Zone::Stack);
+    }
     event.snapshot().map(|snapshot| snapshot.zone)
 }
 
@@ -2262,41 +2294,64 @@ fn triggering_event_object_matches_with_filter_context(
     // guess based on the source object's later state.
     if let Some(played) = event.downcast::<crate::events::LandPlayedEvent>() {
         return match played.required_completed_snapshot() {
-            Ok(snapshot) => matches_snapshot_with_required_suspected_evidence(game, snapshot, filter, filter_ctx),
-            Err(error) => { game.record_token_resource_failure(&error); false }
+            Ok(snapshot) => matches_snapshot_with_required_suspected_evidence(
+                game, snapshot, filter, filter_ctx,
+            ),
+            Err(error) => {
+                game.record_token_resource_failure(&error);
+                false
+            }
         };
     }
-    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>() && change.to == Zone::Battlefield {
-        let receipt = triggering_event_object_identity(event).ok()
-            .and_then(|id| change.destination_snapshot(id)).filter(|snapshot| snapshot.zone == Zone::Battlefield);
+    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
+        && change.to == Zone::Battlefield
+    {
+        let receipt = triggering_event_object_identity(event)
+            .ok()
+            .and_then(|id| change.destination_snapshot(id))
+            .filter(|snapshot| snapshot.zone == Zone::Battlefield);
         let Some(snapshot) = receipt else {
-            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence("triggered entry predicate lacks an exact completed destination snapshot".into()));
+            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+                "triggered entry predicate lacks an exact completed destination snapshot".into(),
+            ));
             return false;
         };
-        return matches_snapshot_with_required_suspected_evidence(game, snapshot, filter, filter_ctx);
+        return matches_snapshot_with_required_suspected_evidence(
+            game, snapshot, filter, filter_ctx,
+        );
     }
     if let Some(entry) = event.downcast::<crate::events::EnterBattlefieldEvent>() {
-        let Some(snapshot) = entry.completed_snapshot.as_ref().filter(|snapshot|
-            snapshot.object_id == entry.object && snapshot.zone == Zone::Battlefield)
-        else {
-            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence("triggered entry predicate lacks its exact completed entry snapshot".into()));
+        let Some(snapshot) = entry.completed_snapshot.as_ref().filter(|snapshot| {
+            snapshot.object_id == entry.object && snapshot.zone == Zone::Battlefield
+        }) else {
+            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+                "triggered entry predicate lacks its exact completed entry snapshot".into(),
+            ));
             return false;
         };
-        return matches_snapshot_with_required_suspected_evidence(game, snapshot, filter, filter_ctx);
+        return matches_snapshot_with_required_suspected_evidence(
+            game, snapshot, filter, filter_ctx,
+        );
     }
     if let Some(snapshot) = event.snapshot() {
         if event.object_id().is_some_and(|id| id != snapshot.object_id)
             || triggering_event_object_zone(event).is_some_and(|zone| zone != snapshot.zone)
         {
-            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence("triggered characteristic predicate has a mismatched event-object snapshot".into()));
+            game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+                "triggered characteristic predicate has a mismatched event-object snapshot".into(),
+            ));
             return false;
         }
-        return matches_snapshot_with_required_suspected_evidence(game, snapshot, filter, filter_ctx);
+        return matches_snapshot_with_required_suspected_evidence(
+            game, snapshot, filter, filter_ctx,
+        );
     }
     if let Some(object) = event.object_id().and_then(|id| game.object(id)) {
         return filter.matches(object, filter_ctx, game);
     }
-    game.record_token_resource_failure(&ExecutionError::IncompleteEvidence("triggered characteristic predicate lacks an event snapshot or exact live object".into()));
+    game.record_token_resource_failure(&ExecutionError::IncompleteEvidence(
+        "triggered characteristic predicate lacks an event snapshot or exact live object".into(),
+    ));
     false
 }
 
@@ -2310,28 +2365,48 @@ fn triggering_object_evidence_at_resolution<'a>(
     game: &'a GameState,
     event: &'a TriggerEvent,
 ) -> Result<TriggeringObjectEvidence<'a>, ExecutionError> {
-    let entry = event.downcast::<crate::events::ZoneChangeEvent>().filter(|change| change.to == Zone::Battlefield);
+    let entry = event
+        .downcast::<crate::events::ZoneChangeEvent>()
+        .filter(|change| change.to == Zone::Battlefield);
     let id = triggering_event_object_identity(event)?;
     let expected_zone = triggering_event_object_zone(event);
-    if let Some(object) = game.object(id).filter(|object| !game.is_phased_out(id)
-        && expected_zone.is_none_or(|zone| object.zone == zone))
-    { return Ok(TriggeringObjectEvidence::Current(object)); }
-    if let Some(departure) = game.turn_store.turn_history.source_last_known_snapshot(id)
+    if let Some(object) = game.object(id).filter(|object| {
+        !game.is_phased_out(id) && expected_zone.is_none_or(|zone| object.zone == zone)
+    }) {
+        return Ok(TriggeringObjectEvidence::Current(object));
+    }
+    if let Some(departure) = game
+        .source_last_known_snapshot(id)
         .filter(|snapshot| expected_zone.is_none_or(|zone| snapshot.zone == zone))
-    { return Ok(TriggeringObjectEvidence::Retained(departure)); }
-    let snapshot = if let Some(entry) = entry { entry.destination_snapshot(id) } else { event.snapshot() };
-    if let Some(snapshot) = snapshot.filter(|snapshot| snapshot.object_id == id
-        && expected_zone.is_none_or(|zone| snapshot.zone == zone))
-    { return Ok(TriggeringObjectEvidence::Retained(snapshot)); }
-    Err(ExecutionError::IncompleteEvidence(format!("triggered characteristic predicate lacks exact current or retained evidence for {id:?}")))
+    {
+        return Ok(TriggeringObjectEvidence::Retained(departure));
+    }
+    let snapshot = if let Some(entry) = entry {
+        entry.destination_snapshot(id)
+    } else {
+        event.snapshot()
+    };
+    if let Some(snapshot) = snapshot.filter(|snapshot| {
+        snapshot.object_id == id && expected_zone.is_none_or(|zone| snapshot.zone == zone)
+    }) {
+        return Ok(TriggeringObjectEvidence::Retained(snapshot));
+    }
+    Err(ExecutionError::IncompleteEvidence(format!(
+        "triggered characteristic predicate lacks exact current or retained evidence for {id:?}"
+    )))
 }
 
 fn checked_triggering_characteristics(
     game: &GameState,
     id: ObjectId,
 ) -> Result<crate::continuous::CalculatedCharacteristics, ExecutionError> {
-    game.try_current_characteristics(id).map_err(ExecutionError::ContinuousDiscovery)?
-        .ok_or_else(|| ExecutionError::IncompleteEvidence(format!("triggered characteristic predicate lacks current evidence for {id:?}")))
+    game.try_current_characteristics(id)
+        .map_err(ExecutionError::ContinuousDiscovery)?
+        .ok_or_else(|| {
+            ExecutionError::IncompleteEvidence(format!(
+                "triggered characteristic predicate lacks current evidence for {id:?}"
+            ))
+        })
 }
 
 pub(crate) fn capture_triggering_object_at_resolution(
@@ -2341,7 +2416,13 @@ pub(crate) fn capture_triggering_object_at_resolution(
     match triggering_object_evidence_at_resolution(game, event)? {
         TriggeringObjectEvidence::Current(object) => {
             let chars = checked_triggering_characteristics(game, object.id)?;
-            Ok(crate::snapshot::ObjectSnapshot::from_object_with_known_characteristics(object, game, Some(&chars)))
+            Ok(
+                crate::snapshot::ObjectSnapshot::from_object_with_known_characteristics(
+                    object,
+                    game,
+                    Some(&chars),
+                ),
+            )
         }
         TriggeringObjectEvidence::Retained(snapshot) => Ok(snapshot.clone()),
     }
@@ -2356,7 +2437,9 @@ fn triggering_event_object_matches_at_resolution(
     let result = (|| -> Result<bool, ExecutionError> {
         match triggering_object_evidence_at_resolution(game, event)? {
             TriggeringObjectEvidence::Current(object) => {
-                if filter.uses_non_pt_battlefield_characteristics() || filter.uses_power_or_toughness_characteristics() {
+                if filter.uses_non_pt_battlefield_characteristics()
+                    || filter.uses_power_or_toughness_characteristics()
+                {
                     checked_triggering_characteristics(game, object.id)?;
                 }
                 Ok(filter.matches(object, filter_ctx, game))
@@ -2364,12 +2447,15 @@ fn triggering_event_object_matches_at_resolution(
             TriggeringObjectEvidence::Retained(snapshot) => {
                 require_suspected_snapshot_evidence(filter, snapshot)?;
                 Ok(filter.matches_snapshot(snapshot, filter_ctx, game))
-            },
+            }
         }
     })();
     match result {
         Ok(matches) => matches,
-        Err(error) => { game.record_token_resource_failure(&error); false }
+        Err(error) => {
+            game.record_token_resource_failure(&error);
+            false
+        }
     }
 }
 
@@ -2380,8 +2466,12 @@ fn triggering_event_object_matched_last_known(
 ) -> Result<bool, ExecutionError> {
     let Some(snapshot) = ctx.triggering_event.and_then(TriggerEvent::snapshot) else {
         return if filter_requires_suspected_snapshot(filter) {
-            Err(ExecutionError::IncompleteEvidence("missing triggering suspected snapshot".into()))
-        } else { Ok(false) };
+            Err(ExecutionError::IncompleteEvidence(
+                "missing triggering suspected snapshot".into(),
+            ))
+        } else {
+            Ok(false)
+        };
     };
     // Last-known characteristics belong to the event object, but relative
     // expressions (such as its power versus this source's power) still need
@@ -2813,7 +2903,7 @@ fn evaluate_turn_history_condition(
     game: &GameState,
     condition: &ironsmith_core::TurnHistoryCondition,
     ctx: SharedConditionContext<'_>,
-) -> bool {
+) -> Result<bool, ExecutionError> {
     use ironsmith_core::TurnHistoryCondition;
 
     let matching_players =
@@ -2830,7 +2920,7 @@ fn evaluate_turn_history_condition(
             })
     };
 
-    match condition {
+    Ok(match condition {
         TurnHistoryCondition::SpellsCastLastTurnAtLeast(count) => {
             game.turn_store.spells_cast_last_turn_total >= *count
         }
@@ -3054,10 +3144,10 @@ fn evaluate_turn_history_condition(
                 .triggering_event
                 .and_then(|event| event.trigger_player().or_else(|| event.player()))
             else {
-                return false;
+                return Ok(false);
             };
             let Some(history) = game.last_turn_history_for_player(triggering_player) else {
-                return false;
+                return Ok(false);
             };
             history.projected_records().any(|record| {
                 record
@@ -3131,12 +3221,13 @@ fn evaluate_turn_history_condition(
                 game.object(cast.spell)
                     .and_then(|spell| spell.cast_tagged_objects.get(&tag))
                     .is_some_and(|snapshots| snapshots.iter().any(matching_snapshot))
+            } else if let Some(activation) = ctx
+                .triggering_event
+                .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+            {
+                return activation.spent_mana_source_matches(matching_snapshot);
             } else {
-                ctx.triggering_event
-                    .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
-                    .is_some_and(|activation| {
-                        activation.mana_sources_spent.iter().any(matching_snapshot)
-                    })
+                false
             }
         }
         TurnHistoryCondition::AllPlayersLifeAtMost(amount) => game
@@ -3149,14 +3240,14 @@ fn evaluate_turn_history_condition(
                 .triggering_event
                 .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
             else {
-                return false;
+                return Ok(false);
             };
             let Some(entry) = game
                 .stack
                 .iter()
                 .find(|entry| entry.object_id == cast.spell)
             else {
-                return false;
+                return Ok(false);
             };
             let Some(existing_target_controller) = entry.targets.iter().find_map(|target| {
                 let crate::game_state::Target::Object(object_id) = target else {
@@ -3165,7 +3256,7 @@ fn evaluate_turn_history_condition(
                 game.object(*object_id)
                     .map(|object| game.controller_of(object))
             }) else {
-                return false;
+                return Ok(false);
             };
             let opponents = game
                 .filter_context_for(ctx.controller, ctx.filter_source)
@@ -3204,10 +3295,10 @@ fn evaluate_turn_history_condition(
                             .map(|blocked| blocked.attacker)
                     })
             }) else {
-                return false;
+                return Ok(false);
             };
             let Some(combat) = game.combat.as_ref() else {
-                return false;
+                return Ok(false);
             };
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
             let blockers = crate::combat_state::get_blockers(combat, attacker);
@@ -3228,7 +3319,7 @@ fn evaluate_turn_history_condition(
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
             .is_some_and(|event| event.is_mana_ability),
-    }
+    })
 }
 
 /// Condition evaluation mode.
@@ -3276,17 +3367,25 @@ pub fn condition_reads_static_recipient(condition: &Condition) -> bool {
 /// Check this before the stack's optional-event branch, including generic
 /// numeric defending-player predicates used by combat bodies.
 pub(crate) fn condition_requires_retained_attack_event(condition: &Condition) -> bool {
-    let defending_counter_value = |value: &Value| matches!(value,
+    let defending_counter_value = |value: &Value| {
+        matches!(value,
         Value::PlayerCounters(player, _) | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
-            if player.mentions_player_filter(&PlayerFilter::Defending));
+            if player.mentions_player_filter(&PlayerFilter::Defending))
+    };
     match condition {
         Condition::CombatParticipant(_) => true,
-        Condition::ValueComparison { left, right, .. } => defending_counter_value(left) || defending_counter_value(right),
+        Condition::ValueComparison { left, right, .. } => {
+            defending_counter_value(left) || defending_counter_value(right)
+        }
         Condition::PlayerHasPoisonCountersOrMore { player, .. }
-        | Condition::PlayerHasCountersOrMore { player, .. } => player.mentions_player_filter(&PlayerFilter::Defending),
+        | Condition::PlayerHasCountersOrMore { player, .. } => {
+            player.mentions_player_filter(&PlayerFilter::Defending)
+        }
         Condition::Not(inner) => condition_requires_retained_attack_event(inner),
-        Condition::And(left, right) | Condition::Or(left, right) =>
-            condition_requires_retained_attack_event(left) || condition_requires_retained_attack_event(right),
+        Condition::And(left, right) | Condition::Or(left, right) => {
+            condition_requires_retained_attack_event(left)
+                || condition_requires_retained_attack_event(right)
+        }
         _ => false,
     }
 }
@@ -3332,7 +3431,10 @@ pub fn evaluate_condition_external(
 ) -> bool {
     match evaluate_condition_external_checked(game, condition, ctx, None) {
         Ok(value) => value,
-        Err(error) => { game.record_token_resource_failure(&error); false }
+        Err(error) => {
+            game.record_token_resource_failure(&error);
+            false
+        }
     }
 }
 
@@ -3345,19 +3447,33 @@ pub fn evaluate_condition_external_checked(
     paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> Result<bool, ExecutionError> {
     let result = match condition {
-        Condition::Not(inner) => Ok(!evaluate_condition_external_checked(game, inner, ctx, paid)?),
-        Condition::And(left, right) => Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
-            && evaluate_condition_external_checked(game, right, ctx, paid)?),
-        Condition::Or(left, right) => Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
-            || evaluate_condition_external_checked(game, right, ctx, paid)?),
+        Condition::Not(inner) => Ok(!evaluate_condition_external_checked(
+            game, inner, ctx, paid,
+        )?),
+        Condition::And(left, right) => {
+            Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
+                && evaluate_condition_external_checked(game, right, ctx, paid)?)
+        }
+        Condition::Or(left, right) => {
+            Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
+                || evaluate_condition_external_checked(game, right, ctx, paid)?)
+        }
         Condition::ThisSpellWasKicked if paid.is_some() => Ok(paid.unwrap().was_kicked()),
-        Condition::ThisSpellPaidLabel(label) if paid.is_some() =>
-            evaluate_paid_cost_receipt(paid.unwrap(), label, game.turn.turn_number, ctx.controller),
-        Condition::ThisSpellWasForetold if paid.is_some() => paid.unwrap().cast_was_foretold
-            .ok_or_else(|| ExecutionError::IncompleteEvidence("missing pre-cast foretell designation".into())),
-        _ => evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx)),
+        Condition::ThisSpellPaidLabel(label) if paid.is_some() => {
+            evaluate_paid_cost_receipt(paid.unwrap(), label, game.turn.turn_number, ctx.controller)
+        }
+        Condition::ThisSpellWasForetold if paid.is_some() => {
+            paid.unwrap().cast_was_foretold.ok_or_else(|| {
+                ExecutionError::IncompleteEvidence("missing pre-cast foretell designation".into())
+            })
+        }
+        _ => {
+            evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx))
+        }
     };
-    if let Some(error) = game.token_resource_failure() { return Err(error); }
+    if let Some(error) = game.token_resource_failure() {
+        return Err(error);
+    }
     result
 }
 
@@ -3370,12 +3486,19 @@ pub(crate) fn evaluate_paid_cost_receipt(
     controller: PlayerId,
 ) -> Result<bool, ExecutionError> {
     if label.kind == crate::cost::OptionalCostKind::CastDuringYourMainPhase {
-        if !paid.was_paid_label(label) { return Ok(false); }
-        return paid.main_phase_caster.map(|caster| caster == controller).ok_or_else(||
-            ExecutionError::IncompleteEvidence("main-phase cast has no recorded caster".into()));
+        if !paid.was_paid_label(label) {
+            return Ok(false);
+        }
+        return paid
+            .main_phase_caster
+            .map(|caster| caster == controller)
+            .ok_or_else(|| {
+                ExecutionError::IncompleteEvidence("main-phase cast has no recorded caster".into())
+            });
     }
-    paid.paid_label_at_turn(label, current_turn).ok_or_else(||
-        ExecutionError::IncompleteEvidence("paid cost has no recorded payment turn".into()))
+    paid.paid_label_at_turn(label, current_turn).ok_or_else(|| {
+        ExecutionError::IncompleteEvidence("paid cost has no recorded payment turn".into())
+    })
 }
 
 /// Shared dispatcher for condition evaluation.
@@ -3459,9 +3582,13 @@ fn require_suspected_snapshot_evidence(
     snapshot: &crate::snapshot::ObjectSnapshot,
 ) -> Result<(), ExecutionError> {
     if filter.suspected && snapshot.suspected.is_none() {
-        return Err(ExecutionError::IncompleteEvidence("last-known suspected designation was not retained".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "last-known suspected designation was not retained".into(),
+        ));
     }
-    for branch in &filter.any_of { require_suspected_snapshot_evidence(branch, snapshot)?; }
+    for branch in &filter.any_of {
+        require_suspected_snapshot_evidence(branch, snapshot)?;
+    }
     Ok(())
 }
 
@@ -3475,7 +3602,10 @@ fn matches_snapshot_with_required_suspected_evidence(
 ) -> bool {
     match require_suspected_snapshot_evidence(filter, snapshot) {
         Ok(()) => filter.matches_snapshot(snapshot, filter_ctx, game),
-        Err(error) => { game.record_token_resource_failure(&error); false }
+        Err(error) => {
+            game.record_token_resource_failure(&error);
+            false
+        }
     }
 }
 
@@ -3810,7 +3940,9 @@ fn evaluate_condition(
     // The shared event selector retains unavailable evidence through legacy
     // boolean adapters. Surface it before a conditional can execute either
     // branch, including when Not would invert that adapter's false sentinel.
-    if let Some(error) = game.token_resource_failure() { return Err(error); }
+    if let Some(error) = game.token_resource_failure() {
+        return Err(error);
+    }
     result
 }
 
@@ -4719,7 +4851,7 @@ fn evaluate_condition_in_context(
             }
             // Prefer the exact departure receipt over the earlier trigger
             // snapshot: saddling may change between triggering and departure.
-            game.turn_store.turn_history.source_departure_snapshot(ctx.source)
+            game.source_departure_snapshot(ctx.source)
                 .and_then(|snapshot| snapshot.saddled)
                 .ok_or_else(|| ExecutionError::IncompleteEvidence(
                     "source saddle designation requires the live incarnation or its exact departure receipt".into(),
@@ -4909,8 +5041,7 @@ fn evaluate_condition_in_context(
                         if filter.matches(object, &filter_ctx, game) { return Ok(true); }
                         continue;
                     }
-                    let last_known = game.turn_store.turn_history
-                        .source_departure_snapshot(snapshot.object_id).unwrap_or(snapshot);
+                    let last_known = game.source_departure_snapshot(snapshot.object_id).unwrap_or(snapshot);
                     require_suspected_snapshot_evidence(filter, last_known)?;
                     if filter.matches_snapshot(last_known, &filter_ctx, game) { return Ok(true); }
                 }
@@ -5236,10 +5367,14 @@ fn evaluate_condition_in_context(
             game,
             shared.triggering_event,
         )),
-        Condition::TriggeringAbilityManaSpentToActivateAtLeast(amount) => Ok(shared
-            .triggering_event
-            .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
-            .is_some_and(|activation| activation.mana_spent_total >= *amount)),
+        Condition::TriggeringAbilityManaSpentToActivateAtLeast(amount) => {
+            match shared.triggering_event
+                .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+            {
+                Some(activation) => Ok(activation.spent_mana_total()? >= *amount),
+                None => Ok(false),
+            }
+        },
         Condition::SourceCaseSolved => Ok(game.is_case_solved(shared.source)),
         Condition::SourceClassLevelAtLeast(level) => {
             Ok(game.class_level(shared.source) >= *level)
@@ -5716,7 +5851,7 @@ fn evaluate_condition_in_context(
                 return Ok(source.zone == Zone::Battlefield && game.is_suspected(ctx.source));
             }
             let retained = ctx.execution().and_then(|execution| execution.source_snapshot.as_ref());
-            game.turn_store.turn_history.source_departure_snapshot(ctx.source)
+            game.source_departure_snapshot(ctx.source)
                 .or_else(|| retained.filter(|snapshot| snapshot.object_id == ctx.source))
                 .and_then(|snapshot| snapshot.suspected)
                 .ok_or_else(|| ExecutionError::IncompleteEvidence(
@@ -5785,7 +5920,7 @@ fn evaluate_condition_in_context(
                 filter.matches(partner, &filter_ctx, game)
             })),
         Condition::TurnHistory(condition) => {
-            Ok(evaluate_turn_history_condition(game, condition, shared))
+            evaluate_turn_history_condition(game, condition, shared)
         }
         Condition::AllTargetsStillLegal => {
             Ok(ctx.execution().is_none_or(|exec| exec.all_targets_legal))

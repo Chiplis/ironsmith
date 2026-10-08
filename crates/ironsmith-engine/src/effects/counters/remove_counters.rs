@@ -27,11 +27,18 @@ pub use ironsmith_core::RemoveCountersEffect;
 /// );
 /// ```
 impl EffectExecutor for RemoveCountersEffect {
-    fn supports_replacement_draw_continuation(&self) -> bool { true }
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 
@@ -106,8 +113,12 @@ impl EffectExecutor for RemoveCountersEffect {
 
     fn cost_description(&self) -> Option<String> {
         if matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
-            if *kind == self.counter_type && spec.base() == self.target.base()) {
-            return Some(format!("Remove all {} counters from that permanent", self.counter_type.description()));
+            if *kind == self.counter_type && spec.base() == self.target.base())
+        {
+            return Some(format!(
+                "Remove all {} counters from that permanent",
+                self.counter_type.description()
+            ));
         }
         if matches!(self.target.base(), ChooseSpec::Source)
             && let Some(count) = self.count.constant_integer()
@@ -364,12 +375,7 @@ fn prepare_counter_removal_event(
                         object, &observed,
                     )
                 })
-                .or_else(|| {
-                    game.turn_store
-                        .turn_history
-                        .source_last_known_snapshot(*source)
-                        .cloned()
-                })
+                .or_else(|| game.source_last_known_snapshot(*source).cloned())
         } else {
             None
         };
@@ -415,94 +421,6 @@ pub(crate) fn prepare_game_rule_counter_removal(
         }
     };
     prepare_counter_removal_event(game, ctx, event)
-}
-
-struct CounterRemovalCompletion {
-    original: Option<Box<dyn crate::effects::SimultaneousEffectCompletion>>,
-    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
-}
-
-impl crate::effects::SimultaneousEffectCompletion for CounterRemovalCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-        // A retained replacement original is already stopped at its real draw.
-        if self.original.is_some() {
-            return Ok(crate::effects::SimultaneousEffectCommit {
-                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(original),
-                completion: Some(self),
-            });
-        }
-        let programs = self.programs.into_iter().map(|program| {
-            let bindings = crate::effects::replacement::ReplacementProgramBindings {
-                targets: removal_bindings(&program.context)?, object_tags: Vec::new(),
-            };
-            Ok((program, bindings))
-        }).collect::<Result<Vec<_>, ExecutionError>>()?;
-        crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
-            game, ctx, original, programs, &[],
-        )
-    }
-
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        outcome: &mut EffectOutcome,
-    ) -> Result<(), ExecutionError> {
-        if let Some(original) = &mut self.original {
-            original.observe_original(game, ctx, outcome)?;
-        }
-        Ok(())
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        if let Some(original) = &mut self.original {
-            original.freeze(game)?;
-        }
-        Ok(())
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let outputs = if let Some(inner) = self.original {
-            inner.complete_with_outputs(game, ctx, original)?
-        } else {
-            crate::effects::CompletedEffectOutputs::aggregate_only(original)
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let completed =
-            crate::effects::replacement::complete_deferred_replacement_programs_with_targets(
-                game,
-                ctx,
-                outputs.outcome.clone(),
-                self.programs,
-                |_, context, _| removal_bindings(context),
-            )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        Ok(outputs.append_batch_program_outputs(completed))
-    }
 }
 
 fn removal_bindings(
@@ -565,23 +483,27 @@ pub(crate) fn commit_prepared_counter_removal_original_with_outputs(
             None,
         )
     };
-    Ok(crate::effects::SimultaneousEffectCommit {
-        outcome: {
-            let aggregate = outcome
-                .outcome
-                .clone()
-                .with_requested_amount(prepared.requested);
-            outcome.project_aggregate(aggregate)
-        },
-        completion: if programs.is_empty() && continuation.is_none() {
-            None
-        } else {
-            Some(Box::new(CounterRemovalCompletion {
-                original: continuation,
-                programs,
-            }))
-        },
-    })
+    Ok(
+        crate::effects::replacement::defer_replacement_programs_with_outputs(
+            crate::effects::SimultaneousEffectCommit {
+                outcome: {
+                    let aggregate = outcome
+                        .outcome
+                        .clone()
+                        .with_requested_amount(prepared.requested);
+                    outcome.project_aggregate(aggregate)
+                },
+                completion: continuation,
+            },
+            programs,
+            |context| {
+                Ok(crate::effects::replacement::ReplacementProgramBindings {
+                    targets: removal_bindings(context)?,
+                    object_tags: Vec::new(),
+                })
+            },
+        ),
+    )
 }
 
 pub(crate) fn execute_counter_removal_event_with_outputs(
@@ -1167,14 +1089,22 @@ fn counter_removal_cost_input(
         ChooseSpec::Source => source,
         ChooseSpec::SpecificObject(id) => {
             if !game.battlefield.contains(id)
-                || !game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                || !game
+                    .object(*id)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
                 || game.is_phased_out(*id)
             {
-                return Err(ExecutionError::Impossible("counter-cost object is unavailable".into()));
+                return Err(ExecutionError::Impossible(
+                    "counter-cost object is unavailable".into(),
+                ));
             }
             *id
         }
-        _ => return Err(ExecutionError::Impossible("counter cost requires an exact source or granting object".into())),
+        _ => {
+            return Err(ExecutionError::Impossible(
+                "counter cost requires an exact source or granting object".into(),
+            ));
+        }
     };
     let available = game.counter_count(target, effect.counter_type);
     let count = if matches!(effect.count.unhinted(), Value::CountersOn(spec, Some(kind))
@@ -1182,9 +1112,12 @@ fn counter_removal_cost_input(
     {
         available
     } else {
-        let quantity = effect.count.constant_integer().ok_or_else(|| ExecutionError::Impossible(
-            "counter cost requires fixed arithmetic or its exact object's matching counters".into(),
-        ))?;
+        let quantity = effect.count.constant_integer().ok_or_else(|| {
+            ExecutionError::Impossible(
+                "counter cost requires fixed arithmetic or its exact object's matching counters"
+                    .into(),
+            )
+        })?;
         u32::try_from(quantity.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
             resource: "counter-cost quantity",
             requested: quantity.max(0) as u128,
@@ -1207,10 +1140,14 @@ impl CostExecutableEffect for RemoveCountersEffect {
     }
 
     fn supports_prepared_payment(&self) -> bool {
-        matches!(self.target.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_))
-            && (self.count.constant_integer()
-                .is_some_and(|quantity| u32::try_from(quantity.max(0)).is_ok())
-                || matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
+        matches!(
+            self.target.base(),
+            ChooseSpec::Source | ChooseSpec::SpecificObject(_)
+        ) && (self
+            .count
+            .constant_integer()
+            .is_some_and(|quantity| u32::try_from(quantity.max(0)).is_ok())
+            || matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
                     if *kind == self.counter_type && spec.base() == self.target.base()))
     }
 
@@ -1257,10 +1194,14 @@ impl CostExecutableEffect for RemoveCountersEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        counter_removal_cost_input(self, game, source).map(|_| ()).map_err(|error| match error {
-            ExecutionError::Impossible(message) => crate::effects::CostValidationError::Other(message),
-            error => crate::effects::CostValidationError::ExecutionFailed(error),
-        })
+        counter_removal_cost_input(self, game, source)
+            .map(|_| ())
+            .map_err(|error| match error {
+                ExecutionError::Impossible(message) => {
+                    crate::effects::CostValidationError::Other(message)
+                }
+                error => crate::effects::CostValidationError::ExecutionFailed(error),
+            })
     }
 }
 

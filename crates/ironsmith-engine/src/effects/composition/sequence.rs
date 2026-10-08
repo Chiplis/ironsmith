@@ -23,17 +23,69 @@ fn execute_program_children_with_outputs(
     failure_policy: ProgramFailurePolicy,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    execute_program_children_with_observer(
+        game,
+        ctx,
+        effects,
+        failure_policy,
+        purpose,
+        true,
+        |_, _, _, _| Ok(()),
+    )
+}
+
+/// Replacement programs retain their existing pending-entry dispatch contract.
+/// Their caller owns per-event observation mode and the final result projection.
+pub(crate) fn execute_observed_replacement_children_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    observe: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext,
+        Option<&Effect>,
+        &mut [crate::effects::CompletedEffectOutputs],
+    ) -> Result<(), ExecutionError>,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    execute_program_children_with_observer(
+        game,
+        ctx,
+        effects,
+        ProgramFailurePolicy::Continue,
+        crate::effects::EffectExecutionPurpose::Action,
+        false,
+        observe,
+    )
+}
+
+fn execute_program_children_with_observer(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    failure_policy: ProgramFailurePolicy,
+    purpose: crate::effects::EffectExecutionPurpose,
+    skip_pending_entry: bool,
+    mut observe: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext,
+        Option<&Effect>,
+        &mut [crate::effects::CompletedEffectOutputs],
+    ) -> Result<(), ExecutionError>,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
     let mut children = Vec::new();
-    for effect in effects {
-        if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
+    for (index, effect) in effects.iter().enumerate() {
+        if (skip_pending_entry && ctx.decision_maker.awaiting_choice()) || ctx.resolution_stopped()
+        {
             break;
         }
         let outputs = purpose.execute(game, effect, ctx)?;
         let failed = outputs.outcome.status.is_failure();
         children.push(outputs);
-        if ctx.decision_maker.awaiting_choice()
-            || (failed && matches!(failure_policy, ProgramFailurePolicy::Stop))
-        {
+        if ctx.decision_maker.awaiting_choice() {
+            break;
+        }
+        observe(game, ctx, effects.get(index + 1), &mut children)?;
+        if failed && matches!(failure_policy, ProgramFailurePolicy::Stop) {
             break;
         }
     }
@@ -200,11 +252,18 @@ impl SequenceEffect {
 
 impl EffectExecutor for SequenceEffect {
     fn supports_replacement_draw_continuation(&self) -> bool {
-        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+        self.effects
+            .iter()
+            .all(crate::effects::replacement::replacement_effect_supported)
     }
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let cursor = self.select_prepared_action_program(game, ctx)?;
         super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
     }
@@ -293,11 +352,17 @@ fn execute_sequence_with_outputs(
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     crate::effects::tokens::execute_resource_transaction_with_pending_value(
-        game, ctx,
+        game,
+        ctx,
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-        |game, ctx| super::action_program::execute_action_program_with_outputs(
-            sequence_cursor(sequence, ctx), game, ctx, purpose,
-        ),
+        |game, ctx| {
+            super::action_program::execute_action_program_with_outputs(
+                sequence_cursor(sequence, ctx),
+                game,
+                ctx,
+                purpose,
+            )
+        },
     )
 }
 
@@ -375,16 +440,23 @@ impl SequenceCursor {
     }
 }
 impl crate::effects::ActionProgramCursor for SequenceCursor {
-    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
-        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
-        Ok(crate::effects::ProgramCompletion::new((*self).completed(false)))
+    fn finish_stopped(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        Ok(crate::effects::ProgramCompletion::new(
+            (*self).completed(false),
+        ))
     }
     fn next_action(
         &mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
-        if ctx.resolution_stopped() { return Ok(None); }
+        if ctx.resolution_stopped() {
+            return Ok(None);
+        }
         let Some(effect) = self.effects.get(self.next) else {
             return Ok(None);
         };

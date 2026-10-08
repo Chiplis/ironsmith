@@ -30,9 +30,21 @@ impl EffectExecutor for CastTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
+        let mut retained_land = Vec::new();
         let instruction = crate::effects::tokens::execute_resource_transaction_atomically(
             game,
             ctx,
@@ -44,29 +56,44 @@ impl EffectExecutor for CastTaggedEffect {
                     return Ok(EffectOutcome::target_invalid());
                 };
 
-                let first_draw_reference = ctx.triggering_event.as_ref()
+                let first_draw_reference = ctx
+                    .triggering_event
+                    .as_ref()
                     .and_then(|event| event.downcast::<crate::events::CardRevealedEvent>())
                     .and_then(|event| event.first_draw.as_ref())
-                    .is_some_and(|draw| draw.owner.is_some() && draw.drawn_card == snapshot.object_id
-                        && draw.drawn_stable_id == snapshot.stable_id);
+                    .is_some_and(|draw| {
+                        draw.owner.is_some()
+                            && draw.drawn_card == snapshot.object_id
+                            && draw.drawn_stable_id == snapshot.stable_id
+                    });
                 // This exact draw-time link requires retained LKI. Other tagged
                 // copy owners keep their existing reference-following policy.
-                let retained_copy = if self.as_copy && game.object(snapshot.object_id).is_none()
+                let retained_copy = if self.as_copy
+                    && game.object(snapshot.object_id).is_none()
                     && (first_draw_reference || snapshot.revealed_cast_definition.is_some())
                 {
                     let definition = snapshot.revealed_cast_definition.as_ref().ok_or_else(||
                         ExecutionError::IncompleteEvidence("copy of a departed revealed card requires its complete native cast definition".into()))?;
                     let mut object = crate::object::Object::from_card_definition(
-                        snapshot.object_id, definition, snapshot.owner, snapshot.zone,
+                        snapshot.object_id,
+                        definition,
+                        snapshot.owner,
+                        snapshot.zone,
                     );
-                    if !snapshot.copiable_values.spell_effect.has_complete_definition() {
+                    if !snapshot
+                        .copiable_values
+                        .spell_effect
+                        .has_complete_definition()
+                    {
                         return Err(ExecutionError::ContinuousDiscovery(
                             crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
                                 crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
                     }
                     object.copy_copiable_values_from_values(&snapshot.copiable_values);
                     Some(object)
-                } else { None };
+                } else {
+                    None
+                };
                 let mut object_id = snapshot.object_id;
                 if game.object(object_id).is_none() && retained_copy.is_none() {
                     // A priced instruction refers to this exact result incarnation;
@@ -106,7 +133,8 @@ impl EffectExecutor for CastTaggedEffect {
                 }
 
                 let (is_land, from_zone) = {
-                    let Some(obj) = retained_copy.as_ref().or_else(|| game.object(object_id)) else {
+                    let Some(obj) = retained_copy.as_ref().or_else(|| game.object(object_id))
+                    else {
                         return Ok(EffectOutcome::target_invalid());
                     };
                     (obj.is_land(), obj.zone)
@@ -140,7 +168,8 @@ impl EffectExecutor for CastTaggedEffect {
                 if self.as_copy {
                     let copy_id = game.new_object_id();
 
-                    let source_obj = match retained_copy.as_ref().or_else(|| game.object(object_id)) {
+                    let source_obj = match retained_copy.as_ref().or_else(|| game.object(object_id))
+                    {
                         Some(obj) => obj.clone(),
                         None => return Ok(EffectOutcome::target_invalid()),
                     };
@@ -153,9 +182,13 @@ impl EffectExecutor for CastTaggedEffect {
                         }
                         copy_obj.zone = Zone::Command;
                         game.add_object(copy_obj);
-                        return crate::effects::zones::play_land_from_resolving_effect(
+                        return crate::effects::zones::play_land_from_resolving_effect_with_outputs(
                             game, ctx, copy_id, caster, from_zone, true,
-                        );
+                        ).map(|outputs| {
+                            let outcome = outputs.outcome.clone();
+                            retained_land.push(outputs);
+                            outcome
+                        });
                     }
 
                     copy_obj.zone = from_zone;
@@ -210,9 +243,14 @@ impl EffectExecutor for CastTaggedEffect {
                         return Ok(EffectOutcome::target_invalid());
                     }
 
-                    return crate::effects::zones::play_land_from_resolving_effect(
+                    return crate::effects::zones::play_land_from_resolving_effect_with_outputs(
                         game, ctx, object_id, caster, from_zone, false,
-                    );
+                    )
+                    .map(|outputs| {
+                        let outcome = outputs.outcome.clone();
+                        retained_land.push(outputs);
+                        outcome
+                    });
                 }
 
                 let casting_method = if from_zone == Zone::Hand {
@@ -261,9 +299,13 @@ impl EffectExecutor for CastTaggedEffect {
             },
         );
         if ctx.decision_maker.awaiting_choice() {
-            instruction.map(|_| EffectOutcome::count(0))
+            instruction.map(|_| {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
+            })
         } else {
-            instruction
+            instruction.map(|outcome| {
+                crate::effects::CompletedEffectOutputs::from_children(retained_land, |_| outcome)
+            })
         }
     }
 }

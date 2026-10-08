@@ -215,14 +215,19 @@ pub(crate) fn apply_tagged_runtime_state(
             .iter()
             .filter_map(|id| {
                 game.object(*id)
-                    .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                    .or_else(|| game.turn_store.turn_history.source_last_known_snapshot(*id).cloned())
+                    .map(|object| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    })
+                    .or_else(|| game.source_last_known_snapshot(*id).cloned())
             })
             .collect::<Vec<_>>();
         if snapshots.len() != result_ids.len() {
-            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
-                "an explicit result object has no current or retained exact characteristics".into(),
-            ));
+            game.record_token_resource_failure(
+                &crate::effects::ExecutionError::IncompleteEvidence(
+                    "an explicit result object has no current or retained exact characteristics"
+                        .into(),
+                ),
+            );
         }
         // The explicit result contract is authoritative even when empty, or
         // when a produced object left during a replacement follow-up. Never

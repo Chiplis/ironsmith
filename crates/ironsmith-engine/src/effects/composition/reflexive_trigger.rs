@@ -251,15 +251,25 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         }
         // The antecedent succeeded. Bind its actor now, not before a declined
         // optional action, and retain it for this separate resolution.
-        let needs_defender = self.choices.iter().any(|spec| spec.mentions_player_filter(&crate::target::PlayerFilter::Defending))
-            || self.effects.iter().any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending));
-        if needs_defender && !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
+        let needs_defender = self
+            .choices
+            .iter()
+            .any(|spec| spec.mentions_player_filter(&crate::target::PlayerFilter::Defending))
+            || self.effects.iter().any(|effect| {
+                effect
+                    .0
+                    .mentions_player_filter(&crate::target::PlayerFilter::Defending)
+            });
+        if needs_defender && !ctx.bind_defending_player(game)? {
+            return Ok(EffectOutcome::resolved());
+        }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
         // X chosen while paying for the antecedent belongs to this follow-up,
         // even when the enclosing spell/ability had no X (or a different X).
         let parent_x = ctx.x_value;
         let reflexive_x = outcome
+            .instruction_result()
             .execution_facts()
             .iter()
             .rev()
@@ -373,12 +383,8 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     fallback_snapshot: Option<ObjectSnapshot>,
 ) {
-    let fallback_snapshot = fallback_snapshot.or_else(|| {
-        game.turn_store
-            .turn_history
-            .source_last_known_snapshot(source)
-            .cloned()
-    });
+    let fallback_snapshot =
+        fallback_snapshot.or_else(|| game.source_last_known_snapshot(source).cloned());
     let (source_stable_id, source_name, source_snapshot) =
         match game.object(source).filter(|_| !game.is_phased_out(source)) {
             Some(object) => (

@@ -51,7 +51,7 @@ use super::tagging_runtime::{
 /// (Free function because `TaggedEffect` aliases a foreign core type.)
 pub(crate) fn apply_outcome_tags(
     effect: &TaggedEffect,
-    game: &mut GameState,
+    game: &GameState,
     ctx: &mut ExecutionContext,
     outcome: &EffectOutcome,
     mut runtime: TaggedRuntimeState,
@@ -269,8 +269,13 @@ impl EffectExecutor for TaggedEffect {
         crate::effects::replacement::replacement_effect_supported(&self.effect)
     }
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let cursor = self.select_prepared_action_program(game, ctx)?;
         super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
     }
@@ -321,10 +326,11 @@ impl EffectExecutor for TaggedEffect {
         Some(&self.effect)
     }
 
-    fn is_resolution_prelude(&self) -> bool {
+    fn as_resolution_prelude(&self) -> Option<&dyn crate::effects::ResolutionPreludeBinding> {
         self.effect
             .downcast_ref::<crate::effects::SequenceEffect>()
             .is_some_and(|sequence| sequence.effects.is_empty())
+            .then_some(self as &dyn crate::effects::ResolutionPreludeBinding)
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -412,6 +418,26 @@ impl EffectExecutor for TaggedEffect {
     }
 }
 
+impl crate::effects::ResolutionPreludeBinding for TaggedEffect {
+    fn bind_resolution_prelude(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if self.as_resolution_prelude().is_none() {
+            return Err(ExecutionError::InternalError(
+                "tagged action does not provide context-only resolution bindings".into(),
+            ));
+        }
+        // The advertised child is an empty program. Its ordinary terminal
+        // result is zero; there is no child action to execute in a query.
+        let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
+        let outcome = EffectOutcome::count(0);
+        apply_outcome_tags(self, game, ctx, &outcome, runtime);
+        Ok(outcome)
+    }
+}
+
 fn execute_tagged_with_outputs(
     effect: &TaggedEffect,
     game: &mut GameState,
@@ -426,19 +452,34 @@ fn execute_tagged_with_outputs(
 
 impl CostExecutableEffect for TaggedEffect {
     fn finalize_payment_bindings(
-        &self, game: &GameState, outcome: &EffectOutcome,
-        ctx: &mut ExecutionContext, payment_x: Option<u32>,
+        &self,
+        game: &GameState,
+        outcome: &EffectOutcome,
+        ctx: &mut ExecutionContext,
+        payment_x: Option<u32>,
     ) -> Result<(), crate::cost::CostPaymentError> {
         if let Some(cost) = self.effect.0.as_cost_executable() {
             cost.finalize_payment_bindings(game, outcome, ctx, payment_x)?;
         }
         use ironsmith_core::tag::SacrificeCostTag;
         if let Some(selected @ SacrificeCostTag::Selected(_)) = SacrificeCostTag::parse(&self.tag) {
-            let memory = outcome.instruction_result().execution_facts.iter().rev().find_map(|fact| match fact {
-                crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
-                _ => None,
-            }).ok_or_else(|| crate::cost::CostPaymentError::ExecutionFailed(ExecutionError::IncompleteEvidence(
-                "completed tagged sacrifice cost lacks its original-action receipt".into())))?;
+            let memory = outcome
+                .instruction_result()
+                .execution_facts
+                .iter()
+                .rev()
+                .find_map(|fact| match fact {
+                    crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    crate::cost::CostPaymentError::ExecutionFailed(
+                        ExecutionError::IncompleteEvidence(
+                            "completed tagged sacrifice cost lacks its original-action receipt"
+                                .into(),
+                        ),
+                    )
+                })?;
             ctx.set_tagged_objects(selected.original_result_key(), memory.clone());
         }
         Ok(())
@@ -458,8 +499,10 @@ impl CostExecutableEffect for TaggedEffect {
     }
 
     fn payment_bindings_are_owned_by_children(&self) -> bool {
-        !matches!(ironsmith_core::tag::SacrificeCostTag::parse(&self.tag),
-            Some(ironsmith_core::tag::SacrificeCostTag::Selected(_)))
+        !matches!(
+            ironsmith_core::tag::SacrificeCostTag::parse(&self.tag),
+            Some(ironsmith_core::tag::SacrificeCostTag::Selected(_))
+        )
     }
 
     fn supports_prepared_payment(&self) -> bool {

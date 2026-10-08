@@ -122,9 +122,10 @@ pub(crate) fn is_exact_reveal_selection(
     required: usize,
 ) -> bool {
     selected.len() == required
-        && selected.iter().enumerate().all(|(index, id)| {
-            candidates.contains(id) && !selected[..index].contains(id)
-        })
+        && selected
+            .iter()
+            .enumerate()
+            .all(|(index, id)| candidates.contains(id) && !selected[..index].contains(id))
 }
 
 fn required_reveal_count(
@@ -148,6 +149,15 @@ impl EffectExecutor for RevealFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let (valid_cards, hidden_hand_choice) =
             reveal_from_hand_candidates(self, game, ctx.controller, ctx.source);
         let required = required_reveal_count(self, game, ctx)?;
@@ -161,7 +171,9 @@ impl EffectExecutor for RevealFromHandEffect {
             )));
         }
         if required == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         // Revealed hidden cards are opened on every peer before the answer is
         // replayed, so the choice is always asked (never auto-picked).
@@ -220,7 +232,9 @@ impl EffectExecutor for RevealFromHandEffect {
                 FallbackStrategy::Maximum,
             );
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             if ctx.targets_are_cost_choices {
                 if !is_exact_reveal_selection(&chosen, &valid_cards, required) {
@@ -246,14 +260,16 @@ impl EffectExecutor for RevealFromHandEffect {
                 normalize_object_selection(chosen, &valid_cards, required)
             }
         };
-        if ctx.prospective_cost_payment {
-            // Admission runs only on an isolated game clone. A reveal does
-            // not consume a card; its prospective result does not disclose,
-            // mark, tag, or emit a completed reveal event.
-            return Ok(EffectOutcome::count(cards_to_reveal.len() as i32));
+        if let Some(admission) =
+            super::reveal::prospective_reveal_admission(ctx, cards_to_reveal.len())
+        {
+            return Ok(admission);
         }
+
         if ctx.targets_are_cost_choices
-            && cards_to_reveal.iter().any(|id| game.is_hidden_card_placeholder(*id))
+            && cards_to_reveal
+                .iter()
+                .any(|id| game.is_hidden_card_placeholder(*id))
         {
             // Public selection opens exactly these identities before replay.
             // A deferred hand claim proves neither their color/type nor that
@@ -279,7 +295,9 @@ impl EffectExecutor for RevealFromHandEffect {
             game.mark_hidden_cards_publicly_revealed(&cards_to_reveal);
         }
         if cards_to_reveal.len() < required {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         }
 
         let revealed = cards_to_reveal
@@ -287,7 +305,7 @@ impl EffectExecutor for RevealFromHandEffect {
             .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
             .collect();
         let actor = ctx.controller;
-        super::reveal_objects(
+        super::reveal_objects_with_outputs(
             game,
             ctx,
             revealed,
@@ -350,24 +368,42 @@ impl EffectExecutor for RevealSourceFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let Some(source) = game.object(ctx.source) else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
         if source.owner != ctx.controller || source.zone != Zone::Hand {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let source_id = ctx.source;
         let Some(snapshot) = ObjectSnapshot::from_object_id(game, source_id) else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
+        if let Some(admission) = super::reveal::prospective_reveal_admission(ctx, 1) {
+            return Ok(admission);
+        }
         if self.duration
             == ironsmith_core::RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand
         {
             game.reveal_hand_card_until_upkeep_ends(source_id);
         }
         let actor = ctx.controller;
-        super::reveal_objects(
+        super::reveal_objects_with_outputs(
             game,
             ctx,
             vec![snapshot],

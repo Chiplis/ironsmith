@@ -1,17 +1,19 @@
 //! CR702.60: one optional reveal, an ordered sequence of real casts, and the
 //! exact uncast remainder. Pending input or typed execution failure restores
 //! the whole instruction, including queued cast triggers and library order.
-use crate::effects::CompletedEffectOutputs;
+use super::runtime_helpers::{effect_driven_cast_options_for_card, with_spell_cast_event};
 use crate::decisions::context::{BooleanContext, SelectOptionsContext, SelectableOption};
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::consult_helpers::{execute_library_consult_with_outputs, LibraryConsultMode, LibraryConsultStopRule};
+use crate::effects::CompletedEffectOutputs;
+use crate::effects::consult_helpers::{
+    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
+};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 pub use ironsmith_core::RippleEffect;
-use super::runtime_helpers::{effect_driven_cast_options_for_card, with_spell_cast_event};
 
 impl EffectExecutor for RippleEffect {
     fn execute(
@@ -92,9 +94,7 @@ impl EffectExecutor for RippleEffect {
                     let name = checked
                         .current_name(ctx.source)
                         .or_else(|| {
-                            game.turn_store
-                                .turn_history
-                                .source_last_known_snapshot(ctx.source)
+                            game.source_last_known_snapshot(ctx.source)
                                 .map(|s| s.name.to_string())
                         })
                         .or_else(|| ctx.source_snapshot.as_ref().map(|s| s.name.to_string()))

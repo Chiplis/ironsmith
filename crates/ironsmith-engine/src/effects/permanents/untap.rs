@@ -35,83 +35,58 @@ impl EffectExecutor for UntapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(UntapInstructionProposal::new(self.clone())))
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let choice_description = match self.target.base() {
-                ChooseSpec::Object(filter) => {
-                    Some(format!("Choose {} to untap", filter.description()))
-                }
-                _ => Some("Choose permanent to untap".to_string()),
-            };
-            let objects = resolve_objects_for_effect_with_choice_description(
-                game,
-                ctx,
-                &self.target,
-                choice_description,
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let actor = self
-                .actor
-                .as_ref()
-                .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
-                .transpose()?
-                .unwrap_or(ctx.controller);
-            let before = crate::events::other::before_tap_state_snapshots(game);
-            let selected_count = objects.len();
-            let mut outcomes = Vec::new();
-            for object in objects {
-                outcomes.push(
-                    crate::events::processing::process_untap_with_execution_context(
-                        game, object, ctx,
-                    )?,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-            }
-            let count = outcomes.iter().map(EffectOutcome::count_or_zero).sum();
-            let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
-            outcome.set_value(crate::effect::OutcomeValue::Count(count));
-            for event in &mut outcome.events {
-                if event.simultaneous_batch().is_some() {
-                    continue;
-                }
-                if let Some(untapped) = event.downcast::<crate::events::PermanentUntappedEvent>() {
-                    let mut untapped = untapped.clone();
-                    untapped.actor = Some(actor);
-                    *event = event.with_inner_event(untapped);
-                }
-            }
-            crate::events::other::bind_before_tap_state_snapshots(&mut outcome.events, &before);
-            crate::events::other::group_tap_state_events(game, &mut outcome.events, ctx.provenance);
-            if self.target.is_target() && self.target.is_single() {
-                // A legal target resolves even when no untap happens. Preserve
-                // the complete payload while retaining that target policy.
-                let summary = if selected_count > 0 {
-                    EffectOutcome::resolved()
-                } else {
-                    EffectOutcome::target_invalid()
-                };
-                outcome.set_status(summary.status);
-                outcome.set_value(summary.value);
-            }
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-        }
-        result
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                crate::effects::composition::complete_prepared_original_with_outputs(
+                    Box::new(UntapInstructionProposal::new(self.clone())),
+                    game,
+                    ctx,
+                    false,
+                )
+            },
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -144,6 +119,210 @@ impl EffectExecutor for UntapEffect {
         } else {
             None
         }
+    }
+}
+
+/// All selection and replacement proposals precede any original in the instruction.
+#[derive(Debug)]
+struct UntapInstructionProposal {
+    effect: UntapEffect,
+    selection: Option<UntapSelection>,
+    prepared: Option<Vec<Option<crate::events::processing::PreparedUntap>>>,
+}
+impl UntapInstructionProposal {
+    fn new(effect: UntapEffect) -> Self {
+        Self {
+            effect,
+            selection: None,
+            prepared: None,
+        }
+    }
+}
+#[derive(Debug, Clone)]
+struct UntapSelection {
+    objects: Vec<crate::ids::ObjectId>,
+    actor: crate::ids::PlayerId,
+    before: std::collections::HashMap<crate::ids::ObjectId, crate::snapshot::ObjectSnapshot>,
+    single_target: bool,
+}
+impl UntapSelection {
+    fn project(&self, outcomes: Vec<EffectOutcome>) -> EffectOutcome {
+        let count = outcomes.iter().map(EffectOutcome::count_or_zero).sum();
+        let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
+        outcome.set_value(crate::effect::OutcomeValue::Count(count));
+        if self.single_target {
+            let summary = if self.objects.is_empty() {
+                EffectOutcome::target_invalid()
+            } else {
+                EffectOutcome::resolved()
+            };
+            outcome.set_status(summary.status);
+            outcome.set_value(summary.value);
+        }
+        outcome
+    }
+    fn bind_actor(&self, outcome: &mut EffectOutcome) {
+        for event in &mut outcome.events {
+            if event.simultaneous_batch().is_some() {
+                continue;
+            }
+            if let Some(untapped) = event.downcast::<crate::events::PermanentUntappedEvent>() {
+                let mut untapped = untapped.clone();
+                untapped.actor = Some(self.actor);
+                *event = event.with_inner_event(untapped);
+            }
+        }
+        crate::events::other::bind_before_tap_state_snapshots(&mut outcome.events, &self.before);
+    }
+}
+impl crate::effects::composition::OriginalOutcomeAdapter for UntapSelection {
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let mut outcome = result?;
+        self.bind_actor(&mut outcome);
+        crate::events::other::group_tap_state_events(game, &mut outcome.events, ctx.provenance);
+        Ok(outcome)
+    }
+}
+impl crate::effects::SimultaneousEffectProposal for UntapInstructionProposal {
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.selection.is_some() || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let choice_description = match self.effect.target.base() {
+            ChooseSpec::Object(filter) => Some(format!("Choose {} to untap", filter.description())),
+            _ => Some("Choose permanent to untap".to_string()),
+        };
+        let objects = resolve_objects_for_effect_with_choice_description(
+            game,
+            ctx,
+            &self.effect.target,
+            choice_description,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let actor = self
+            .effect
+            .actor
+            .as_ref()
+            .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
+            .transpose()?
+            .unwrap_or(ctx.controller);
+        let before = crate::events::other::before_tap_state_snapshots(game);
+
+        self.selection = Some(UntapSelection {
+            objects,
+            actor,
+            before,
+            single_target: self.effect.target.is_target() && self.effect.target.is_single(),
+        });
+        Ok(())
+    }
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.prepared.is_some() || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        self.prepare_selection(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let selection = self.selection.as_ref().ok_or_else(|| {
+            ExecutionError::InternalError("untap selection was not prepared".into())
+        })?;
+        let mut prepared = Vec::new();
+        for object in &selection.objects {
+            prepared.push(
+                crate::events::processing::prepare_untap_with_execution_context(
+                    game, *object, ctx,
+                )?,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        self.prepared = Some(prepared);
+        Ok(())
+    }
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.prepare_original(game, ctx)
+    }
+    fn has_simultaneous_originals(&self) -> bool {
+        self.selection
+            .as_ref()
+            .is_some_and(|selection| selection.objects.len() > 1)
+    }
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let prepared = self
+            .prepared
+            .take()
+            .ok_or_else(|| ExecutionError::InternalError("untap original was not sealed".into()))?;
+        let selection = self.selection.take().ok_or_else(|| {
+            ExecutionError::InternalError("untap selection was not retained".into())
+        })?;
+        let mut receipts = Vec::new();
+        for original in prepared {
+            let mut receipt =
+                crate::events::processing::commit_prepared_untap_with_outputs(game, ctx, original)?;
+            selection.bind_actor(&mut receipt.outcome.outcome);
+            receipt.outcome.synchronize_observations();
+            receipts.push(receipt);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
+            }
+        }
+        let projection = selection.clone();
+        let receipt = crate::effects::composition::compose_original_commits_with_projection_outputs(
+            receipts,
+            Box::new(move |outcomes| projection.project(outcomes)),
+        );
+        crate::effects::composition::adapt_original_outcome_with_outputs(
+            receipt,
+            Box::new(selection),
+            game,
+            ctx,
+        )
+    }
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, false)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
     }
 }
 

@@ -60,24 +60,30 @@ pub fn validate_target(
         }
         (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
             game.can_target_player_from_source_or_snapshot(
-                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
-            )
-                && filter.matches_player(*id, &filter_ctx)
+                *id,
+                Some(ctx.source),
+                ctx.source_snapshot.as_ref(),
+                ctx.controller,
+            ) && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::ObjectOrPlayer(filter, _)) => game
             .object(*id)
             .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
         (ResolvedTarget::Player(id), ChooseSpec::ObjectOrPlayer(_, filter)) => {
             game.can_target_player_from_source_or_snapshot(
-                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
-            )
-                && filter.matches_player(*id, &filter_ctx)
+                *id,
+                Some(ctx.source),
+                ctx.source_snapshot.as_ref(),
+                ctx.controller,
+            ) && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
             game.can_target_player_from_source_or_snapshot(
-                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
-            )
-                && filter.matches_player(*id, &filter_ctx)
+                *id,
+                Some(ctx.source),
+                ctx.source_snapshot.as_ref(),
+                ctx.controller,
+            ) && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
             game.object(*id).is_some()
@@ -87,7 +93,10 @@ pub fn validate_target(
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
                 && game.can_target_player_from_source_or_snapshot(
-                    *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+                    *id,
+                    Some(ctx.source),
+                    ctx.source_snapshot.as_ref(),
+                    ctx.controller,
                 )
         }
         (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => {
@@ -96,7 +105,10 @@ pub fn validate_target(
         (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
                 && game.can_target_player_from_source_or_snapshot(
-                    *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+                    *id,
+                    Some(ctx.source),
+                    ctx.source_snapshot.as_ref(),
+                    ctx.controller,
                 )
         }
         (ResolvedTarget::Object(id), ChooseSpec::SpecificObject(expected)) => id == expected,
@@ -160,9 +172,15 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
     }
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
-    let mut result = Ok(match_triggers_at_instruction_boundary_inner(game, ctx, next, reported));
-    if let Some(error) = game.token_resource_failure() { result = Err(error); }
-    if result.is_err() { game.restore_execution_checkpoint(checkpoint, false); }
+    let mut result = Ok(match_triggers_at_instruction_boundary_inner(
+        game, ctx, next, reported,
+    ));
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(error);
+    }
+    if result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, false);
+    }
     game.end_token_resource_scope(root, &meter);
     result
 }
@@ -176,17 +194,13 @@ fn match_triggers_at_instruction_boundary_inner<'a>(
     let fresh = reported
         .into_iter()
         .filter(|event| !outcome_event_already_matched(game, event))
+        .filter(|event| !game.event_is_pending_for_trigger_matching(event))
         .cloned()
         .collect::<Vec<_>>();
     if fresh.is_empty() && game.effect_store.pending_trigger_events.is_empty() {
         return true;
     }
     let mut matched = crate::triggers::TriggerQueue::new();
-    for event in &fresh {
-        game.effect_store
-            .matched_outcome_events
-            .insert(event.occurrence_key(), event.clone());
-    }
     crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
@@ -207,13 +221,23 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     let event_checkpoint: Vec<_> = reported.iter().map(|event| (**event).clone()).collect();
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
-    let mut result = capture_triggers_before_added_program_inner(game, ctx, next,
-        reported.iter_mut().map(|event| &mut **event));
-    if let Err(error) = &result { game.record_token_resource_failure(error); }
-    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    let mut result = capture_triggers_before_added_program_inner(
+        game,
+        ctx,
+        next,
+        reported.iter_mut().map(|event| &mut **event),
+    );
+    if let Err(error) = &result {
+        game.record_token_resource_failure(error);
+    }
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(error);
+    }
     if result.is_err() {
         game.restore_execution_checkpoint(checkpoint, false);
-        for (event, previous) in reported.iter_mut().zip(event_checkpoint) { **event = previous; }
+        for (event, previous) in reported.iter_mut().zip(event_checkpoint) {
+            **event = previous;
+        }
     }
     game.end_token_resource_scope(root, &meter);
     result
@@ -239,23 +263,17 @@ fn capture_triggers_before_added_program_inner<'a>(
     let fresh = reported
         .iter()
         .filter(|event| !outcome_event_already_matched(game, event))
+        .filter(|event| !game.event_is_pending_for_trigger_matching(event))
         .filter(|event| seen.insert(event.occurrence_key()))
         .map(|event| (**event).clone())
         .collect::<Vec<_>>();
     crate::events::damage::validate_damage_history_amounts(game, fresh.iter())?;
     let mut matched = crate::triggers::TriggerQueue::new();
-    // Scoped matching still deduplicates unmarked aliases held elsewhere in
-    // the enclosing resolution. Outside it, the returned receipt owns proof.
-    if game.effect_store.per_event_trigger_matching {
-        for event in &fresh {
-            game.effect_store
-                .matched_outcome_events
-                .insert(event.occurrence_key(), event.clone());
-        }
-    }
     crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
-    if let Some(error) = game.token_resource_failure() { return Err(error); }
+    if let Some(error) = game.token_resource_failure() {
+        return Err(error);
+    }
     game.defer_trigger_entries(matched.take_all());
     for event in &mut reported {
         event.mark_triggers_captured();
@@ -268,14 +286,8 @@ fn capture_triggers_before_added_program_inner<'a>(
 
 /// Whether a boundary inside the current resolution already matched `event`.
 fn outcome_event_already_matched(game: &GameState, event: &crate::triggers::TriggerEvent) -> bool {
-    event.triggers_captured()
-        || game
-            .retained_action_observations()
-            .any(|receipt| receipt.ptr_eq(event) && receipt.triggers_captured())
-        || game
-            .effect_store
-            .matched_outcome_events
-            .contains_key(&event.occurrence_key())
+    game.event_with_retained_trigger_capture(event)
+        .triggers_captured()
 }
 
 /// Drop the events a boundary inside the current resolution already matched,
@@ -325,7 +337,9 @@ fn settle_hidden_hand_all_matching_specs(
     let mut filters: Vec<crate::filter::ObjectFilter> = Vec::new();
     for spec in effect.0.own_preflight_object_specs() {
         if let ChooseSpec::All(filter) = spec.base() {
-            if !filters.contains(filter) { filters.push(filter.clone()); }
+            if !filters.contains(filter) {
+                filters.push(filter.clone());
+            }
         }
     }
     if let Some(tag_matching) = effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
@@ -360,21 +374,36 @@ fn settle_hidden_hand_all_matching_specs(
 /// Acquire only the reached instruction's own inputs before it freezes a
 /// native program. Ordinary dispatch and prepared selection share this gate.
 pub(crate) fn prepare_reached_effect_inputs(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
 ) -> Result<bool, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() { return Ok(false); }
-    game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
-    if effect.0.directly_mentions_player_filter(&crate::target::PlayerFilter::Defending)
-        && !ctx.bind_defending_player(game)? { return Ok(false); }
+    if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
+        return Ok(false);
+    }
+    game.establish_control_transition_boundary()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
+    if effect
+        .0
+        .directly_mentions_player_filter(&crate::target::PlayerFilter::Defending)
+        && !ctx.bind_defending_player(game)?
+    {
+        return Ok(false);
+    }
     Ok(settle_hidden_hand_all_matching_specs(game, effect, ctx))
 }
 
 pub(crate) fn select_reached_action_program(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
 ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
-    if !prepare_reached_effect_inputs(game, effect, ctx)? { return Ok(None); }
+    if !prepare_reached_effect_inputs(game, effect, ctx)? {
+        return Ok(None);
+    }
     let previous = ctx.executing_effect;
-    ctx.executing_effect = Some(effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize);
+    ctx.executing_effect =
+        Some(effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize);
     let result = effect.0.select_prepared_action_program(game, ctx);
     ctx.executing_effect = previous;
     result
@@ -476,11 +505,11 @@ fn finish_effect_payment(
         return Ok(());
     };
     cost.validate_payment_outcome(&outputs.outcome)
-        .map_err(|error| {
-            match error {
-                crate::effects::CostValidationError::ExecutionFailed(error) => error,
-                other => ExecutionError::Impossible(format!("effect payment was not acknowledged: {other:?}")),
-            }
+        .map_err(|error| match error {
+            crate::effects::CostValidationError::ExecutionFailed(error) => error,
+            other => ExecutionError::Impossible(format!(
+                "effect payment was not acknowledged: {other:?}"
+            )),
         })?;
     if !cost.supports_prepared_payment() && cost.payment_bindings_are_owned_by_children() {
         return Ok(());
@@ -488,11 +517,11 @@ fn finish_effect_payment(
     if ctx.x_value.is_none() {
         ctx.x_value = cost
             .payment_x_from_outcome(&outputs.outcome, ctx)
-            .map_err(|error| {
-                match error {
-                    crate::effects::CostValidationError::ExecutionFailed(error) => error,
-                    other => ExecutionError::Impossible(format!("effect payment X was not acknowledged: {other:?}")),
-                }
+            .map_err(|error| match error {
+                crate::effects::CostValidationError::ExecutionFailed(error) => error,
+                other => ExecutionError::Impossible(format!(
+                    "effect payment X was not acknowledged: {other:?}"
+                )),
             })?;
     }
     let payment_x = ctx.x_value;
@@ -628,54 +657,94 @@ fn execute_effect_with_resource_scope(
     purpose: EffectExecutionPurpose,
     origin: &Effect,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    execute_effect_with_resource_scope_using(game, effect, ctx, origin,
-        |effect, game, ctx| execute_owned_instruction(game, effect, ctx, purpose))
+    execute_effect_with_resource_scope_using(game, effect, ctx, origin, |effect, game, ctx| {
+        execute_owned_instruction(game, effect, ctx, purpose)
+    })
 }
 
 /// Native deferred originals share ordinary preflight, chooser replay, identity,
 /// checked resource rollback and immutable result publication.
 pub(crate) fn prepare_effect_original_with_outputs<'a>(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
-    mut prepare: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
-        -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>,
-) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext<'a>,
+    mut prepare: impl FnMut(
+        &Effect,
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    >,
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
     crate::effects::tokens::execute_resource_transaction_with_pending_value(
-        game, ctx,
-        || crate::effects::SimultaneousEffectCommit::finished(
-            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+        game,
+        ctx,
+        || {
+            crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            )
+        },
         |game, ctx| {
             let mut completion = None;
-            let outcome = execute_effect_with_resource_scope_using(game, effect, ctx, effect,
+            let outcome = execute_effect_with_resource_scope_using(
+                game,
+                effect,
+                ctx,
+                effect,
                 |effect, game, ctx| {
                     let committed = prepare(effect, game, ctx)?;
                     completion = committed.completion;
                     Ok(committed.outcome)
-                })?;
-            Ok(crate::effects::SimultaneousEffectCommit { outcome, completion })
+                },
+            )?;
+            Ok(crate::effects::SimultaneousEffectCommit {
+                outcome,
+                completion,
+            })
         },
     )
 }
 
 pub(crate) fn prepare_effect_original_with<'a>(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
-    mut prepare: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
-        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>,
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext<'a>,
+    mut prepare: impl FnMut(
+        &Effect,
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-    prepare_effect_original_with_outputs(game, effect, ctx,
-        |effect, game, ctx| prepare(effect, game, ctx).map(crate::effects::SimultaneousEffectCommit::into_retained))
-        .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    prepare_effect_original_with_outputs(game, effect, ctx, |effect, game, ctx| {
+        prepare(effect, game, ctx).map(crate::effects::SimultaneousEffectCommit::into_retained)
+    })
+    .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
 }
 
 pub(crate) fn prepare_effect_draw_continuation_with_outputs(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
-) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-    prepare_effect_original_with_outputs(game, effect, ctx,
-        |effect, game, ctx| effect.0.prepare_replacement_draw_continuation_with_outputs(game, ctx))
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
+    prepare_effect_original_with_outputs(game, effect, ctx, |effect, game, ctx| {
+        effect
+            .0
+            .prepare_replacement_draw_continuation_with_outputs(game, ctx)
+    })
 }
 
 /// Aggregate compatibility boundary for native callers that do not retain routing.
 pub(crate) fn prepare_effect_draw_continuation(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
     prepare_effect_draw_continuation_with_outputs(game, effect, ctx)
         .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
@@ -686,14 +755,18 @@ fn execute_effect_with_resource_scope_using<'a>(
     effect: &Effect,
     ctx: &mut ExecutionContext<'a>,
     origin: &Effect,
-    mut execute: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
-        -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+    mut execute: impl FnMut(
+        &Effect,
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or
     // other nested effect after EndTurnEffect requests the scheduler jump.
-    if ctx.resolution_stopped() || game.turn_store.end_turn_procedure_pending
+    if ctx.resolution_stopped()
+        || game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
     {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -701,7 +774,9 @@ fn execute_effect_with_resource_scope_using<'a>(
         ));
     }
     if !prepare_reached_effect_inputs(game, effect, ctx)? {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
     let previous_effect = ctx.executing_effect;
     let effect_identity =

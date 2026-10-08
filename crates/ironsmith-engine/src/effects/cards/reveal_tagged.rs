@@ -21,14 +21,30 @@ struct RevealTaggedProposal {
     selected: Vec<crate::snapshot::ObjectSnapshot>,
 }
 impl crate::effects::SimultaneousEffectProposal for RevealTaggedProposal {
-    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<EffectOutcome, ExecutionError>
-    {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         ctx.set_tagged_objects(self.effect.tag.clone(), self.selected);
-        let result = self.effect.execute(game, ctx);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() { checkpoint.restore(ctx); }
-        result
+        let result = self.effect.execute_with_outputs(game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            checkpoint.restore(ctx);
+        }
+        result.map(crate::effects::SimultaneousEffectCommit::finished)
     }
 }
 
@@ -40,11 +56,15 @@ impl EffectExecutor for RevealTaggedEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Revealed)
     }
-    fn supports_simultaneous_player_action(&self) -> bool { true }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
 
-    fn prepare_simultaneous_player_action(&self, _game: &GameState, ctx: &mut ExecutionContext)
-        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError>
-    {
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         Ok(Box::new(RevealTaggedProposal {
             effect: self.clone(),
             selected: ctx.get_tagged_all(&self.tag).cloned().unwrap_or_default(),
@@ -60,13 +80,33 @@ impl EffectExecutor for RevealTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let tagged = ctx
             .get_tagged_all(self.tag.clone())
             .cloned()
             .unwrap_or_default();
-        let outcome = super::reveal_objects(game, ctx, tagged, None, "Reveal cards", None)?;
+        if let Some(admission) = super::reveal::prospective_reveal_admission(ctx, tagged.len()) {
+            return Ok(admission);
+        }
+        let outcome =
+            super::reveal_objects_with_outputs(game, ctx, tagged, None, "Reveal cards", None)?;
         if !ctx.decision_maker.awaiting_choice() {
-            ctx.set_tagged_objects(self.tag.clone(), outcome.chosen_object_memory().unwrap_or_default().to_vec());
+            ctx.set_tagged_objects(
+                self.tag.clone(),
+                outcome
+                    .outcome
+                    .chosen_object_memory()
+                    .unwrap_or_default()
+                    .to_vec(),
+            );
         }
         Ok(outcome)
     }
