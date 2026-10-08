@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Valakut Fireboar",
+    "oracle_id": "126bf98a-64d0-4de2-9bf4-f59d36ef6e25",
+    "text": "Mana cost: {4}{R}\nType: Creature — Elemental Boar\nPower/Toughness: 1/7\nWhenever this creature attacks, switch its power and toughness until end of turn."
+  }
+]

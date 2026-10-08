@@ -126,7 +126,11 @@ pub fn parse_switch_power_toughness_tokens(
         .any(|expected| permission_shapes::exact_tokens(target_tokens, expected))
     {
         SwitchTargetSurface::Source(target_tokens)
-    } else if permission_shapes::exact_tokens(target_tokens, &["it"]) {
+    } else if permission_shapes::exact_tokens(target_tokens, &["it"])
+        // "switch its power and toughness" (Valakut Fireboar): the possessive
+        // names the same antecedent as "it".
+        || permission_shapes::exact_tokens(target_tokens, &["its"])
+    {
         SwitchTargetSurface::Tagged(target_tokens)
     } else {
         SwitchTargetSurface::Explicit(target_tokens)
