@@ -135,6 +135,10 @@ pub enum ThisSpellCastCondition {
     YouControlFewerCreaturesThanEachOpponent,
     /// "only if you control N or more permanents whose names contain <word>"
     YouControlNameWordOrMore { word: &'static str, count: u32 },
+    /// "You can't cast this spell during your first N turns of the game":
+    /// prohibited only while its caster is the active player and has taken
+    /// N or fewer turns, counting the current one.
+    NotDuringYourFirstTurns(u32),
 }
 
 /// Cast-time restriction for "Cast this spell only ..." lines.
@@ -253,6 +257,10 @@ impl ThisSpellCastRestrictionKind {
 
     pub fn after_combat() -> Self {
         Self::timing(ThisSpellCastTiming::AfterCombat)
+    }
+
+    pub fn not_during_your_first_turns(count: u32) -> Self {
+        Self::condition(ThisSpellCastCondition::NotDuringYourFirstTurns(count))
     }
 
     pub fn if_no_permanents_named_on_battlefield(name: impl Into<String>) -> Self {
