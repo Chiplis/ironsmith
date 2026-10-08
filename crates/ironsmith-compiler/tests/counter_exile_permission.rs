@@ -1,9 +1,18 @@
 //! Authored evidence only: these tests have not been executed for the source-only
 //! counter/exile permission repair.
 
-use crate::{CardDefinition, CardDefinitionBuilder, CardId, ChooseSpec, PowerToughness};
-use crate::ability::AbilityKind;
-use crate::static_abilities::StaticAbilityPayload;
+//!
+//! Lives in the assembling crate: lowering's own unit tests would link a second
+//! copy of the lowering crate through the `ironsmith-compiler` dev-dependency,
+//! so its `CardDefinitionBuilder` would not be the pipeline's.
+
+use ironsmith_compiler::CardDefinitionBuilder;
+use ironsmith_compiler_semantic::ability::AbilityKind;
+use ironsmith_compiler_semantic::card::PowerToughness;
+use ironsmith_compiler_semantic::cards::CardDefinition;
+use ironsmith_compiler_semantic::ids::CardId;
+use ironsmith_compiler_semantic::static_abilities::StaticAbilityPayload;
+use ironsmith_compiler_semantic::target::ChooseSpec;
 use ironsmith_compiler::compiler_pipeline::parse_text_with_annotations_lowered;
 use ironsmith_compiler::grammar::values::{parse_mana_cost_rewrite, parse_type_line_rewrite};
 use ironsmith_core::{CounterEffect, CounterExileGate, CounterExilePermission};
@@ -34,7 +43,7 @@ fn builder(metadata: &serde_json::Value) -> CardDefinitionBuilder {
 }
 
 fn assert_atomic_counter(
-    program: &crate::resolution::ResolutionProgram,
+    program: &ironsmith_compiler_semantic::resolution::ResolutionProgram,
     permission: CounterExilePermission,
 ) {
     let effects = program.flattened_default_effects();
@@ -176,11 +185,11 @@ fn deleting_thranduils_entire_permission_from_full_metadata_is_rejected() {
 fn plain_counter_constructor_keeps_no_permission() {
     let (definition, _) = parse_text_with_annotations_lowered(
         CardDefinitionBuilder::new(CardId::new(), "Ordinary Counter Fixture")
-            .card_types(vec![crate::CardType::Instant]),
+            .card_types(vec![ironsmith_compiler_semantic::types::CardType::Instant]),
         "Counter target spell.".to_owned(),
         false,
     ).unwrap();
-    fn find_counter(effect: &crate::Effect) -> Option<CounterEffect> {
+    fn find_counter(effect: &ironsmith_compiler_semantic::effect::Effect) -> Option<CounterEffect> {
         if let Some(counter) = effect.downcast_ref::<CounterEffect>() {
             return Some(counter.clone());
         }
