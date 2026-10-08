@@ -156,10 +156,64 @@ fn parse_for_each_color_target_expansion(
     Ok(Some(effects))
 }
 
+/// "For any number of opponents, destroy target nonland permanent that player
+/// controls." (Windgrace's Judgment): one target per chosen opponent is the
+/// same announcement as any number of targets controlled by different
+/// opponents (CR 601.2c, 115.1). Read through the shared target grammar's
+/// "controlled by different players" set constraint.
+fn parse_for_any_number_of_opponents_target_expansion(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let Some((_, body)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["for", "any", "number", "of", "opponents"]),
+            primitives::comma(),
+        ),
+    ) else {
+        return Ok(None);
+    };
+    let Some((that_idx, (), after)) =
+        primitives::find_prefix(body, || primitives::phrase(&["that", "player", "controls"]))
+    else {
+        return Ok(None);
+    };
+    let target_positions = body
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("target"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [target_idx] = target_positions.as_slice() else {
+        return Ok(None);
+    };
+    let target_idx = *target_idx;
+    if target_idx >= that_idx
+        || primitives::find_prefix(after, || primitives::phrase(&["that", "player"])).is_some()
+    {
+        return Ok(None);
+    }
+    let mut rewritten = Vec::with_capacity(body.len() + 8);
+    rewritten.extend_from_slice(&body[..target_idx]);
+    for word in ["any", "number", "of"] {
+        rewritten.push(OwnedLexToken::synthetic_word(word));
+    }
+    rewritten.extend_from_slice(&body[target_idx..that_idx]);
+    for word in ["an", "opponent", "controls", "controlled", "by", "different", "players"] {
+        rewritten.push(OwnedLexToken::synthetic_word(word));
+    }
+    rewritten.extend_from_slice(after);
+    parse_effect_sentence_lexed(&rewritten).map(Some)
+}
+
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = parse_for_each_color_target_expansion(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_for_any_number_of_opponents_target_expansion(tokens)? {
         return Ok(effects);
     }
     // "Starting with you, each player chooses a creature." (The Horus
