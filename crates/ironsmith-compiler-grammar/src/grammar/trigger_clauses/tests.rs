@@ -1165,6 +1165,7 @@ fn another_ability_trigger_reaches_typed_model() {
             another: true,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
         }
     );
     let lowered = crate::compile_support::compile_trigger_spec(parsed);
@@ -1175,6 +1176,7 @@ fn another_ability_trigger_reaches_typed_model() {
             another: true,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
         }
     ));
 }
@@ -1192,6 +1194,7 @@ fn ability_triggered_by_its_own_sources_entry_reaches_typed_model() {
         another,
         source_filter: Some(filter),
         caused_by_source_entering,
+        ..
     } = parsed
     else {
         panic!("expected a typed source-qualified ability trigger, got {parsed:#?}");

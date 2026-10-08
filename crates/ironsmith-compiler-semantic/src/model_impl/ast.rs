@@ -421,6 +421,8 @@ pub enum TriggerSpec {
         another: bool,
         source_filter: Option<ObjectFilter>,
         caused_by_source_entering: bool,
+        /// The ability triggered on that same source's attack declaration.
+        caused_by_source_attacking: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,

@@ -790,9 +790,17 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             another,
             source_filter,
             caused_by_source_entering,
-        } => {
-            Trigger::ability_triggered_qualified(another, source_filter, caused_by_source_entering)
-        }
+            caused_by_source_attacking,
+        } => match source_filter {
+            Some(source_filter) if caused_by_source_attacking => {
+                Trigger::ability_triggered_by_source_attacking(source_filter)
+            }
+            source_filter => Trigger::ability_triggered_qualified(
+                another,
+                source_filter,
+                caused_by_source_entering,
+            ),
+        },
         TriggerSpec::DamageReceived {
             target,
             combat,

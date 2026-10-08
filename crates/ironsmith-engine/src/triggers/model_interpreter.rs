@@ -522,8 +522,13 @@ pub(crate) fn interpret_trigger_model(
             another,
             source_filter,
             caused_by_source_entering,
+            caused_by_source_attacking,
         } => {
-            if source_filter.is_some() || caused_by_source_entering {
+            if caused_by_source_attacking
+                && let Some(source_filter) = source_filter.clone()
+            {
+                crate::triggers::Trigger::ability_triggered_by_source_attacking(source_filter)
+            } else if source_filter.is_some() || caused_by_source_entering {
                 crate::triggers::Trigger::ability_triggered_qualified(
                     another,
                     source_filter,
