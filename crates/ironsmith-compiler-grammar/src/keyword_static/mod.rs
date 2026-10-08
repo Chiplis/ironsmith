@@ -14,6 +14,7 @@ mod dynamic_anthem_values;
 mod dynamic_characteristic_statics;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod alternative_prices;
+mod enters_tapped_untap_conjunction;
 mod costs_replacements_and_permissions;
 pub use alternative_prices::parse_independent_alternative_price_line;
 mod damage_prevention;
@@ -2129,6 +2130,11 @@ fn parse_static_ability_ast_line_lexed_committed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     crate::clause_support::validate_protection_static_line(tokens)?;
+    if let Some(abilities) =
+        enters_tapped_untap_conjunction::parse_enters_tapped_and_doesnt_untap_line(tokens)?
+    {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_complete_attached_restriction_quoted_activation(tokens)? {
         return Ok(Some(abilities));
     }

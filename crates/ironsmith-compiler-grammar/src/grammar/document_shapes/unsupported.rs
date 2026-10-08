@@ -135,13 +135,6 @@ const RULES: &[UnsupportedRule] = &[
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "enters", "tapped", "and", "doesnt", "untap", "during", "your", "untap", "step",
-        ],
-        kind: UnsupportedRewriteLineKind::MixedEntersTappedUntap,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
         phrase: &["of", "defending", "players", "choice"],
         kind: UnsupportedRewriteLineKind::DefendingPlayerChoice,
     },
