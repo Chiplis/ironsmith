@@ -3055,6 +3055,42 @@ pub fn parse_attached_can_attack_as_though_no_defender_line(
     }))
 }
 
+/// "Enchanted creature can attack as though it had haste." (Instill Energy):
+/// the attached creature gets the CR 302.6 summoning-sickness exemption for
+/// attacking only, not haste itself (its {T} abilities stay restricted).
+pub fn parse_attached_can_attack_as_though_haste_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = trim_edge_punctuation(tokens);
+    let Some((subject, rest)) = primitives::parse_prefix(
+        &clean,
+        winnow::combinator::alt((
+            primitives::phrase(&["enchanted", "creature"]).value("enchanted creature"),
+            primitives::phrase(&["equipped", "creature"]).value("equipped creature"),
+        )),
+    ) else {
+        return Ok(None);
+    };
+    let Some(((), rest)) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["can", "attack", "as", "though", "it", "had", "haste"]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::can_attack_as_though_haste(),
+        )),
+        display: format!("{subject} can attack as though it had haste"),
+        condition: None,
+    }))
+}
+
 pub fn parse_plain_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {

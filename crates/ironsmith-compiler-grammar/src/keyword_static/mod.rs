@@ -645,6 +645,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "can"),
         ],
+        "parse_attached_can_attack_as_though_haste_line" => vec![
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
+        ],
         "parse_attached_can_attack_as_though_no_defender_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
@@ -1668,6 +1672,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_passthrough_rule!(
+            parse_attached_can_attack_as_though_haste_line
         ),
         single_static_ability_ast_passthrough_rule!(
             parse_attacked_player_can_attack_as_though_no_defender_line
