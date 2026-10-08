@@ -3531,7 +3531,13 @@ fn advance_reference_frame_for_effect(
         }
         // Mirrors lowering: the looked-at cards become the object antecedent
         // ("..., then puts them back in any order").
-        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, .. } => {
+        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, viewer, .. } => {
+            // Mirrors lowering, which resolves the viewer as a tracked actor:
+            // "Target opponent looks at the top four cards of your library
+            // and separates them ..." makes that opponent "that player".
+            if !matches!(viewer, PlayerAst::You) {
+                track_effect_player(*viewer, frame, true, true)?;
+            }
             frame.last_object_tag = Some(
                 if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                     next_reference_tag(id_gen, "revealed")
