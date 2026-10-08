@@ -551,7 +551,25 @@ fn read_sneak(
         } else {
             full_tokens
         };
-        if !line.info.semantic_facts.supported_sneak_form
+        let (cost, used) =
+            leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "sneak keyword missing cost '{}'",
+                        line.info.raw_line
+                    ))
+                })?;
+        // A bare "Sneak {cost}" line (reminder text omitted) carries the
+        // keyword's complete rules meaning for both spell and permanent
+        // cards (the permanent's tapped-and-attacking entry follows from the
+        // cast, not the reminder); only an unrecognized rewording is rejected.
+        let bare_keyword = support_tokens
+            .get(1 + used..)
+            .unwrap_or_default()
+            .iter()
+            .all(|token| token.is_period());
+        if !bare_keyword
+            && !line.info.semantic_facts.supported_sneak_form
             && !is_supported_sneak_line(support_tokens)
         {
             return Err(CardTextError::ParseError(format!(
@@ -559,13 +577,6 @@ fn read_sneak(
                 line.info.raw_line
             )));
         }
-        let (cost, _) = leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "sneak keyword missing cost '{}'",
-                    line.info.raw_line
-                ))
-            })?;
         return Ok(ast(LineAst::AlternativeCastingMethod(
             crate::model::CompilerAlternativeCastingMethod::alternative_cost(
                 "Sneak",
