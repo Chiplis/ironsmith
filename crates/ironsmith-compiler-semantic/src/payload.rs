@@ -119,6 +119,14 @@ pub enum KeywordAction {
     Amplify(u32),
     AuraSwap(ManaCost),
     Devour(u32),
+    /// "Devour [quality] N" (CR 702.82c) and "Devour X, where X is the
+    /// number of creatures devoured this way" (Thromok the Insatiable).
+    DevourVariant {
+        multiplier: u32,
+        quality: Option<ObjectFilter>,
+        multiplier_is_devoured_count: bool,
+        presentation_multiplier: u32,
+    },
     Ravenous,
     Ascend,
     Storied,
@@ -472,6 +480,17 @@ impl KeywordAction {
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
             Self::Devour(amount) => format!("Devour {amount}"),
+            Self::DevourVariant {
+                multiplier,
+                quality,
+                multiplier_is_devoured_count,
+                ..
+            } => crate::effects::DevourEffect {
+                multiplier: *multiplier,
+                quality: quality.clone(),
+                multiplier_is_devoured_count: *multiplier_is_devoured_count,
+            }
+            .keyword_text(),
             Self::Ravenous => "Ravenous".to_string(),
             Self::Ascend => "Ascend".to_string(),
             Self::Storied => "Storied".to_string(),

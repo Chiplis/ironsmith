@@ -459,6 +459,24 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn devour_variant(
+        self,
+        devour: crate::effects::DevourEffect,
+        presentation_multiplier: u32,
+    ) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::new(devour)].into(),
+                "this creature",
+                false,
+                false,
+                Some(PresentationLabel::Keyword(PresentationKeyword::Devour(
+                    presentation_multiplier,
+                ))),
+            ),
+        ))
+    }
+
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_dies(),

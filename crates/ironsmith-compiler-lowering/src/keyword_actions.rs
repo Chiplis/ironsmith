@@ -125,6 +125,19 @@ pub fn apply_keyword_action(
         KeywordAction::Conspire => builder.conspire(),
         KeywordAction::Amplify(amount) => builder.amplify(amount),
         KeywordAction::Devour(multiplier) => builder.devour(multiplier),
+        KeywordAction::DevourVariant {
+            multiplier,
+            quality,
+            multiplier_is_devoured_count,
+            presentation_multiplier,
+        } => builder.devour_variant(
+            crate::effects::DevourEffect {
+                multiplier,
+                quality,
+                multiplier_is_devoured_count,
+            },
+            presentation_multiplier,
+        ),
         KeywordAction::AuraSwap(cost) => builder.aura_swap(cost),
         KeywordAction::Ravenous => builder.ravenous(),
         KeywordAction::Ascend => builder.ascend(),

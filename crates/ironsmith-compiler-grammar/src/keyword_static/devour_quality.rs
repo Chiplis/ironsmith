@@ -11,13 +11,15 @@ const DEVOURED_COUNT_TAIL: &[&str] = &[
 
 pub fn parse_devour_quality_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
     if !tokens.first().is_some_and(|token| token.is_word("devour")) {
         return Ok(None);
     }
     let body = &tokens[1..];
     let body_words = parser_token_word_refs(body);
+    // The grammar emits the keyword action; lowering builds the as-enters
+    // devour program from it.
     let (devour, presentation_multiplier) =
         if crate::word_primitives::parse_sequence_complete(&body_words, DEVOURED_COUNT_TAIL) {
             (crate::effects::DevourEffect::devoured_count_squared(), 1)
@@ -45,13 +47,12 @@ pub fn parse_devour_quality_line(
                 multiplier,
             )
         };
-    Ok(Some(StaticAbility::as_enters_effect_program(
-        vec![crate::effect::Effect::new(devour)].into(),
-        "this creature",
-        false,
-        false,
-        Some(ironsmith_core::PresentationLabel::Keyword(
-            ironsmith_core::PresentationKeyword::Devour(presentation_multiplier),
-        )),
+    Ok(Some(StaticAbilityAst::KeywordAction(
+        KeywordAction::DevourVariant {
+            multiplier: devour.multiplier,
+            quality: devour.quality,
+            multiplier_is_devoured_count: devour.multiplier_is_devoured_count,
+            presentation_multiplier,
+        },
     )))
 }
