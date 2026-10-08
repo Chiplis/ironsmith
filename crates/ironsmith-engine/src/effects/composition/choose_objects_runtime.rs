@@ -155,6 +155,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::Count(filter)
         | crate::effect::Value::CountScaled(filter, _)
         | crate::effect::Value::GreatestCount(filter)
+        | crate::effect::Value::LeastCount(filter)
         | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
         | crate::effect::Value::TotalPower(filter)
         | crate::effect::Value::TotalToughness(filter)

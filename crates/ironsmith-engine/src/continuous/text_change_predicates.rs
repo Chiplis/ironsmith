@@ -249,6 +249,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
             **right = rewrite_value_words(right, change)?;
         }
         Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter) | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter) | Value::TotalToughness(filter) | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter) | Value::GreatestToughness(filter) | Value::GreatestManaValue(filter)

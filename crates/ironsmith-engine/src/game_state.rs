@@ -5799,6 +5799,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter) => {
                 Self::object_filter_is_tap_sensitive(filter)
@@ -5915,6 +5916,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
             | crate::effect::Value::GreatestSharedNameCount(filter)
             | crate::effect::Value::TotalPower(filter)

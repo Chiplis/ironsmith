@@ -1,0 +1,32 @@
+[
+ {
+  "name": "Balancing Act",
+  "oracle_id": "4c68282b-776f-463a-9652-f611538c53ee",
+  "mana_cost": "{2}{W}{W}",
+  "type_line": "Sorcery",
+  "oracle_text": "Each player chooses a number of permanents they control equal to the number of permanents controlled by the player who controls the fewest, then sacrifices the rest. Each player discards cards the same way."
+ },
+ {
+  "name": "Magus of the Balance",
+  "oracle_id": "ed450f48-e69d-48d7-82cc-79cf89b2a1fb",
+  "mana_cost": "{1}{W}",
+  "type_line": "Creature — Human Wizard",
+  "oracle_text": "{4}{W}, {T}, Sacrifice this creature: Each player chooses a number of lands they control equal to the number of lands controlled by the player who controls the fewest, then sacrifices the rest. Players discard cards and sacrifice creatures the same way.",
+  "power": "2",
+  "toughness": "2"
+ },
+ {
+  "name": "Restore Balance",
+  "oracle_id": "ca79d130-6387-47b0-bde8-f45dd93f9221",
+  "mana_cost": "",
+  "type_line": "Sorcery",
+  "oracle_text": "Suspend 6—{W}\nEach player chooses a number of lands they control equal to the number of lands controlled by the player who controls the fewest, then sacrifices the rest. Players sacrifice creatures and discard cards the same way."
+ },
+ {
+  "name": "Balance",
+  "oracle_id": "17fa98cd-ed8f-483f-9525-7e989a82ebb2",
+  "mana_cost": "{1}{W}",
+  "type_line": "Sorcery",
+  "oracle_text": "Each player chooses a number of lands they control equal to the number of lands controlled by the player who controls the fewest, then sacrifices the rest. Players discard cards and sacrifice creatures the same way."
+ }
+]

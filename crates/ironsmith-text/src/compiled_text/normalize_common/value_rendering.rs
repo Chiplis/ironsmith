@@ -6453,6 +6453,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::LeastCount(filter) => {
+            format!(
+                "the number of {} of the player with the fewest",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::GreatestSharedNameCount(filter) => {
             format!(
                 "the greatest number of {} with the same name as one another",

@@ -208,6 +208,7 @@ pub(crate) fn resolve_wide(
         Value::GreatestCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, false)))
         }
+        Value::LeastCount(filter) => Ok(i64::from(context.least_per_player(filter))),
         Value::GreatestSharedCreatureTypeCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, true)))
         }
