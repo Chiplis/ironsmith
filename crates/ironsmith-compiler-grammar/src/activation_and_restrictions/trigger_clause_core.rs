@@ -2444,6 +2444,21 @@ fn try_parse_simple_end_of_combat_trigger_lexed(
 ) -> Option<TriggerSpec> {
     let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
     let words = crate::lexer::token_word_refs(tokens);
+    // "At end of combat on your turn" (Rose, Cutthroat Raider): the end-of-
+    // combat step event qualified by whose turn it is (CR 511.1).
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &["end", "of", "combat", "on", "your", "turn"],
+            &["the", "end", "of", "combat", "on", "your", "turn"],
+        ],
+    ) {
+        return Some(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::EndOfCombat),
+            condition: crate::cards::builders::PredicateAst::YourTurn,
+            surface: "on your turn".to_string(),
+        });
+    }
     crate::word_primitives::parse_any_sequence_complete(
         &words,
         &[&["end", "of", "combat"], &["the", "end", "of", "combat"]],
