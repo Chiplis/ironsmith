@@ -87,3 +87,93 @@ fn virtus_returns_for_friends_and_sacrifices_for_foes() {
         assert!(game.object(bob_live).is_none(), "the foe sacrificed its creature");
     }
 }
+
+const KHORVATHS_FURY: &str = "Mana cost: {4}{R}\nType: Sorcery\nFor each player, choose friend or foe. Each friend discards all cards from their hand, then draws that many cards plus one. Khorvath's Fury deals damage to each foe equal to the number of cards in their hand.";
+const REGNAS_SANCTION: &str = "Mana cost: {3}{W}\nType: Sorcery\nFor each player, choose friend or foe. Each friend puts a +1/+1 counter on each creature they control. Each foe chooses one untapped creature they control, then taps the rest.";
+
+#[test]
+fn khorvath_and_regna_iterate_both_tagged_groups() {
+    for (name, text) in [
+        ("Khorvath's Fury", KHORVATHS_FURY),
+        ("Regna's Sanction", REGNAS_SANCTION),
+    ] {
+        for definition in routes(name, text) {
+            assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+            let text = format!("{:?}", definition.spell_effect);
+            assert!(text.contains("ChooseFriendsOrFoesEffect"), "{name}: {text}");
+            assert!(text.matches("ForEachTaggedPlayerEffect").count() >= 2, "{name}: {text}");
+        }
+    }
+    for definition in routes("Khorvath's Fury", KHORVATHS_FURY) {
+        let text = format!("{:?}", definition.spell_effect);
+        assert!(text.contains("DiscardHand") || text.contains("Discard"), "{text}");
+        assert!(text.contains("CardsInHand(IteratedPlayer)"), "{text}");
+    }
+    for definition in routes("Regna's Sanction", REGNAS_SANCTION) {
+        let text = format!("{:?}", definition.spell_effect);
+        assert!(text.contains("ChooseObjectsEffect"), "{text}");
+        assert!(text.contains("TapEffect"), "{text}");
+        assert!(!text.contains("SacrificeEffect"), "the rest are tapped, not sacrificed: {text}");
+    }
+}
+
+#[test]
+fn regna_counters_friends_and_taps_all_but_one_foe_creature() {
+    for definition in routes("Regna's Sanction", REGNAS_SANCTION) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let bear = CardDefinitionBuilder::new(CardId::new(), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let ally = game.create_object_from_definition(&bear, A, Zone::Battlefield);
+        let foe_one = game.create_object_from_definition(&bear, B, Zone::Battlefield);
+        let foe_two = game.create_object_from_definition(&bear, B, Zone::Battlefield);
+        let foe_three = game.create_object_from_definition(&bear, B, Zone::Battlefield);
+        let source = game.create_object_from_definition(&definition, A, Zone::Stack);
+        let mut dm = AliceFriend;
+        let mut ctx = EffectContext::new(source, A, &mut dm);
+        for effect in definition.spell_effect.as_ref().unwrap().all_effects_owned() {
+            execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        }
+        assert_eq!(game.counter_count(ally, ironsmith::CounterType::PlusOnePlusOne), 1);
+        assert!(!game.is_tapped(ally), "friends are not tapped");
+        let untapped = [foe_one, foe_two, foe_three]
+            .into_iter()
+            .filter(|id| !game.is_tapped(*id))
+            .count();
+        assert_eq!(untapped, 1, "the foe keeps exactly its chosen creature untapped");
+        for id in [foe_one, foe_two, foe_three] {
+            assert_eq!(game.counter_count(id, ironsmith::CounterType::PlusOnePlusOne), 0);
+        }
+    }
+}
+
+#[test]
+fn khorvath_refills_friends_and_burns_foes_by_hand_size() {
+    for definition in routes("Khorvath's Fury", KHORVATHS_FURY) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let filler = CardDefinitionBuilder::new(CardId::new(), "Filler")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        for _ in 0..2 {
+            game.create_object_from_definition(&filler, A, Zone::Hand);
+        }
+        for _ in 0..3 {
+            game.create_object_from_definition(&filler, B, Zone::Hand);
+        }
+        for _ in 0..10 {
+            game.create_object_from_definition(&filler, A, Zone::Library);
+            game.create_object_from_definition(&filler, B, Zone::Library);
+        }
+        let source = game.create_object_from_definition(&definition, A, Zone::Stack);
+        let mut dm = AliceFriend;
+        let mut ctx = EffectContext::new(source, A, &mut dm);
+        for effect in definition.spell_effect.as_ref().unwrap().all_effects_owned() {
+            execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        }
+        assert_eq!(game.player(A).unwrap().hand.len(), 3, "discard two, draw two plus one");
+        assert_eq!(game.player(A).unwrap().life, 20);
+        assert_eq!(game.player(B).unwrap().hand.len(), 3, "foes keep their hand");
+        assert_eq!(game.player(B).unwrap().life, 17, "three cards in hand -> 3 damage");
+    }
+}

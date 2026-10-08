@@ -235,7 +235,7 @@ fn parse_friend_or_foe_sentence(
     } else if primitives::parse_prefix(clean, primitives::phrase(&["each", "foe"])).is_some() {
         crate::tag::CompilerReferenceTag::Foes
     } else {
-        return Ok(None);
+        return parse_friend_or_foe_recipient_sentence(clean);
     };
     let mut rewritten = clean.to_vec();
     rewritten[1] = OwnedLexToken::synthetic_word("player");
@@ -252,6 +252,60 @@ fn parse_friend_or_foe_sentence(
             require_evidence: false,
         },
     )]))
+}
+
+/// "<source> deals damage to each foe equal to the number of cards in their
+/// hand." The group is a recipient, not the subject: the sentence is read as
+/// its "each opponent" (or "each player") form and the iterated set is
+/// replaced by the tagged group, so each member is still the iterated player
+/// for per-player amounts.
+fn parse_friend_or_foe_recipient_sentence(
+    clean: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::ForEachEffectAst;
+    use crate::grammar::primitives;
+    let (idx, group) = if let Some((idx, (), _)) =
+        primitives::find_prefix(clean, || primitives::phrase(&["each", "friend"]))
+    {
+        (idx, crate::tag::CompilerReferenceTag::Friends)
+    } else if let Some((idx, (), _)) =
+        primitives::find_prefix(clean, || primitives::phrase(&["each", "foe"]))
+    {
+        (idx, crate::tag::CompilerReferenceTag::Foes)
+    } else {
+        return Ok(None);
+    };
+    if idx + 1 >= clean.len() {
+        return Ok(None);
+    }
+    for noun in ["opponent", "player"] {
+        let mut rewritten = clean.to_vec();
+        rewritten[idx + 1] = OwnedLexToken::synthetic_word(noun);
+        let Ok(parsed) = parse_effect_sentence_lexed(&rewritten) else {
+            continue;
+        };
+        let effects = match parsed.as_slice() {
+            [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]
+                if noun == "opponent" =>
+            {
+                effects.clone()
+            }
+            [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })]
+                if noun == "player" =>
+            {
+                effects.clone()
+            }
+            _ => continue,
+        };
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachTaggedPlayer {
+                tag: group.bind(),
+                effects,
+                require_evidence: false,
+            },
+        )]));
+    }
+    Ok(None)
 }
 
 fn parse_effect_sentence_lexed_uncached_inner(

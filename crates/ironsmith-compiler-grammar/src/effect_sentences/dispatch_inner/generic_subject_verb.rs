@@ -259,6 +259,8 @@ struct GenericChoiceComplementProgram {
     keep_count: ChoiceCount,
     distinct_slots: bool,
     aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+    /// "... then taps the rest" (Regna's Sanction) instead of sacrificing.
+    tap_rest: bool,
 }
 
 impl GenericChoiceComplementProgram {
@@ -293,10 +295,16 @@ impl GenericChoiceComplementProgram {
                 }));
             }
         }
-        effects.push(EffectAst::subject_verb_sacrifice_all(
-            PlayerAst::That,
-            self.base_filter.not_tagged(self.keep_tag),
-        ));
+        if self.tap_rest {
+            effects.push(EffectAst::subject_verb_tap_all(
+                self.base_filter.not_tagged(self.keep_tag),
+            ));
+        } else {
+            effects.push(EffectAst::subject_verb_sacrifice_all(
+                PlayerAst::That,
+                self.base_filter.not_tagged(self.keep_tag),
+            ));
+        }
         match self.chooser_scope {
             PlayerAst::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
             PlayerAst::Any | PlayerAst::Implicit => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
@@ -811,7 +819,7 @@ const CHOICE_COMPLEMENT_PATTERN: effect_grammar::EffectSequence<'static> =
         effect_grammar::EffectSequence::word("then"),
         effect_grammar::EffectSequence::action(
             "sacrifice",
-            effect_grammar::EffectCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
+            effect_grammar::EffectCaptureKind::OneOf(&["sacrifice", "sacrifices", "tap", "taps"]),
         ),
         effect_grammar::EffectSequence::phrase(&["the", "rest"]),
     ]);
@@ -2891,6 +2899,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_count: shape.count_per_slot,
                 distinct_slots: true,
                 aggregate_constraint: None,
+                tap_rest: false,
             }
             .lower(),
         ));
@@ -2905,6 +2914,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_count: shape.count,
                 distinct_slots: false,
                 aggregate_constraint: Some(shape.constraint),
+                tap_rest: false,
             }
             .lower(),
         ));
@@ -2934,6 +2944,15 @@ pub fn parse_choice_complement_subject_verb(
     let clause_display = crate::lexer::render_token_slice(clause.tokens())
         .trim()
         .to_string();
+    // "... then taps the rest": the unchosen objects are tapped rather than
+    // sacrificed; the choice itself is the same.
+    let tap_rest = crate::word_primitives::parse_sequence_suffix(
+        &clause.word_refs(),
+        &["the", "rest"],
+    ) && {
+        let words = clause.word_refs();
+        words.len() >= 3 && matches!(words[words.len() - 3], "tap" | "taps")
+    };
 
     let choice_clause = choice_clause.trimmed();
     let choice_tokens = choice_clause.tokens();
@@ -2948,6 +2967,7 @@ pub fn parse_choice_complement_subject_verb(
             keep_filters: [CardType::Artifact, CardType::Battle, CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker]
                 .into_iter().map(|kind| ObjectFilter::default().with_type(kind)).collect(),
             keep_count: ChoiceCount::exactly(1), distinct_slots: false, aggregate_constraint: None,
+            tap_rest,
         }.lower()));
     }
     if find_from_among(choice_tokens).is_none()
@@ -2976,6 +2996,7 @@ pub fn parse_choice_complement_subject_verb(
                     keep_count,
                     distinct_slots: false,
                     aggregate_constraint: None,
+                    tap_rest,
                 }
                 .lower(),
             ));
@@ -3057,6 +3078,7 @@ pub fn parse_choice_complement_subject_verb(
             keep_count: ChoiceCount::exactly(1),
             distinct_slots: false,
             aggregate_constraint: None,
+            tap_rest,
         }
         .lower(),
     ))
