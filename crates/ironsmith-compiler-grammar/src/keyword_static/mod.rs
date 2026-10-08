@@ -1540,6 +1540,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_attached_restriction_and_granted_ability_line
         ),
         multi_static_ability_ast_passthrough_rule!(parse_subject_color_and_granted_ability_line),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_anthem_color_and_quoted_activated_grant_line
+        ),
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_no_defender_line),
         multi_static_ability_ast_passthrough_rule!(parse_base_pt_and_blocker_restriction_line),
         multi_static_ability_ast_passthrough_rule!(parse_conditional_no_defender_and_unblockable_line),
