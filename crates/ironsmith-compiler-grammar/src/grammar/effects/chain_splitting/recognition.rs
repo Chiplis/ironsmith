@@ -129,6 +129,9 @@ const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "earthbend",
     "harness",
     "harnesses",
+    // "draw a card and blight 1" (Sinister Gnarlbark): blight is a keyword
+    // action, so the conjunction starts a second executable arm.
+    "blight",
 ];
 const KEYWORD_ACTION_WORDS: &[&str] = &[
     "adapt",
