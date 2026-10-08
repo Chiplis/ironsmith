@@ -291,6 +291,25 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             &["returned", "to", "their", "hand"],
             PriorEffectAction::Returned,
         ),
+        // "for each permanent returned to its owner's hand this way"
+        // (Wanderwine Farewell): the destination restates the bounce; the
+        // count is the objects that bounce actually returned.
+        (
+            &["returned", "to", "its", "owner's", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "its", "owners", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "their", "owners'", "hands"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "their", "owners", "hands"],
+            PriorEffectAction::Returned,
+        ),
         (&["returned"], PriorEffectAction::Returned),
         (&["revealed"], PriorEffectAction::Revealed),
         (&["sacrificed"], PriorEffectAction::Sacrificed),
