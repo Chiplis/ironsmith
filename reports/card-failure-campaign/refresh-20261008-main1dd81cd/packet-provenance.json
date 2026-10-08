@@ -1,0 +1,257 @@
+{
+  "files": {
+    "analysis-README.md": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 11118,
+        "sha256": "55f27bc391c3f0a237d5f6f5fcaf2f4a6ec0167f183adff89c6f443323ac0bae"
+      },
+      "source_relative_to_refresh": "analysis/README.md"
+    },
+    "analysis-provenance.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1846,
+        "sha256": "88cb7ce086f44ccdbcda8b30bb3dc67e1aa4bd839c9cf6153ab0b17de9494307"
+      },
+      "source_relative_to_refresh": "analysis/provenance.json"
+    },
+    "analyze_exact_ids.py": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 12836,
+        "sha256": "769f653b434780730d66cdd2151efbfaf776560bfad13412760ef094b753860a"
+      },
+      "source_relative_to_refresh": "analysis/analyze_exact_ids.py"
+    },
+    "audit-authoritative/run.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 3777,
+        "sha256": "f384df5525868cda8b09cd4db516042d5f65e34a8498f607b2ada1ddba99116c"
+      },
+      "source_relative_to_refresh": "audit-authoritative/run.json"
+    },
+    "build-manifest.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1288,
+        "sha256": "7bdb0c52b1b6ba027cc79546685c32fa2d957e6d28390f04a831ffb60493fbf4"
+      },
+      "source_relative_to_refresh": "build-manifest.json"
+    },
+    "build.sh": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1160,
+        "sha256": "23b298198648c85bafc081f90a7869c6806d2c635d15f96da15abf718b667444"
+      },
+      "source_relative_to_refresh": "build.sh"
+    },
+    "changed-input-evidence.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 3,
+        "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      "source_relative_to_refresh": "analysis/changed-input-evidence.json"
+    },
+    "current-unresolved-entries.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 7458429,
+        "sha256": "3e89d38bd63c3d906ce6cd46835c0aeed3c4e57a6af3cdf0368cb60fd0ff1e9f"
+      },
+      "source_relative_to_refresh": "analysis/current-unresolved-entries.json"
+    },
+    "data/bulk-metadata.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 553,
+        "sha256": "18cff6d9b5b53e2eb0e6bb88044cd59f7a58da601d719e6fe7602bd59d382655"
+      },
+      "source_relative_to_refresh": "data/bulk-metadata.json"
+    },
+    "data/cards-current.metadata.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 503,
+        "sha256": "30f18eb9db335d2c01a0def77fc60cbc2c94f7ab24f2cd4790544fd12a6a2053"
+      },
+      "source_relative_to_refresh": "data/cards-current.metadata.json"
+    },
+    "data/download-provenance.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 924,
+        "sha256": "b0c9dd49aeeaa4cee762f6d849447980ae3cef327ebe66631cfa8d3a572e9d33"
+      },
+      "source_relative_to_refresh": "data/download-provenance.json"
+    },
+    "dataset-summary.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1046,
+        "sha256": "b4522b608561ad2a958b18c659223e41214264b67e0a90470cbaac4fa0d5c369"
+      },
+      "source_relative_to_refresh": "analysis/dataset-summary.json"
+    },
+    "download-current.py": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1128,
+        "sha256": "872f598c84703ca1de52f315edc35ad4feea03fe781fa4aa65c62ceb0c4c5757"
+      },
+      "source_relative_to_refresh": "download-current.py"
+    },
+    "finalize_report.py": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 6172,
+        "sha256": "2db9adb77a70a2552f74c3bfdd09300a1b517a30e157fa3110b8feff63aa6c1f"
+      },
+      "source_relative_to_refresh": "analysis/finalize_report.py"
+    },
+    "fresh-compilation-source-review.md": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 2434,
+        "sha256": "d0c7b7d9bad6689b52d2ad17c7320918d3c806ae009a9863fc9a694e39f69e6a"
+      },
+      "source_relative_to_refresh": "fresh-compilation-source-review.md"
+    },
+    "input-index.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 4177740,
+        "sha256": "2e0d1e4e8ec63258515595dcce73cedc7b472c9568bef0cd22f9fb5d24a7ed9d"
+      },
+      "source_relative_to_refresh": "analysis/input-index.json"
+    },
+    "input-partitions.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 1414111,
+        "sha256": "79e14a285835823c7c1e0b41742cca2266dd1bac2594046a7f3f17b2c7266036"
+      },
+      "source_relative_to_refresh": "analysis/input-partitions.json"
+    },
+    "linked-face-coverage.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 258084,
+        "sha256": "31a01d418ee3a4c1595dc1fca81fcbe1f850bf43d8a189e51e5d751b2669bc47"
+      },
+      "source_relative_to_refresh": "analysis/linked-face-coverage.json"
+    },
+    "oct7-identity-comparison.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 7065498,
+        "sha256": "26b7adfeecd3507662287b7e1c5b13031f5ce11a6b0fbfa0232f10920190694d"
+      },
+      "source_relative_to_refresh": "analysis/oct7-identity-comparison.json"
+    },
+    "oct7-rendered-signal-transitions.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 205486,
+        "sha256": "356683060a2515fde25a9cc2e0bb997f847a785e099240b69d21ff2d8d8fc09c"
+      },
+      "source_relative_to_refresh": "analysis/oct7-rendered-signal-transitions.json"
+    },
+    "original-entry-signal-transitions.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 80287,
+        "sha256": "432ac6dbcfbd6daa84e30c86c9fbea57df6a5e2cf50afe6a47f8f33b0acc6e64"
+      },
+      "source_relative_to_refresh": "analysis/original-entry-signal-transitions.json"
+    },
+    "original-identity-comparison.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 7065498,
+        "sha256": "28f9fe77148970bf0436d391b3b8c4ef1948a95676c2297a7e79a1d2826bda91"
+      },
+      "source_relative_to_refresh": "analysis/original-identity-comparison.json"
+    },
+    "original-input-index.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 2758541,
+        "sha256": "74b89c250da237f225f76d1cb63b89fed227226b2c7acce60c88ff19edfec17f"
+      },
+      "source_relative_to_refresh": "analysis/original-input-index.json"
+    },
+    "overlapping-diagnostic-causes.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 2308575,
+        "sha256": "ed60396b11df868d2a2185b5bc84ae4e3feb1765c73b9c1dfb5189ab231d9e05"
+      },
+      "source_relative_to_refresh": "analysis/overlapping-diagnostic-causes.json"
+    },
+    "provenance.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 10307,
+        "sha256": "b16c7ded66d4aa98526e1afe9542c668de5166ce67ae1bada8d54005239e862f"
+      },
+      "source_relative_to_refresh": "provenance.json"
+    },
+    "regression-and-lossy-detail.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 227528,
+        "sha256": "b51b50df7038b42c03f5edca88524ff890a355e05f3d709f008380b13a52e52a"
+      },
+      "source_relative_to_refresh": "analysis/regression-and-lossy-detail.json"
+    },
+    "run-audit.sh": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 2081,
+        "sha256": "cc9b127ac0b11c73409bec9782b737ba8de752fea1b542ee27c473be9a1ad55e"
+      },
+      "source_relative_to_refresh": "run-audit.sh"
+    },
+    "source-analysis-manifest.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 3322,
+        "sha256": "74b6c29ebf4a25f71d942c0429a84f21baa17cc21471c64aa506dc5205428885"
+      },
+      "source_relative_to_refresh": "analysis/manifest.json"
+    },
+    "summary.json": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 1923,
+        "sha256": "aaad1cda79bfb8e17a5f10ad7ea1a0b754fbaf2e21db8cecb76b112baa95c21e"
+      },
+      "source_relative_to_refresh": "analysis/summary.json"
+    },
+    "suspected-rendered-text-signals.json.gz": {
+      "encoding": "gzip; mtime=0",
+      "source": {
+        "bytes": 312649,
+        "sha256": "d3aa67f5018574fc4736a70f0478a001daa609aa21e4e4da7cdf78d28c6152fa"
+      },
+      "source_relative_to_refresh": "analysis/suspected-rendered-text-signals.json"
+    },
+    "unpublished-scope-current-main.md": {
+      "encoding": "unchanged bytes",
+      "source": {
+        "bytes": 11656,
+        "sha256": "861da3e95dd734a57b9bfba3e15feda4156d6f2ee9b2ccaac499baa06c795025"
+      },
+      "source_relative_to_refresh": "analysis/unpublished-scope-current-main.md"
+    }
+  },
+  "scope": "Report preservation and offline metadata/hash/JSON consistency checks only; no compiler, corpus pass, tests, probes or code generation executed; no remote writes.",
+  "source_analysis_manifest_verified": true,
+  "source_commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "source_directory": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008",
+  "source_tree": "ebac6ecfc19ceef218323c68f74b7e9b2b80d393"
+}

@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-10-08T12:35:33.730923+00:00",
+  "metadata_source_url": "https://api.scryfall.com/bulk-data/default-cards",
+  "raw_path": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/data/default-cards-20261008090544.jsonl.gz",
+  "raw_bytes": 78779196,
+  "raw_sha256": "68c89f0752d1fb8a78d955a545af865e3ce8b2717a5922c44433b5ef330d9135",
+  "download_uri": "https://data.scryfall.io/default-cards/default-cards-20261008090544.jsonl.gz",
+  "source_updated_at": "2026-10-08T09:05:44.946+00:00",
+  "filtered_path": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/data/cards-current.json",
+  "filtered_bytes": 166744989,
+  "filtered_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+  "total_entries": 118601,
+  "kept_cards": 32209,
+  "finished_at": "2026-10-08T12:36:09.855791+00:00"
+}

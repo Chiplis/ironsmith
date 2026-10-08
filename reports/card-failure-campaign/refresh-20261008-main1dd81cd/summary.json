@@ -1,0 +1,56 @@
+{
+  "dataset_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+  "diagnostic_signature_count": 899,
+  "entry_category_counts": {
+    "allow_unsupported_fallback": 7,
+    "compiler_panic": 1,
+    "lossy_compilation": 94,
+    "parser_failure": 1752,
+    "semantic_output_failure": 69,
+    "strict_compiled": 30283,
+    "unsupported_mechanic": 3
+  },
+  "entry_status_counts": {
+    "compiled_with_allow_unsupported": 7,
+    "parse_failed": 1825,
+    "strict_compiled": 30377
+  },
+  "limits": [
+    "Compile acceptance does not prove gameplay correctness.",
+    "Rendered-text similarity and semantic flags are suspected signals, not confirmed gameplay miscompilations.",
+    "Linked/back/adventure/prepared supplemental faces were not independently executed.",
+    "Oct7 comparison reconstructs exact support from retained complete unresolved inventory; no full Oct7 compiled-definition or similarity-score comparison is claimed."
+  ],
+  "overlapping_diagnostic_cause_count": 911,
+  "parse_loss_flags_all_statuses": 1855,
+  "snapshot_sha256": "f7ab0ec3bd02283dcc0f723f1526fed3659f5a85ddb6d85e995fbbd0009314e1",
+  "source": {
+    "commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+    "status": "",
+    "tree": "ebac6ecfc19ceef218323c68f74b7e9b2b80d393"
+  },
+  "strict_lossy_entries": 94,
+  "strict_unimplemented_entries": 0,
+  "suspected_rendered_text_entries": 182,
+  "suspected_rendered_text_status_counts": {
+    "compiled_with_allow_unsupported": 2,
+    "strict_compiled": 180
+  },
+  "unique_compile_failures": 1824,
+  "unique_ids": 32138,
+  "unique_unresolved": 1925,
+  "unknown_identity_outcomes": 0,
+  "unresolved_entries": 1926,
+  "versus_oct7": {
+    "recovered": 175,
+    "regressed": 95,
+    "still_supported": 30038,
+    "still_unresolved": 1830
+  },
+  "versus_original": {
+    "recovered": 1445,
+    "regressed": 137,
+    "still_supported": 28768,
+    "still_unresolved": 1788
+  }
+}

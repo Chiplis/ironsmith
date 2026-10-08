@@ -1,0 +1,12 @@
+# Fresh compilation route at pinned main 1dd81cd84c62f272479f26e16d74719fff24b97b
+
+- `crates/ironsmith-tools/src/bin/sync_card_status_db.rs:113-125`: explicit --cards reads selected raw JSON using load_canonical_cards. DB registry payload route is only the unused no---cards branch.
+- `crates/ironsmith-tools/src/tooling.rs:367-374`: loader reads JSON bytes and constructs canonical payloads; no compiled catalogue is read here.
+- `sync_card_status_db.rs:187-216`: maps every filtered payload through compile_authoritative_snapshot_from_payload before insert_snapshots_if_changed; insertion deduplication does not skip compilation.
+- `tooling.rs:573-599`: authoritative compilation uses parse_card_payload_with_fallback and rejects strict output with unimplemented content or semantic markers.
+- `tooling.rs:3088-3126`: each attempt constructs a new compiler builder and calls compile_builder_to_runtime_definition on parse_input; failed parse_input attempts retry oracle_text and record oracle_only_fallback parse loss. Final failures retain primary and oracle-only diagnostic errors.
+- `tooling.rs:3142-3205`: strict attempt explicitly passes false. Only a failed strict attempt enables allow_unsupported=true; permissive success is distinct CompiledWithAllowUnsupported status and carries strict-error parse-loss reason. Two failures retain strict diagnostic evidence, not every permissive-route error.
+- `crates/ironsmith-compiler-runtime/src/lib.rs:679-687,818-829`: compiler boundary calls CompilerFacade::compile_definition directly, not the compiled registry catalog.
+- `crates/ironsmith-compiler/src/facade.rs:326-347`: calls compile_card_text_with_policy and rejects intermediate parser fallbacks.
+
+The frozen freshly-built binary runs with explicit current raw --cards and unique fresh --db-path, no tag/name filter, no --strict-only override. The repository harness rejects preexisting output directories, clears inherited IRONSMITH_* flags, limits Rayon threads to 1, checks binary/source/dataset hashes, exact canonical row membership and database integrity before setting completed=true. Strict success without losses/unimplemented/error is the support gate. Similarity/semantic flags are separately reported; acceptance is not gameplay correctness. Supplementary source faces are retained as inventory, not independently executed by this canonical front-payload audit. No duplicate full strict-only pass is scheduled.

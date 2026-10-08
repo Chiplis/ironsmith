@@ -1,0 +1,18 @@
+{
+  "current_alias_entries": 71,
+  "current_dataset_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+  "current_entries": 32209,
+  "current_semantic_projection_sha256": "8bcc5e77799e10c86a66efc1719c11645633985f985b5d16cfd5c3c26bb8b517",
+  "current_source_face_payloads": 33127,
+  "current_unique_ids": 32138,
+  "oct7_input_equivalence_basis": "Retained Oct7 dataset summary records the same complete semantic projection hash as frozen input; full Oct7 snapshot is not retained. Oct7 exact support is reconstructed from complete unresolved-entry inventory and checked unique-ID inventory.",
+  "original_archive_sha256": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+  "original_entries": 32209,
+  "original_semantic_projection_sha256": "8bcc5e77799e10c86a66efc1719c11645633985f985b5d16cfd5c3c26bb8b517",
+  "original_unique_ids": 32138,
+  "partition_counts": {
+    "unchanged_semantic_input": 32138
+  },
+  "source_records_changed_any_field": 32093,
+  "supplemental_face_payloads_unmeasured": 918
+}

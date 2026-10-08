@@ -1,0 +1,12 @@
+{
+  "download_uri": "https://data.scryfall.io/default-cards/default-cards-20261008090544.jsonl.gz",
+  "filtered_cards_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+  "id": "e2ef41e3-5778-4bc2-af3f-78eca4dd9c23",
+  "kept_cards": 32209,
+  "name": "Default Cards",
+  "schemaVersion": 1,
+  "total_entries": 118601,
+  "type": "default_cards",
+  "updated_at": "2026-10-08T09:05:44.946+00:00",
+  "uri": "https://api.scryfall.com/bulk-data/e2ef41e3-5778-4bc2-af3f-78eca4dd9c23"
+}

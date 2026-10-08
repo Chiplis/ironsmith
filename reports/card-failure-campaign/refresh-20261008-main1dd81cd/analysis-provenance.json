@@ -1,0 +1,41 @@
+{
+  "inputs": {
+    "fixtures/card-failure-campaign/baseline-e8740178.snapshot.json.gz": {
+      "bytes": 6024013,
+      "sha256": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12"
+    },
+    "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz": {
+      "bytes": 195494,
+      "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+    },
+    "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz": {
+      "bytes": 468167,
+      "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+    },
+    "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json": {
+      "bytes": 3187,
+      "sha256": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f"
+    },
+    "reports/card-failure-campaign/refresh-20261007-main5cc46c1/summary.json": {
+      "bytes": 10082,
+      "sha256": "981480eb73b8bcedcb3136841070ced5a8ea45f29a04df91cfc5666ff533dd12"
+    },
+    "reports/current-refresh-20261008/analysis/analyze_exact_ids.py": {
+      "bytes": 12836,
+      "sha256": "769f653b434780730d66cdd2151efbfaf776560bfad13412760ef094b753860a"
+    },
+    "reports/current-refresh-20261008/audit-authoritative/run.json": {
+      "bytes": 3777,
+      "sha256": "f384df5525868cda8b09cd4db516042d5f65e34a8498f607b2ada1ddba99116c"
+    },
+    "reports/current-refresh-20261008/audit-authoritative/snapshot.json": {
+      "bytes": 46841970,
+      "sha256": "f7ab0ec3bd02283dcc0f723f1526fed3659f5a85ddb6d85e995fbbd0009314e1"
+    },
+    "reports/current-refresh-20261008/data/download-provenance.json": {
+      "bytes": 924,
+      "sha256": "b0c9dd49aeeaa4cee762f6d849447980ae3cef327ebe66631cfa8d3a572e9d33"
+    }
+  },
+  "mode": "offline analysis only; no compiler/tests/source changes/remote writes"
+}
