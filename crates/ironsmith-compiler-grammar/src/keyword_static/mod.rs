@@ -2558,6 +2558,73 @@ fn parse_players_cant_search_with_any_player_ignore_line(
 
 mod single_line_readings;
 
+/// "You may cast this card from your graveyard if <condition>." /
+/// "... as long as <condition>." The trailing condition gates the same
+/// graveyard cast permission that the leading "As long as <condition>, you may
+/// cast this card from your graveyard." form already lowers to (a conditional
+/// grant functioning from the graveyard, checked when the card is cast,
+/// CR 601.3). Both the permission and the condition are read by their shared
+/// grammars; an unreadable condition declines the line.
+fn parse_source_graveyard_cast_trailing_condition_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    const PERMISSION: &[&str] = &["you", "may", "cast", "this", "card", "from", "your", "graveyard"];
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), after_permission)) = primitives::parse_prefix(&clean, primitives::phrase(PERMISSION))
+    else {
+        return Ok(None);
+    };
+    let condition_tokens = if let Some(((), rest)) =
+        primitives::parse_prefix(after_permission, primitives::phrase(&["as", "long", "as"]))
+    {
+        rest
+    } else if let Some((_, rest)) = primitives::parse_prefix(after_permission, primitives::kw("if"))
+    {
+        rest
+    } else {
+        return Ok(None);
+    };
+    // An optional second sentence is a cast-this-way rider ("If you do, this
+    // creature enters with a +1/+1 counter on it."), read by the shared
+    // permission-with-entry-counter grammar.
+    let (condition_tokens, rider_tokens) =
+        match condition_tokens.iter().position(|token| token.is_period()) {
+            Some(period) => (&condition_tokens[..period], Some(&condition_tokens[period..])),
+            None => (condition_tokens, None),
+        };
+    let condition_tokens = trim_edge_punctuation(condition_tokens);
+    if condition_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Ok(condition) = parse_static_condition_clause(&condition_tokens) else {
+        return Ok(None);
+    };
+    let permission_len = clean.len() - after_permission.len();
+    let abilities = match rider_tokens {
+        None => parse_static_ability_ast_line_lexed_single_without_leading_condition(
+            &clean[..permission_len],
+        )?,
+        Some(rider_tokens) => {
+            let mut composed = clean[..permission_len].to_vec();
+            composed.extend_from_slice(rider_tokens);
+            parse_play_from_permission_with_enter_counter_this_way_line(&composed)?
+                .map(|ability| vec![StaticAbilityAst::from(ability)])
+        }
+    };
+    let Some(abilities) = abilities else {
+        return Ok(None);
+    };
+    if abilities.is_empty() {
+        return Ok(None);
+    }
+    let mut conditioned = Vec::with_capacity(abilities.len());
+    for ability in abilities {
+        conditioned.push(add_static_ability_ast_condition(ability, condition.clone())?);
+    }
+    Ok(Some(conditioned))
+}
+
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -2574,6 +2641,9 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![StaticAbilityAst::Static(
             ability.with_condition(condition),
         )]));
+    }
+    if let Some(abilities) = parse_source_graveyard_cast_trailing_condition_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) =
         crate::permission_helpers::parse_independent_recent_graveyard_permissions(tokens)

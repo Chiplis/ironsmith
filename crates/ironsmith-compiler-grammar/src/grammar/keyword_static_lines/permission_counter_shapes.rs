@@ -247,6 +247,14 @@ fn parse_play_permission_enter_counter_lexed<'a>(
             primitives::phrase(&["it", "enters", "with"]),
         )
             .value(None),
+        // "If you do, this creature enters with ..." names the same cast
+        // card by its self-reference instead of the pronoun.
+        (
+            primitives::phrase(&["if", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["this", "creature", "enters", "with"]),
+        )
+            .value(None),
         parse_cast_this_way_enters_with_intro.map(Some),
     ))
     .parse_next(input)?;
