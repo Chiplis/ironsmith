@@ -59,6 +59,8 @@ pub enum EffectAst {
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    /// "It becomes day." / "It becomes night." (CR 731.2-731.3).
+    SetDayNight(ironsmith_core::DayNightDesignation),
     /// "This ability still resolves if its target becomes illegal."
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."

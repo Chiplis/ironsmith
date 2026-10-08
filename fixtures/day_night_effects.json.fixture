@@ -1,0 +1,20 @@
+[
+ {
+  "name": "Into the Night",
+  "oracle_id": "58c131f3-c623-4324-b061-9535018676b6",
+  "oracle_text": "It becomes night. Discard any number of cards, then draw that many cards plus one.",
+  "text": "Mana cost: {3}{R}\nType: Sorcery\nIt becomes night. Discard any number of cards, then draw that many cards plus one."
+ },
+ {
+  "name": "Unnatural Moonrise",
+  "oracle_id": "df33b298-9e4b-4522-96e5-c8d8d6af2bb4",
+  "oracle_text": "It becomes night. Until end of turn, target creature gets +1/+0 and gains trample and \"Whenever this creature deals combat damage to a player, draw a card.\"\nFlashback {2}{R}{G}",
+  "text": "Mana cost: {R}{G}\nType: Sorcery\nIt becomes night. Until end of turn, target creature gets +1/+0 and gains trample and \"Whenever this creature deals combat damage to a player, draw a card.\"\nFlashback {2}{R}{G}"
+ },
+ {
+  "name": "The Celestus",
+  "oracle_id": "c0ad2b5f-066b-424b-bddf-d3014731e599",
+  "oracle_text": "If it's neither day nor night, it becomes day as The Celestus enters.\n{T}: Add one mana of any color.\n{3}, {T}: If it's night, it becomes day. Otherwise, it becomes night. Activate only as a sorcery.\nWhenever day becomes night or night becomes day, you gain 1 life. You may draw a card. If you do, discard a card.",
+  "text": "Mana cost: {3}\nType: Legendary Artifact\nIf it's neither day nor night, it becomes day as The Celestus enters.\n{T}: Add one mana of any color.\n{3}, {T}: If it's night, it becomes day. Otherwise, it becomes night. Activate only as a sorcery.\nWhenever day becomes night or night becomes day, you gain 1 life. You may draw a card. If you do, discard a card."
+ }
+]

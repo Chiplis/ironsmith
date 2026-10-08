@@ -84,6 +84,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "SetClassLevelEffect" => {
             decode_as::<ironsmith_core::SetClassLevelEffect>(payload).map(Some)
         }
+        "SetDayNightEffect" => decode_as::<ironsmith_core::SetDayNightEffect>(payload).map(Some),
         "SoulbondPairEffect" => decode_as::<ironsmith_core::SoulbondPairEffect>(payload).map(Some),
         "SuspectEffect" => decode_as::<ironsmith_core::SuspectEffect>(payload).map(Some),
         "TapEffect" => decode_as::<ironsmith_core::TapEffect>(payload).map(Some),
@@ -269,6 +270,10 @@ pub(super) fn map_card_ids(
         }
         "SetClassLevelEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::SetClassLevelEffect,
+        >(payload, context)
+        .map(Some),
+        "SetDayNightEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::SetDayNightEffect,
         >(payload, context)
         .map(Some),
         "SoulbondPairEffect" => super::card_graph::map_payload_as::<

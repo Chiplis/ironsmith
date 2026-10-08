@@ -329,7 +329,7 @@ pub use reconfigure::ReconfigureEffect;
 pub use regenerate::RegenerateEffect;
 pub use renown::RenownEffect;
 pub use saddle::{BecomeSaddledUntilEotEffect, SaddleCostEffect};
-pub use solve_case::{SetClassLevelEffect, SolveCaseEffect};
+pub use solve_case::{DayNightDesignation, SetClassLevelEffect, SetDayNightEffect, SolveCaseEffect};
 pub use soulbond_pair::SoulbondPairEffect;
 pub(crate) use soulbond_pair::soulbond_pairing_possible;
 pub use suspect::{ClearSuspectedEffect, SuspectEffect};

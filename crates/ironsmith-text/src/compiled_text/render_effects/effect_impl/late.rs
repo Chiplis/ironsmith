@@ -6226,6 +6226,12 @@
     if let Some(level) = effect.downcast_ref::<crate::effects::SetClassLevelEffect>() {
         return format!("This Class becomes level {}", level.level);
     }
+    if let Some(day_night) = effect.downcast_ref::<crate::effects::SetDayNightEffect>() {
+        return match day_night.designation {
+            crate::effects::DayNightDesignation::Day => "It becomes day".to_string(),
+            crate::effects::DayNightDesignation::Night => "It becomes night".to_string(),
+        };
+    }
     if effect
         .downcast_ref::<crate::effects::UnearthEffect>()
         .is_some()
