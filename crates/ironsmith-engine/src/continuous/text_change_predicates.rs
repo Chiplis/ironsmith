@@ -477,6 +477,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         }
         Condition::YouControl(filter) | Condition::OpponentControls(filter)
         | Condition::YouHaveCardInHandMatching(filter) | Condition::ObjectEnteredBattlefieldThisTurn(filter)
+        | Condition::TopCardOfYourLibraryMatches(filter)
         | Condition::ObjectEnteredBattlefieldLastTurn(filter)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
         | Condition::SourceCrewedByExactly { filter, .. } | Condition::SourceMatches(filter)

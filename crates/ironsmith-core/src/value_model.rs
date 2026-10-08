@@ -1915,6 +1915,10 @@ pub enum Condition {
         count: u32,
     },
     YouHaveCardInHandMatching(ObjectFilter),
+    /// The card on top of the controller's library (CR 401.1: the last
+    /// object of the library sequence) matches the filter. Library-top
+    /// changes mark continuous state dirty, so statics re-evaluate.
+    TopCardOfYourLibraryMatches(ObjectFilter),
     YourTurn,
     /// The turn currently being played was created as an extra turn rather
     /// than reached through the normal turn order.

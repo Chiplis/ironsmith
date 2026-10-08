@@ -1855,6 +1855,20 @@ fn player_has_card_in_hand_matching(
     })
 }
 
+/// CR 401.1: the top of a library is the last entry of its sequence.
+fn top_card_of_library_matches(
+    game: &GameState,
+    player: PlayerId,
+    filter: &crate::target::ObjectFilter,
+    filter_source: Option<ObjectId>,
+) -> bool {
+    let filter_ctx = game.filter_context_for(player, filter_source);
+    game.player(player)
+        .and_then(|state| state.library.last().copied())
+        .and_then(|top| game.object(top))
+        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+}
+
 fn player_life_compares_to_half_starting(
     game: &GameState,
     player: PlayerId,
@@ -5950,6 +5964,12 @@ fn evaluate_condition_in_context(
             .player(shared.controller)
             .map(|p| p.hand.len() as i32 >= *threshold)
             .unwrap_or(false)),
+        Condition::TopCardOfYourLibraryMatches(filter) => Ok(top_card_of_library_matches(
+            game,
+            shared.controller,
+            filter,
+            shared.filter_source,
+        )),
         Condition::YouHaveCardInHandMatching(filter) => Ok(player_has_card_in_hand_matching(
             game,
             shared.controller,

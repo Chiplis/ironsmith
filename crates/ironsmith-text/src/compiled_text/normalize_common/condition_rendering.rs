@@ -2155,6 +2155,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let object_text = with_indefinite_article(&filter.description());
             format!("you have {object_text} in hand")
         }
+        Condition::TopCardOfYourLibraryMatches(filter) => {
+            let object_text = with_indefinite_article(&filter.description());
+            format!("the top card of your library is {object_text}")
+        }
         Condition::YourTurn => "it's your turn".to_string(),
         Condition::CurrentTurnIsExtra => "it's an extra turn".to_string(),
         Condition::YourFirstTurnsOfTheGameOrFewer(3) => {

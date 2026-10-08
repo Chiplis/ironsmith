@@ -796,6 +796,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::YouHaveCardInHandMatching(filter) => {
             Condition::YouHaveCardInHandMatching(filter.clone())
         }
+        PredicateAst::TopCardOfYourLibraryMatches(filter) => {
+            Condition::TopCardOfYourLibraryMatches(filter.clone())
+        }
         PredicateAst::YourFirstTurnsOfTheGameOrFewer(count) => {
             Condition::YourFirstTurnsOfTheGameOrFewer(*count)
         }

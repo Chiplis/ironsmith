@@ -2042,6 +2042,7 @@ pub(crate) fn condition_could_be_affected_by(
         C::YouControl(filter)
         | C::OpponentControls(filter)
         | C::YouHaveCardInHandMatching(filter)
+        | C::TopCardOfYourLibraryMatches(filter)
         | C::ObjectEnteredBattlefieldThisTurn(filter)
         | C::ObjectEnteredBattlefieldLastTurn(filter)
         | C::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)

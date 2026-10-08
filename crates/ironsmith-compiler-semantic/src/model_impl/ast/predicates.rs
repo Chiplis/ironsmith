@@ -130,6 +130,9 @@ pub enum PredicateAst {
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     /// "if you have a card in hand matching this"
     YouHaveCardInHandMatching(ObjectFilter),
+    /// "the top card of your library is a creature card" (Mul Daya
+    /// Channelers): the controller's library top matches the filter.
+    TopCardOfYourLibraryMatches(ObjectFilter),
     /// "during your first turn of the game"
     YourFirstTurnsOfTheGameOrFewer(u32),
     /// "as long as equipped creature is attacking"
