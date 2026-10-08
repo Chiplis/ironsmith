@@ -1,8 +1,8 @@
 # p03-linefamily-b — summary
 
 176 cards, all failing with `parser does not yet support line family`. Ledger:
-`ledger.jsonl` (one row per card). Counts: **20 source-proposed**, **2 already-on-main**,
-**154 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
+`ledger.jsonl` (one row per card). Counts: **21 source-proposed**, **2 already-on-main**,
+**153 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
 until it disappeared mid-session; later clusters rely on reading the code only.
 
 ## Clusters fixed (source-proposed)
@@ -18,6 +18,7 @@ until it disappeared mid-session; later clusters rely on reading the code only.
 | subtype-retrace-grant | Deeproot Historian | The retrace fact accepted only instant/sorcery subjects and only from those heads | Subtype-list subjects (a union through `ObjectFilter.subtypes`); mixed type+subtype lists are rejected; the rule is now whole-line | `subtype_retrace_grants.rs` |
 | attached-attack-as-though-haste | Instill Energy | No attached production for the existing `CanAttackAsThoughHaste` | `AttachedStaticAbilityGrant` for enchanted/equipped creature | `attached_attack_as_though_haste.rs` |
 | unreachable-skip-upkeep | Gibbering Descent | `parse_players_skip_upkeep_line` already reads labeled conditional "Skip your upkeep step if ...", but its derived head was only `players` | Made the rule whole-line | `conditional_skip_upkeep_reachability.rs` |
+| skip-untap-step | Stasis | No static for skipping untap steps | New typed `PlayersSkipUntapStep{player}` (core id+payload, engine kind, interpreter, compiler_model, text-change rewrite, `player_skips_untap_step`, turn runner + `execute_untap_step_with` skip, CR 614.10); grammar for 'Players skip their untap steps' / 'Skip your untap step' | `skip_untap_steps.rs` |
 | scoped-mana-spend | Oath of Nissa, Quicksilver Elemental | The any-color spend grammar lacked "to cast <filter>" and the one-color source-activation form | New shapes → `any_color_for_casting_matching` and `ActivationCostsOf(source)` + `any_color_mana_symbol` (CR 609.4b) | `scoped_mana_spend_permissions.rs` |
 
 Already on main through merged PR source: Summer Bloom (`temporary_additional_land_caps.rs`) and Rukarumel, Biologist (`chosen_type_domain_regressions.rs`).
@@ -131,3 +132,14 @@ Already on main through merged PR source: Summer Bloom (`temporary_additional_la
   - Specific-color mana: Sunglasses of Urza.
   - Ownership-scoped mana: Nathan Drake.
   - Ability copy with exclusion: Sharkey.
+
+## Ownership notes (after the shared-mechanism map)
+- scoped-mana-spend (Oath of Nissa, Quicksilver Elemental) was written before the ownership map
+  assigned spend-as-any-color to **p05**; reconcile at merge and keep one implementation.
+- Blocked rows that depend on other packages' mechanisms say so in `gameplay_gap`
+  ("needs mechanism owned by pNN"): p06 replacements (redirection, energy/draw/token/surveil
+  replacements, lose-game), p10 cast/player restrictions, p05 play-from-exile/cast permissions and
+  attack requirements, p09 friend-or-foe/votes/villainous choice/chosen abilities, p12 ability
+  copying, p01 random choices.
+- New engine static `PlayersSkipUntapStep` changes the engine schema hash; artifact fixtures that pin
+  ENGINE_SCHEMA_HASH will need regeneration.
