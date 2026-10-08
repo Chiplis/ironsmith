@@ -13,6 +13,9 @@ pub enum ReturnZoneShape {
     Hand,
     Battlefield,
     Graveyard,
+    /// "to the command zone" (CR 408): commanders and other objects whose
+    /// owner may keep them there.
+    Command,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +121,7 @@ fn zone_word<'a>(input: &mut LexStream<'a>) -> WResult<ReturnZoneShape> {
         primitives::kw("battlefield").value(ReturnZoneShape::Battlefield),
         alt((primitives::kw("graveyard"), primitives::kw("graveyards")))
             .value(ReturnZoneShape::Graveyard),
+        primitives::phrase(&["command", "zone"]).value(ReturnZoneShape::Command),
     ))
     .parse_next(input)
 }

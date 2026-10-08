@@ -438,10 +438,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         )
                     }
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Object(filter, None, None),
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,
@@ -592,10 +597,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         return_controller,
                     )
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Object(filter, None, None),
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,
@@ -850,10 +860,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         }
                     }
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         target,
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,
