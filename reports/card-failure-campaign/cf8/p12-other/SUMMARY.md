@@ -1,6 +1,6 @@
 # p12-other — fixer summary (cf8, branch cf8/p12-other)
 
-123 frozen cards. Result: **23 source-proposed, 2 already-on-main, 98 blocked**.
+123 frozen cards. Result (round 2): **35 source-proposed, 2 already-on-main, 86 blocked**, plus 2 out-of-package `semantic-fix-collateral` ledger rows (Mishra, Eminent One; Astral Drift).
 Nothing was built or run (campaign policy). The prebuilt `compile_oracle_text` was used read-only
 for triage until it disappeared mid-session; none of the fixes below were validated by it.
 Tests: `crates/ironsmith-compiler-runtime/tests/p12_*.rs` (shared helper `tests/p12_other/support.rs`,
@@ -53,3 +53,66 @@ attacked”, Anowon's “if the player mills at least one creature card this way
 - Either-trigger zone union changes behaviour for any Either trigger with a non-battlefield arm (e.g. Astral Drift on the lowering path now also functions from graveyard/exile) — intended per CR 113.6.
 - The discard qualifier merge can turn previously *lossy-compiling* cards with “<qualifier> cards <trailing relation>” into failures if the full phrase does not parse — intended (fail closed).
 - `BuiltinTokenShape` gained a variant; all exhaustive matches in grammar/semantic/lowering were updated (engine's separate `role_token.rs` not touched).
+
+## Round 2 (coordinator follow-up)
+
+### Corrections
+- **Union-trigger zones (CR 113.6, 603.6)** — replaces the round-1 "widen to the union" change. A new
+  `TriggerKind::ZoneGated { trigger, zones }` (core, appended variant) + engine `ZoneGatedTrigger`
+  gates *each arm* of an `Either` trigger to its own functional zones; the ability's zones are the
+  union. Applied in `compile_trigger_spec` only when the arms' zones differ. Astral Drift's
+  "cycle another card" arm now never fires from the graveyard/exile (negative test
+  `p12_union_trigger_zones.rs`); the self-cycle arm keeps the engine's existing cycled-card zones
+  (graveyard/exile — where the card is when the cycle event is observed). Text-change rewrite,
+  model interpreter and runtime-audit contract walk the new kind.
+
+### Silent miscompilations fixed (with collateral)
+| Bug | Fix | Cards |
+|---|---|---|
+| "Fortified land has X" → all lands | `CompilerReferenceTag::Fortified` binds the Fortification's host like Equipped (CR 301.6) in grammar, filter matching, statics (`AttachedTo`), descriptions; new **Fortify** keyword (CR 702.67a: sorcery-speed attach to target land you control) | Darksteel Garrison (now source-proposed), C.A.M.P. (host fixed; mana-tapped trigger still blocked) |
+| "copy …, except its name is X / named X" dropped | CR 707.9b `set_name` + `added_supertypes` on `CreateTokenCopyEffect` (core, serde-default), AST, grammar (name split out before characteristic words, cased from tokens), lowering, engine; a name in a copy exception is never a token name; anaphoric copies with a name exception fail closed | The Eleventh Hour, Mishra, Eminent One (collateral) |
+| "Until end of turn, if a creature would enter, exile it instead" → "Exile it" | new `turn_scoped_enter_replacement` recognizer → until-end-of-turn `RegisterFutureZoneReplacement` (any zone → battlefield ⇒ exile, CR 614.12); "wasn't cast" = not entering from the stack; "nontoken"; the lossy coordinated-leading-duration reader no longer admits the shape | Hallowed Moonlight, Mistcaller |
+| "turned face up this turn" → "face-up" | `ObjectFilter.turned_face_up_this_turn` (serde-default) read from `TurnedFaceUpEvent` turn history (CR 708.8); object-filter grammar and trigger-subject relative clause | Kaust, Eyes of the Glade (only printed card) |
+
+Other wording-family cards checked and left unchanged: Don't Blink, Gather Specimens (different
+replacement shapes); the become-copy "except its name is" family (Gogo, Kimahri, Lazav ×2, Ludevic,
+Sakashima, Sarkhan, Sunfrill) already keeps the name through its own grammar.
+
+### Blocked queue worked
+- **Targeted "attacks <player> this turn if able"** — new `MustAttackPlayerThisTurnEffect` (core +
+  engine + decoder + materializer + text + audit) writing `effect_store.attack_player_requirements`
+  (CR 508.1d scoring, current turn only); new `KeywordActionAst::MustAttackPlayerThisTurn`.
+  Alluring Siren, Dulcet Sirens, Ravener → source-proposed. Trench Behemoth stays blocked (next
+  combat phase, possibly another turn).
+- **Copy an activated ability (CR 707.10)** — passive trigger "an ability of <object> is activated".
+  Battlemage's Bracers, Illusionist's Bracers → source-proposed. Firebender Ascension, Pit Automaton
+  blocked.
+- **Granted flashback = mana cost** — "The flashback cost is equal to that card's mana cost".
+  Lier, Iroh → source-proposed.
+- **"deals N instead if that target is …"** — predicate "that target is <filter>" added
+  (`TargetMatches` after rebinding); Light Up the Night and Lithomantic Barrage remain blocked
+  because the anaphoric damage-instead composition is unverified (and Light Up the Night's
+  loyalty-removal flashback cost is unsupported).
+- **Room doors** — blocked: no engine "lock a door" operation (Keys to the House, Marina Vendrell);
+  targeted unlock has no target slot (Ghostly Keybearer); unlock-door mana spend restriction
+  (Smoky Lounge).
+- **Token shapes** — blocked with precise gaps (land token spec, where-X after keyword list,
+  named Equipment token, creation replacements).
+- **Return transformed attached** — blocked: MoveToZone with attachment has no "enters
+  transformed" option (three Curse/Aura DFCs).
+
+### New tests (unrun)
+`p12_union_trigger_zones.rs`, `p12_fortified_host.rs`, `p12_copy_name_exception.rs`,
+`p12_turn_scoped_enter_replacement.rs`, `p12_turned_face_up_this_turn.rs`,
+`p12_attack_player_requirement.rs`, `p12_equipped_ability_copy.rs`,
+`p12_granted_flashback_mana_cost.rs`.
+
+### Additional merge risks
+- Core additions: `TriggerKind::ZoneGated` (appended), `MustAttackPlayerThisTurnEffect`,
+  `CreateTokenCopyEffect.{set_name, added_supertypes}`, `ObjectFilter.turned_face_up_this_turn`
+  (all serde-default/appended). `CompilerReferenceTag::Fortified` and
+  `KeywordActionAst::MustAttackPlayerThisTurn` / `CreateTokenCopyFromSource.{set_name,
+  added_supertypes}` touch shared enums — every exhaustive match found was updated.
+- `"enchanted" | "equipped"` tag lists across engine/text were widened with `"fortified"`.
+- The round-1 history rewrite removed an accidentally committed `.cargo/config.toml` hunk; all
+  later commits stage explicit paths.
