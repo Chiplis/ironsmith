@@ -1561,6 +1561,48 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
+                // "When you lose control of that Equipment this turn, if it's
+                // attached to a creature you control, unattach it." (Stolen
+                // Uniform): watch the remembered object itself; the body's
+                // pronouns name that watched object, not the registering
+                // ability's other references (CR 603.10d looks back for loss
+                // of control).
+                TriggerSpec::ControlChanged(control)
+                    if filter_references_tag(
+                        &control.filter,
+                        crate::tag::CompilerReferenceTag::It.as_str(),
+                    ) =>
+                {
+                    let resolved_filter =
+                        resolve_it_tag(&control.filter, &current_reference_env(ctx))?;
+                    let watched_tag = watch_tag_from_filter(&resolved_filter).ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "control-change delayed trigger has no single watched object"
+                                .to_string(),
+                        )
+                    })?;
+                    let lowered = compile_trigger_effects_with_imports(
+                        Some(trigger),
+                        effects,
+                        &ReferenceImports {
+                            last_object_tag: Some(watched_tag.clone()),
+                            ..Default::default()
+                        },
+                    )?;
+                    let mut watched_change = control.clone();
+                    watched_change.filter = ObjectFilter::source();
+                    let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                        watched_tag.clone(),
+                        ironsmith_core::DelayedTriggerSpec::ControlChanged(watched_change),
+                        lowered.effects.to_vec(),
+                        *one_shot,
+                        Vec::new(),
+                        PlayerFilter::You,
+                    )
+                    .with_target_filter(resolved_filter)
+                    .until_end_of_turn();
+                    (vec![Effect::new(delayed)], choices)
+                }
                 TriggerSpec::LeavesBattlefield(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
