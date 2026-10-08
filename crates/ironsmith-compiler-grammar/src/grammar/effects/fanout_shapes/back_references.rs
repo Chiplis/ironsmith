@@ -48,6 +48,10 @@ pub fn parse_damage_back_reference_shape(
             .value(DamageBackReferenceShape::ThatObjectController),
         (primitives::kw("that"), demonstrative_object_head)
             .value(DamageBackReferenceShape::ThatObject),
+        // "deals 1 damage to target creature and 1 damage to its
+        // controller" (Neonate's Rush): the prior recipient's controller.
+        primitives::phrase(&["its", "controller"])
+            .value(DamageBackReferenceShape::ThatObjectController),
     ));
     crate::grammar::primitives::probe_all(
         tokens.tokens(),
