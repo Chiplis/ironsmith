@@ -9,6 +9,9 @@ use super::Predicate;
 
 /// The input's fallback reading, if a shape reads it.
 pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
+    if let Some(predicate) = negated_mana_spent(input.predicate_tokens) {
+        return Some(predicate);
+    }
     let words: Vec<String> = crate::lexer::token_word_refs(input.predicate_tokens)
         .into_iter()
         .map(|word| word.replace(['\'', '’'], ""))
@@ -1119,4 +1122,20 @@ fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     Some(at_least(Value::KickCount, 2))
+}
+
+/// "if {C} wasn't spent to cast it" (Wumpus Aberration): the denial of the
+/// mana-spent reading, rebuilt from the authored tokens (the mana symbol stays
+/// a real mana-group token) with the positive copula.
+fn negated_mana_spent(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let negation = tokens
+        .iter()
+        .position(|token| token.is_word("wasn't") || token.is_word("wasnt"))?;
+    if negation == 0 || !tokens.get(negation + 1)?.is_word("spent") {
+        return None;
+    }
+    let mut positive = tokens.to_vec();
+    positive[negation] = OwnedLexToken::synthetic_word("was");
+    let predicate = parse_predicate(&positive).ok()?;
+    Some(PredicateAst::Not(Box::new(predicate)))
 }
