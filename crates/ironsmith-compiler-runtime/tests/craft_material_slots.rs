@@ -119,3 +119,65 @@ fn unsupported_compound_materials_still_fail_closed() {
         assert!(ironsmith_compiler_runtime::compile_to_runtime_definition("Craft probe", &text, false).is_err(), "{clause}");
     }
 }
+
+mod slot_matching {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::mana::ManaSymbol;
+    use ironsmith::{GameState, ObjectId, Phase, PlayerId, Zone};
+    use ironsmith_compiler_runtime::compile_to_runtime_definition;
+
+    const A: PlayerId = PlayerId(0);
+
+    fn game() -> GameState {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.active_player = A;
+        game.turn.priority_player = Some(A);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game
+    }
+
+    fn material(game: &mut GameState, subtypes: &str) -> ObjectId {
+        let text = format!("Type: Creature — {subtypes}\nPower/Toughness: 1/1");
+        let definition = compile_to_runtime_definition("Craft material", &text, false).unwrap();
+        game.create_object_from_definition(&definition, A, Zone::Graveyard)
+    }
+
+    fn craft_action(game: &mut GameState) -> (ObjectId, LegalAction) {
+        let rows = super::fixtures();
+        let row = rows.iter().find(|row| row["name"] == "Throne of the Grim Captain").unwrap();
+        let definition = compile_to_runtime_definition(
+            row["name"].as_str().unwrap(), row["text"].as_str().unwrap(), false).unwrap();
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let ability_index = definition.abilities.iter().position(|ability| matches!(&ability.kind,
+            AbilityKind::Activated(activated) if activated.mana_cost.costs().len() > 4)).unwrap();
+        for symbol in [ManaSymbol::Colorless, ManaSymbol::Black] {
+            game.player_mut(A).unwrap().mana_pool.add(symbol, 10);
+        }
+        (source, LegalAction::ActivateAbility { source, ability_index })
+    }
+
+    /// CR 702.167a: one Dinosaur Pirate can fill the Dinosaur slot or the
+    /// Pirate slot, never both.
+    #[test]
+    fn one_object_cannot_fill_two_slots() {
+        let mut game = game();
+        material(&mut game, "Dinosaur Pirate");
+        material(&mut game, "Merfolk");
+        material(&mut game, "Vampire");
+        let (_, action) = craft_action(&mut game);
+        assert!(!compute_legal_actions(&game, A).unwrap().contains(&action));
+    }
+
+    #[test]
+    fn four_distinct_materials_make_craft_available() {
+        let mut game = game();
+        material(&mut game, "Dinosaur Pirate");
+        material(&mut game, "Pirate");
+        material(&mut game, "Merfolk");
+        material(&mut game, "Vampire");
+        let (_, action) = craft_action(&mut game);
+        assert!(compute_legal_actions(&game, A).unwrap().contains(&action));
+    }
+}
