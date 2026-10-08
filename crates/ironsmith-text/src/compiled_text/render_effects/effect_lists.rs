@@ -33,6 +33,8 @@ mod graveyard_copy_cast;
 mod graveyard_return_compaction;
 #[path = "effect_list/named_random_discard.rs"]
 mod named_random_discard;
+#[path = "effect_list/basic_land_type_choices.rs"]
+mod basic_land_type_choices;
 #[path = "effect_list/helpers_00.rs"]
 mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
@@ -105,6 +107,7 @@ pub(in crate::compiled_text) use graveyard_copy_cast::{
 };
 pub(super) use graveyard_return_compaction::*;
 pub(super) use named_random_discard::*;
+pub(super) use basic_land_type_choices::*;
 pub(super) use helpers_00::describe_each_player_choose_creature_destroy_others;
 pub(in crate::compiled_text) use helpers_00::describe_target_only_then_exchange_control;
 pub(super) use helpers_00::player_is_controller_of_produced_target;
@@ -15059,6 +15062,9 @@ pub(in crate::compiled_text) fn refer_back_to_declared_any_target(
 }
 
 fn describe_effect_list_inner(effects: &[Effect]) -> String {
+    if let Some(text) = describe_choose_land_of_each_basic_land_type(effects) {
+        return text;
+    }
     if let Some(text) = describe_paired_owner_library_shuffles(effects) {
         return text;
     }
