@@ -1411,6 +1411,11 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         _ => {}
     }
 
+    // "Bloodthirst X" has a defined amount: the total damage your opponents
+    // have been dealt this turn (CR 702.54c).
+    if words.as_slice() == ["bloodthirst", "x"] {
+        return Some(KeywordAction::BloodthirstX);
+    }
     // A numeric keyword ("bushido 2"): the heads are exclusive, so the table is
     // a lookup, not a ranking.
     if let Some(action) = NUMERIC_KEYWORDS

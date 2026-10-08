@@ -159,6 +159,9 @@ pub enum KeywordAction {
     UmbraArmor,
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    /// "Bloodthirst X" (CR 702.54c): enters with X +1/+1 counters, where X is
+    /// the total damage your opponents have been dealt this turn.
+    BloodthirstX,
     Tribute(u32),
     Rampage(u32),
     Bushido(u32),
@@ -325,6 +328,7 @@ impl KeywordAction {
                 | Self::UmbraArmor
                 | Self::Landwalk(_)
                 | Self::Bloodthirst(_)
+                | Self::BloodthirstX
                 | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
@@ -520,6 +524,7 @@ impl KeywordAction {
             Self::UmbraArmor => "Umbra armor".to_string(),
             Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+            Self::BloodthirstX => "Bloodthirst X".to_string(),
             Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),

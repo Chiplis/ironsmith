@@ -124,6 +124,10 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
             }
         }),
         KeywordAction::Bloodthirst(amount) => Some(CompilerStaticAbility::bloodthirst(amount)),
+        KeywordAction::BloodthirstX => Some(CompilerStaticAbility::enters_with_counters_value(
+            crate::object::CounterType::PlusOnePlusOne,
+            crate::effect::Value::DamageDealtToPlayersThisTurn(crate::target::PlayerFilter::Opponent),
+        )),
         KeywordAction::Tribute(amount) => Some(CompilerStaticAbility::tribute(amount)),
         KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(CompilerStaticAbility::changeling()),

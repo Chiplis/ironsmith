@@ -735,6 +735,9 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
         if let Some(action) = parse_count_keyword("bloodthirst", KeywordAction::Bloodthirst) {
             return Some(action);
         }
+        if matches!(words, ["bloodthirst", "x"]) {
+            return Some(KeywordAction::BloodthirstX);
+        }
         if let Some(action) = parse_count_keyword("tribute", KeywordAction::Tribute) {
             return Some(action);
         }

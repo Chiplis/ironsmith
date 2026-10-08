@@ -72,6 +72,16 @@ pub fn apply_keyword_action(
         KeywordAction::Emerge(cost) => builder.emerge(cost),
         KeywordAction::Vanishing(amount) => builder.vanishing(amount),
         KeywordAction::Bloodthirst(amount) => builder.bloodthirst(amount),
+        KeywordAction::BloodthirstX => {
+            builder.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::DamageDealtToPlayersThisTurn(
+                        crate::target::PlayerFilter::Opponent,
+                    ),
+                ),
+            ))
+        }
         KeywordAction::Ninjutsu(cost) => builder.ninjutsu(cost),
         KeywordAction::Backup(amount) => builder.backup(amount),
         KeywordAction::Dash(cost) => builder.dash(cost),
