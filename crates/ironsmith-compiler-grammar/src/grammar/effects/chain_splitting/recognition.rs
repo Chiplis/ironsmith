@@ -409,7 +409,9 @@ pub fn preserve_and_reason(
     if is_card_type_list_boundary(current, remaining) {
         return Some(AndPreservation::CardTypeList);
     }
-    if is_creature_subtype_subject_list_boundary(current, remaining) {
+    if is_creature_subtype_subject_list_boundary(current, remaining)
+        || is_subtype_object_list_boundary(current, remaining)
+    {
         return Some(AndPreservation::CreatureSubtypeList);
     }
     if extended
@@ -905,6 +907,52 @@ fn is_card_type_list_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexTo
     // card/spell/permanent noun still proves one object operand, including
     // relative clauses such as "cards ... that were put there this turn".
     current_last_type && contains_any(current, CARD_TYPE_WORDS)
+}
+
+/// Preserve the connectives of a serial subtype *object* list whose final arm
+/// carries a controller relative clause: `put a +1/+1 counter on each Scout,
+/// Pirate, and Rogue you control`, `untap each Frog, Rabbit, Raccoon, or
+/// Squirrel you control that entered the battlefield this turn`. The left
+/// side ends in a subtype after its verb; the right side lists only further
+/// subtypes before `<player> control(s)`. That relative verb is part of the
+/// object filter, not a coordinated action.
+pub fn is_subtype_object_list_boundary(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    if find_chain_verb_tokens(current).is_none() {
+        return false;
+    }
+    let is_subtype =
+        |word: &str| leaf::parse_leaf_subtype_flexible_complete(word).is_ok();
+    let current_words = token_word_refs(current);
+    if !current_words.last().is_some_and(|word| is_subtype(word)) {
+        return false;
+    }
+    let remaining_words = token_word_refs(remaining);
+    let Some(list_end) = remaining_words
+        .iter()
+        .position(|word| !(is_subtype(word) || matches!(*word, "or" | "and" | "and/or")))
+    else {
+        return false;
+    };
+    if list_end == 0 || !is_subtype(remaining_words[0]) {
+        return false;
+    }
+    const CONTROLLER_CLAUSES: &[&[&str]] = &[
+        &["you", "control"],
+        &["you", "own"],
+        &["an", "opponent", "controls"],
+        &["your", "opponents", "control"],
+        &["that", "player", "controls"],
+        &["target", "player", "controls"],
+        &["target", "opponent", "controls"],
+        &["defending", "player", "controls"],
+    ];
+    let tail = &remaining_words[list_end..];
+    CONTROLLER_CLAUSES
+        .iter()
+        .any(|clause| tail.starts_with(clause))
 }
 
 /// Preserve the final conjunction in a serial creature-subtype subject.

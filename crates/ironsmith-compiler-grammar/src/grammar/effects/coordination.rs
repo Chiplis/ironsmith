@@ -799,7 +799,8 @@ fn classify_boundary<'a>(
     if matches!(
         candidate.operator,
         CoordinationOperatorAst::Comma | CoordinationOperatorAst::And | CoordinationOperatorAst::Or
-    ) && super::chain_splitting::is_creature_subtype_subject_list_boundary(before, after)
+    ) && (super::chain_splitting::is_creature_subtype_subject_list_boundary(before, after)
+        || super::chain_splitting::is_subtype_object_list_boundary(before, after))
     {
         // Serial subtype subjects are one filter even though the final arm
         // contains the clause's eventual verb: `Birds, Frogs, Otters, and
