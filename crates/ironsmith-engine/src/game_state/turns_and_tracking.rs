@@ -2915,6 +2915,21 @@ impl GameState {
             .turn_history
             .loyalty_abilities_activated_this_turn
             .insert(source);
+        self.increment_named_turn_counter(
+            crate::effects::player::loyalty_activation_allowance::loyalty_activation_counter(
+                source,
+            ),
+        );
+    }
+
+    /// How many loyalty abilities of this permanent were activated this turn.
+    pub fn loyalty_activations_this_turn(&self, source: ObjectId) -> u32 {
+        let counted = self.named_turn_counter(
+            &crate::effects::player::loyalty_activation_allowance::loyalty_activation_counter(
+                source,
+            ),
+        );
+        counted.max(u32::from(self.loyalty_ability_activated_this_turn(source)))
     }
 
     /// Check if any loyalty ability of this permanent has been activated this turn.

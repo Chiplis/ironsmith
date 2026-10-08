@@ -1,3 +1,5 @@
+#[path = "permission_helpers/collection_casts.rs"]
+pub(crate) mod collection_casts;
 pub(crate) mod effect_cast_prices;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
@@ -2667,7 +2669,14 @@ pub fn parse_cast_or_play_tagged_clause(
                 surface,
             ),
         )),
-        _ => Ok(conditional_tagged_permission),
+        _ => match conditional_tagged_permission {
+            Some(effect) => Ok(Some(effect)),
+            // "You may cast any number of spells from among cards exiled
+            // this way without paying their mana costs": a one-shot cast
+            // from a named collection, read only after every permission
+            // shape above declined.
+            None => collection_casts::parse_collection_cast_clause(tokens),
+        },
     }
 }
 

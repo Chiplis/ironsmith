@@ -2658,6 +2658,34 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::ManifestFromHand => {
             EffectAst::subject_verb_manifest_from_hand(PlayerAst::You)
         }
+        clause_shapes::KeywordMechanicShape::CloakFromHand => {
+            // CR 701.58a: choose a card in your hand and put it onto the
+            // battlefield face down as a 2/2 creature with ward {2}.
+            let chosen = crate::util::helper_tag_for_tokens(tokens, "cloak_from_hand");
+            let mut filter = ObjectFilter::default();
+            filter.zone = Some(crate::zone::Zone::Hand);
+            filter.owner = Some(crate::target::PlayerFilter::You);
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ObjectChoices(
+                        crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                            filter,
+                            count: crate::effect::ChoiceCount::exactly(1),
+                            count_value: None,
+                            player: PlayerAst::You,
+                            tag: crate::tag::TagRef::of(chosen.clone()),
+                        },
+                    ),
+                    EffectAst::subject_verb_cloak_onto_battlefield(
+                        PlayerAst::You,
+                        TargetAst::Tagged(crate::tag::TagRef::of(chosen), None),
+                        false,
+                        crate::cards::builders::ReturnControllerAst::Preserve,
+                        false,
+                    ),
+                ],
+            }
+        }
         clause_shapes::KeywordMechanicShape::Populate { repeat } => {
             EffectAst::subject_verb_populate(keyword_repeat_value(
                 repeat,

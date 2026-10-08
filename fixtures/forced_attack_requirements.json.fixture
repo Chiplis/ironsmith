@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Incite War",
+    "oracle_id": "8a640369-59ab-4506-b473-1f804721414c",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Creatures target player controls attack this turn if able.\n• Creatures you control gain first strike until end of turn.\nEntwine {2}",
+    "text": "Mana cost: {2}{R}\nType: Instant\nChoose one —\n• Creatures target player controls attack this turn if able.\n• Creatures you control gain first strike until end of turn.\nEntwine {2}"
+  },
+  {
+    "name": "Instigator",
+    "oracle_id": "0fe1a1f7-41c9-415e-a5e3-b5ba0c0271e5",
+    "mana_cost": "{1}{B}",
+    "type_line": "Creature — Human Spellshaper",
+    "oracle_text": "{1}{B}{B}, {T}, Discard a card: Creatures target player controls attack this turn if able.",
+    "power": "1",
+    "toughness": "1",
+    "text": "Mana cost: {1}{B}\nType: Creature — Human Spellshaper\nPower/Toughness: 1/1\n{1}{B}{B}, {T}, Discard a card: Creatures target player controls attack this turn if able."
+  },
+  {
+    "name": "Nettling Curse",
+    "oracle_id": "93d575b3-0fff-4fc6-85c6-3a8a9d672d6f",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nWhenever enchanted creature attacks or blocks, its controller loses 3 life.\n{1}{R}: Enchanted creature attacks this turn if able.",
+    "text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nWhenever enchanted creature attacks or blocks, its controller loses 3 life.\n{1}{R}: Enchanted creature attacks this turn if able."
+  },
+  {
+    "name": "Rowan Kenrith",
+    "oracle_id": "e191976c-6ab1-4a23-aeb8-8a88bd4bd203",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Legendary Planeswalker — Rowan",
+    "oracle_text": "+2: During target player's next turn, each creature that player controls attacks if able.\n−2: Rowan Kenrith deals 3 damage to each tapped creature target player controls.\n−8: Target player gets an emblem with \"Whenever you activate an ability that isn't a mana ability, copy it. You may choose new targets for the copy.\"\nPartner with Will Kenrith\nRowan Kenrith can be your commander.",
+    "loyalty": "4",
+    "text": "Mana cost: {4}{R}{R}\nType: Legendary Planeswalker — Rowan\nLoyalty: 4\n+2: During target player's next turn, each creature that player controls attacks if able.\n−2: Rowan Kenrith deals 3 damage to each tapped creature target player controls.\n−8: Target player gets an emblem with \"Whenever you activate an ability that isn't a mana ability, copy it. You may choose new targets for the copy.\"\nPartner with Will Kenrith\nRowan Kenrith can be your commander."
+  }
+]

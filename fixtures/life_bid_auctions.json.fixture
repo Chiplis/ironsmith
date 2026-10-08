@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Illicit Auction",
+    "oracle_id": "dea8c725-455e-4668-877a-df388fe22255",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player may bid life for control of target creature. You start the bidding with a bid of 0. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature.",
+    "text": "Mana cost: {3}{R}{R}\nType: Sorcery\nEach player may bid life for control of target creature. You start the bidding with a bid of 0. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature."
+  }
+]

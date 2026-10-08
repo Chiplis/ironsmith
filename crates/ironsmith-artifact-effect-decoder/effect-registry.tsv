@@ -294,6 +294,7 @@ ImprintFromHandEffect	wire::WireImprintFromHandEffect	zone-library
 ScaleXValueEffect	wire::WireScaleXValueEffect	stack-event
 RevealChosenSubtypeEffect	ironsmith_core::RevealChosenSubtypeEffect	player
 BecomePlottedEffect	ironsmith_core::BecomePlottedEffect	zone-library
+GrantLoyaltyActivationAllowanceEffect	ironsmith_core::GrantLoyaltyActivationAllowanceEffect	player
 GrantEndThisEffectPaymentEffect	ironsmith_core::GrantEndThisEffectPaymentEffect	player
 SaddleCostEffect	ironsmith_core::SaddleCostEffect	permanent
 AddManaOfNotedTypeEffect	ironsmith_core::AddManaOfNotedTypeEffect	resources

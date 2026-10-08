@@ -769,6 +769,23 @@ pub fn parse_damage_part_shape(
     if exact_any(&tokens, &[&["opponent"], &["opponents"]]) {
         return Some(DamagePartShape::TargetOpponent(tokens));
     }
+    // "deals 3 damage to that player and 1 damage to each creature they
+    // control" (The Fall of Kroog): a definite player back-reference is read
+    // by the ordinary target-phrase grammar, which binds it to the player
+    // chosen earlier rather than declaring another target.
+    if exact_any(
+        &tokens,
+        &[
+            &["that", "player"],
+            &["that", "opponent"],
+            &["defending", "player"],
+        ],
+    ) {
+        return Some(DamagePartShape::TargetTokens {
+            tokens,
+            controller: None,
+        });
+    }
     if !contains_word(&tokens, "target") && !contains_word(&tokens, "targets") {
         return None;
     }
@@ -813,6 +830,21 @@ fn equal_damage_amount_and_targets(tokens: &[OwnedLexToken]) -> Option<(Value, &
         remaining = rest;
     }
     None
+}
+
+/// Split one damage part that names a recipient and an each-set sharing the
+/// part's amount: "you and each creature you control" (Hail Storm). The
+/// right half is returned without its `each`/`all` quantifier, as
+/// [`parse_compound_damage_shape`] returns it.
+pub fn split_damage_part_recipient_set(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let tokens = trimmed(tokens);
+    let (left_tokens, right_tokens) = split_on_phrase(tokens, &["and", "each"])
+        .or_else(|| split_on_phrase(tokens, &["and", "all"]))?;
+    let left_tokens = trimmed(left_tokens).to_vec();
+    let right_tokens = trimmed(right_tokens).to_vec();
+    (!left_tokens.is_empty() && !right_tokens.is_empty()).then_some((left_tokens, right_tokens))
 }
 
 pub fn parse_compound_damage_shape(tokens: &[OwnedLexToken]) -> Option<CompoundDamageShape> {

@@ -450,6 +450,26 @@ pub fn parse_exile(
     {
         return Ok(effect);
     }
+    // "exile Ajani and each artifact and creature your opponents control"
+    // (Ajani, Strength of the Pride; Fraying Line): the source and an
+    // each-set are two recipients of one exile instruction. The set's own
+    // `and` belongs to its filter, so split only at the first `and each`
+    // after a complete source reference.
+    if subject.is_none()
+        && let Some((and_index, (), _)) = crate::grammar::primitives::find_prefix(tokens, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        && and_index > 0
+        && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
+            &tokens[..and_index],
+        ))
+    {
+        let source = parse_exile(&tokens[..and_index], None)?;
+        let each = parse_exile(&tokens[and_index + 1..], None)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![source, each],
+        });
+    }
     if let Some((target_tokens, leave_watcher_tokens)) = split_until_target_leaves_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
         let mut target =

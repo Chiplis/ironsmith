@@ -240,6 +240,18 @@ fn scaled_life_player(tokens: &[OwnedLexToken]) -> Option<(PlayerAst, PlayerFilt
         || exact_tokens(tokens, &["target", "opponents"])
     {
         Some((PlayerAst::TargetOpponent, PlayerFilter::target_opponent()))
+    } else if exact_tokens(tokens, &["its", "controllers"])
+        || exact_tokens(tokens, &["its", "controller's"])
+        || exact_tokens(tokens, &["its", "controller", "s"])
+    {
+        // "double its controller's life total" (Celestial Mantle): the
+        // controller of the object the clause already named.
+        Some((
+            PlayerAst::ItsController,
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )),
+        ))
     } else if exact_tokens(tokens, &["opponent"])
         || exact_tokens(tokens, &["opponents"])
         || exact_tokens(tokens, &["an", "opponent"])

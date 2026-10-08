@@ -16879,6 +16879,9 @@ fn describe_linked_exile_top_play_parts(
         .mana_spend_cast_suffix(spell_reference)
         .unwrap_or_default();
 
+    if grant_play.during_turns_attacked_with.is_some() {
+        return None;
+    }
     let permission = if let Some(counter_type) = grant_play.during_turns_counter_put_on_source {
         format!(
             "During any turn you put {} on this Saga, you may {verb} {cards_text}{mana_suffix}",

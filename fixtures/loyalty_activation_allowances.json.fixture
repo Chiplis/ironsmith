@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Jace's Machinations",
+    "oracle_id": "89bd056d-8f5b-4d0e-b80a-58a984e21100",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, you may activate loyalty abilities of Jace planeswalkers you control on any player's turn any time you could cast an instant.\nEmpower Jace 8.",
+    "text": "Mana cost: {2}{U}\nType: Instant\nUntil end of turn, you may activate loyalty abilities of Jace planeswalkers you control on any player's turn any time you could cast an instant.\nEmpower Jace 8."
+  },
+  {
+    "name": "Kaito, Dancing Shadow",
+    "oracle_id": "17fd42f6-f388-4ffc-8fec-ca9ada2506ee",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Planeswalker — Kaito",
+    "oracle_text": "Whenever one or more creatures you control deal combat damage to a player, you may return one of them to its owner's hand. If you do, you may activate loyalty abilities of Kaito twice this turn rather than only once.\n+1: Up to one target creature can't attack or block until your next turn.\n0: Draw a card.\n−2: Create a 2/2 colorless Drone artifact creature token with deathtouch and \"When this token leaves the battlefield, each opponent loses 2 life and you gain 2 life.\"",
+    "loyalty": "3",
+    "text": "Mana cost: {2}{U}{B}\nType: Legendary Planeswalker — Kaito\nLoyalty: 3\nWhenever one or more creatures you control deal combat damage to a player, you may return one of them to its owner's hand. If you do, you may activate loyalty abilities of Kaito twice this turn rather than only once.\n+1: Up to one target creature can't attack or block until your next turn.\n0: Draw a card.\n−2: Create a 2/2 colorless Drone artifact creature token with deathtouch and \"When this token leaves the battlefield, each opponent loses 2 life and you gain 2 life.\""
+  },
+  {
+    "name": "The Chain Veil",
+    "oracle_id": "fb88fb3d-6a85-4bb1-b316-7f759b45a0fa",
+    "mana_cost": "{4}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "At the beginning of your end step, if you didn't activate a loyalty ability of a planeswalker this turn, you lose 2 life.\n{4}, {T}: For each planeswalker you control, you may activate one of its loyalty abilities once this turn as though none of its loyalty abilities have been activated this turn.",
+    "text": "Mana cost: {4}\nType: Legendary Artifact\nAt the beginning of your end step, if you didn't activate a loyalty ability of a planeswalker this turn, you lose 2 life.\n{4}, {T}: For each planeswalker you control, you may activate one of its loyalty abilities once this turn as though none of its loyalty abilities have been activated this turn."
+  },
+  {
+    "name": "Urza Assembles the Titans",
+    "oracle_id": "0d406496-e1c3-4e1c-976c-618d5ad67d0b",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "Read ahead\nI — Scry 4, then you may reveal the top card of your library. If a planeswalker card is revealed this way, put it into your hand.\nII — You may put a planeswalker card with mana value 6 or less from your hand onto the battlefield.\nIII — You may activate the loyalty abilities of planeswalkers you control twice this turn rather than only once.",
+    "text": "Mana cost: {3}{W}{W}\nType: Enchantment — Saga\nRead ahead\nI — Scry 4, then you may reveal the top card of your library. If a planeswalker card is revealed this way, put it into your hand.\nII — You may put a planeswalker card with mana value 6 or less from your hand onto the battlefield.\nIII — You may activate the loyalty abilities of planeswalkers you control twice this turn rather than only once."
+  }
+]

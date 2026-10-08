@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Spawnsire of Ulamog",
+    "oracle_id": "b90d2f4d-b4ea-40af-aea0-1ab4234ab80f",
+    "mana_cost": "{10}",
+    "type_line": "Creature — Eldrazi",
+    "oracle_text": "Annihilator 1\n{4}: Create two 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\"\n{20}: Cast any number of Eldrazi spells from among cards you own outside the game without paying their mana costs.",
+    "power": "7",
+    "toughness": "11",
+    "text": "Mana cost: {10}\nType: Creature — Eldrazi\nPower/Toughness: 7/11\nAnnihilator 1\n{4}: Create two 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\"\n{20}: Cast any number of Eldrazi spells from among cards you own outside the game without paying their mana costs."
+  }
+]

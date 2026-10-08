@@ -251,7 +251,14 @@ fn normalize_restriction_for_resolution(
         Restriction::MustAttack(filter) => Restriction::must_attack(
             // Plain creature/controller filters stay live. Exact anaphoric
             // object references remain the identities the instruction named.
-            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+            // A targeted controller ("each creature that player controls",
+            // Rowan Kenrith) keeps the announced player after the target
+            // slots are gone.
+            collapse_tagged_filter_to_specific_objects(
+                &bind_restriction_target_players(filter, ctx, game),
+                ctx,
+                game,
+            ),
         ),
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),

@@ -1,0 +1,115 @@
+[
+  {
+    "name": "Hellcarver Demon",
+    "oracle_id": "90514aa5-84b6-4be7-b6d0-b05529c97140",
+    "mana_cost": "{3}{B}{B}{B}",
+    "type_line": "Creature — Demon",
+    "oracle_text": "Flying\nWhenever this creature deals combat damage to a player, sacrifice all other permanents you control and discard your hand. Exile the top six cards of your library. You may cast any number of spells from among cards exiled this way without paying their mana costs.",
+    "power": "6",
+    "toughness": "6",
+    "text": "Mana cost: {3}{B}{B}{B}\nType: Creature — Demon\nPower/Toughness: 6/6\nFlying\nWhenever this creature deals combat damage to a player, sacrifice all other permanents you control and discard your hand. Exile the top six cards of your library. You may cast any number of spells from among cards exiled this way without paying their mana costs."
+  },
+  {
+    "name": "Izzet Chemister",
+    "oracle_id": "e4a3d6f3-36ba-4e6d-a254-351bc8886f20",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Goblin Wizard",
+    "oracle_text": "Haste\n{R}, {T}: Exile target instant or sorcery card from your graveyard.\n{1}{R}, {T}, Sacrifice this creature: Cast any number of cards exiled with this creature without paying their mana costs.",
+    "power": "1",
+    "toughness": "3",
+    "text": "Mana cost: {2}{R}\nType: Creature — Goblin Wizard\nPower/Toughness: 1/3\nHaste\n{R}, {T}: Exile target instant or sorcery card from your graveyard.\n{1}{R}, {T}, Sacrifice this creature: Cast any number of cards exiled with this creature without paying their mana costs."
+  },
+  {
+    "name": "Kylox, Visionary Inventor",
+    "oracle_id": "37f6bbb8-2136-4f03-966c-85d72180e71f",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Legendary Creature — Lizard Artificer",
+    "oracle_text": "Menace, ward {2}, haste\nWhenever Kylox attacks, sacrifice any number of other creatures, then exile the top X cards of your library, where X is their total power. You may cast any number of instant and/or sorcery spells from among the exiled cards without paying their mana costs.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {5}{U}{R}\nType: Legendary Creature — Lizard Artificer\nPower/Toughness: 4/4\nMenace, ward {2}, haste\nWhenever Kylox attacks, sacrifice any number of other creatures, then exile the top X cards of your library, where X is their total power. You may cast any number of instant and/or sorcery spells from among the exiled cards without paying their mana costs."
+  },
+  {
+    "name": "Doom Reigns Supreme",
+    "oracle_id": "f398a742-22c1-4da9-9d49-fdce2eb93d01",
+    "mana_cost": "{1}{B}",
+    "type_line": "Enchantment — Plan",
+    "oracle_text": "Whenever a Villain you control enters, each opponent loses 1 life and you gain 1 life. Put a plan counter on this enchantment.\nWhen the fifth plan counter is put on this enchantment, sacrifice it. When you do, target opponent exiles the top five cards of their library. You may cast up to two spells from among the exiled cards without paying their mana costs.",
+    "text": "Mana cost: {1}{B}\nType: Enchantment — Plan\nWhenever a Villain you control enters, each opponent loses 1 life and you gain 1 life. Put a plan counter on this enchantment.\nWhen the fifth plan counter is put on this enchantment, sacrifice it. When you do, target opponent exiles the top five cards of their library. You may cast up to two spells from among the exiled cards without paying their mana costs."
+  },
+  {
+    "name": "Kaho, Minamo Historian",
+    "oracle_id": "395a7bd6-7c2d-448e-842c-ca53256d7008",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "When Kaho enters, search your library for up to three instant cards, exile them, then shuffle.\n{X}, {T}: You may cast a spell with mana value X from among cards exiled with Kaho without paying its mana cost.",
+    "power": "2",
+    "toughness": "2",
+    "text": "Mana cost: {2}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nWhen Kaho enters, search your library for up to three instant cards, exile them, then shuffle.\n{X}, {T}: You may cast a spell with mana value X from among cards exiled with Kaho without paying its mana cost."
+  },
+  {
+    "name": "Krang & Shredder",
+    "oracle_id": "2385c8fb-9c38-4ff3-8f61-4e25a8c7d46b",
+    "mana_cost": "{4}{U/B}{U/B}",
+    "type_line": "Legendary Creature — Utrom Human Ninja",
+    "oracle_text": "Whenever Krang & Shredder enter or attack, each opponent exiles cards from the top of their library until they exile a nonland card.\nDisappear — At the beginning of your end step, if a permanent left the battlefield under your control this turn, you may cast a card exiled with Krang & Shredder without paying its mana cost.",
+    "power": "6",
+    "toughness": "7",
+    "text": "Mana cost: {4}{U/B}{U/B}\nType: Legendary Creature — Utrom Human Ninja\nPower/Toughness: 6/7\nWhenever Krang & Shredder enter or attack, each opponent exiles cards from the top of their library until they exile a nonland card.\nDisappear — At the beginning of your end step, if a permanent left the battlefield under your control this turn, you may cast a card exiled with Krang & Shredder without paying its mana cost."
+  },
+  {
+    "name": "Shell of the Last Kappa",
+    "oracle_id": "a8b24b38-019c-45e7-a5f4-a1bc3014f7a2",
+    "mana_cost": "{3}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "{3}, {T}: Exile target instant or sorcery spell that targets you.\n{3}, {T}, Sacrifice Shell of the Last Kappa: You may cast a spell from among cards exiled with Shell of the Last Kappa without paying its mana cost.",
+    "text": "Mana cost: {3}\nType: Legendary Artifact\n{3}, {T}: Exile target instant or sorcery spell that targets you.\n{3}, {T}, Sacrifice Shell of the Last Kappa: You may cast a spell from among cards exiled with Shell of the Last Kappa without paying its mana cost."
+  },
+  {
+    "name": "Boiling Rock Rioter",
+    "oracle_id": "5193172c-9024-409e-bd9e-0387971d65fe",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Human Rogue Ally",
+    "oracle_text": "Firebending 1\nTap an untapped Ally you control: Exile target card from a graveyard.\nWhenever this creature attacks, you may cast an Ally spell from among cards you own exiled with this creature.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {2}{B}\nType: Creature — Human Rogue Ally\nPower/Toughness: 3/3\nFirebending 1\nTap an untapped Ally you control: Exile target card from a graveyard.\nWhenever this creature attacks, you may cast an Ally spell from among cards you own exiled with this creature."
+  },
+  {
+    "name": "Jeleva, Nephalia's Scourge",
+    "oracle_id": "a014f283-c531-415c-ac00-e6773ea5d64d",
+    "mana_cost": "{1}{U}{B}{R}",
+    "type_line": "Legendary Creature — Vampire Wizard",
+    "oracle_text": "Flying\nWhen Jeleva enters, each player exiles the top X cards of their library, where X is the amount of mana spent to cast Jeleva.\nWhenever Jeleva attacks, you may cast an instant or sorcery spell from among cards exiled with Jeleva without paying its mana cost.",
+    "power": "1",
+    "toughness": "3",
+    "text": "Mana cost: {1}{U}{B}{R}\nType: Legendary Creature — Vampire Wizard\nPower/Toughness: 1/3\nFlying\nWhen Jeleva enters, each player exiles the top X cards of their library, where X is the amount of mana spent to cast Jeleva.\nWhenever Jeleva attacks, you may cast an instant or sorcery spell from among cards exiled with Jeleva without paying its mana cost."
+  },
+  {
+    "name": "Summon: Esper Valigarmanda",
+    "oracle_id": "cecd2f49-8ccb-472d-9cf1-fd0f4d93546d",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment Creature — Saga Drake",
+    "oracle_text": "I — Exile an instant or sorcery card from each graveyard.\nII, III, IV — Add {R} for each lore counter on this Saga. You may cast an instant or sorcery card exiled with this Saga, and mana of any type can be spent to cast that spell.\nFlying, haste",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {3}{R}\nType: Enchantment Creature — Saga Drake\nPower/Toughness: 3/3\nI — Exile an instant or sorcery card from each graveyard.\nII, III, IV — Add {R} for each lore counter on this Saga. You may cast an instant or sorcery card exiled with this Saga, and mana of any type can be spent to cast that spell.\nFlying, haste"
+  },
+  {
+    "name": "Chandra Ablaze",
+    "oracle_id": "3fae28e6-2ffc-460e-9dd3-e321e8a53ba9",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Legendary Planeswalker — Chandra",
+    "oracle_text": "+1: Discard a card. If a red card is discarded this way, Chandra deals 4 damage to any target.\n−2: Each player discards their hand, then draws three cards.\n−7: Cast any number of red instant and/or sorcery cards from your graveyard without paying their mana costs.",
+    "loyalty": "5",
+    "text": "Mana cost: {4}{R}{R}\nType: Legendary Planeswalker — Chandra\nLoyalty: 5\n+1: Discard a card. If a red card is discarded this way, Chandra deals 4 damage to any target.\n−2: Each player discards their hand, then draws three cards.\n−7: Cast any number of red instant and/or sorcery cards from your graveyard without paying their mana costs."
+  },
+  {
+    "name": "Forger's Foundry",
+    "oracle_id": "118da256-d1ea-44e8-9026-317e49694d29",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}: Add {U}. When you spend this mana to cast an instant or sorcery spell with mana value 3 or less, you may exile that spell instead of putting it into its owner's graveyard as it resolves.\n{3}{U}{U}, {T}: You may cast any number of spells from among cards exiled with this artifact without paying their mana costs. Activate only as a sorcery.",
+    "text": "Mana cost: {2}{U}\nType: Artifact\n{T}: Add {U}. When you spend this mana to cast an instant or sorcery spell with mana value 3 or less, you may exile that spell instead of putting it into its owner's graveyard as it resolves.\n{3}{U}{U}, {T}: You may cast any number of spells from among cards exiled with this artifact without paying their mana costs. Activate only as a sorcery."
+  }
+]

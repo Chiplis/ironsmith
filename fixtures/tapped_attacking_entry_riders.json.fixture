@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Grim Reaper, Lethal Legionnaire",
+    "oracle_id": "edf429a8-6a4d-4d2a-b0ca-c0c72a0698a3",
+    "mana_cost": "{3}{B}",
+    "type_line": "Legendary Creature — Human Villain",
+    "oracle_text": "Whenever Grim Reaper attacks, you may pay {3}{B}. When you do, return target creature card from your graveyard to the battlefield tapped and attacking with a finality counter on it.",
+    "power": "3",
+    "toughness": "4",
+    "text": "Mana cost: {3}{B}\nType: Legendary Creature — Human Villain\nPower/Toughness: 3/4\nWhenever Grim Reaper attacks, you may pay {3}{B}. When you do, return target creature card from your graveyard to the battlefield tapped and attacking with a finality counter on it."
+  }
+]

@@ -1017,6 +1017,22 @@ pub struct GrantPlayTaggedEffect<C> {
     /// This does not create a separate optional price or change a land play.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub alternative_cost: Option<crate::TotalCost<C>>,
+    /// "During any turn you attacked with <filter>, you may play that card":
+    /// the persistent grant is active only during turns in which its player
+    /// attacked with enough matching creatures. Appended; absent in older
+    /// artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub during_turns_attacked_with: Option<AttackedWithTurnCondition>,
+}
+
+/// Turns in which the permission's player attacked with at least `minimum`
+/// distinct creatures matching `filter` (CR 508.1: a creature "attacked"
+/// once it was declared as an attacker that turn).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AttackedWithTurnCondition {
+    pub filter: ObjectFilter,
+    pub minimum: u32,
 }
 
 #[cfg(feature = "serde")]
@@ -1050,7 +1066,13 @@ impl<C> GrantPlayTaggedEffect<C> {
             cast_pool_is_plural: false,
             max_plays: None,
             alternative_cost: None,
+            during_turns_attacked_with: None,
         }
+    }
+
+    pub fn during_turns_attacked_with(mut self, condition: AttackedWithTurnCondition) -> Self {
+        self.during_turns_attacked_with = Some(condition);
+        self
     }
 
     pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
@@ -5484,4 +5506,45 @@ pub struct RegisterDamageAdditionEffect {
     pub delta: Value,
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
+}
+
+/// What a loyalty-activation allowance relaxes this turn (CR 606.3 lets each
+/// permanent activate one loyalty ability per turn, at sorcery speed).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationAllowance {
+    /// One more loyalty activation this turn ("twice this turn rather than
+    /// only once", "once this turn as though none ... have been activated").
+    ExtraActivation,
+    /// Loyalty abilities may be activated any time the player could cast an
+    /// instant, on any player's turn.
+    InstantSpeed,
+}
+
+/// Which permanents a loyalty-activation allowance covers.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationScope {
+    /// The resolving ability's source ("loyalty abilities of Kaito").
+    Source,
+    /// Each planeswalker the resolving player controls as the effect
+    /// resolves ("For each planeswalker you control, ...").
+    EachControlledPlaneswalkerNow,
+    /// Planeswalkers the resolving player controls at any time this turn,
+    /// optionally of one subtype ("Jace planeswalkers you control").
+    ControlledPlaneswalkers { subtype: Option<Subtype> },
+}
+
+/// Relax the loyalty-ability activation rule for the rest of this turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct GrantLoyaltyActivationAllowanceEffect {
+    pub scope: LoyaltyActivationScope,
+    pub allowance: LoyaltyActivationAllowance,
+}
+
+impl GrantLoyaltyActivationAllowanceEffect {
+    pub fn new(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> Self {
+        Self { scope, allowance }
+    }
 }

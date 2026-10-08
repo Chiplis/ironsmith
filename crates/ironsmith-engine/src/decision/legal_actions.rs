@@ -2115,7 +2115,15 @@ fn loyalty_activation_special_rules_allow(
         return true;
     }
 
-    !game.loyalty_ability_activated_this_turn(source)
+    // CR 606.3: one loyalty activation per permanent each turn, unless an
+    // effect this turn allows more ("twice this turn rather than only once").
+    let allowed = 1 + crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+        game,
+        controller,
+        source,
+        crate::effects::LoyaltyActivationAllowance::ExtraActivation,
+    );
+    game.loyalty_activations_this_turn(source) < allowed
         && ((game.is_active_player(controller)
             && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
             && game.stack_is_empty())
@@ -2256,6 +2264,18 @@ fn player_may_activate_loyalty_abilities_any_time(
     let Some(activated_object) = game.object(source) else {
         return false;
     };
+    // "you may activate loyalty abilities of Jace planeswalkers you control
+    // on any player's turn any time you could cast an instant" (an effect
+    // lasting this turn).
+    if crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+        game,
+        controller,
+        source,
+        crate::effects::LoyaltyActivationAllowance::InstantSpeed,
+    ) > 0
+    {
+        return true;
+    }
     // Emblems grant the permission from the command zone (CR 114.4), e.g.
     // Teferi, Temporal Archmage's emblem.
     game.battlefield

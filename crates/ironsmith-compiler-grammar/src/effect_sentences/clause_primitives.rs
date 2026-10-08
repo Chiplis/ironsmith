@@ -485,6 +485,14 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_cast_or_play_tagged_clause,
         ),
         specific_primitive!(
+            "collection-cast-clause",
+            // "you may cast ... from among ..." is read by the
+            // cast-or-play-tagged clause's fallback; only the imperative
+            // form opens with `cast`.
+            &["cast"],
+            crate::permission_helpers::collection_casts::parse_collection_cast_clause,
+        ),
+        specific_primitive!(
             "prevent-next-damage-clause",
             &["prevent", "the"],
             parse_prevent_next_damage_clause,
@@ -519,9 +527,13 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "attack-if-able-clause",
+            // "Creatures target player controls attack this turn if able."
+            // (Incite War) and "Enchanted creature attacks this turn if able."
+            // (Nettling Curse) open with their subject's noun or attachment
+            // word; the complete requirement shape still owns the clause.
             &[
-                "all", "another", "attack", "attacks", "each", "it", "that", "they", "those",
-                "target", "up",
+                "all", "another", "attack", "attacks", "creatures", "each", "enchanted",
+                "equipped", "it", "that", "they", "those", "target", "up",
             ],
             parse_attack_this_turn_if_able_clause,
         ),
@@ -1040,8 +1052,19 @@ pub fn parse_must_block_if_able_clause(
             )))
         }
         clause_shapes::MustBlockShape::AllCreatures {
+            blocker_filter_tokens,
             attacker_and_duration_tokens,
         } => {
+            let blockers = match blocker_filter_tokens {
+                Some(tokens) => {
+                    let filter = parse_object_filter(tokens, false)?;
+                    if !filter.card_types.contains(&crate::types::CardType::Creature) {
+                        return Ok(None);
+                    }
+                    filter
+                }
+                None => ObjectFilter::creature(),
+            };
             let (duration, attacker_tokens) = if let Some((duration, remainder)) =
                 parse_restriction_duration(attacker_and_duration_tokens)?
             {
@@ -1069,7 +1092,7 @@ pub fn parse_must_block_if_able_clause(
                         attacker_target,
                         attacker_tag.clone().into(),
                     )],
-                    ObjectFilter::creature(),
+                    blockers.clone(),
                     ObjectFilter::tagged(attacker_tag),
                     duration,
                 )));
@@ -1083,7 +1106,7 @@ pub fn parse_must_block_if_able_clause(
                 })?;
             Ok(Some(forced_block_effect(
                 Vec::new(),
-                ObjectFilter::creature(),
+                blockers.clone(),
                 attacker_filter,
                 duration,
             )))

@@ -845,6 +845,9 @@ fn classify_boundary<'a>(
                     | ChainVerbKind::Sacrifice
                     | ChainVerbKind::Tap
                     | ChainVerbKind::Untap
+                    // "Put two +1/+1 counters on target artifact, creature,
+                    // or land you control" (Tawnos's Tinkering).
+                    | ChainVerbKind::Put
             )
         }) || before
             .iter()
@@ -854,6 +857,16 @@ fn classify_boundary<'a>(
         // when an arm carries a qualifier: `all artifacts, enchantments, and
         // nonbasic lands`. A card-type word such as `land` can also be a verb,
         // so this boundary must be rejected before clause-head inference.
+        return None;
+    }
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
+    ) && serial_subtype_object_arm(before, after)
+    {
+        // "put a +1/+1 counter on each Pest, Bat, Insect, Snake, and Spider
+        // you control" (Blech, Loafing Pest): a serial creature-type domain
+        // of a quantified object operand, not coordinated effects.
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Comma
@@ -923,6 +936,24 @@ fn classify_boundary<'a>(
         let before_words = crate::lexer::parser_token_word_refs(before);
         let after_words = crate::lexer::parser_token_word_refs(after);
         if or_continues_explicit_target_domain(&before_words, &after_words) {
+            return None;
+        }
+        const COMBAT_STATES: &[&str] = &["attacking", "blocking", "tapped", "untapped"];
+        if before_words.last().is_some_and(|word| COMBAT_STATES.contains(word))
+            && after_words.first().is_some_and(|word| COMBAT_STATES.contains(word))
+        {
+            // "each attacking or blocking creature target player controls"
+            // (Brigid, Hero of Kinsbaile): one combat-state qualifier.
+            return None;
+        }
+        const COLOR_WORDS: &[&str] = &["white", "blue", "black", "red", "green"];
+        if before_words.last().is_some_and(|word| COLOR_WORDS.contains(word))
+            && after_words.first().is_some_and(|word| COLOR_WORDS.contains(word))
+        {
+            // "tap target red or green creature an opponent controls"
+            // (Tidebinder Mage): a color disjunction is one object
+            // qualifier; the second color has no action of its own, even
+            // when a later sentence of the chain carries a verb.
             return None;
         }
         if crate::word_primitives::sequence_occurs(&before_words, &["protection", "from"])
@@ -1270,6 +1301,32 @@ fn boundary_continues_filter_keyword_list(
         }
     }
     true
+}
+
+/// The boundary sits inside a serial creature-type list whose run is
+/// introduced by an object quantifier after the clause's action:
+/// `... each Pest, Bat, ..., and Spider you control`.
+fn serial_subtype_object_arm(before: &[OwnedLexToken], after: &[OwnedLexToken]) -> bool {
+    let is_creature_type = |word: &str| {
+        crate::grammar::leaf::parse_leaf_subtype_flexible_complete(word)
+            .is_ok_and(|subtype| subtype.is_creature_type())
+    };
+    let before_words = crate::lexer::parser_token_word_refs(before);
+    let after_words = crate::lexer::parser_token_word_refs(after);
+    let after_words: &[&str] = match after_words.first() {
+        Some(&"and" | &"or" | &"and/or") => &after_words[1..],
+        _ => &after_words,
+    };
+    if !after_words.first().is_some_and(|word| is_creature_type(word)) {
+        return false;
+    }
+    let run_start = before_words
+        .iter()
+        .rposition(|word| !is_creature_type(word))
+        .map_or(0, |index| index + 1);
+    run_start < before_words.len()
+        && run_start > 0
+        && matches!(before_words[run_start - 1], "each" | "all")
 }
 
 fn token_is_card_type_noun(token: &OwnedLexToken) -> bool {

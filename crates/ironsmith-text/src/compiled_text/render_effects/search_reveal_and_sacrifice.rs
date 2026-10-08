@@ -3097,6 +3097,7 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.cast_pool_is_plural
         || !surface.leading_duration
         || surface.object != Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)

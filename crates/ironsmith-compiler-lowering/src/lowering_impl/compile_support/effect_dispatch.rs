@@ -1302,6 +1302,15 @@ fn compile_effect_inner(
         choices.extend(viewer.into_choices());
         return Ok((vec![Effect::new(look)], choices));
     }
+    if let EffectAst::GrantLoyaltyActivationAllowance { scope, allowance } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(
+                scope.clone(),
+                *allowance,
+            ))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
     }
