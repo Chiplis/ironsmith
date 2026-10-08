@@ -1,8 +1,8 @@
 # p03-linefamily-b — summary
 
 176 cards, all failing with `parser does not yet support line family`. Ledger:
-`ledger.jsonl` (one row per card). Counts: **21 source-proposed**, **2 already-on-main**,
-**153 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
+`ledger.jsonl` (one row per card). Counts: **34 source-proposed**, **2 already-on-main**,
+**140 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
 until it disappeared mid-session; later clusters rely on reading the code only.
 
 ## Clusters fixed (source-proposed)
@@ -143,3 +143,33 @@ Already on main through merged PR source: Summer Bloom (`temporary_additional_la
   copying, p01 random choices.
 - New engine static `PlayersSkipUntapStep` changes the engine schema hash; artifact fixtures that pin
   ENGINE_SCHEMA_HASH will need regeneration.
+
+## Owned shared mechanisms (assigned after triage) — work done
+
+| Mechanism | Cards | Change | Test |
+|---|---|---|---|
+| Chosen-source all-damage prevention | Pay No Heed (+ Auriok Replica, Prahv, Rith's Charm outside package) | Active-voice "a source of your choice would deal [to you] this turn" -> PreventAllDamageEffect target All/You + source choice | `chosen_source_all_damage_prevention.rs` |
+| Chosen-source finite shield + "prevented this way" rider (CR 615.5/615.7) | Refraction Trap | Active-voice "prevent the next N damage that a source of your choice would deal to ..." in the finite-shield grammar; existing reflect rider attaches | `chosen_source_shields_and_redirects.rs` |
+| Damage redirection (CR 614.9) | Reflect Damage, Harm's Way, Shining Shoal | "that source's controller" destination; bounded redirection **extended** (not forked) with serde-default `source_of_your_choice` + `protect_you_and_permanents` (core+engine+interpreter+renderer), chosen-source replacement matcher | `chosen_source_shields_and_redirects.rs` |
+| Divided prevention (CR 601.2d / 615.7) | Embolden, Remedy | PreventDamageEffect `divided` flag drives the existing cast-time distribution announcement; one shield per target share | `divided_damage_prevention.rs` |
+| Per-color target groups (CR 115.3) | All Suns' Dawn, Rogues' Gallery | "For each color, ... target X of that color ..." expands to five color-qualified target instances | `per_color_target_groups.rs` |
+| Once-per-turn cast permissions | Zaffai, Vision | Usage-limited free hand-cast grant with spell filter; one-shot decline exempts usage-limited grants | `once_per_turn_hand_free_casts.rs` |
+| Casting restrictions | Grim Wanderer, Dosan | New cast-restriction label/condition "if a creature died this turn"; non-active-player casting restriction | `died_this_turn_cast_restriction.rs`, `own_turn_casting_restriction.rs` |
+| Whole-line rule regression guard | — | Lines with other heads keep their readings | `whole_line_static_rule_regressions.rs` |
+
+Still queued in owned mechanisms (blocked, with gaps in the ledger): prevention follow-ups that
+declare fresh targets or branch on source type (Channel Harm, Comeuppance, Judgment of Alexander,
+Samite Ministration), filtered/excepted combat prevention (Inspire Awe, Undergrowth, Well-Laid
+Plans), kicker-amount override of a divided shield (Pollen Remedy), Eye for an Eye (non-preventing
+mirror), per-player target groups (Windgrace's Judgment, Guff Rewrites History, Face Yourself — need a
+runtime target group keyed by player, CR 601.2c), friend-or-foe (5), remaining once-per-turn
+permissions (Arcade Gannon, Banon, Maralen), cost-modifier variants (colored this-ability, first
+each turn, plot/unlock, commander tax, loyalty, mana-ability life, Drought), keyword grants to spells,
+City of Solitude (needs a player-scoped all-abilities restriction incl. mana abilities and
+off-battlefield abilities), Fires of Invention (two-spell cap), then the labelled Doctor Who /
+Warhammer bodies.
+
+Risk notes for the new work: engine schema changes (`RedirectNextDamageToTargetEffect`,
+`PreventDamageEffect`, `ThisSpellCastCondition`) are serde-default/additive; the per-color expansion
+synthesizes color word tokens before the ordinary target grammar; `prevention_helpers` became
+`pub(crate)` so the redirection executor can reuse the source chooser.
