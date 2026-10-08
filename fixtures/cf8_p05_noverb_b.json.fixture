@@ -425,5 +425,21 @@
     "mana_cost": "{2}{B}{B}",
     "type_line": "Artifact",
     "oracle_text": "{T}, Exile two cards from your graveyard: Draw a card.\nIf damage would be dealt to you, prevent that damage. Exile a card from your graveyard for each 1 damage prevented this way.\nWhen there are no cards in your graveyard, you lose the game."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Abstruse Appropriation",
+    "oracle_id": "61a23402-3244-4b5e-9134-98e1f82eda65",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Devoid\nExile target nonland permanent. You may cast that card for as long as it remains exiled, and you may spend colorless mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Curse of Hospitality",
+    "oracle_id": "0fb70b94-0847-4155-8953-cb53fef82ef1",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment — Aura Curse",
+    "oracle_text": "Enchant player\nCreatures attacking enchanted player have trample.\nWhenever a creature deals combat damage to enchanted player, that player exiles the top card of their library. Until end of turn, that creature's controller may play that card and they may spend mana as though it were mana of any color to cast that spell."
   }
 ]

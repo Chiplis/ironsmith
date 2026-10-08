@@ -135,6 +135,9 @@ impl GrantPlayTaggedEffect {
             ironsmith_core::value_model::ManaSpendMode::AnyType => Some(format!(
                 "mana of any type can be spent to cast {spell_reference}"
             )),
+            ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor => Some(format!(
+                "you may spend colorless mana as though it were mana of any color to cast {spell_reference}"
+            )),
         }
     }
 
@@ -147,13 +150,16 @@ impl GrantPlayTaggedEffect {
             .as_ref()
             .is_some_and(|surface| surface.mana_spend_followup)
         {
-            let kind = match self.mana_spend_mode {
+            let (mana, kind) = match self.mana_spend_mode {
                 ironsmith_core::value_model::ManaSpendMode::Normal => return None,
-                ironsmith_core::value_model::ManaSpendMode::AnyColor => "color",
-                ironsmith_core::value_model::ManaSpendMode::AnyType => "type",
+                ironsmith_core::value_model::ManaSpendMode::AnyColor => ("mana", "color"),
+                ironsmith_core::value_model::ManaSpendMode::AnyType => ("mana", "type"),
+                ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor => {
+                    ("colorless mana", "color")
+                }
             };
             return Some(format!(
-                ". If you cast a spell this way, you may spend mana as though it were mana of any {kind} to cast it"
+                ". If you cast a spell this way, you may spend {mana} as though it were mana of any {kind} to cast it"
             ));
         }
         self.mana_spend_cast_clause(spell_reference)
@@ -275,7 +281,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 || game.is_phased_out(ctx.source)
             { return Ok(EffectOutcome::count(0)); }
         }
-        if self.permission_bound_mana && (!self.mana_spend_mode.allows_any_color()
+        if self.permission_bound_mana && (self.mana_spend_mode.is_normal()
             || self.alternative_cost.is_some() || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
             || self.during_turns_attacked_with.is_some()
             || matches!(self.duration, GrantPlayTaggedDuration::UntilSourceExilesAnother
@@ -389,7 +395,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let player_id = fixed_player_id.unwrap_or(object_owner);
             let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
 
-            if !self.permission_bound_mana && self.mana_spend_mode.allows_any_color() && !object_is_land {
+            if !self.permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
                 mana_permission_stable_ids
                     .entry(player_id)
                     .or_default()
@@ -585,6 +591,18 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                         crate::target::PlayerFilter::You,
                         mana_permission_stable_ids,
                     )
+                }
+                // CR 609.4b: only colorless mana converts; other mana is
+                // spent normally.
+                ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor => {
+                    let mut permission =
+                        crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
+                            crate::target::PlayerFilter::You,
+                            mana_permission_stable_ids,
+                        );
+                    permission.mode = ironsmith_core::value_model::ManaSpendMode::Normal;
+                    permission.any_color_mana_symbol = Some(crate::mana::ManaSymbol::Colorless);
+                    permission
                 }
             };
             let play_permission_identities = game.effect_store.grant_registry.grants[first_grant..].iter()
@@ -895,6 +913,43 @@ mod tests {
             game.can_spend_mana_as_any_color(alice, Some(exiled_id)),
             "temporary effect-sourced mana permission should survive tracker refreshes"
         );
+    }
+
+    #[test]
+    fn grant_play_tagged_colorless_as_any_color_converts_only_colorless_mana() {
+        // CR 609.4b (Abstruse Appropriation): only colorless mana may be
+        // spent as though it were mana of any color to cast the exiled card.
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(3), "Exiled Permanent")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+        let mut dm = SelectFirstDecisionMaker;
+        let source = ObjectId::from_raw(102);
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let effect = GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::ForAsLongAsExiled,
+            false,
+            ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor,
+        );
+        assert!(!effect.allow_any_color_for_cast);
+        effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+
+        assert!(
+            !game.can_spend_mana_as_any_color(alice, Some(exiled_id)),
+            "colored mana is not converted"
+        );
+        let policy = game.mana_spend_policy(alice, Some(exiled_id));
+        assert_eq!(policy.mode, ironsmith_core::value_model::ManaSpendMode::Normal);
+        assert_eq!(policy.any_color_mana_symbols, vec![crate::mana::ManaSymbol::Colorless]);
+        assert!(!policy.other_mana_only_as_colorless);
     }
 
     #[test]

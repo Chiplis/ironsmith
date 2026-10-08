@@ -82,3 +82,39 @@ pub fn definitions(row: &serde_json::Value) -> [CardDefinition; 2] {
 pub fn debug(definition: &CardDefinition) -> String {
     format!("{definition:?}")
 }
+
+fn collect_effect(effect: &ironsmith::effect::Effect, all: &mut Vec<ironsmith::effect::Effect>) {
+    all.push(effect.clone());
+    effect.visit_child_effects(&mut |child| collect_effect(child, all));
+}
+
+/// Every effect reachable from the spell body and the activated/triggered
+/// abilities, children included.
+pub fn all_effects(definition: &CardDefinition) -> Vec<ironsmith::effect::Effect> {
+    use ironsmith::ability::AbilityKind;
+    let mut all = Vec::new();
+    if let Some(spell) = definition.spell_effect.as_ref() {
+        for effect in spell.all_effects() {
+            collect_effect(effect, &mut all);
+        }
+    }
+    for ability in &definition.abilities {
+        let program = match &ability.kind {
+            AbilityKind::Activated(ability) => &ability.effects,
+            AbilityKind::Triggered(ability) => &ability.effects,
+            _ => continue,
+        };
+        for effect in program.all_effects() {
+            collect_effect(effect, &mut all);
+        }
+    }
+    all
+}
+
+/// Every reachable effect of type `T`.
+pub fn effects_of<T: Clone + 'static>(definition: &CardDefinition) -> Vec<T> {
+    all_effects(definition)
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<T>().cloned())
+        .collect()
+}
