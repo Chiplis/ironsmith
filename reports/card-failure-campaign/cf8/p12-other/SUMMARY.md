@@ -116,3 +116,70 @@ Sakashima, Sarkhan, Sunfrill) already keeps the name through its own grammar.
 - `"enchanted" | "equipped"` tag lists across engine/text were widened with `"fortified"`.
 - The round-1 history rewrite removed an accidentally committed `.cargo/config.toml` hunk; all
   later commits stage explicit paths.
+
+## Round 3 (on top of cf8/integration)
+
+Package counts: **42 source-proposed / 2 already-on-main / 79 blocked** (123), plus 2
+`semantic-fix-collateral` rows (Mishra, Eminent One; Astral Drift). Round 3 moved 7 cards to
+source-proposed. Cycle-self trigger zones were left alone, as instructed.
+
+### Mechanisms
+- **Effect registry** — `MustAttackPlayerThisTurnEffect` row added to `effect-registry.tsv`
+  (combat family).
+- **Return transformed and attached** (CR 712.14, CR 303.4f) — the attached-return branch of
+  `return_exchange_zone.rs` composes the transformed move (`enters_transformed`) with the existing
+  `AttachObjectsEffect`. Accursed Witch, Radiant Grace, Vengeful Strangler → source-proposed.
+- **Targeted Room unlock** (CR 709.5f) — new `KeywordActionAst::UnlockTargetRoomDoor { target }`
+  (arms added in resolve reference_resolution/tag_support, grammar dispatch_entry/modal_support,
+  lowering handles_action) lowers to TargetOnly(up to one Room you control) +
+  `UnlockRoomDoorEffect` with `room_filter.is_target_object`. The engine executor now builds the
+  filter context with the resolving targets. Ghostly Keybearer → source-proposed.
+- **Next exhaust activation copy** (CR 702.177a, CR 707.10) — the Dynaheir next-activation delayed
+  shape accepts an `exhaust` ability marker instead of the mana requirement; the engine marker
+  matcher recognizes exhaust abilities through `is_exhaust_ability()`. Pit Automaton →
+  source-proposed.
+- **"deals N instead if that target is …"** — carry-over confirmed: the SelfReplacement
+  composition reuses the default target, and the round-2 predicate makes the condition
+  `TargetMatches`. Lithomantic Barrage → source-proposed. Light Up the Night stays blocked (its
+  remove-X-loyalty flashback cost is unsupported).
+- **Token keyword list + where-X** — an unquoted `where X is` after `with <keywords>` ends the
+  keyword list. Before this, it leaked into the token definition through the `this` rules-text
+  start. Phantasmal Sphere → source-proposed.
+
+### Still blocked (precise gaps)
+- Keys to the House, Marina Vendrell — locking a door (CR 709.5c) needs a reversible door state.
+  Unlocking currently applies a fused split overlay with no inverse.
+- Smoky Lounge — "spend this mana only to unlock doors" needs the unlock special action
+  (CR 709.5e) to be a typed mana-spend context.
+- Firebender Ascension — `AbilityTriggeredEvent` has no attack-declaration cause.
+- Trench Behemoth — no "until its controller's next combat" duration;
+  `attack_player_requirements` is current-turn only.
+- Overlord of the Hauntwoods (land token spec that has every basic land type), Icingdeath (named
+  legendary Equipment token with quoted abilities and equip), Moonlit Meditation (first-time
+  token-creation replacement into copies), Mr. House (created-set replacement inside a die roll).
+
+### Dependants in other packages (grep of all cf8 ledgers for "p12")
+All are p01 rows that wait on copy mechanisms owned here. None were unblocked this round:
+- Copy-cards-then-cast (Chandra, Pyromaster; Mnemonic Deluge; Reversal of Fortune; Arcane
+  Bombardment; Zethi; Spellweaver Volute; Bloodthirsty Adversary; The Tale of Tamiyo; Baron Helmut
+  Zemo; Myra the Magnificent; Mizzix's Mastery; Garth One-Eye).
+- Has-all-abilities / granted copies of abilities (Koh, the Face Stealer; Sharkey; Kasmina).
+- Copy exceptions on become-copy or token copies (Vesuvan Doppelganger, Aurora Shifter, Rebuild
+  the City, Ob Nixilis the Adversary, Esoteric Duplicator, Calamity, Shredder).
+- Bulleted characteristic templates (Wild Shape, Genku, Outlaws' Merriment).
+
+Rows already unblocked by p12 work and recorded in p01's ledger: Alluring Siren, Dulcet Sirens,
+Ravener (attack-player requirement), Darksteel Garrison (Fortified), Kaust (turned face up this
+turn), and The Eleventh Hour (copy name exception).
+
+### New tests (unrun)
+`p12_exhaust_next_activation_copy.rs`, `p12_return_transformed_attached.rs`,
+`p12_targeted_room_unlock.rs`, `p12_damage_instead_if_target.rs`, `p12_token_keyword_where_x.rs`.
+
+### Round 3 merge risks
+- `KeywordActionAst::UnlockTargetRoomDoor` is a new shared-enum variant. Every match that names
+  `MustAttackPlayerThisTurn` was given a sibling arm.
+- `unlock_room_door.rs` now passes the resolving targets into its filter context. A non-target
+  `room_filter` is unaffected.
+- The create-token `with` slice now stops at `where X`. This affects every "token with <keywords>,
+  where X is …" create; before the change those failed to parse.
