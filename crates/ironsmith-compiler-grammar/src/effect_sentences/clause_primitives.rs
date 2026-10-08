@@ -1049,8 +1049,19 @@ pub fn parse_must_block_if_able_clause(
             )))
         }
         clause_shapes::MustBlockShape::AllCreatures {
+            blocker_filter_tokens,
             attacker_and_duration_tokens,
         } => {
+            let blockers = match blocker_filter_tokens {
+                Some(tokens) => {
+                    let filter = parse_object_filter(tokens, false)?;
+                    if !filter.card_types.contains(&crate::types::CardType::Creature) {
+                        return Ok(None);
+                    }
+                    filter
+                }
+                None => ObjectFilter::creature(),
+            };
             let (duration, attacker_tokens) = if let Some((duration, remainder)) =
                 parse_restriction_duration(attacker_and_duration_tokens)?
             {
@@ -1078,7 +1089,7 @@ pub fn parse_must_block_if_able_clause(
                         attacker_target,
                         attacker_tag.clone().into(),
                     )],
-                    ObjectFilter::creature(),
+                    blockers.clone(),
                     ObjectFilter::tagged(attacker_tag),
                     duration,
                 )));
@@ -1092,7 +1103,7 @@ pub fn parse_must_block_if_able_clause(
                 })?;
             Ok(Some(forced_block_effect(
                 Vec::new(),
-                ObjectFilter::creature(),
+                blockers.clone(),
                 attacker_filter,
                 duration,
             )))

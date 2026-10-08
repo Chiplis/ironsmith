@@ -27,6 +27,9 @@ pub enum MustBlockShape<'a> {
         subject_tokens: &'a [OwnedLexToken],
     },
     AllCreatures {
+        /// "creatures your opponents control" when the blockers are
+        /// qualified (You Look Upon the Tarrasque); unqualified otherwise.
+        blocker_filter_tokens: Option<&'a [OwnedLexToken]>,
         attacker_and_duration_tokens: &'a [OwnedLexToken],
     },
     SubjectAgainstAttacker {
@@ -206,6 +209,37 @@ fn all_creatures_block<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<
         .parse_next(input)?;
     suffix().parse_next(input)?;
     Ok(MustBlockShape::AllCreatures {
+        blocker_filter_tokens: None,
+        attacker_and_duration_tokens: trim_shape_edges(attacker_and_duration_tokens),
+    })
+}
+
+/// "All creatures your opponents control able to block that creature this
+/// turn do so.": the Lure requirement over a qualified blocker set.
+fn all_filtered_creatures_block<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {
+    primitives::kw("all").parse_next(input)?;
+    let able = || primitives::phrase(&["able", "to", "block"]);
+    let blocker_filter_tokens = (
+        primitives::kw("creatures"),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(able())),
+    )
+        .take()
+        .parse_next(input)?;
+    able().parse_next(input)?;
+    let suffix = || {
+        (
+            primitives::phrase(&["do", "so"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    };
+    let attacker_and_duration_tokens = repeat_till(1.., any.void(), peek(suffix()))
+        .map(|((), ())| ())
+        .take()
+        .parse_next(input)?;
+    suffix().parse_next(input)?;
+    Ok(MustBlockShape::AllCreatures {
+        blocker_filter_tokens: Some(trim_shape_edges(blocker_filter_tokens)),
         attacker_and_duration_tokens: trim_shape_edges(attacker_and_duration_tokens),
     })
 }
@@ -241,6 +275,7 @@ pub fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape
         alt((
             subject_blocks_this_turn,
             all_creatures_block,
+            all_filtered_creatures_block,
             subject_blocks_attacker,
         )),
         "must block clause",
