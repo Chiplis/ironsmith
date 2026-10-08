@@ -527,7 +527,10 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "must-be-blocked-clause",
-            &["it", "that", "they", "target"],
+            // Card-name preprocessing produces `this creature` (or `this
+            // permanent` without metadata). The complete requirement parser
+            // owns those source subjects too; do not route them to verb search.
+            &["it", "that", "they", "target", "this"],
             parse_must_be_blocked_if_able_clause,
         ),
         specific_primitive!(
@@ -898,9 +901,25 @@ pub fn parse_must_be_blocked_if_able_clause(
         clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
         clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
     };
-    let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
+    // The shape intentionally preserves raw source subjects, so do not trim
+    // their trailing comma before the complete-source check below.
+    let subject_clause = LexedClause::new(shape.subject_tokens);
     if subject_clause.is_empty() {
         return Ok(None);
+    }
+    // A newly reachable source subject must be complete. In particular, do
+    // not let the target parser's word projection erase punctuation or mana
+    // symbols, or drop an unsupported qualification on `this creature`.
+    if subject_clause.tokens().first().is_some_and(|token| token.is_word("this"))
+        && (subject_clause.tokens().iter().any(|token| token.as_word().is_none())
+            || source_reference_surface_for_words(&crate::lexer::token_word_refs(
+                subject_clause.tokens(),
+            )).is_none())
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported source subject in must-be-blocked clause (clause: '{}')",
+            clause.text()
+        )));
     }
     if starts_with_target_indicator(subject_clause.tokens()) {
         let attacker_target = parse_target_phrase(subject_clause.tokens())?;
@@ -1896,6 +1915,100 @@ mod result_subject_tests {
     use crate::cards::builders::StackActionAst;
     use crate::model::ast::SubjectVerbEffectAst;
     use crate::types::CardType;
+
+    // Source-authored and UNRUN during the source-only repair campaign.
+    #[test]
+    fn source_must_be_blocked_has_complete_primitive_registry_and_sentence_ownership() {
+        for subject in ["This creature", "This permanent"] {
+            for (suffix, expected_duration) in [
+                ("must be blocked if able.", crate::effect::Until::EndOfTurn),
+                ("must be blocked this turn if able.", crate::effect::Until::EndOfTurn),
+                ("must be blocked each combat this turn if able.", crate::effect::Until::EndOfTurn),
+                ("must be blocked this combat if able.", crate::effect::Until::EndOfCombat),
+            ] {
+                let text = format!("{subject} {suffix}");
+                let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+                let direct = parse_must_be_blocked_if_able_clause(&tokens).unwrap().unwrap();
+                let registry = run_clause_primitives(&tokens).unwrap().unwrap();
+                let sentence = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+                    .expect("the source requirement must not fall through to verb search");
+                assert_eq!(sentence.len(), 1, "{text}: {sentence:#?}");
+                for effect in [&direct, &registry, &sentence[0]] {
+                    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Cant {
+                            restriction: crate::effect::Restriction::MustBeBlocked(filter),
+                            duration,
+                            condition: None,
+                            ..
+                        },
+                        ..
+                    }) = effect else {
+                        panic!("{text}: expected one typed blocking requirement, got {effect:#?}");
+                    };
+                    assert_eq!(filter, &ObjectFilter::source(), "{text}");
+                    assert_eq!(duration, &expected_duration, "{text}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn source_requirement_does_not_drop_conditions_counts_durations_or_extra_tokens() {
+        for text in [
+            "This creature must be blocked this turn.",
+            "This creature must be blocked by all creatures this turn if able.",
+            "This creature must be blocked by two creatures this turn if able.",
+            "This creature must be blocked next turn if able.",
+            "This creature must be blocked this turn if able unless you pay {1}.",
+            "This creature must be blocked this turn if able, nonsense.",
+            "Draw a card. This creature must be blocked this turn if able.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_must_be_blocked_if_able_clause(&tokens).unwrap().is_none(), "{text}");
+        }
+        for text in [
+            "This {R} creature must be blocked this turn if able.",
+            "This creature: must be blocked this turn if able.",
+            "This creature with flying must be blocked this turn if able.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_must_be_blocked_if_able_clause(&tokens).is_err(), "{text}");
+            assert!(run_clause_primitives(&tokens).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn source_requirement_does_not_expand_attack_requirement_dispatch() {
+        for text in [
+            "This creature attacks this turn if able.",
+            "This creature attacks or blocks this turn if able.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_must_be_blocked_if_able_clause(&tokens).unwrap().is_none());
+            assert!(!matches!(run_clause_primitives(&tokens), Ok(Some(_))), "{text}");
+        }
+    }
+
+    #[test]
+    fn source_requirement_rejects_raw_punctuation_before_must() {
+        for subject in ["This creature", "This permanent"] {
+            for punctuation in [",", ".", ";", "\""] {
+                for suffix in [
+                    "must be blocked if able.",
+                    "must be blocked this turn if able.",
+                    "must be blocked each combat this turn if able.",
+                    "must be blocked this combat if able.",
+                ] {
+                    let text = format!("{subject}{punctuation} {suffix}");
+                    let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+                    assert!(!matches!(parse_must_be_blocked_if_able_clause(&tokens), Ok(Some(_))),
+                        "raw punctuation must not disappear before the source owner: {text}");
+                    assert!(!matches!(run_clause_primitives(&tokens), Ok(Some(_))),
+                        "registry must not accept a punctuation-trimmed source: {text}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn registry_routes_any_number_target_players_each_to_the_typed_fanout() {
