@@ -150,6 +150,17 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // CR 708.8: turning a permanent face up doesn't change its identity, so
+    // the turn's history names the same object.
+    if filter.turned_face_up_this_turn
+        && !game
+            .turn_store
+            .turn_history
+            .object_turned_face_up_this_turn(subject.stable_id(), subject.object_id())
+    {
+        return false;
+    }
+
     if subject.is_live()
         && (filter.entered_battlefield_this_turn || filter.entered_battlefield_controller.is_some())
     {

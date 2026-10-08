@@ -903,6 +903,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let _ = try_apply_controlled_continuously_since_turn_began_clause(&mut filter, &mut all_words);
 
+    strip_turned_face_up_this_turn_words(&mut filter, &mut all_words);
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
     if parse_phrase_anywhere(

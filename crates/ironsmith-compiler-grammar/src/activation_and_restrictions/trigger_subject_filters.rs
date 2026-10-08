@@ -440,8 +440,12 @@ pub fn parse_trigger_subject_filter_lexed(
         // attack/deal combat damage ..." (Goro-Goro and Satoru, Whirlwind,
         // Pick Up the Pace): the relative clause is the typed
         // entered-the-battlefield-this-turn predicate on an ordinary subject.
-        if let Some(relative_start) =
-            trigger_subject_grammar::parse_trigger_entered_this_turn_suffix(&subject_words)
+        let entered_suffix =
+            trigger_subject_grammar::parse_trigger_entered_this_turn_suffix(&subject_words);
+        let turned_face_up_suffix = trigger_subject_grammar::parse_trigger_turned_face_up_this_turn_suffix(
+            &subject_words,
+        );
+        if let Some(relative_start) = entered_suffix.or(turned_face_up_suffix)
             && let Some(prefix_end) =
                 trigger_subject_grammar::parse_trigger_word_span(subject_tokens, relative_start)
                     .map(|span| span.first)
@@ -460,7 +464,12 @@ pub fn parse_trigger_subject_filter_lexed(
                     subject_words.join(" ")
                 )));
             }
-            filter.entered_battlefield_this_turn = true;
+            if entered_suffix.is_some() {
+                filter.entered_battlefield_this_turn = true;
+            } else {
+                // CR 708.8: a turn-history fact, not the current face state.
+                filter.turned_face_up_this_turn = true;
+            }
             filter.zone.get_or_insert(Zone::Battlefield);
             if other {
                 filter.other = true;

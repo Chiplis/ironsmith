@@ -2398,6 +2398,10 @@ pub struct ObjectFilter {
     pub didnt_enter_battlefield_this_turn: bool,
     pub entered_battlefield_this_turn: bool,
     pub entered_battlefield_controller: Option<PlayerFilter>,
+    /// The permanent was turned face up during the current turn (CR 708.8),
+    /// read from the turn's history, not from its current face state.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub turned_face_up_this_turn: bool,
     /// The object was put onto the battlefield by an effect of the current
     /// source object (for example, "the creature put onto the battlefield
     /// with this enchantment").
@@ -6320,6 +6324,10 @@ impl ObjectFilter {
                 "that entered this turn".to_string()
             };
             parts.push(clause);
+        }
+
+        if self.turned_face_up_this_turn {
+            parts.push("that was turned face up this turn".to_string());
         }
 
         if self.put_onto_battlefield_with_source {

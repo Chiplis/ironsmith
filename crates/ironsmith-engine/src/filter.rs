@@ -6041,6 +6041,10 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(clause);
         }
 
+        if self.turned_face_up_this_turn {
+            parts.push("that was turned face up this turn".to_string());
+        }
+
         if self.put_onto_battlefield_with_source {
             let source = self
                 .put_onto_battlefield_with_source_surface

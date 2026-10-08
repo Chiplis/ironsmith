@@ -366,6 +366,19 @@ pub fn parse_trigger_chosen_color_source(words: &[&str]) -> bool {
     )
 }
 
+/// "... that was turned face up this turn" on a trigger subject (Kaust):
+/// returns the word index where the relative clause begins.
+pub fn parse_trigger_turned_face_up_this_turn_suffix(words: &[&str]) -> Option<usize> {
+    const SUFFIXES: [&[&str]; 2] = [
+        &["that", "was", "turned", "face", "up", "this", "turn"],
+        &["that", "were", "turned", "face", "up", "this", "turn"],
+    ];
+    SUFFIXES.into_iter().find_map(|suffix| {
+        (words.len() > suffix.len() && words.ends_with(suffix))
+            .then(|| words.len() - suffix.len())
+    })
+}
+
 pub fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerControlSuffix> {
     for suffix_words in [3usize, 2usize] {
         if words.len() < suffix_words {

@@ -1044,6 +1044,26 @@ impl TurnHistory {
             .sum()
     }
 
+    /// Whether this permanent was turned face up during the current turn.
+    pub fn object_turned_face_up_this_turn(&self, stable_id: StableId, object: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<crate::events::TurnedFaceUpEvent>()
+                .is_some_and(|event| {
+                    event.permanent == object
+                        || event
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                        || record
+                            .object_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                })
+        })
+    }
+
     pub fn object_entered_battlefield_controller_this_turn(
         &self,
         stable_id: StableId,

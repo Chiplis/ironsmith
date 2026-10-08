@@ -729,6 +729,27 @@ pub(super) fn try_apply_controlled_continuously_since_turn_began_clause(
     true
 }
 
+/// "a creature you control that was turned face up this turn" (Kaust, Eyes
+/// of the Glade): a turn-history predicate, never the current face state.
+pub(super) fn strip_turned_face_up_this_turn_words(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) {
+    const PHRASES: [&[&str]; 4] = [
+        &["that", "was", "turned", "face", "up", "this", "turn"],
+        &["that", "were", "turned", "face", "up", "this", "turn"],
+        &["that's", "been", "turned", "face", "up", "this", "turn"],
+        &["turned", "face", "up", "this", "turn"],
+    ];
+    for phrase in PHRASES {
+        if let Some(start) = find_phrase_start(all_words.as_slice(), phrase) {
+            filter.turned_face_up_this_turn = true;
+            all_words.drain(start..start + phrase.len());
+            return;
+        }
+    }
+}
+
 pub(super) fn strip_object_filter_face_state_words(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
