@@ -112,6 +112,10 @@ pub(super) fn filter_keyword_constraint_for_words(
         Some(Marker("toxic"))
     } else if permission_shapes::exact_words(words, &["modular"]) {
         Some(Marker("modular"))
+    } else if permission_shapes::exact_words(words, &["rampage"]) {
+        // "If it doesn't have rampage" (Rapid Fire): any rampage N; the
+        // printed and granted keyword is a "rampage N" marker.
+        Some(Marker("rampage"))
     } else if permission_shapes::exact_words(words, &["doctor's", "companion"])
         || permission_shapes::exact_words(words, &["doctors", "companion"])
     {
