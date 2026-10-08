@@ -9,7 +9,7 @@
 use super::dispatch_entry::SentenceInput;
 use super::{
     consult_procedure, copy_cast_procedure, exiled_top_procedure, graveyard_cast_procedure,
-    hand_procedure, keyword_choice_procedure, looked_procedure, mill_procedure, pair_procedure, rider_procedure,
+    hand_procedure, keyword_choice_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -28,6 +28,7 @@ pub(super) enum Procedure {
     Ridden(rider_procedure::RiddenStatement),
     Hand(hand_procedure::HandGroup),
     KeywordChoice(keyword_choice_procedure::KeywordChoiceGroup),
+    SearchPartition(search_partition_procedure::SearchPartitionGroup),
 }
 
 /// A closed procedure: its effects and the sentences it consumed.
@@ -55,6 +56,10 @@ fn open_all(
     };
     // Fixed-shape statements were ranked ahead of every other program.
     consider(pair_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Pair)));
+    consider(
+        search_partition_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::SearchPartition)),
+    );
     consider(Ok(
         looked_procedure::open(sentences, sentence_idx).map(Procedure::Looked)
     ));
@@ -110,6 +115,7 @@ pub(super) fn continue_with(
         Procedure::Ridden(group) => rider_procedure::continue_with(group, sentence),
         Procedure::Hand(group) => hand_procedure::continue_with(group, sentence),
         Procedure::KeywordChoice(group) => keyword_choice_procedure::continue_with(group, sentence),
+        Procedure::SearchPartition(group) => search_partition_procedure::continue_with(group, sentence),
     }
 }
 
@@ -165,6 +171,11 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             consumed: group.consumed,
             effects: keyword_choice_procedure::finish(group),
         },
+        Procedure::SearchPartition(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: search_partition_procedure::finish(group),
+        },
     }
 }
 
@@ -180,6 +191,7 @@ pub(super) fn kind(procedure: &Procedure) -> &'static str {
         Procedure::Ridden(_) => "ridden",
         Procedure::Hand(_) => "hand",
         Procedure::KeywordChoice(_) => "keyword-choice",
+        Procedure::SearchPartition(_) => "search-partition",
     }
 }
 
@@ -195,6 +207,7 @@ fn name(procedure: &Procedure) -> &'static str {
         Procedure::Ridden(_) => RIDDEN_STATEMENT,
         Procedure::Hand(_) => "hand-procedure",
         Procedure::KeywordChoice(_) => "keyword-choice-procedure",
+        Procedure::SearchPartition(_) => "search-partition-procedure",
     }
 }
 

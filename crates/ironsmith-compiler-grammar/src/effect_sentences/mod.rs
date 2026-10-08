@@ -100,6 +100,7 @@ mod gain_ability;
 mod graveyard_cast_procedure;
 mod hand_procedure;
 mod keyword_choice_procedure;
+mod search_partition_procedure;
 mod lex_chain_helpers;
 mod looked_cards_family;
 mod looked_procedure;
