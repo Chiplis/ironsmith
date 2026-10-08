@@ -1949,6 +1949,11 @@ fn parse_heterogeneous_granted_tail_remaining(
 }
 
 fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> bool {
+    // CR 702.28b: a creature with shadow can be blocked only by creatures
+    // with shadow. "As though they didn't have shadow" (the attackers) and
+    // "as though it had shadow" (the blocker) both grant exactly the
+    // permission to block shadow creatures; neither form lets the blocker
+    // lose the ability to block creatures without shadow.
     matches!(
         trim_edge_punctuation(tokens)
             .iter()
@@ -1967,6 +1972,8 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
             "didnt" | "didn't",
             "have",
             "shadow"
+        ] | [
+            "can", "block", "creatures", "with", "shadow", "as", "though", "it", "had", "shadow"
         ]
     )
 }

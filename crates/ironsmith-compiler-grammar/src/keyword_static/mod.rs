@@ -905,26 +905,15 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("revolt"),
             StaticAbilityLineHeadHint::Single("undergrowth"),
         ],
+        // The entering subject of these filtered ETB replacements is an
+        // open-ended object filter ("Gates you control", "Non-Phyrexian
+        // creatures", "Legendary creatures you control"), so no finite head
+        // list is complete. Each grammar requires the complete
+        // "<filter> enter(s) tapped/untapped/with ... counter" shape and
+        // declines source, pronoun and trigger-intro subjects itself.
         "parse_enters_tapped_for_filter_line"
         | "parse_enters_untapped_for_filter_line"
-        | "parse_enters_with_additional_counter_for_filter_line" => vec![
-            StaticAbilityLineHeadHint::Single("as"),
-            StaticAbilityLineHeadHint::Single("artifact"),
-            StaticAbilityLineHeadHint::Single("artifacts"),
-            StaticAbilityLineHeadHint::Single("creature"),
-            StaticAbilityLineHeadHint::Single("creatures"),
-            StaticAbilityLineHeadHint::Single("each"),
-            StaticAbilityLineHeadHint::Single("land"),
-            StaticAbilityLineHeadHint::Single("lands"),
-            StaticAbilityLineHeadHint::Single("nonbasic"),
-            StaticAbilityLineHeadHint::Single("nontoken"),
-            StaticAbilityLineHeadHint::Single("other"),
-            StaticAbilityLineHeadHint::Single("permanent"),
-            StaticAbilityLineHeadHint::Single("permanents"),
-            StaticAbilityLineHeadHint::Single("snow"),
-            StaticAbilityLineHeadHint::Single("token"),
-            StaticAbilityLineHeadHint::Single("tokens"),
-        ],
+        | "parse_enters_with_additional_counter_for_filter_line" => Vec::new(),
         // These rule names describe the choice payload, while every accepted
         // source line begins with the replacement-style `As this ... enters`
         // subject. Keep the correlated/named choice specialists reachable

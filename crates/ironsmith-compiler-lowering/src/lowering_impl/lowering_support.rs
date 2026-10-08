@@ -4600,6 +4600,10 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
             crate::static_abilities::LandwalkKind::ArtifactLand => {
                 StaticAbility::artifact_landwalk()
             }
+            crate::static_abilities::LandwalkKind::LegendaryLand => {
+                StaticAbility::legendary_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),

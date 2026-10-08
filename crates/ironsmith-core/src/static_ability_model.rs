@@ -3861,6 +3861,8 @@ impl<
             "landwalk" => Self::any_landwalk(),
             "nonbasic landwalk" => Self::nonbasic_landwalk(),
             "artifact landwalk" => Self::artifact_landwalk(),
+            "legendary landwalk" => Self::legendary_landwalk(),
+            "snow landwalk" => Self::snow_any_landwalk(),
             "protection from white" => Self::protection(ProtectionFrom::Color(ColorSet::WHITE)),
             "protection from blue" => Self::protection(ProtectionFrom::Color(ColorSet::BLUE)),
             "protection from black" => Self::protection(ProtectionFrom::Color(ColorSet::BLACK)),
@@ -4361,6 +4363,14 @@ impl<
 
     pub fn artifact_landwalk() -> Self {
         Self::new(LandwalkKind::ArtifactLand)
+    }
+
+    pub fn legendary_landwalk() -> Self {
+        Self::new(LandwalkKind::LegendaryLand)
+    }
+
+    pub fn snow_any_landwalk() -> Self {
+        Self::new(LandwalkKind::SnowLand)
     }
 
     pub fn landwalk(kind: Subtype) -> Self {

@@ -340,6 +340,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::LandwalkKind::ArtifactLand => {
                 crate::static_abilities::LandwalkKind::ArtifactLand
             }
+            ironsmith_core::LandwalkKind::LegendaryLand => {
+                crate::static_abilities::LandwalkKind::LegendaryLand
+            }
+            ironsmith_core::LandwalkKind::SnowLand => {
+                crate::static_abilities::LandwalkKind::SnowLand
+            }
         }
     }
 
@@ -2175,6 +2181,8 @@ impl StaticAbilityModelInterpreter {
                 ironsmith_core::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
                 ironsmith_core::LandwalkKind::NonbasicLand => StaticAbility::nonbasic_landwalk(),
                 ironsmith_core::LandwalkKind::ArtifactLand => StaticAbility::artifact_landwalk(),
+                ironsmith_core::LandwalkKind::LegendaryLand => StaticAbility::legendary_landwalk(),
+                ironsmith_core::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
             },
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbility::bloodthirst(*amount)

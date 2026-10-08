@@ -10,6 +10,12 @@ pub enum LandwalkKind {
     AnyLand,
     NonbasicLand,
     ArtifactLand,
+    /// CR 702.14c: "legendary landwalk" — the defending player controls a
+    /// legendary land.
+    LegendaryLand,
+    /// CR 702.14c: "snow landwalk" — the defending player controls a snow
+    /// land (of any subtype).
+    SnowLand,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1105,6 +1111,8 @@ impl LandwalkKind {
             Self::AnyLand => "Landwalk".to_string(),
             Self::NonbasicLand => "Nonbasic landwalk".to_string(),
             Self::ArtifactLand => "Artifact landwalk".to_string(),
+            Self::LegendaryLand => "Legendary landwalk".to_string(),
+            Self::SnowLand => "Snow landwalk".to_string(),
         }
     }
 }

@@ -2939,6 +2939,14 @@ impl StaticAbility {
         Self::new(Landwalk::new(LandwalkKind::ArtifactLand))
     }
 
+    pub fn legendary_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::LegendaryLand))
+    }
+
+    pub fn snow_any_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::SnowLand))
+    }
+
     pub fn attached_chosen_landwalk_grant(display: String, snow: bool) -> Self {
         Self::new(AttachedChosenLandwalkGrant::new(display, snow))
     }
