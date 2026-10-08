@@ -184,6 +184,16 @@ fn rest_action_effect(
         chain_grammar::RestActionShape::Sacrifice => {
             EffectAst::subject_verb_sacrifice_all(player, filter)
         }
+        // Every other card the chooser holds that matches the chosen set's
+        // description (CR 701.9a discards from that player's hand).
+        chain_grammar::RestActionShape::Discard => EffectAst::subject_verb_discard(
+            player,
+            Value::Count(filter.clone()),
+            false,
+            false,
+            Some(filter),
+            None,
+        ),
     }
 }
 
