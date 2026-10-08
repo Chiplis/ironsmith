@@ -94,8 +94,10 @@ pub enum TokenKind {
     Number,
     #[token("∞")]
     #[token("&")]
+    // Superscript digits and "=" occur in exponent reminder text ("2⁰ = 1",
+    // Mathemagics); lex them as words so the reminder can be removed.
     #[regex(
-        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
+        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9⁰¹²³⁴⁵⁶⁷⁸⁹]+|=)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
     )]
     Word,
 }
@@ -523,6 +525,22 @@ fn push_normalized_token_words(
             _ => false,
         };
         let is_mana_hybrid_slash = normalized_ch == '/' && in_mana_braces;
+
+        // A superscript exponent ("2ˣ", Mathemagics) is its own word piece:
+        // dropping it would silently read "2ˣ cards" as "2 cards".
+        if normalized_ch == 'ˣ' {
+            flush(&mut buffer, out, &mut piece_start, &mut piece_end);
+            let start = base_span.start + rel_idx;
+            out.push(TokenWordPiece {
+                text: "ˣ".to_string(),
+                span: TextSpan {
+                    line: base_span.line,
+                    start,
+                    end: start + original_ch.len_utf8(),
+                },
+            });
+            continue;
+        }
 
         // Letters outside ASCII are letters too: a name such as "Adéwalé" is
         // one word, not "ad" and "wal" with the accented letters dropped — a

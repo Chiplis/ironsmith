@@ -4,6 +4,11 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    // "2ˣ" (Mathemagics): the lexer keeps the superscript exponent as its own
+    // word piece.
+    if words.get(..2) == Some(&["2", "ˣ"][..]) {
+        return Some((Value::PowerOfTwo(Box::new(Value::X)), 2));
+    }
     if let Some(quantity) = capped_damage_quantities::parse(words) {
         return Some(quantity);
     }

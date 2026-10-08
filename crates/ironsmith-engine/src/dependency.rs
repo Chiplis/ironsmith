@@ -1570,7 +1570,8 @@ fn value_references_pt(value: &Value) -> bool {
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_references_pt(value),
+        | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => value_references_pt(value),
 
         // EffectValue could reference P/T from a prior effect
         Value::EffectValue(_) | Value::EffectValueOffset(_, _) => true,
@@ -1689,6 +1690,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SourceDevouredCreatureCount
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::WasKicked
@@ -2382,7 +2384,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_could_be_affected_by(value, modification),
+        | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => value_could_be_affected_by(value, modification),
         Value::SourcePower | Value::SourceToughness => pt_affected,
         Value::Count(filter)
         | Value::CountScaled(filter, _)
@@ -2450,6 +2453,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         }
         Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::CommanderColorIdentityColors(_)

@@ -889,6 +889,21 @@ pub(crate) fn resolve_wide(
             }
             Ok(i64::from(count))
         }
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter } => {
+            let player_ids = context.player_ids(value, player)?;
+            let filter_ctx = context.filter_context(game);
+            let mut seen = HashSet::new();
+            for (_, snapshot) in game
+                .turn_store
+                .turn_history
+                .checked_spell_cast_history(&player_ids, None)?
+            {
+                if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
+                    seen.extend(snapshot.card_types.iter().copied());
+                }
+            }
+            Ok(seen.len() as i64)
+        }
         Value::TotalManaValueOfSpellsCastThisTurnMatching {
             player,
             filter,
@@ -1297,6 +1312,15 @@ pub(crate) fn resolve_wide(
             ))
         }
         Value::HalfRoundedDown(inner) => Ok(i64::from(resolve_wide(inner, context)?.div_euclid(2))),
+        Value::PowerOfTwo(inner) => {
+            let exponent = resolve_wide(inner, context)?;
+            if !(0..=62).contains(&exponent) {
+                return Err(ExecutionError::UnresolvableValue(
+                    "power-of-two exponent is outside the wide value range".into(),
+                ));
+            }
+            Ok(1i64 << exponent)
+        }
         Value::EventValue(spec) => resolve_event_value(
             game,
             context.require_execution(value, RESOLUTION_ONLY),

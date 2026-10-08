@@ -622,6 +622,8 @@ pub enum Value {
     Scaled(Box<Value>, i32),
     DividedRoundedDown(Box<Value>, i32),
     HalfRoundedDown(Box<Value>),
+    /// Two raised to the value ("draws 2ˣ cards", Mathemagics).
+    PowerOfTwo(Box<Value>),
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
     GreatestCount(ObjectFilter),
@@ -763,6 +765,13 @@ pub enum Value {
         player: PlayerFilter,
         filter: ObjectFilter,
         exclude_source: bool,
+    },
+    /// Number of distinct card types among matching spells cast this turn
+    /// (CR 205.2a), read from cast history like `SpellsCastThisTurnMatching`
+    /// so spells that already resolved still contribute.
+    CardTypesAmongSpellsCastThisTurn {
+        player: PlayerFilter,
+        filter: ObjectFilter,
     },
     /// Total mana value of matching spells cast during the current turn.
     ///
