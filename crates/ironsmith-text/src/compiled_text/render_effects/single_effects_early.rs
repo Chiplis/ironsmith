@@ -2519,7 +2519,8 @@ fn describe_tagged_counter_spell_branch(effects: &[Effect]) -> Option<String> {
     };
     let counter =
         unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::CounterEffect>()?;
-    if !matches!(counter.target.base(), ChooseSpec::Tagged(_)) {
+    if counter.exile_permission.is_some()
+        || !matches!(counter.target.base(), ChooseSpec::Tagged(_)) {
         return None;
     }
     Some("Counter that spell".to_string())

@@ -138,13 +138,37 @@ def write_shard(index: int, entries: list[tuple[str, str]]) -> None:
     source_dir = ROOT / "crates/ironsmith-artifact-effect-decoder/src"
     source_dir.mkdir(parents=True, exist_ok=True)
     arms = "\n".join(
-        f'        "{kind}" => decode_as::<{payload}>(payload).map(Some),'
+        (
+            '        "CounterEffect" => validated_counter_effect(payload)\n'
+            '            .map(|effect| Some(Box::new(effect) as ErasedPayload)),'
+            if kind == "CounterEffect"
+            else f'        "{kind}" => decode_as::<{payload}>(payload).map(Some),'
+        )
         for kind, payload in entries
     )
     card_arms = "\n".join(
-        f'        "{kind}" => super::card_graph::map_payload_as::<{payload}>(payload, context).map(Some),'
+        (
+            '        "CounterEffect" => {\n'
+            '            validated_counter_effect(payload.clone())?;\n'
+            f'            super::card_graph::map_payload_as::<{payload}>(payload, context).map(Some)\n'
+            '        },'
+            if kind == "CounterEffect"
+            else f'        "{kind}" => super::card_graph::map_payload_as::<{payload}>(payload, context).map(Some),'
+        )
         for kind, payload in entries
     )
+    counter_validation = ""
+    if any(kind == "CounterEffect" for kind, _ in entries):
+        counter_validation = '''fn validated_counter_effect(payload: Value) -> Result<ironsmith_core::CounterEffect, String> {
+    let effect: ironsmith_core::CounterEffect =
+        serde_json::from_value(payload).map_err(|error| error.to_string())?;
+    if !effect.exile_permission_target_is_supported() {
+        return Err("counter exile permission requires one exact stack spell target".into());
+    }
+    Ok(effect)
+}
+
+'''
     (source_dir / f"{module_name(index)}.rs").write_text(
         f"""//! Generated typed materializers for the {FAMILY_NAMES[index]} runtime effect family.
 
@@ -154,7 +178,7 @@ use serde_json::Value;
 
 use super::{{ErasedPayload, decode_as}};
 
-pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {{
+{counter_validation}pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {{
     match kind {{
 {arms}
         _ => Ok(None),
@@ -224,6 +248,8 @@ mod player;
 mod resources;
 mod stack_event;
 mod zone_library;
+#[cfg(test)]
+mod counter_exile_permission_tests;
 
 pub type ErasedPayload = Box<dyn Any + Send + Sync>;
 
@@ -272,28 +298,92 @@ pub fn decode(kind: &str, payload: Value) -> Result<ErasedPayload, String> {{
     decoded.ok_or_else(|| format!("unknown compiled effect payload kind: {{kind}}"))
 }}
 
-#[cfg(test)]
-mod tests {{
-    use super::{{EffectFamily, family_for_kind}};
-
-    #[test]
-    fn routes_representative_effects_to_domain_families() {{
-        assert_eq!(family_for_kind("MoveToZoneEffect"), Some(EffectFamily::ZoneLibrary));
-        assert_eq!(family_for_kind("ChoosePlayerEffect"), Some(EffectFamily::Player));
-        assert_eq!(family_for_kind("AddManaEffect"), Some(EffectFamily::Resources));
-        assert_eq!(family_for_kind("CreateTokenEffect"), Some(EffectFamily::Permanent));
-        assert_eq!(family_for_kind("DealDamageEffect"), Some(EffectFamily::Combat));
-        assert_eq!(family_for_kind("CopySpellEffect"), Some(EffectFamily::StackEvent));
-        assert_eq!(family_for_kind("ChooseModeEffect"), Some(EffectFamily::CompositionAL));
-        assert_eq!(family_for_kind("WithIdEffect"), Some(EffectFamily::CompositionMZ));
-        assert_eq!(family_for_kind("NotAnEffect"), None);
-    }}
-}}
+{FACADE_TEST_SOURCE}
 
 {CARD_GRAPH_SOURCE}
 """,
         encoding="utf-8",
     )
+
+
+# These source templates intentionally mirror the retained Rust blocks in
+# crates/ironsmith-artifact-effect-decoder/src/lib.rs. Update each pair together;
+# scripts/test_generate_artifact_decoder_shards.py owns the source-parity gates.
+# Never reconstruct the authored-definition owner from opaque retained bytes.
+FACADE_TEST_SOURCE = r'''#[cfg(test)]
+mod tests {
+    use super::{EffectFamily, family_for_kind};
+
+    #[test]
+    fn routes_representative_effects_to_domain_families() {
+        assert_eq!(
+            family_for_kind("MoveToZoneEffect"),
+            Some(EffectFamily::ZoneLibrary)
+        );
+        assert_eq!(
+            family_for_kind("ChoosePlayerEffect"),
+            Some(EffectFamily::Player)
+        );
+        assert_eq!(
+            family_for_kind("AddManaEffect"),
+            Some(EffectFamily::Resources)
+        );
+        assert_eq!(
+            family_for_kind("CreateTokenEffect"),
+            Some(EffectFamily::Permanent)
+        );
+        assert_eq!(
+            family_for_kind("DealDamageEffect"),
+            Some(EffectFamily::Combat)
+        );
+        assert_eq!(
+            family_for_kind("CopySpellEffect"),
+            Some(EffectFamily::StackEvent)
+        );
+        assert_eq!(
+            family_for_kind("ChooseModeEffect"),
+            Some(EffectFamily::CompositionAL)
+        );
+        assert_eq!(
+            family_for_kind("WithIdEffect"),
+            Some(EffectFamily::CompositionMZ)
+        );
+        assert_eq!(family_for_kind("NotAnEffect"), None);
+    }
+
+    // UNRUN: source-only regression for the measured payload registration gap.
+    #[test]
+    fn source_counter_payload_decodes_and_normalizes_inside_owned_cost() {
+        use ironsmith_compiled_artifact::WireEffect;
+        use ironsmith_core::{Cost, CounterType, EffectId, RemoveAnyCountersFromSourceEffect, WithIdEffect};
+
+        let kind = "RemoveAnyCountersFromSourceEffect";
+        assert_eq!(family_for_kind(kind), Some(EffectFamily::Resources));
+        for counter_type in [None, Some(CounterType::Charge), Some(CounterType::Named("eyeball".into()))] {
+            for display_x in [false, true] {
+                for remove_all in [false, true] {
+                    let model = RemoveAnyCountersFromSourceEffect { counter_type, display_x, remove_all };
+                    let payload = serde_json::to_value(&model).unwrap();
+                    let decoded = super::decode(kind, payload.clone()).unwrap();
+                    assert_eq!(decoded.downcast_ref::<RemoveAnyCountersFromSourceEffect>(), Some(&model));
+
+                    let owned = WithIdEffect::new(EffectId(73), WireEffect::new(kind, payload));
+                    let cost = Cost::Effect(WireEffect::new("WithIdEffect", serde_json::to_value(owned).unwrap()));
+                    let mut bind = |_: u32| -> Result<u32, String> {
+                        panic!("source counter payload has no authored card IDs")
+                    };
+                    let (normalized, opaque) = super::authored_definition_graph(&cost, &mut bind, &[]).unwrap();
+                    assert!(!opaque);
+                    assert_eq!(normalized, serde_json::to_value(&cost).unwrap());
+                    assert_eq!(super::remap_card_ids(&cost, &mut bind).unwrap(), normalized);
+                }
+            }
+        }
+        assert!(super::decode(kind, serde_json::json!({
+            "counter_type": null, "display_x": "true", "remove_all": false,
+        })).is_err(), "registration must retain typed field validation");
+    }
+}'''
 
 
 CARD_GRAPH_SOURCE = r'''/// Remap typed card references throughout a canonical payload, including opaque
@@ -304,10 +394,35 @@ pub fn remap_card_ids<T: serde::Serialize>(
 ) -> Result<Value, String> {
     let context = card_graph::Context {
         bind: std::cell::RefCell::new(bind),
+        authored_definition: false,
+        retained_definition: std::cell::Cell::new(false),
+        generated_definitions: &[],
+        normalized_definitions: std::cell::RefCell::new(std::collections::BTreeMap::new()),
     };
     value
         .serialize(card_graph::Serializer { context: &context })
         .map_err(|error| error.to_string())
+}
+
+/// Normalize an authored definition through the same typed graph owner as
+/// artifact CardId remapping. Presentation fields are not identity inputs.
+/// An opaque retained definition is reported separately: callers must not
+/// claim that remapping CardIds canonicalized the bytes inside an older stamp.
+pub fn authored_definition_graph<T: serde::Serialize>(
+    value: &T,
+    bind: &mut dyn FnMut(u32) -> Result<u32, String>,
+    generated_definitions: &[ironsmith_core::LinkedExileDefinition],
+) -> Result<(Value, bool), String> {
+    let context = card_graph::Context {
+        bind: std::cell::RefCell::new(bind),
+        authored_definition: true,
+        retained_definition: std::cell::Cell::new(false),
+        generated_definitions,
+        normalized_definitions: std::cell::RefCell::new(std::collections::BTreeMap::new()),
+    };
+    let normalized = value.serialize(card_graph::Serializer { context: &context })
+        .map_err(|error| error.to_string())?;
+    Ok((normalized, context.retained_definition.get()))
 }
 
 fn remap_effect_payload(
@@ -336,6 +451,10 @@ mod card_graph {
 
     pub(super) struct Context<'b> {
         pub(super) bind: RefCell<&'b mut dyn FnMut(u32) -> Result<u32, String>>,
+        pub(super) authored_definition: bool,
+        pub(super) retained_definition: std::cell::Cell<bool>,
+        pub(super) generated_definitions: &'b [ironsmith_core::LinkedExileDefinition],
+        pub(super) normalized_definitions: RefCell<std::collections::BTreeMap<[u8; 32], [u8; 32]>>,
     }
     #[derive(Clone, Copy)]
     pub(super) struct Serializer<'a, 'b> {
@@ -432,6 +551,21 @@ mod card_graph {
             name: &'static str,
             value: &T,
         ) -> Result<Value, Self::Error> {
+            if self.context.authored_definition && name == "LinkedExileDefinition" {
+                let raw = value.serialize(value::Serializer)?;
+                let bytes: [u8; 32] = serde_json::from_value(raw)?;
+                if self.context.generated_definitions.contains(&ironsmith_core::LinkedExileDefinition(bytes)) {
+                    let mut definitions = self.context.normalized_definitions.borrow_mut();
+                    let ordinal = definitions.len() as u64;
+                    let mapped = *definitions.entry(bytes).or_insert_with(|| {
+                        let mut mapped = [0; 32];
+                        mapped[24..].copy_from_slice(&ordinal.to_le_bytes());
+                        mapped
+                    });
+                    return mapped.serialize(value::Serializer);
+                }
+                self.context.retained_definition.set(true);
+            }
             if name == "CardId" {
                 let raw = value.serialize(value::Serializer)?;
                 let id = raw
@@ -575,6 +709,16 @@ mod card_graph {
             key: &'static str,
             value: &T,
         ) -> Result<(), Self::Error> {
+            // These are declared serde struct fields, reached after exact
+            // effect payload decoding. Arbitrary JSON keys and rule-bearing
+            // names/strings never select this behavior.
+            if self.context.authored_definition && matches!((self.name, key),
+                (Some("CardDefinition"), "canonical_text" | "ability_labels")
+                    | (Some("TriggeredAbility"), "presentation_label")
+                    | (Some("Trigger" | "StaticAbility"), "label"))
+            {
+                return Ok(());
+            }
             let mapped = self.mapped(value)?;
             self.inner.serialize_field(key, &mapped)
         }
@@ -595,13 +739,6 @@ mod card_graph {
                     .take();
                 result["payload"] = super::remap_effect_payload(&kind, payload, self.context)
                     .map_err(<Self::Error as ser::Error>::custom)?;
-            }
-            if self.name == Some("RetainedCardPayload") {
-                match result.get("card_references").and_then(Value::as_str) {
-                    Some("Native" | "Bound") => {},
-                    _ => return Err(<Self::Error as ser::Error>::custom("missing retained payload card reference mode")),
-                }
-                result["card_references"] = Value::String("Bound".into());
             }
             Ok(result)
         }
@@ -719,6 +856,51 @@ mod card_graph_tests {
                 .unwrap_err()
                 .contains("unknown compiled effect")
         );
+    }
+
+    #[test]
+    fn authored_graph_tracks_only_typed_opaque_definitions_and_preserves_pair_aliases() {
+        #[derive(serde::Serialize)]
+        struct Carrier {
+            pairs: Vec<ironsmith_core::LinkedExilePair>,
+            arbitrary: Value,
+        }
+        let first = ironsmith_core::LinkedExileDefinition([17; 32]);
+        let second = ironsmith_core::LinkedExileDefinition([29; 32]);
+        let value = Carrier {
+            pairs: vec![
+                ironsmith_core::LinkedExilePair { definition: first, pair: 3 },
+                ironsmith_core::LinkedExilePair { definition: first, pair: 7 },
+                ironsmith_core::LinkedExilePair { definition: second, pair: 3 },
+            ],
+            arbitrary: serde_json::json!({"LinkedExileDefinition": [99], "label": "semantic arbitrary value"}),
+        };
+        let (_, opaque) = authored_definition_graph(&value, &mut |id| Ok(id), &[first]).unwrap();
+        assert!(opaque, "one proven owner never canonicalizes an independent native identity");
+        let (mapped, opaque) = authored_definition_graph(&value, &mut |id| Ok(id), &[first, second]).unwrap();
+        assert!(!opaque);
+        assert_eq!(mapped["pairs"][0]["definition"], mapped["pairs"][1]["definition"]);
+        assert_ne!(mapped["pairs"][0]["definition"], mapped["pairs"][2]["definition"]);
+        assert_eq!(mapped["pairs"][1]["pair"], 7);
+        assert_eq!(mapped["arbitrary"], value.arbitrary);
+        let ordinary = remap_card_ids(&value, &mut |id| Ok(id)).unwrap();
+        assert_eq!(ordinary, serde_json::to_value(&value).unwrap(), "artifact remapping preserves retained identities");
+    }
+
+    #[test]
+    fn authored_graph_omits_nested_presentation_without_mutating_transport_data() {
+        let make = |text: &str| {
+            let mut token: wire::WireCardDefinition = ironsmith_core::CardDefinition::new(
+                CardBuilder::new(CardId::from_raw(9), "Token name is a characteristic").token().build());
+            token.canonical_text = text.into();
+            token.ability_labels = vec![text.into()];
+            wire::WireEffect::new("CreateTokenEffect", serde_json::to_value(ironsmith_core::CreateTokenEffect::one(token)).unwrap())
+        };
+        let first = make("First rendering");
+        let second = make("Second rendering");
+        assert_ne!(serde_json::to_value(&first).unwrap(), serde_json::to_value(&second).unwrap());
+        assert_eq!(authored_definition_graph(&first, &mut |id| Ok(id), &[]).unwrap(),
+            authored_definition_graph(&second, &mut |id| Ok(id), &[]).unwrap());
     }
 }
 '''

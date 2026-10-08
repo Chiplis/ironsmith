@@ -2267,9 +2267,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RevealLook(RevealLookActionAst::LookAtHand { target }) => {
                 f.debug_tuple("LookAtHand").field(target).finish()
             }
-            Self::Stack(StackActionAst::Counter { target }) => {
+            Self::Stack(StackActionAst::Counter { target, exile_permission: None }) => {
                 f.debug_tuple("Counter").field(target).finish()
             }
+            Self::Stack(StackActionAst::Counter { target, exile_permission: Some(permission) }) => f
+                .debug_struct("Counter")
+                .field("target", target)
+                .field("exile_permission", permission)
+                .finish(),
             Self::Stack(StackActionAst::CounterUnlessPays { target, cost }) => f
                 .debug_struct("CounterUnlessPays")
                 .field("target", target)

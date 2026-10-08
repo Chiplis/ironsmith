@@ -41,6 +41,7 @@ fn counter_one_stack_object_of_kind_with_outputs(
                 ctx,
                 target_id,
                 kind,
+                None,
                 &mut receipts,
                 &mut published_outputs,
             )?;
@@ -63,6 +64,7 @@ fn counter_one_stack_object_of_kind_inner(
     ctx: &mut ExecutionContext,
     target_id: ObjectId,
     kind: Option<crate::filter::StackObjectKind>,
+    exile_permission: Option<ironsmith_core::CounterExilePermission>,
     receipts: &mut Vec<(
         ObjectId,
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
@@ -71,6 +73,15 @@ fn counter_one_stack_object_of_kind_inner(
 ) -> Result<EffectOutcome, ExecutionError> {
     use crate::filter::StackObjectKind;
 
+    if exile_permission.is_some() && (!game.object(target_id)
+        .is_some_and(|object| object.zone == Zone::Stack)
+        || !game.stack.iter().any(|entry| entry.object_id == target_id && !entry.is_ability))
+    {
+        return Ok(EffectOutcome::target_invalid());
+    }
+    let kind = if exile_permission.is_some() {
+        Some(crate::filter::StackObjectKind::Spell)
+    } else { kind };
     // An ability named by its own stack id is exactly that stack object.
     if let Some(index) = game
         .stack
@@ -157,12 +168,35 @@ fn counter_one_stack_object_of_kind_inner(
                 )
             });
             let countered_snapshot = game.object(target_id).map(|object| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
                     object, game,
                 )
-            });
+            }).transpose()?;
             let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let eligible_permission = exile_permission.filter(|permission| {
+                match permission.gate {
+                    ironsmith_core::CounterExileGate::AnySpell => true,
+                    ironsmith_core::CounterExileGate::PermanentSpell => countered_snapshot
+                        .as_ref().is_some_and(|snapshot| snapshot.card_types.iter().any(|kind|
+                            matches!(kind, crate::types::CardType::Artifact
+                                | crate::types::CardType::Battle | crate::types::CardType::Creature
+                                | crate::types::CardType::Enchantment | crate::types::CardType::Planeswalker))),
+                }
+            });
+            let mut additional_effects = ctx.additional_replacement_effects_snapshot();
+            if eligible_permission.is_some() {
+                // This replacement exists only during this one counter event.
+                // A nonpermanent remains a legal target and goes to its normal
+                // destination. No global or later-movement replacement survives.
+                additional_effects.push(crate::replacement::ReplacementEffect::with_matcher(
+                    ctx.source, ctx.controller,
+                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                        crate::target::ObjectFilter::specific(target_id),
+                        Some(Zone::Stack), Some(Zone::Graveyard),
+                    ),
+                    crate::replacement::ReplacementAction::ChangeDestination(Zone::Exile),
+                ).with_priority_override(crate::events::ReplacementPriority::SelfReplacement));
+            }
             let committed = apply_zone_change_with_context_and_additional_effects_with_outputs(
                 game,
                 target_id,
@@ -192,6 +226,11 @@ fn counter_one_stack_object_of_kind_inner(
                     // share its source id. Do not run entry replacements again.
                     countered_spell = change.new_object_id.is_some();
                     if change.final_zone == Zone::Exile {
+                        if let (Some(permission), Some(exiled)) =
+                            (eligible_permission, change.new_object_id)
+                        {
+                            grant_countered_exile_permission(game, ctx, exiled, permission);
+                        }
                         for new_id in change.new_object_ids {
                             game.add_exiled_with_source_link(ctx.source, new_id);
                         }
@@ -253,6 +292,46 @@ fn counter_one_stack_object_of_kind_inner(
             EffectOutcome::target_invalid()
         },
     )
+}
+
+/// Consume only the committed original counter arrival, before receipt
+/// additions run. Replay/choice suspension is owned by the surrounding counter
+/// transaction, so no permission survives an uncommitted move. Departure during
+/// receipt additions invalidates this exact ID; there is no stable-card rebinding.
+fn grant_countered_exile_permission(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    exiled: ObjectId,
+    permission: ironsmith_core::CounterExilePermission,
+) {
+    if !game.object(exiled).is_some_and(|object| object.zone == Zone::Exile) {
+        return;
+    }
+    use crate::grant::Grantable;
+    use crate::grant_registry::{GrantSource, PlayFromConstraints};
+    let source = GrantSource::Effect {
+        source_id: ctx.source,
+        expires_end_of_turn: u32::MAX,
+    };
+    let registry = &mut game.effect_store.grant_registry;
+    registry.grant_to_card(exiled, Zone::Exile, ctx.controller,
+        Grantable::AlternativeCast(
+            crate::alternative_cast::AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                "Countered spell casting price", Zone::Exile,
+                crate::cost::TotalCost::from_costs(Vec::new()), None, false,
+            ),
+        ), source.clone());
+    let mut spells = crate::target::ObjectFilter::default();
+    spells.zone = None;
+    spells.excluded_card_types.push(crate::types::CardType::Land);
+    registry.grants.last_mut().expect("inserted exact counter grant").filter = Some(spells);
+    if permission.allow_land {
+        registry.grant_play_from_to_card(exiled, Zone::Exile, ctx.controller,
+            PlayFromConstraints::default(), source);
+        let mut lands = crate::target::ObjectFilter::land();
+        lands.zone = None;
+        registry.grants.last_mut().expect("inserted exact land grant").filter = Some(lands);
+    }
 }
 
 /// Counter the stack object at `index` (CR 701.6a).
@@ -386,6 +465,10 @@ impl EffectExecutor for CounterEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
+                if !self.exile_permission_target_is_supported() {
+                    return Err(ExecutionError::IncompleteEvidence(
+                        "counter exile permission requires one explicit stack spell".into()));
+                }
                 let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -398,6 +481,14 @@ impl EffectExecutor for CounterEffect {
                     ));
                 }
                 let kind = counter_target_stack_kind(&self.target);
+                if self.exile_permission.is_some() && (target_ids.len() != 1
+                    || matches!(kind, Some(crate::filter::StackObjectKind::Ability
+                        | crate::filter::StackObjectKind::ActivatedAbility
+                        | crate::filter::StackObjectKind::TriggeredAbility)))
+                {
+                    return Err(ExecutionError::IncompleteEvidence(
+                        "counter exile permission requires one spell target".into()));
+                }
                 let mut outcomes = Vec::new();
                 let mut receipts = Vec::new();
                 let mut published_outputs = Vec::new();
@@ -407,6 +498,7 @@ impl EffectExecutor for CounterEffect {
                         ctx,
                         target_id,
                         kind,
+                        self.exile_permission,
                         &mut receipts,
                         &mut published_outputs,
                     )?);
@@ -1076,3 +1168,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "counter_exile_permission_tests.rs"]
+mod exile_permission_tests;

@@ -1663,15 +1663,66 @@ impl RemoveCountersEffect {
     }
 }
 
+/// A gate on the counter's destination replacement, never on its legal target.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum CounterExileGate {
+    AnySpell,
+    PermanentSpell,
+}
+
+/// Atomic ownership of "countered this way" → exact exile incarnation → free
+/// permission. Price, recipient (the effect's controller), ordinary timing and
+/// duration (only while this incarnation remains exiled) are intrinsic, not
+/// independent tags that can accidentally bind another movement or stable card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub struct CounterExilePermission {
+    pub gate: CounterExileGate,
+    /// "Play" also permits a legal land face; "cast" never does.
+    pub allow_land: bool,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CounterEffect {
     pub target: ChooseSpec,
+    /// Absent on legacy ordinary counters. New payload meaning requires the
+    /// current semantic/cache boundary; serde defaults are not admission.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub exile_permission: Option<CounterExilePermission>,
 }
 
 impl CounterEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, exile_permission: None }
+    }
+
+    pub fn with_exile_permission(mut self, permission: CounterExilePermission) -> Self {
+        self.exile_permission = Some(permission);
+        self
+    }
+
+    /// The atomic rider consumes one explicit stack spell, never a source pool,
+    /// stale tagged snapshot, plural selector, or ability. Exact object IDs are
+    /// available to native callers; compiled text uses the single spell target.
+    pub fn exile_permission_target_is_supported(&self) -> bool {
+        if self.exile_permission.is_none() { return true; }
+        let spec = match self.target.unhinted() {
+            ChooseSpec::Target(inner) => inner.unhinted(),
+            spec => spec,
+        };
+        match spec {
+            ChooseSpec::SpecificObject(_) => true,
+            // This cohort authors exactly "target spell". Admit that complete
+            // vocabulary, not a partial field check: source flags, nested
+            // any_of/not/tag relations and every other contextual dependency
+            // must not smuggle in a different producer. SurfaceHinted wrappers
+            // above are presentation-only and remain supported.
+            ChooseSpec::Object(filter) => filter == &ObjectFilter::spell(),
+            _ => false,
+        }
     }
 
     pub fn any_spell() -> Self {

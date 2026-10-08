@@ -89,7 +89,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
-            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
+            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })

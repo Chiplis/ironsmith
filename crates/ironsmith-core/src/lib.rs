@@ -103,7 +103,7 @@ pub use effect::{
     ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, ContinuousDurationObject,
     ContinuousDurationPlayer, ContinuousDurationPredicate, ControlCombatChoicesThisTurnEffect,
     ControlPlayerEffect, ConvertEffect, CopyAttackTargetMode, CopyPtAdjustment, CopySpellEffect,
-    CopySpellForEachTargetEffect, CounterEffect, CreateEmblemEffect, CreateTokenCopyEffect,
+    CopySpellForEachTargetEffect, CounterEffect, CounterExileGate, CounterExilePermission, CreateEmblemEffect, CreateTokenCopyEffect,
     CreateTokenEffect, CrewCostEffect, SaddleCostEffect, CumulativeUpkeepEffect, DamageDistributionMode,
     DamageFilter, DealDamageEffect, DealDistributedDamageEffect, DelayedTriggerDuration,
     DelayedTriggerPrepayment, DelayedTriggerSpec, DestinationPlayerReferenceSurface, DestroyEffect,

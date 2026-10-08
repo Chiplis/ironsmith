@@ -441,8 +441,13 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::CipherEffect>(&effect) {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::CounterEffect>(&effect) {
-        return Ok(converted);
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CounterEffect>(&effect) {
+        if !payload.exile_permission_target_is_supported() {
+            return Err(hooks.unsupported_effect(
+                "counter exile permission requires one explicit stack spell".to_string(),
+            ));
+        }
+        return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ScheduleDelayedTriggerEffect<M::Effect>>(&effect)

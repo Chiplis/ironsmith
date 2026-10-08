@@ -2095,6 +2095,31 @@ pub(crate) fn spell_cast_restrictions_allow(
         })
 }
 
+/// Check a forced printed-mana-cost X of zero on the proposed spell face.
+/// The caller supplies a stack proposal, including its casting controller;
+/// source-relative values must not inspect the physical card's exile face.
+pub(crate) fn spell_x_minimum_allows_zero(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> Result<bool, crate::effects::ExecutionError> {
+    let ctx = ExecutionContext::new_default(spell.id, player).with_x(0);
+    for ability in spell.abilities.iter() {
+        if !ability.functional_zones.contains(&Zone::Stack) {
+            continue;
+        }
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if let Some(minimum) = static_ability.this_spell_x_minimum_value()
+            && resolve_value(game, &minimum, &ctx)? > 0
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 /// CR 205.4e: a player can't cast a legendary instant or sorcery spell unless
 /// that player controls a legendary creature or a legendary planeswalker.
 /// `spell` is the cast view, so a split/adventure half is checked by itself.
@@ -3718,6 +3743,29 @@ pub(crate) fn can_cast_spell_with_context(
     } else { cast_view };
     let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
+
+    // An empty exile price fixes printed X to zero. Check the authored
+    // minimum in the same selected-face, stack-zone proposal used for payment,
+    // rather than reading the original exile object's characteristics by ID.
+    // This gate is deliberately separate from additional-only X and paid/X
+    // prices, whose X remains a later announcement.
+    if spell_for_checks.mana_cost.as_ref().is_some_and(|cost| cost.has_x())
+        && matches!(selected_alternative.as_ref(),
+            Some(crate::alternative_cast::AlternativeCastingMethod::FromZone {
+                zone: Zone::Exile, total_cost, ..
+            }) if total_cost.costs().is_empty())
+        && !with_cast_payment_proposal(
+            game, player, spell.id, spell_for_checks, casting_method, |proposed| {
+                let Some(proposed_spell) = proposed.object(spell.id) else { return false; };
+                match spell_x_minimum_allows_zero(proposed, player, proposed_spell) {
+                    Ok(allowed) => allowed,
+                    Err(error) => resumable::failed_calculation(game, error),
+                }
+            },
+        )
+    {
+        return false;
+    }
 
     if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method) && let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(

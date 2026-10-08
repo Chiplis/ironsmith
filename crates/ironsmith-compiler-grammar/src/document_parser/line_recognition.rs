@@ -94,7 +94,8 @@ fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<Recogn
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
     let correlated_tail = |effect_tokens: &[OwnedLexToken]| {
         let words = crate::lexer::parser_token_word_refs(effect_tokens);
-        crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(effect_tokens)
+        crate::effect_sentences::counter_exile_permission::is_candidate(effect_tokens)
+            || crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(effect_tokens)
             || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
                 effect_tokens,
             )

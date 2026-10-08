@@ -3071,6 +3071,9 @@ pub(super) fn describe_countered_spell_exile_with_counters_gain_suspend(
     let local = local_effect.downcast_ref::<crate::effects::LocalRewriteEffect>()?;
     let counter =
         unwrap_basic_tag_wrappers(&local.effect).downcast_ref::<crate::effects::CounterEffect>()?;
+    if counter.exile_permission.is_some() {
+        return None;
+    }
     if !describe_choose_spec(&counter.target)
         .to_ascii_lowercase()
         .contains("spell")
@@ -3124,6 +3127,9 @@ pub(in crate::compiled_text) fn describe_separated_countered_spell_exile_with_co
     };
     let counter = unwrap_basic_tag_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
+    if counter.exile_permission.is_some() {
+        return None;
+    }
     if !describe_choose_spec(&counter.target)
         .to_ascii_lowercase()
         .contains("spell")
@@ -3184,6 +3190,9 @@ pub(super) fn describe_second_spell_counter_conditional(
     };
     let counter = unwrap_basic_tag_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
+    if counter.exile_permission.is_some() {
+        return None;
+    }
     if !describe_choose_spec(&counter.target)
         .to_ascii_lowercase()
         .contains("spell")

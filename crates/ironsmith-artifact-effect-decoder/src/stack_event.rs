@@ -6,6 +6,15 @@ use serde_json::Value;
 
 use super::{ErasedPayload, decode_as};
 
+fn validated_counter_effect(payload: Value) -> Result<ironsmith_core::CounterEffect, String> {
+    let effect: ironsmith_core::CounterEffect =
+        serde_json::from_value(payload).map_err(|error| error.to_string())?;
+    if !effect.exile_permission_target_is_supported() {
+        return Err("counter exile permission requires one exact stack spell target".into());
+    }
+    Ok(effect)
+}
+
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
         "CantEffect" => decode_as::<ironsmith_core::CantEffect>(payload).map(Some),
@@ -16,7 +25,8 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "CopySpellForEachTargetEffect" => {
             decode_as::<ironsmith_core::CopySpellForEachTargetEffect>(payload).map(Some)
         }
-        "CounterEffect" => decode_as::<ironsmith_core::CounterEffect>(payload).map(Some),
+        "CounterEffect" => validated_counter_effect(payload)
+            .map(|effect| Some(Box::new(effect) as ErasedPayload)),
         "ExileTaggedWhenSourceLeavesEffect" => {
             decode_as::<ironsmith_core::ExileTaggedWhenSourceLeavesEffect>(payload).map(Some)
         }
@@ -105,6 +115,7 @@ pub(super) fn map_card_ids(
         >(payload, context)
         .map(Some),
         "CounterEffect" => {
+            validated_counter_effect(payload.clone())?;
             super::card_graph::map_payload_as::<ironsmith_core::CounterEffect>(payload, context)
                 .map(Some)
         }
