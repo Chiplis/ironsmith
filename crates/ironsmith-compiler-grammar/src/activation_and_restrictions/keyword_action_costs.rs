@@ -474,6 +474,20 @@ fn parse_payment_clause_as_effects(
 
     let ast = match parse_effect_sentences_lexed(&trimmed) {
         Ok(ast) => ast,
+        // "Ward—Get five poison counters" (The Serpent Society): a cost is
+        // an instruction to the player who pays it, so a bare "get" clause
+        // reads as that player's own sentence ("you get ...").
+        Err(_) if trimmed.first().is_some_and(|token| token.is_word("get")) => {
+            let mut with_payer = vec![OwnedLexToken::word(
+                "you".to_string(),
+                crate::TextSpan::synthetic(),
+            )];
+            with_payer.extend_from_slice(&trimmed);
+            match parse_effect_sentences_lexed(&with_payer) {
+                Ok(ast) => ast,
+                Err(_) => return Ok(None),
+            }
+        }
         Err(_) => return Ok(None),
     };
     Ok((!ast.is_empty()).then_some(ast))
