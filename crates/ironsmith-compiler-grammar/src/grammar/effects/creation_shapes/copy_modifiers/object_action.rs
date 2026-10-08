@@ -130,10 +130,44 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                 && CreationWords::new(modifier_words).has_literal(keyword))
     };
     if grants_keyword(CreationPhrase::WithFlying, "flying") {
-        spec.granted_abilities.push(StaticAbility::flying());
+        push_unique(&mut spec.granted_abilities, StaticAbility::flying());
     }
     if grants_keyword(CreationPhrase::WithTrample, "trample") {
-        spec.granted_abilities.push(StaticAbility::trample());
+        push_unique(&mut spec.granted_abilities, StaticAbility::trample());
+    }
+    // "... and they have vigilance and menace" (Rebuild the City): the
+    // keyword list after the last grant verb (CR 707.9a). Reading stops at
+    // the first word that isn't a keyword, leaving quoted or self-referential
+    // grants ("has this ability") to their own owners.
+    if let Some(grant_idx) = modifier_words
+        .iter()
+        .rposition(|word| matches!(*word, "has" | "have" | "gain" | "gains"))
+    {
+        let list = &modifier_words[grant_idx + 1..];
+        let mut idx = 0;
+        while idx < list.len() {
+            let (ability, used) = match &list[idx..] {
+                ["and", ..] => {
+                    idx += 1;
+                    continue;
+                }
+                ["first", "strike", ..] => (StaticAbility::first_strike(), 2),
+                ["double", "strike", ..] => (StaticAbility::double_strike(), 2),
+                ["vigilance", ..] => (StaticAbility::vigilance(), 1),
+                ["menace", ..] => (StaticAbility::menace(), 1),
+                ["haste", ..] => (StaticAbility::haste(), 1),
+                ["reach", ..] => (StaticAbility::reach(), 1),
+                ["lifelink", ..] => (StaticAbility::lifelink(), 1),
+                ["deathtouch", ..] => (StaticAbility::deathtouch(), 1),
+                ["hexproof", ..] => (StaticAbility::hexproof(), 1),
+                ["defender", ..] => (StaticAbility::defender(), 1),
+                ["flying", ..] => (StaticAbility::flying(), 1),
+                ["trample", ..] => (StaticAbility::trample(), 1),
+                _ => break,
+            };
+            push_unique(&mut spec.granted_abilities, ability);
+            idx += used;
+        }
     }
     if let Some(amount) =
         crate::slice_primitives::find_window_by(modifier_words, 2, |pair| pair[0] == "toxic")
