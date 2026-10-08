@@ -1119,6 +1119,9 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some(spec) = filtered_zone_permissions::parse_shared_hand_top_free_cast(tokens)? {
         return Ok(Some(spec));
     }
+    if let Some(spec) = filtered_zone_permissions::parse_once_per_turn_hand_free_cast(tokens)? {
+        return Ok(Some(spec));
+    }
     if let Some(spec) = filtered_zone_permissions::parse_timed_top_look_and_permission(tokens)? {
         return Ok(Some(spec));
     }

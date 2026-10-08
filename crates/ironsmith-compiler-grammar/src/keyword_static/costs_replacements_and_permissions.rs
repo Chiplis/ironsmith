@@ -4830,7 +4830,10 @@ pub fn parse_you_may_static_grant_line(
             lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) => {
             let singular_spell = late_static_facts::contains_singular_cast_spell(tokens);
+            // A once-per-turn budget makes the singular wording a standing
+            // permission rather than a one-shot resolution.
             if singular_spell
+                && spec.usage_limit.is_none()
                 && spec.additional_zones.is_empty()
                 && spec.zone == Zone::Hand
                 && matches!(
