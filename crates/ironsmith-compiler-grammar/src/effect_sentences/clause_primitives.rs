@@ -1815,6 +1815,16 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     {
         return Ok(None);
     }
+    // "When you do, it fights ..." / "If you do, it fights ...": the leading
+    // result clause owns the sentence (a reflexive trigger, CR 603.12); its
+    // words are never part of the first fighter's description.
+    if shape
+        .left_tokens
+        .and_then(|left| left.first())
+        .is_some_and(|token| token.is_any_word(&["when", "whenever", "if"]))
+    {
+        return Ok(None);
+    }
     let clause_text = LexedClause::new(tokens).text();
     if shape.right_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
