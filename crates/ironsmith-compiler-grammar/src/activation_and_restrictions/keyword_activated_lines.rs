@@ -277,13 +277,24 @@ pub fn parse_cycling_search_filter(
             card_types,
             subtypes,
             colors,
-        })) => Ok(Some(ObjectFilter {
-            supertypes,
-            card_types,
-            subtypes,
-            colors,
-            ..ObjectFilter::default()
-        })),
+        })) => {
+            // "Artifact landcycling" searches for a card that is both an
+            // artifact and a land; several card types in one typecycling
+            // quality are conjunctive.
+            let (card_types, all_card_types) = if card_types.len() > 1 {
+                (Vec::new(), card_types)
+            } else {
+                (card_types, Vec::new())
+            };
+            Ok(Some(ObjectFilter {
+                supertypes,
+                card_types,
+                all_card_types,
+                subtypes,
+                colors,
+                ..ObjectFilter::default()
+            }))
+        }
         Err(CyclingSearchParseError::MissingKeyword) => Err(CardTextError::ParseError(
             "missing cycling keyword".to_string(),
         )),

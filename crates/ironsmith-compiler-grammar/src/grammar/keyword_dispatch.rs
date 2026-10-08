@@ -135,6 +135,16 @@ pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Ke
     if first == "basic" {
         return None;
     }
+    // "Artifact landcycling {2}" (Sojourner's Companion): a typecycling
+    // keyword (CR 702.29e) whose searched quality is qualified by a leading
+    // card type.
+    if words.get(1).is_some_and(|second| {
+        super::shared_util::reference_shapes::cycling_keyword_root(second)
+            .is_some_and(|root| !root.is_empty())
+    }) && crate::grammar::leaf::parse_leaf_card_type_complete(first).is_ok()
+    {
+        return Some(KeywordDispatchHint::Cycling);
+    }
     if super::shared_util::reference_shapes::cycling_keyword_root(first).is_some() {
         return Some(KeywordDispatchHint::Cycling);
     }
