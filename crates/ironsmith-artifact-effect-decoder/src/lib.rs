@@ -170,6 +170,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "GainLifeEffect" => Some(EffectFamily::Resources),
         "GoadEffect" => Some(EffectFamily::Combat),
         "ClearGoadEffect" => Some(EffectFamily::Combat),
+        "MustAttackPlayerThisTurnEffect" => Some(EffectFamily::Combat),
         "GrantAbilitiesTargetEffect" => Some(EffectFamily::Combat),
         "GrantBySpecEffect" => Some(EffectFamily::Player),
         "GrantEffect" => Some(EffectFamily::Player),

@@ -618,6 +618,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
         "BecomePlottedEffect" => decode_as::<T, ironsmith_core::BecomePlottedEffect>(effect),
+        "MustAttackPlayerThisTurnEffect" => {
+            decode_as::<T, ironsmith_core::MustAttackPlayerThisTurnEffect>(effect)
+        }
         "PrepareEffect" => decode_as::<T, ironsmith_core::PrepareEffect>(effect),
         "SuspectEffect" => decode_as::<T, ironsmith_core::SuspectEffect>(effect),
         "TagAttachedToSourceEffect" => {

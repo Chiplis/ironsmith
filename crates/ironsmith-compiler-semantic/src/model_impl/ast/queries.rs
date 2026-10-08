@@ -100,6 +100,10 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })

@@ -4500,6 +4500,23 @@ impl GoadEffect {
     }
 }
 
+/// "Target creature attacks <player> this turn if able" (CR 508.1d): a
+/// requirement, for this turn only, that each affected creature attacks the
+/// resolved player if able. It does not require the creature to attack at
+/// all when it can't attack that player.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct MustAttackPlayerThisTurnEffect {
+    pub target: ChooseSpec,
+    pub player: ChooseSpec,
+}
+
+impl MustAttackPlayerThisTurnEffect {
+    pub fn new(target: ChooseSpec, player: ChooseSpec) -> Self {
+        Self { target, player }
+    }
+}
+
 /// Mark an exiled card as plotted. This does not perform the plot special
 /// action or emit its keyword-action event.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

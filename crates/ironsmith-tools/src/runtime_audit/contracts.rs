@@ -1450,6 +1450,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "ModifyPowerToughnessEffect"
             | "FightEffect"
             | "GoadEffect"
+            | "MustAttackPlayerThisTurnEffect"
             | "DetainEffect"
             | "AttachObjectsEffect"
             | "AttachToEffect"

@@ -2008,6 +2008,15 @@
             _ => format!("Goad {target}"),
         };
     }
+    if let Some(requirement) =
+        effect.downcast_ref::<crate::effects::MustAttackPlayerThisTurnEffect>()
+    {
+        return format!(
+            "{} attacks {} this turn if able",
+            capitalize_first(&describe_choose_spec(&requirement.target)),
+            describe_choose_spec(&requirement.player)
+        );
+    }
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }

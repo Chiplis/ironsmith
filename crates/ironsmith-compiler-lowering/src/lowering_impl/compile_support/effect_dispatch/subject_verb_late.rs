@@ -86,6 +86,9 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 CounterActionAst::ForEachCounterKindPutOrRemove { .. }
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                ..
+            })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { .. })
@@ -2909,6 +2912,23 @@ pub(super) fn compile_subject_verb_late(
             let effect = tag_object_target_effect(goad, &spec, ctx, "goaded");
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+            target,
+            player,
+        }) => {
+            let (spec, mut choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let (player_spec, player_choices) =
+                resolve_target_spec_with_choices(player, &current_reference_env(ctx))?;
+            choices.extend(player_choices);
+            Ok((
+                vec![Effect::new(crate::effects::MustAttackPlayerThisTurnEffect::new(
+                    spec,
+                    player_spec,
+                ))],
+                choices,
+            ))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
             let (spec, choices) =

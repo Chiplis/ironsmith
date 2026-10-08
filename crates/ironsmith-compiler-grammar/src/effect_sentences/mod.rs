@@ -8,6 +8,7 @@ mod duration_source_prevention;
 mod temporary_prevention_binding_tests;
 pub(crate) mod life_unit_programs;
 mod temporary_attack_requirement;
+pub(crate) mod attack_player_requirement;
 pub(crate) mod turn_scoped_enter_replacement;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;
