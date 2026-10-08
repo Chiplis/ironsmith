@@ -306,6 +306,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::LandsPlayed(player)
                 | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)

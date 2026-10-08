@@ -5468,7 +5468,12 @@ fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
         crate::effect::Restriction::AdditionalLandPlays(filter, count) => {
-            if *count == 1 {
+            if *count == u32::MAX {
+                format!(
+                    "{} may play any number of lands",
+                    describe_player_set_filter(filter)
+                )
+            } else if *count == 1 {
                 format!(
                     "{} may play an additional land",
                     describe_player_set_filter(filter)

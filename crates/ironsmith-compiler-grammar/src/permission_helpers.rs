@@ -1693,11 +1693,10 @@ pub fn parse_unsupported_play_cast_permission_clause_lexed(
     }
 
     match unsupported_permission_shape(tokens) {
+        // The complete "any number of lands on each of your turns" line is
+        // the static additional-land-play rule's (unlimited count).
         Some(UnsupportedPermissionShape::AdditionalLandEachTurn) => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported additional-land-play permission clause (clause: '{}')",
-                clause_refs.join(" ")
-            )));
+            return Ok(None);
         }
         Some(UnsupportedPermissionShape::ForAsLongAsPlayCast) => {
             if parse_cast_or_play_tagged_clause(tokens)?.is_some() {

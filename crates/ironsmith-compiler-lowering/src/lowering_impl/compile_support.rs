@@ -1066,6 +1066,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::LandsPlayed(player)
                 | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)

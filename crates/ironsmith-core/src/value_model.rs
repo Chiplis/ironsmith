@@ -597,6 +597,10 @@ pub enum TurnHistoryCount {
         filter: ObjectFilter,
         cause: crate::CauseFilter,
     },
+    /// Lands played this turn by matching players (CR 305.2), summed. A land
+    /// played this way counts once whatever permission allowed the play.
+    /// Appended to preserve existing serialized enum ordinals.
+    LandsPlayed(PlayerFilter),
 }
 
 impl TurnHistoryCount {

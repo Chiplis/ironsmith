@@ -400,6 +400,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
         | TurnHistoryCount::OpponentsAttacked(player) | TurnHistoryCount::PlayersAttackedThisCombat(player)
         | TurnHistoryCount::PlayersDiscarded(player) | TurnHistoryCount::PlayersDealtDamage(player)
         | TurnHistoryCount::DiscardedOrCycled(player) | TurnHistoryCount::Cycled(player)
+        | TurnHistoryCount::LandsPlayed(player)
         | TurnHistoryCount::CardsDrawn(player) | TurnHistoryCount::PlayersLostLife(player)
         | TurnHistoryCount::UntappedLandsAtTurnStart(player) | TurnHistoryCount::Descended(player)
         | TurnHistoryCount::KeywordActionsPerformed { player, .. }

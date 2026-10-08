@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Fastbond",
+  "oracle_id": "e27193b7-1a47-4555-865d-b1fd4c6d597f",
+  "oracle_text": "You may play any number of lands on each of your turns.\nWhenever you play a land, if it wasn't the first land you played this turn, this enchantment deals 1 damage to you.",
+  "text": "Mana cost: {G}\nType: Enchantment\nYou may play any number of lands on each of your turns.\nWhenever you play a land, if it wasn't the first land you played this turn, this enchantment deals 1 damage to you."
+ }
+]

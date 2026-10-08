@@ -2405,6 +2405,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 TurnHistoryCount::Cycled(player) => {
                     TurnHistoryCount::Cycled(resolve_contextual_player_filter(player, refs)?)
                 }
+                TurnHistoryCount::LandsPlayed(player) => {
+                    TurnHistoryCount::LandsPlayed(resolve_contextual_player_filter(player, refs)?)
+                }
                 TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
                     TurnHistoryCount::KeywordActionsPerformed {
                         player: resolve_contextual_player_filter(player, refs)?,
