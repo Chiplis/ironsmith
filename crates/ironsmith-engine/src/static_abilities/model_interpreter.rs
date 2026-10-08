@@ -902,6 +902,12 @@ impl StaticAbilityModelInterpreter {
     fn this_spell_cast_restriction_from_model(
         kind: &ironsmith_core::ThisSpellCastRestrictionKind,
     ) -> super::ThisSpellCastRestrictionKind {
+        if let Some(condition) = &kind.condition {
+            return super::ThisSpellCastRestrictionKind {
+                timing: kind.timing,
+                condition: Some(super::ThisSpellCastCondition::Condition(condition.clone())),
+            };
+        }
         if let Some(timing) = kind.timing {
             return super::ThisSpellCastRestrictionKind::timing(timing);
         }

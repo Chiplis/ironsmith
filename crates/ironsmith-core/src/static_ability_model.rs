@@ -387,6 +387,13 @@ pub struct ThisSpellCastRestrictionKind {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub timing: Option<crate::ThisSpellCastTiming>,
+    /// Appended: a typed cast-time condition that must hold for the spell to
+    /// be cast ("You can't cast this spell unless <condition>").
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub condition: Option<Condition>,
 }
 
 impl ThisSpellCastRestrictionKind {
@@ -394,6 +401,7 @@ impl ThisSpellCastRestrictionKind {
         Self {
             label: label.into(),
             timing: None,
+            condition: None,
         }
     }
 
@@ -401,6 +409,17 @@ impl ThisSpellCastRestrictionKind {
         Self {
             label: "typed cast timing".into(),
             timing: Some(timing),
+            condition: None,
+        }
+    }
+
+    /// "You can't cast this spell unless <condition>": castable only while
+    /// the typed condition holds for the caster.
+    pub fn only_if(condition: Condition) -> Self {
+        Self {
+            label: "typed cast condition".into(),
+            timing: None,
+            condition: Some(condition),
         }
     }
 
