@@ -6673,6 +6673,17 @@
     if let Some(modify_pt_all) =
         effect.downcast_ref::<crate::effects::ModifyPowerToughnessAllEffect>()
     {
+        // "creatures you control get +1/+1 for each basic land type among
+        // lands you control until end of turn" (Tromp the Domains).
+        if let Some(for_each_text) =
+            describe_basic_land_type_pt_for_each(&modify_pt_all.power, &modify_pt_all.toughness)
+        {
+            return format!(
+                "{} get {for_each_text} {}",
+                describe_object_filter_with_fixed_pt_shorthand(&modify_pt_all.filter),
+                describe_until(&modify_pt_all.duration)
+            );
+        }
         return format!(
             "{} get {}/{} {}",
             describe_object_filter_with_fixed_pt_shorthand(&modify_pt_all.filter),
