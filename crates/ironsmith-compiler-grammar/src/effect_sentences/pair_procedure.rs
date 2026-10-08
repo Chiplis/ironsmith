@@ -892,6 +892,21 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("guessed-wrong-free-cast"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 4).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let effects = match window {
+                Some(window) => super::guessed_free_cast::read(&window),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
         id: RuleId::new("bid-life-for-control"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 5,
