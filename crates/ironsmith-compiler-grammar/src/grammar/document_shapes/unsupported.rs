@@ -178,22 +178,6 @@ const RULES: &[UnsupportedRule] = &[
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
         phrase: &[
-            "with",
-            "power",
-            "or",
-            "toughness",
-            "1",
-            "or",
-            "less",
-            "cant",
-            "be",
-            "blocked",
-        ],
-        kind: UnsupportedRewriteLineKind::PowerOrToughnessUnblockable,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
             "discard",
             "up",
             "to",
