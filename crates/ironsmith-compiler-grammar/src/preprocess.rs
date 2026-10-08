@@ -664,6 +664,9 @@ fn replace_names_with_map(
                     | b"sacrifice"
                     | b"destroy"
                     | b"regenerate"
+                    // "You can't cast Rakdos unless ..." (Rakdos, Lord of
+                    // Riots): the spell being cast is this card.
+                    | b"cast"
             )
         }) || next.is_some_and(|word| {
             matches!(
