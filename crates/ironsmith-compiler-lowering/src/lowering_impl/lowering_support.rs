@@ -6338,6 +6338,15 @@ fn validate_effect_for_iterated_player(
     {
         return validate_effects_for_iterated_player(
             &collect.effects,
+            iterated_player_bound || collect.per_payer,
+            context,
+        );
+    }
+    if let Some(portion) =
+        effect.downcast_ref::<crate::effects::PreventDamagePortionEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(
+            &portion.effects,
             iterated_player_bound,
             context,
         );

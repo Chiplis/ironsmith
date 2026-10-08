@@ -303,6 +303,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CollectManaPaymentsEffect" => {
             decode_as::<T, ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(effect)
         }
+        "PreventDamagePortionEffect" => {
+            decode_as::<T, ironsmith_core::PreventDamagePortionEffect<wire::WireEffect>>(effect)
+        }
         "ForPlayersEffect" => {
             decode_as::<T, ironsmith_core::ForPlayersEffect<wire::WireEffect>>(effect)
         }
@@ -1699,11 +1702,24 @@ pub fn encode_runtime_effect(
     // These native composition owners preserve exactly the same recursive
     // typed payload as compilation, including order flags and scoped tags.
     if let Some(payload) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
-        let converted = ironsmith_core::CollectManaPaymentsEffect::new(
+        let mut converted = ironsmith_core::CollectManaPaymentsEffect::new(
+            payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        );
+        converted.payers = payload.payers.clone();
+        converted.x_colors = payload.x_colors;
+        converted.apnap_order = payload.apnap_order;
+        converted.per_payer = payload.per_payer;
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::PreventDamagePortionEffect>() {
+        let converted = ironsmith_core::PreventDamagePortionEffect::new(
+            payload.amount.clone(),
             payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
         );
         return serde_json::to_value(converted)
-            .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map(|payload| wire::WireEffect::new("PreventDamagePortionEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     if let Some(payload) = effect.downcast_ref::<crate::effects::SequenceEffect>() {

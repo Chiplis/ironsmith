@@ -1685,7 +1685,18 @@ fn advance_reference_frame_for_effect(
                 advance_reference_frames(&statement.effects, id_gen, frame)?;
             }
         }
-        EffectAst::CollectManaPayments { effects } => {
+        EffectAst::CollectManaPayments {
+            effects, per_payer, ..
+        } => {
+            if *per_payer {
+                // Each payer runs the body for themself ("each player creates
+                // ... equal to the amount of mana they paid this way").
+                advance_effects_in_iterated_player_context(effects, id_gen, frame, None)?;
+            } else {
+                advance_reference_frames(effects, id_gen, frame)?;
+            }
+        }
+        EffectAst::PreventDamagePortion { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::PlaySubgame { nonwinner_effects } => {

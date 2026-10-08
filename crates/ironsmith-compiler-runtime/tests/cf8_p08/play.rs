@@ -227,3 +227,14 @@ pub fn activated_at(definition: &CardDefinition, position: usize) -> usize {
 pub fn life(game: &GameState, player: PlayerId) -> i32 {
     game.player(player).unwrap().life
 }
+
+/// Execute one effect directly with a scripted decision maker.
+pub fn apply_with(
+    game: &mut GameState,
+    source: ObjectId,
+    effect: Effect,
+    dm: &mut Script,
+) -> EffectOutcome {
+    let controller = game.current_controller(source).unwrap_or(A);
+    execute_effect(game, &effect, &mut EffectContext::new(source, controller, dm)).unwrap()
+}

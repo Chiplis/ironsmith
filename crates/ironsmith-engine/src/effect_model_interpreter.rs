@@ -1030,7 +1030,20 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::CollectManaPaymentsEffect<M::Effect>>(&effect) {
-        return Ok(Effect::new(crate::effects::CollectManaPaymentsEffect::new(
+        let mut converted = crate::effects::CollectManaPaymentsEffect::new(
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+        );
+        converted.payers = payload.payers.clone();
+        converted.x_colors = payload.x_colors;
+        converted.apnap_order = payload.apnap_order;
+        converted.per_payer = payload.per_payer;
+        return Ok(Effect::new(converted));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::PreventDamagePortionEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::PreventDamagePortionEffect::new(
+            payload.amount.clone(),
             convert_effects(payload.effects.iter().cloned(), hooks)?,
         )));
     }

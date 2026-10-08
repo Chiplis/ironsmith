@@ -377,6 +377,10 @@ impl Effect {
             for effect in &payments.effects { visitor(effect); }
             return;
         }
+        if let Some(portion) = self.downcast_ref::<crate::effects::PreventDamagePortionEffect<Effect>>() {
+            for effect in &portion.effects { visitor(effect); }
+            return;
+        }
         if let Some(for_players) = self.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
             for effect in &for_players.effects {
                 visitor(effect);

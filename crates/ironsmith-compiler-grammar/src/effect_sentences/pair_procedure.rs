@@ -55,6 +55,8 @@ mod named_random_reveal;
 mod counter_total_limit;
 #[path = "pair_procedure/collect_mana_payments.rs"]
 mod collect_mana_payments;
+#[path = "pair_procedure/variable_mana_payments.rs"]
+mod variable_mana_payments;
 #[path = "pair_procedure/life_bid.rs"]
 mod life_bid;
 
@@ -172,6 +174,20 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["starting", "join"]),
         consumed: 2,
         read: |sentences, index| statements(sentences, index, collect_mana_payments::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("single-payer-mana-payment-damage-portion"),
+        head: HeadDiscriminator::words(&["that"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index,
+            variable_mana_payments::read_single_payer_damage_portion(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("each-payer-mana-payment-program"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index,
+            variable_mana_payments::read_each_payer_program(sentences, index)),
     },
     Shape {
         id: RuleId::new("conditional-discard-self-replacement"),

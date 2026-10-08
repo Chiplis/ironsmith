@@ -140,6 +140,7 @@ pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
     BolsterEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, CollectEvidenceEffect, CollectManaPaymentsEffect,
+    PreventDamagePortionEffect,
     ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
     EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
