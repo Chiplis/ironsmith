@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Black Market Tycoon",
+    "oracle_id": "464968a8-865e-4ac8-927e-7c931e3dabb3",
+    "text": "Mana cost: {R}{G}\nType: Creature — Cat Rogue\nPower/Toughness: 2/2\nAt the beginning of your upkeep, this creature deals 2 damage to you for each Treasure you control.\n{T}: Create a Treasure token."
+  },
+  {
+    "name": "Lotleth Giant",
+    "oracle_id": "5e0bd136-e7e9-49f0-910b-a9fb0b9c481a",
+    "text": "Mana cost: {6}{B}\nType: Creature — Zombie Giant\nPower/Toughness: 6/5\nUndergrowth — When this creature enters, it deals 1 damage to target opponent for each creature card in your graveyard."
+  }
+]
