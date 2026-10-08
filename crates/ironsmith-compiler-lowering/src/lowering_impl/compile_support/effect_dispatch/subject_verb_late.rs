@@ -2929,7 +2929,10 @@ pub(super) fn compile_subject_verb_late(
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor {
+            target,
+            allow_lock,
+        }) => {
             // CR 709.5f: unlock a locked door of the announced Room. The
             // target declaration owns the choice; the unlock effect is
             // restricted to the target object.
@@ -2943,7 +2946,10 @@ pub(super) fn compile_subject_verb_late(
             Ok((
                 vec![
                     Effect::new(crate::effects::TargetOnlyEffect::new(spec)),
-                    Effect::unlock_room_door(PlayerFilter::You, room_filter),
+                    Effect::new(
+                        crate::effects::UnlockRoomDoorEffect::new(PlayerFilter::You, room_filter)
+                            .with_allow_lock(*allow_lock),
+                    ),
                 ],
                 choices,
             ))

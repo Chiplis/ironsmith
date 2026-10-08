@@ -2254,10 +2254,13 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::UnlockRoomDoorEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::UnlockRoomDoorEffect::new(
-            payload.player.clone(),
-            payload.room_filter.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::UnlockRoomDoorEffect::new(
+                payload.player.clone(),
+                payload.room_filter.clone(),
+            )
+            .with_allow_lock(payload.allow_lock),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FatesealEffect>(&effect) {
         return Ok(Effect::new(crate::effects::FatesealEffect::new(

@@ -1988,6 +1988,37 @@ pub(crate) fn apply_room_door_unlock(
     true
 }
 
+/// The doors of a Room that are currently unlocked (CR 709.5c: only an
+/// unlocked door can be locked).
+pub fn unlocked_room_doors(game: &GameState, room_id: ObjectId) -> Vec<RoomDoor> {
+    let is_room = game.object(room_id).is_some_and(|room| {
+        room.zone == crate::zone::Zone::Battlefield
+            && room.linked_face_layout == crate::card::LinkedFaceLayout::Split
+    }) && room_locked_door_definition(game, room_id)
+        .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
+        && game.current_has_subtype(room_id, crate::types::Subtype::Room);
+    if !is_room || game.room_has_no_unlocked_door(room_id) {
+        return Vec::new();
+    }
+    if game.is_room_fully_unlocked(room_id) {
+        vec![RoomDoor::Current, RoomDoor::Linked]
+    } else {
+        vec![RoomDoor::Current]
+    }
+}
+
+/// CR 709.5c: lock an unlocked door of a Room. Locking is not a special
+/// action and has no cost; it happens only as an effect instructs.
+pub(crate) fn apply_room_door_lock(game: &mut GameState, room_id: ObjectId, door: RoomDoor) -> bool {
+    if !unlocked_room_doors(game, room_id).contains(&door) {
+        return false;
+    }
+    if game.is_room_fully_unlocked(room_id) {
+        return game.lock_door_of_fully_unlocked_room(room_id, door == RoomDoor::Current);
+    }
+    game.lock_room_only_unlocked_door(room_id)
+}
+
 /// Unlock a Room door and build the resulting keyword-action events.
 ///
 /// CR 709.5h: "when you unlock this door" triggers only for the door that got
