@@ -4771,6 +4771,12 @@ fn effect_is_library_search(effect: &EffectAst) -> bool {
             action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. }),
             ..
         }) => true,
+        // "you may search your library ... . If you search your library this
+        // way, ..." (Unlucky Cabbage Merchant): the optional wrapper's result
+        // is whether the search happened.
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) => effects.first().is_some_and(effect_is_library_search),
         _ => false,
     }
 }
