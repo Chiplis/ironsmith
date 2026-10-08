@@ -4,7 +4,7 @@ Branch `cf8/p01-lossy-semantic-markers` (worktree `ironsmith-cf8-p01`), off orig
 Source-only: nothing was built or run. The prebuilt `compile_oracle_text` was used for
 diagnostics until it disappeared mid-session (main rebuild); later work is reviewed by reading.
 
-Status: 90 already-on-main, 27 source-proposed, 53 blocked, 0 untriaged (170 total).
+Status: 90 already-on-main, 36 source-proposed, 44 blocked, 0 untriaged (170 total).
 Ledger: `ledger.jsonl`. Fixture with full typed bodies: `fixtures/p01_lossy_semantic_markers.json.fixture`.
 
 ## Clusters, root causes and fixes
@@ -64,21 +64,57 @@ the condition renderer folds them back. Planar Overlay / Sundering Titan already
 per-type choices; new `effect_list/basic_land_type_choices.rs` renders the run. Tromp the Domains:
 `ModifyPowerToughnessAll` reuses `describe_basic_land_type_pt_for_each`.
 
+## Second pass (coordinator follow-up)
+
+### Silent miscompiles fixed (semantic bugs)
+- Aurelia's Fury: "Tap each creature dealt damage this way" tapped every remembered damage
+  recipient; now TapAll(creature ∧ tagged damaged_0) (`subject_verb_followups.rs`), rendered
+  without tags (`effect_impl/early.rs`).
+- Hog-Monkey Rampage: a trailing-if "it" over a remembered set now inherits the consequence
+  object's qualifiers (new `compile_support/trailing_if_antecedent.rs`, wired in the TrailingIf
+  lowering) — "it" means the creature you control, not either chosen creature.
+- Stolen Uniform: delayed "When you lose control of that Equipment this turn" now watches the
+  remembered Equipment (`ScheduleDelayedTriggerEffect::from_tag` + ControlChanged, CR 603.10d) and
+  binds body pronouns to it; new complete-shape predicate reading "it's attached to X"
+  (`predicate_phrases/pronoun_attached_to.rs`). The predicate registry now lets complete-shape
+  readings (`COMPLETE_SHAPE_READINGS`) own their input over partial readings.
+- Mathemagics (2ˣ read as 2), April O'Neil (card types among spells read as spell count), Winter
+  (set-wide "card types among them" read per card): new `Value::PowerOfTwo` and
+  `Value::CardTypesAmongSpellsCastThisTurn` (4 exhaustive engine matches updated), 'ˣ' kept as a
+  word piece, lexer accepts superscript digits and '=' (exponent reminder), and
+  "with N or more card types among them" becomes a `DistinctCardTypes` set constraint.
+- Collateral grep of cards.json found no other card with these exact wordings (Nethergoyf's
+  escape cost uses its own parser; Ogre Geargrabber's undated lose-control trigger is untouched).
+
+### Mechanisms implemented
+- Triggered abilities inside level-up ranges (CR 711.2a): new
+  `ParsedLevelAbilityItemAst::TriggeredAbility`, lowered with an event-time `ConditionQualified`
+  level gate (not an intervening if) and rendered under its LEVEL header.
+- Death Cloud fail-loud rule retired (the each-player chain already owns Pox's shape).
+  Rebuild the City's rule kept: it depends on token-copy exceptions owned by p12.
+- Dead `cfg(ironsmith_runtime_parser_tests)` expectations (engine shard_07/09/10) updated.
+
 ## Blocked, grouped by missing mechanic
-- Random target / random reveal: Goblin Test Pilot, Witch Hunt, Singe-Mind Ogre.
-- Activation-time value snapshot surface ("as you activate this ability"): Agility/Endurance Bobblehead, Lukka; Keeper of the Beasts (target-player filter missing entirely).
-- Self-replacement / "instead": Epicenter (cross-paragraph), Orim's Touch (kicked), Archmage's Newt (saddled flashback {0}), Crackling/Harmonious Emergence (attached would-be-destroyed replacement static).
-- Resolution-destination replacement for a cast spell: Goliath Daydreamer, Lilah, Quintorius.
-- Counter replacement: Guile.
-- Command zone: Liesa (commander tax alternative), Next of Kin, Stinging Study, The Ur-Dragon.
-- Shares-a-card-type relation: Creeping Dread, Holistic Wisdom, Reality Scramble, Wild Magic Surge.
-- Same-name relations: Locket of Yesterdays, The Apprentice's Folly, Yenna.
-- Card types among (value / aggregate choice): April O'Neil, Winter.
-- Keyword-cost alternatives (first-each-turn cycling/power-up, echo): Gavi, Thick-Skinned Goblin, Advancing the Spirit.
-- Piles/divvy: Death or Glory, Ecological Appreciation, Abstract Performance.
-- Level-up triggered abilities: Lighthouse Chronologist, Lord of Shatterskull Pass.
-- Draft-matters / noted info: Paliano Vanguard, Smuggler Captain, Volo.
-- Misc: Mathemagics (2^X value + lexer), Gideon's Triumph (attacked-or-blocked set + "of those"), Atomic Microsizer (conjoined can't-be-blocked), Rekindling Phoenix (token quoted ability unverified), Vesuvan Doppelganger (enter-as-copy exception), Trial of Agony (same-opponent targets), Aluren (any-player free+flash grant), The Ruinous Wrecking Crew (self-name rendering vs "crew" marker), Death Cloud / Rebuild the City (fail-loud rules kept), Aurelia's Fury, Hog-Monkey Rampage, Stolen Uniform.
+- Owned by other packages: generalized "instead" replacements (p06): Epicenter, Orim's Touch,
+  Archmage's Newt, Crackling/Harmonious Emergence, Gideon's Triumph (+ attacked-or-blocked filter);
+  shares-a-card-type / same-name (p09): Creeping Dread, Holistic Wisdom, Reality Scramble, Wild
+  Magic Surge, Locket of Yesterdays, The Apprentice's Folly, Yenna; copy abilities (p12): Vesuvan
+  Doppelganger, Rebuild the City.
+- Random targets (engine has no random target announcement; hook points in priority_cast.rs and
+  sba_triggers.rs recorded in the ledger): Goblin Test Pilot, Witch Hunt; random hand reveal bound
+  to a value: Singe-Mind Ogre.
+- Resolving-spell destination replacement with counters / follow-ups / library bottom (extend
+  RegisterFutureZoneReplacementEffect): Goliath Daydreamer, Lilah, Quintorius (currently a silent
+  miscompile for Goliath/Lilah — the spell is exiled on cast).
+- Counter replacement: Guile. Piles/divvy: Death or Glory, Ecological Appreciation, Abstract
+  Performance. Echo-cost / first-each-turn cycling and power-up alternatives: Thick-Skinned Goblin,
+  Gavi, Advancing the Spirit.
+- Activation-time value surface ("as you activate this ability"): Agility/Endurance Bobblehead,
+  Lukka; Keeper of the Beasts (target-player filter missing).
+- Command zone: Liesa, Next of Kin, Stinging Study, The Ur-Dragon. Draft-matters: Paliano
+  Vanguard, Smuggler Captain, Volo. Misc: Atomic Microsizer (conjoined can't-be-blocked dropped),
+  Rekindling Phoenix (token quoted ability unverified), Trial of Agony, Aluren, The Ruinous
+  Wrecking Crew (self-name rendering vs "crew" marker).
 
 ## Risk notes
 - `parse_static_ability_ast_line_lexed` loss ownership: losses from a static probe that returns
@@ -90,5 +126,9 @@ per-type choices; new `effect_list/basic_land_type_choices.rs` renders the run. 
 - Cross-package: `unsupported.rs` RULES table, `alternative_prices.rs`, `condition_rendering.rs`,
   `effect_impl/late.rs` and `early.rs` are shared; hunks are small and additive. `keyword_static/mod.rs`
   gained a wrapper around the static line entry plus one reader call — likely merge touch point.
-- History note: an early commit accidentally included `.cargo/config.toml`; the branch was rewritten
-  locally to drop it before any push.
+- History note: an early commit accidentally included `.cargo/config.toml`; before the no-rewrite
+  rule was announced the branch was rewritten locally (never pushed) to drop it.
+- New `Value` variants and `ParsedLevelAbilityItemAst::TriggeredAbility` touch shared enums; the
+  exhaustive matches found by scanning (dependency.rs x2, text_change_predicates.rs, value_eval.rs)
+  were updated, but a build must confirm no other exhaustive match exists. The lexer regex change
+  (superscripts, '=') affects every card's lexing.
