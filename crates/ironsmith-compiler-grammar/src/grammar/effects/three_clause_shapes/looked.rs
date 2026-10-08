@@ -91,6 +91,8 @@ pub struct LookedRevealSelectionShape {
 const FROM_AMONG: &[&[&str]] = &[
     &["from", "among", "those", "cards"],
     &["from", "among", "the", "cards", "revealed", "this", "way"],
+    &["from", "among", "cards", "revealed", "this", "way"],
+    &["from", "among", "the", "revealed", "cards"],
     &["from", "among", "the", "cards", "milled", "this", "way"],
     &["from", "among", "the", "milled", "cards"],
     &["from", "among", "them"],

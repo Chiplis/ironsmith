@@ -1155,6 +1155,12 @@ pub(crate) fn parse_cast_from_among_looked_cards_action(
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, default_player);
     let action_tokens = trim_commas(action_match.tail_tokens);
+    // "a spell from among them with mana value less than or equal to <value>
+    // without paying its mana cost" (Cosmic Cube): the cap follows the
+    // collection. Read it, then read the rest as the ordinary cast action.
+    let (action_tokens, trailing_cap) = split_trailing_from_among_mana_value_cap(&action_tokens)
+        .map(|(tokens, cap)| (tokens, Some(cap)))
+        .unwrap_or((action_tokens, None));
     let Some(shape) = triple_grammar::parse_looked_cast_action_shape(&action_tokens) else {
         return Ok(None);
     };
@@ -1175,6 +1181,12 @@ pub(crate) fn parse_cast_from_among_looked_cards_action(
     filter.zone = Some(Zone::Library);
     filter.stack_kind = None;
     filter.has_mana_cost = false;
+    if let Some(cap) = trailing_cap {
+        if filter.mana_value.is_some() {
+            return Ok(None);
+        }
+        filter.mana_value = Some(cap);
+    }
     if filter.mana_value.is_none()
         && let Some(bound) = shape.mana_value_limit
     {
@@ -1182,6 +1194,62 @@ pub(crate) fn parse_cast_from_among_looked_cards_action(
     }
 
     Ok(Some((chooser, filter)))
+}
+
+/// "<spell> from among them with mana value <comparison> <value> without
+/// paying its mana cost": the action without its trailing mana-value cap, and
+/// the cap. The value is a number, X, "the greatest power among <objects>",
+/// or any complete value expression.
+fn split_trailing_from_among_mana_value_cap(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::filter::Comparison)> {
+    use crate::effect::ValueComparisonOperator as Op;
+    use crate::grammar::primitives;
+    const FROM_AMONG: &[&[&str]] = &[
+        &["from", "among", "them"],
+        &["from", "among", "those", "cards"],
+        &["from", "among", "the", "cards", "revealed", "this", "way"],
+        &["from", "among", "cards", "revealed", "this", "way"],
+    ];
+    let (among_start, _, after_among) =
+        primitives::find_prefix(tokens, || primitives::any_phrase(FROM_AMONG))?;
+    let (_, cap_tokens) =
+        primitives::parse_prefix(after_among, primitives::phrase(&["with", "mana", "value"]))?;
+    let (without_idx, (), free_tail) = primitives::find_prefix(cap_tokens, || {
+        primitives::phrase(&["without", "paying", "its", "mana", "cost"])
+    })?;
+    let bound_tokens = trim_commas(&cap_tokens[..without_idx]);
+    let (operator, value_tokens) =
+        crate::grammar::values::parse_value_comparison_tokens(&bound_tokens)?;
+    let value = parse_mana_value_cap_value(value_tokens)?;
+    let value = Box::new(value);
+    let comparison = match operator {
+        Op::Equal => crate::filter::Comparison::EqualExpr(value),
+        Op::NotEqual => crate::filter::Comparison::NotEqualExpr(value),
+        Op::LessThan => crate::filter::Comparison::LessThanExpr(value),
+        Op::LessThanOrEqual => crate::filter::Comparison::LessThanOrEqualExpr(value),
+        Op::GreaterThan => crate::filter::Comparison::GreaterThanExpr(value),
+        Op::GreaterThanOrEqual => crate::filter::Comparison::GreaterThanOrEqualExpr(value),
+    };
+    let among_len = tokens.len() - among_start - after_among.len();
+    let mut rebuilt = tokens[..among_start + among_len].to_vec();
+    rebuilt.extend_from_slice(&cap_tokens[without_idx..without_idx + 5]);
+    rebuilt.extend_from_slice(free_tail);
+    Some((rebuilt, comparison))
+}
+
+fn parse_mana_value_cap_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    use crate::grammar::primitives;
+    let tokens = trim_commas(tokens);
+    if let Some(((), filter_tokens)) = primitives::parse_prefix(
+        &tokens,
+        primitives::phrase(&["the", "greatest", "power", "among"]),
+    ) {
+        let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+        return Some(Value::GreatestPower(filter));
+    }
+    let (value, used) = crate::grammar::values::parse_value_prefix_lexed(&tokens)?;
+    (used == tokens.len()).then_some(value)
 }
 
 fn target_ast_contains_stack_object(target: &TargetAst) -> bool {
