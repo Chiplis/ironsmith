@@ -206,6 +206,7 @@ pub fn apply_keyword_action(
         KeywordAction::Ripple(amount) => builder.ripple(amount),
         KeywordAction::Rampage(amount) => builder.rampage(amount),
         KeywordAction::Bushido(amount) => builder.bushido(amount),
+        KeywordAction::BushidoValue(amount) => builder.bushido_value(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),
         KeywordAction::ProtectionFrom(colors) => builder.protection_from(colors),
         KeywordAction::ProtectionFromOwnColors => builder.with_ability(

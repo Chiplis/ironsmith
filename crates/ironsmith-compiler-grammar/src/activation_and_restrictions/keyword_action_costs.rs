@@ -1268,6 +1268,19 @@ pub fn parse_dynamic_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordA
     })
 }
 
+/// "bushido X, where X is ..." / "soulshift X, where X is ..." (Fumiko the
+/// Lowblood, Kodama of the Center Tree), optionally as "this creature has
+/// ...": the keyword with its defined amount.
+pub fn parse_defined_x_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    use crate::grammar::keyword_action_costs::DefinedXKeyword;
+    let shape = crate::grammar::keyword_action_costs::parse_defined_x_keyword_tokens(tokens)?;
+    let amount = crate::keyword_static::parse_value_binding_clause(shape.definition)?;
+    Some(match shape.kind {
+        DefinedXKeyword::Bushido => KeywordAction::BushidoValue(amount),
+        DefinedXKeyword::Soulshift => KeywordAction::SoulshiftValue(amount),
+    })
+}
+
 pub fn parse_dynamic_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let start = crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens)?;
     let action = parse_dynamic_keyword_amount(&tokens[start..])?;

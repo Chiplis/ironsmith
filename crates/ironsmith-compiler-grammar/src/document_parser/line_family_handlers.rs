@@ -1333,6 +1333,27 @@ pub(super) fn run_keyword_line_family(
         );
     }
 
+    // "<Name> has bushido X, where X is ..." (Fumiko the Lowblood, Kodama of
+    // the Center Tree): the card's own keyword with a defined amount.
+    let self_named_tokens =
+        normalize_named_source_tokens_with_context(ctx.parse, &ctx.line.tokens);
+    if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_defined_x_keyword_amount(
+        self_named_tokens.as_deref().unwrap_or(&ctx.line.tokens),
+    ) {
+        return line_family_match(
+            ctx,
+            LineDispatchResult::single(
+                RecognizedLine::Static(RecognizedStaticLine {
+                    info: ctx.line.info.clone(),
+                    parse_tokens: ctx.line.tokens.clone(),
+                    chosen_option: None,
+                    parsed: Some(Box::new(LineAst::Abilities(vec![action]))),
+                }),
+                ctx.idx + 1,
+            ),
+        );
+    }
+
     if let Some(actions) = parse_ability_line_lexed(&ctx.line.tokens)
         && matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::CumulativeUpkeep { .. } | crate::cards::builders::KeywordAction::Suspend { .. }])
     {
