@@ -28,6 +28,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Persist
             | KeywordAction::Prowess
             | KeywordAction::Exalted
+            | KeywordAction::Provoke
             | KeywordAction::Storm
             | KeywordAction::Gravestorm
             | KeywordAction::Toxic(_)
