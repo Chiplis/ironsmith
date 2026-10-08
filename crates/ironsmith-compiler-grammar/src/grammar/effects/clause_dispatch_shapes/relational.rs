@@ -120,6 +120,14 @@ pub fn parse_copular_animation_shape(
                     become_shapes::strip_become_addition_tail_words(
                         &descriptor_words[shape.value_word_count..],
                     );
+                // "Each of them is a 1/1 Spirit with flying in addition to
+                // its other types" (Storm of Souls): the granted keywords
+                // follow the subtype; the become reader owns that suffix.
+                let descriptor = descriptor
+                    .iter()
+                    .position(|word| *word == "with")
+                    .filter(|index| *index > 0)
+                    .map_or(descriptor, |index| &descriptor[..index]);
                 preserves_other_types
                     && become_shapes::parse_become_creature_descriptor_words(descriptor).is_some()
             });

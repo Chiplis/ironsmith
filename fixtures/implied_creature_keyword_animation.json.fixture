@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Storm of Souls",
+    "oracle_id": "7022ae9a-2589-493b-a050-a230fd02f80b",
+    "mana_cost": "{4}{W}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Return all creature cards from your graveyard to the battlefield. Each of them is a 1/1 Spirit with flying in addition to its other types. Exile Storm of Souls.",
+    "text": "Mana cost: {4}{W}{W}\nType: Sorcery\nReturn all creature cards from your graveyard to the battlefield. Each of them is a 1/1 Spirit with flying in addition to its other types. Exile Storm of Souls."
+  }
+]
