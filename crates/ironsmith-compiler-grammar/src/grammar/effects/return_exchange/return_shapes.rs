@@ -174,7 +174,11 @@ fn first_word_offset(tokens: &[OwnedLexToken], expected: &'static str) -> Option
     taken.len().checked_sub(1)
 }
 
-fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<usize> {
+/// The end of the returned-object phrase and the start of the destination
+/// phrase. Usually both sit around the last "to <zone>"; a return that names
+/// only "under <player>'s control" (Meathook Massacre II) starts its
+/// destination at "under".
+fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     let mut idx = tokens.len();
     while idx > 0 {
         idx -= 1;
@@ -182,10 +186,32 @@ fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<usize> {
             continue;
         }
         if first_zone(tokens.get(idx + 1..)?).is_some() {
-            return Some(idx);
+            return Some((idx, idx + 1));
         }
     }
-    None
+    let under = controller_only_destination_start(tokens)?;
+    Some((under, under))
+}
+
+/// "return that card under your control with a finality counter on it": no
+/// "to"/"onto" and no zone word, but a controller phrase. Only a permanent
+/// has a controller (CR 108.4), so this destination is the battlefield.
+fn controller_only_destination_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    if tokens
+        .iter()
+        .any(|token| token_is(token, "to") || token_is(token, "onto"))
+        || first_zone(tokens).is_some()
+    {
+        return None;
+    }
+    let (start, _, _) = crate::grammar::primitives::find_prefix(tokens, || {
+        (
+            primitives::kw("under"),
+            repeat_till::<_, _, (), _, _, _, _>(0..4, any.void(), primitives::kw("control")),
+        )
+            .void()
+    })?;
+    (start > 0).then_some(start)
 }
 
 fn remove_at_random(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
@@ -337,7 +363,14 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
     if exception_tokens.is_some() && excluded_subtypes.is_empty() && excluded_card_types.is_empty() {
         return None;
     }
-    let (_, zone) = first_zone(destination_head)?;
+    let zone = match first_zone(destination_head) {
+        Some((_, zone)) => zone,
+        // Controller-only destination (see `controller_only_destination_start`).
+        None if primitives::parse_prefix(destination_head, primitives::kw("under")).is_some() => {
+            ReturnZoneShape::Battlefield
+        }
+        None => return None,
+    };
     let destination_player_surface = if marker_anywhere(
         destination_head,
         alt((

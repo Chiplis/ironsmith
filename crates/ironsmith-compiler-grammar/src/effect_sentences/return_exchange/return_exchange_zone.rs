@@ -36,31 +36,6 @@ fn split_articled_card_pair_return(
     Some((left, right.to_vec()))
 }
 
-/// "Return that card under your control with a finality counter on it"
-/// (Meathook Massacre II) names no zone, but only a permanent has a
-/// controller (CR 108.4), so "under <player>'s control" places the card on
-/// the battlefield. Supply that destination before the controller phrase.
-fn implied_battlefield_return_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    if tokens.iter().any(|token| token.is_word("to") || token.is_word("onto")) {
-        return None;
-    }
-    let under = tokens.iter().position(|token| token.is_word("under"))?;
-    if under == 0
-        || !tokens[under + 1..]
-            .iter()
-            .take(4)
-            .any(|token| token.is_word("control"))
-    {
-        return None;
-    }
-    let mut rewritten = tokens[..under].to_vec();
-    for word in ["to", "the", "battlefield"] {
-        rewritten.push(OwnedLexToken::word(word.to_string(), crate::TextSpan::synthetic()));
-    }
-    rewritten.extend_from_slice(&tokens[under..]);
-    Some(rewritten)
-}
-
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some((left, right)) = split_articled_card_pair_return(tokens) {
         return Ok(EffectAst::Sequence {
@@ -169,17 +144,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     if let Some(surface) = &mut exiled_with_source_surface {
         surface.verb = ironsmith_core::ExiledWithSourceMoveVerbSurface::Return;
     }
-    let shape = match crate::grammar::effects::parse_return_clause_shape(tokens) {
-        Some(shape) => shape,
-        None => {
-            if let Some(rewritten) = implied_battlefield_return_tokens(tokens) {
-                return parse_return(&rewritten);
-            }
-            return Err(CardTextError::ParseError(format!(
-                "missing return destination (clause: '{clause_text}')"
-            )));
-        }
-    };
+    let shape = crate::grammar::effects::parse_return_clause_shape(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing return destination (clause: '{clause_text}')"
+        ))
+    })?;
     debug_assert!(!shape.has_unless);
 
     let destination_first = shape.destination_first;
