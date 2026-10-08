@@ -2537,6 +2537,7 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::ManifestDread {
             repeat,
             source_exiled_owner,
+            its_controller,
         } => {
             let manifest = if source_exiled_owner {
                 EffectAst::ForEach(ForEachEffectAst::ForEachObject {
@@ -2546,6 +2547,8 @@ pub fn parse_keyword_mechanic_clause(
                     .in_zone(Zone::Exile),
                     effects: vec![EffectAst::subject_verb_manifest_dread(PlayerAst::ItsOwner)],
                 })
+            } else if its_controller {
+                EffectAst::subject_verb_manifest_dread(PlayerAst::ItsController)
             } else {
                 EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit)
             };

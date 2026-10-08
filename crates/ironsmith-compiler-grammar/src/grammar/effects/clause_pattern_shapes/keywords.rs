@@ -85,6 +85,9 @@ pub enum KeywordMechanicShape<'a> {
     ManifestDread {
         repeat: KeywordRepeatShape<'a>,
         source_exiled_owner: bool,
+        /// "Its controller manifests dread." (Unwanted Remake): the
+        /// controller of the referenced object performs the action.
+        its_controller: bool,
     },
     ManifestTop {
         player: ManifestPlayerShape,
@@ -467,12 +470,21 @@ fn parse_manifest_dread<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechani
     ))
     .parse_next(input)?
     .is_some();
-    alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    let its_controller = !source_exiled_owner
+        && opt(primitives::phrase(&["its", "controller"]))
+            .parse_next(input)?
+            .is_some();
+    if its_controller {
+        primitives::kw("manifests").parse_next(input)?;
+    } else {
+        alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    }
     primitives::kw("dread").parse_next(input)?;
     let repeat = repeat_tail.parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestDread {
         repeat,
         source_exiled_owner,
+        its_controller,
     })
 }
 
