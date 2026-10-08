@@ -585,6 +585,15 @@ pub fn parse_named_token_clause_tokens(tokens: &[OwnedLexToken]) -> Option<Named
     {
         return None;
     }
+    // "copy of target creature, except it's a legendary Alien named Prisoner
+    // Zero" (CR 707.9b): a name inside a copy exception renames the copy; it
+    // is never a newly defined token's name.
+    if tokens[..shape.clause.start]
+        .iter()
+        .any(|token| token.is_word("except"))
+    {
+        return None;
+    }
     Some(shape)
 }
 

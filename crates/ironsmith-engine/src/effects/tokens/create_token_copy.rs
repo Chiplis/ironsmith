@@ -208,6 +208,15 @@ fn build_token_copy_object(
             .supertypes
             .retain(|supertype| !effect.removed_supertypes.contains(supertype));
     }
+    // CR 707.9b: copy exceptions become part of the token's copiable values.
+    for supertype in &effect.added_supertypes {
+        if !token.supertypes.contains(supertype) {
+            token.supertypes.push(*supertype);
+        }
+    }
+    if let Some(name) = &effect.set_name {
+        token.name = name.clone().into();
+    }
     if effect.loses_soulbond {
         // "except it ... loses soulbond": the copy is created without the
         // soulbond pairing ability.
