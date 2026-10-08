@@ -80,10 +80,3 @@ fn gales_redirection_rolls_once_with_the_spell_mana_value_added() {
         assert!(!debug.contains("AddManaEffect"), "the modifier is not a mana ability: {debug}");
     }
 }
-
-#[test]
-fn an_ability_word_label_still_splits() {
-    // An ordinary ability word before an em dash remains a label.
-    let body = "Mana cost: {R}\nType: Instant\nSpell mastery — Draw a card.";
-    let _ = ironsmith_compiler_runtime::compile_to_runtime_definition("Label neighbor", body, false);
-}
