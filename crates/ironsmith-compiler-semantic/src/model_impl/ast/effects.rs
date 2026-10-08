@@ -5137,7 +5137,21 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }),
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic,
+                basic_only: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_choose_basic_land_type(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic: false,
+                basic_only: true,
+            }),
         )
     }
 

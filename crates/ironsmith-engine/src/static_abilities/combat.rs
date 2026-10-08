@@ -1163,6 +1163,9 @@ pub enum LandwalkKind {
     LegendaryLand,
     /// CR 702.14c snow landwalk (any snow land).
     SnowLand,
+    /// Landwalk of the land type chosen for the granting resolution;
+    /// materialized to `Subtype` as that grant resolves.
+    ChosenType { snow: bool },
 }
 
 impl LandwalkKind {
@@ -1181,6 +1184,8 @@ impl LandwalkKind {
             Self::ArtifactLand => "Artifact landwalk".to_string(),
             Self::LegendaryLand => "Legendary landwalk".to_string(),
             Self::SnowLand => "Snow landwalk".to_string(),
+            Self::ChosenType { snow: false } => "Landwalk of the chosen type".to_string(),
+            Self::ChosenType { snow: true } => "Snow landwalk of the chosen type".to_string(),
         }
     }
 }
@@ -1227,6 +1232,22 @@ impl StaticAbilityKind for Landwalk {
 
     fn landwalk_kind(&self) -> Option<LandwalkKind> {
         Some(self.kind)
+    }
+
+    /// "Target creature gains landwalk of the chosen type until end of turn":
+    /// the type is the one chosen earlier in this resolution, stored on the
+    /// resolving source (CR 702.14a, 611.2c).
+    fn materialize_resolution_values(
+        &self,
+        game: &crate::game_state::GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let LandwalkKind::ChosenType { snow } = self.kind else {
+            return Ok(None);
+        };
+        Ok(game.chosen_land_type(ctx.source).map(|subtype| {
+            super::StaticAbility::new(Self::new(LandwalkKind::Subtype { subtype, snow }))
+        }))
     }
 }
 

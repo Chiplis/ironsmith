@@ -40,6 +40,21 @@ fn until_end_of_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         .parse_next(input)
 }
 
+/// "until the end of that turn" (Giant Slug): inside a delayed trigger, the
+/// turn the trigger resolves in, so the effect ends with the current turn.
+fn until_the_end_of_that_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    (
+        primitives::word_slice_exact("until"),
+        primitives::word_slice_exact("the"),
+        primitives::word_slice_exact("end"),
+        primitives::word_slice_exact("of"),
+        primitives::word_slice_exact("that"),
+        primitives::word_slice_exact("turn"),
+    )
+        .value(Until::EndOfTurn)
+        .parse_next(input)
+}
+
 fn until_end_of_combat(input: &mut WordSliceInput<'_>) -> WResult<Until> {
     (
         primitives::word_slice_exact("until"),
@@ -137,6 +152,7 @@ fn simple_turn_duration(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         until_end_of_turn_or_any_player_rolls,
         until_end_of_combat,
         until_end_of_turn,
+        until_the_end_of_that_turn,
         until_next_upkeep,
         until_next_turn,
         next_untap_step,

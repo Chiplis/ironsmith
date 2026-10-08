@@ -2522,6 +2522,10 @@ impl CantEffectTracker {
                             ironsmith_core::LandwalkKind::SnowLand,
                             crate::static_abilities::LandwalkKind::SnowLand,
                         ) => true,
+                        (
+                            ironsmith_core::LandwalkKind::ChosenType { snow: left },
+                            crate::static_abilities::LandwalkKind::ChosenType { snow: right },
+                        ) => left == right,
                         _ => false,
                     })
                     && permission.spec.objects.matches(

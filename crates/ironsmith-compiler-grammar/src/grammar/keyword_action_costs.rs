@@ -110,6 +110,8 @@ pub enum SpecialAbilityPhraseKind {
     ArtifactLandwalk,
     LegendaryLandwalk,
     SnowLandwalk,
+    /// "landwalk of the chosen type" / "snow landwalk of the chosen type".
+    ChosenTypeLandwalk { snow: bool },
 }
 
 pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
@@ -205,6 +207,18 @@ fn parse_exact_special_ability_phrase_words(
             primitives::word_slice_exact("engines"),
         )
             .value(SpecialAbilityPhraseKind::StartYourEngines),
+        // The chosen-type forms precede the bare keywords they extend.
+        (
+            opt(primitives::word_slice_exact("snow")),
+            primitives::word_slice_exact("landwalk"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("chosen"),
+            primitives::word_slice_exact("type"),
+        )
+            .map(|(snow, _, _, _, _, _)| SpecialAbilityPhraseKind::ChosenTypeLandwalk {
+                snow: snow.is_some(),
+            }),
         primitives::word_slice_exact("landwalk").value(SpecialAbilityPhraseKind::AnyLandwalk),
         (
             primitives::word_slice_exact("nonbasic"),

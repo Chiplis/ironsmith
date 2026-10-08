@@ -1969,10 +1969,10 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseLandTypeEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ChooseLandTypeEffect::new(
-            payload.chooser.clone(),
-            payload.exclude_basic,
-        )));
+        let mut choose =
+            crate::effects::ChooseLandTypeEffect::new(payload.chooser.clone(), payload.exclude_basic);
+        choose.basic_only = payload.basic_only;
+        return Ok(Effect::new(choose));
     }
     if M::downcast_ref::<ironsmith_core::RevealChosenSubtypeEffect>(&effect).is_some() {
         return Ok(Effect::new(crate::effects::RevealChosenSubtypeEffect));

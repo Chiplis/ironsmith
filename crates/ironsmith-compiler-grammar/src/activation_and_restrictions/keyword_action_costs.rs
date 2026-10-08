@@ -1015,6 +1015,9 @@ fn special_ability_phrase_action(kind: SpecialAbilityPhraseKind) -> KeywordActio
         SpecialAbilityPhraseKind::SnowLandwalk => {
             KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::SnowLand)
         }
+        SpecialAbilityPhraseKind::ChosenTypeLandwalk { snow } => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::ChosenType { snow })
+        }
     }
 }
 

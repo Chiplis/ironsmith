@@ -4613,6 +4613,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
                 StaticAbility::legendary_landwalk()
             }
             crate::static_abilities::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
+            crate::static_abilities::LandwalkKind::ChosenType { snow } => {
+                StaticAbility::chosen_type_landwalk(snow)
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::BloodthirstX => Some(StaticAbility::enters_with_counters_value(

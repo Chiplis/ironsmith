@@ -1929,6 +1929,10 @@ impl ChooseColorEffect {
 pub struct ChooseLandTypeEffect {
     pub chooser: PlayerFilter,
     pub exclude_basic: bool,
+    /// "choose a basic land type" (Giant Slug): only the five basic land
+    /// types are offered (CR 205.3i).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub basic_only: bool,
 }
 
 impl ChooseLandTypeEffect {
@@ -1936,7 +1940,13 @@ impl ChooseLandTypeEffect {
         Self {
             chooser,
             exclude_basic,
+            basic_only: false,
         }
+    }
+
+    pub fn basic_only(mut self) -> Self {
+        self.basic_only = true;
+        self
     }
 }
 

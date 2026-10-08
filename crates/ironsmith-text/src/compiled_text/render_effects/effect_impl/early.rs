@@ -1697,6 +1697,8 @@
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let kind = if choose_land_type.exclude_basic {
             "a nonbasic land type"
+        } else if choose_land_type.basic_only {
+            "a basic land type"
         } else {
             "a land type"
         };

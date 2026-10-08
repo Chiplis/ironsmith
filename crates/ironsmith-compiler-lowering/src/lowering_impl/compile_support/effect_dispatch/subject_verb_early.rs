@@ -1275,11 +1275,16 @@ pub(super) fn compile_subject_verb_early(
             effect.secretly = *secretly;
             Effect::new(effect)
         }),
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+            exclude_basic,
+            basic_only,
+        }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            if *basic_only {
+                Effect::choose_basic_land_type(subject.into_player_filter())
+            } else {
                 Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
-            })
-        }
+            }
+        }),
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();

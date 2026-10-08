@@ -21,6 +21,8 @@ pub enum ChoiceActionAst {
     },
     ChooseLandType {
         exclude_basic: bool,
+        /// "choose a basic land type".
+        basic_only: bool,
     },
     ChooseCardName {
         filter: Option<ObjectFilter>,

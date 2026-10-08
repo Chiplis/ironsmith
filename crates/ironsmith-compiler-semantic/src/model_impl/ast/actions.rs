@@ -479,9 +479,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("excluded_subtypes", excluded_subtypes)
                 .field("family", family)
                 .finish(),
-            Self::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => f
+            Self::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic,
+                basic_only,
+            }) => f
                 .debug_struct("ChooseLandType")
                 .field("exclude_basic", exclude_basic)
+                .field("basic_only", basic_only)
                 .finish(),
             Self::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => f
                 .debug_struct("ChooseCardName")

@@ -4440,6 +4440,10 @@ impl<
         Self::new(LandwalkKind::SnowLand)
     }
 
+    pub fn chosen_type_landwalk(snow: bool) -> Self {
+        Self::new(LandwalkKind::ChosenType { snow })
+    }
+
     pub fn landwalk(kind: Subtype) -> Self {
         Self::new(LandwalkKind::Subtype {
             subtype: kind,
