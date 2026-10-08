@@ -128,5 +128,15 @@
   "toughness": "5",
   "loyalty": null,
   "oracle_text": "Flying\nAs long as Weatherlight Compleated has four or more phyresis counters on it, it's a Phyrexian creature in addition to its other types.\nWhenever a creature you control dies, put a phyresis counter on Weatherlight Compleated. Then draw a card if it has seven or more phyresis counters on it. If it doesn't, scry 1."
+ },
+ {
+  "name": "Cyclone",
+  "oracle_id": "fc9e82b2-f148-431b-9312-97b7101cffe4",
+  "mana_cost": "{2}{G}{G}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, put a wind counter on this enchantment, then sacrifice this enchantment unless you pay {G} for each wind counter on it. If you pay, this enchantment deals damage equal to the number of wind counters on it to each creature and each player."
  }
 ]

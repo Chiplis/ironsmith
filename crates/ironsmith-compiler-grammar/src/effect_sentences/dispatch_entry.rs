@@ -3032,6 +3032,16 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        // "If you pay, ..." after "unless you pay" (CR 118.12).
+        if super::unless_payment_results::try_bind_unless_payment_result(
+            &mut effects,
+            &sentence_tokens,
+        )? {
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         // "If it doesn't, ..." completes the preceding conditional's false arm.
         if super::elliptical_conditions::try_merge_elliptical_condition(
             &mut effects,
