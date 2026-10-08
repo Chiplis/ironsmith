@@ -487,6 +487,31 @@ fn parse_additional_land_play_lexed(input: &mut LexStream<'_>) -> WResult<u32> {
     Ok(count)
 }
 
+/// "Each player may play an additional land on each of their turns."
+/// (Rites of Flourishing, Ghirapur Orrery) and "... during each of their
+/// turns." (Storm Cauldron): the same CR 305.2 land-play allowance granted to
+/// every player rather than only the controller.
+pub fn parse_each_player_additional_land_play_count(tokens: &[OwnedLexToken]) -> Option<u32> {
+    parse_semantic_all(tokens, parse_each_player_additional_land_play_lexed)
+}
+
+fn parse_each_player_additional_land_play_lexed(input: &mut LexStream<'_>) -> WResult<u32> {
+    semantic_phrase(&["each", "player", "may", "play"]).parse_next(input)?;
+    opt(semantic_phrase(&["up", "to"])).parse_next(input)?;
+    let count = semantic_number_token.parse_next(input)?;
+    if count == 0 {
+        return Err(primitives::backtrack_err(
+            "additional land play count",
+            "positive count",
+        ));
+    }
+    semantic_kw("additional").parse_next(input)?;
+    alt((semantic_kw("land"), semantic_kw("lands"))).parse_next(input)?;
+    alt((semantic_kw("on"), semantic_kw("during"))).parse_next(input)?;
+    semantic_phrase(&["each", "of", "their", "turns"]).parse_next(input)?;
+    Ok(count)
+}
+
 pub fn parse_retrace_grant_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceGrantFact> {
     parse_semantic_all(tokens, parse_retrace_grant_lexed)
 }

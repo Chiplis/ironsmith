@@ -827,6 +827,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_each_player_additional_land_play_line" => vec![
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Pair("each", "player"),
+        ],
         "parse_play_lands_from_graveyard_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1790,6 +1794,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_prepared_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
+        single_static_ability_ast_rule!(parse_each_player_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
         single_static_ability_ast_rule!(
             parse_you_may_look_face_down_creatures_you_dont_control_any_time_line

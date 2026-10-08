@@ -126,7 +126,27 @@ fn is_named_deck_construction(words: &[&str]) -> bool {
     let prefix = &[
         "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
     ];
-    phrase_is_prefix(words, prefix) && words.len() > prefix.len()
+    if phrase_is_prefix(words, prefix) && words.len() > prefix.len() {
+        return true;
+    }
+    // "A deck can have up to nine cards named Nazgûl." (Nazgûl, Seven
+    // Dwarves): a bounded copy-count exception to CR 100.2a. Deck
+    // validation reads the limit back out of the rule text.
+    let bounded_prefix = &["a", "deck", "can", "have", "up", "to"];
+    if !phrase_is_prefix(words, bounded_prefix) {
+        return false;
+    }
+    let Some((count, used)) = words
+        .get(bounded_prefix.len()..)
+        .and_then(leaf::parse_leaf_number_prefix_words)
+        .and_then(|number| number.into_fixed())
+    else {
+        return false;
+    };
+    let tail_start = bounded_prefix.len() + used;
+    count > 0
+        && phrase_is_prefix(words.get(tail_start..).unwrap_or_default(), &["cards", "named"])
+        && words.len() > tail_start + 2
 }
 
 fn is_first_equip_alternative(words: &[&str]) -> bool {
