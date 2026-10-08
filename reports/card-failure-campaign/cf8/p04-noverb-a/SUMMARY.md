@@ -2,7 +2,7 @@
 
 Package: 151 cards failing with "could not find verb in effect clause". Branch cf8/p04-noverb-a, based on origin/main 84ea8b41c. Nothing was built or run (campaign policy). The prebuilt hint binary vanished mid-run; the fallback `.agents/target-score/release` binary is from June, so its results are weak evidence.
 
-Status (after round 3): 59 source-proposed, 92 blocked, 0 untriaged.
+Status (after round 4): 61 source-proposed, 90 blocked, 0 untriaged.
 
 ## Fixed clusters (source-proposed)
 - **elided-damage-recipients** (Tropical Storm, Hail Storm, Neonate's Rush, The Fall of Kroog, Wildfire Howl)
@@ -137,3 +137,24 @@ Everything below is source-only (no build, no tests run).
 - Combat: the conditional set is computed only when requirements are enforced, so AI proposals that attack with Bey alone are now rejected; check the AI declaration fallback.
 - Unverified bindings: Oskar's "it" relies on reference resolution binding It to the discarded (triggering) card; Liege's "each of those lands" → It; whether Soul Immolation's trailing X-bound sentence reaches the early static reader; IfResult(DidNot) after May inside a ChooseOneOf mode.
 - Magnetic Web's block line and War's Toll's mana line were not re-verified.
+
+## Round 4
+- **Attack-declaration safety.** Every automatic producer was audited:
+  - trait default and AutoPass/SelectFirst declare nothing;
+  - the Minimum fallback, the wasm replay fallback and the UI auto-declare (`defaultOpponentAttackerDeclarations`) declare exactly the `must_attack` creatures;
+  - the Maximum fallback declares every legal attacker;
+  - the UI and network paths submit a human/peer proposal validated by the same `prepare_attacker_declarations`.
+
+  A declaration of nobody is always legal for conditional requirements, so only one path could get stuck: a creature that must attack and also meets a conditional trigger (a goaded or "attacks each combat" Viashino Bey). Its forced-only declaration would be rejected. Fix: `compute_legal_attackers_with_view` now propagates conditional requirements into `must_attack` (fixpoint), so every forced-only default is legal. Gameplay test: the forced-only and attack-with-everything declarations both complete declare attackers with Bey, including a forced Bey.
+- **Counted numbers (Rumbling Ruin).** "Count the number of X. ... that number ..." substitutes the counted quantity into the later sentences (procedure shapes for 2/3 sentences plus a bundle reading). Resolving restrictions now freeze game-wide comparison quantities into fixed numbers (CR 608.2h); the affected creatures' power stays live.
+- **Chaos Moon** stays blocked. The count/parity half now works through the existing CountParity predicate. Still missing: the coordinated "until end of turn, <anthem> and <temporary mana trigger / mana rewrite>" bodies (CR 605.1b), detailed in the ledger.
+- **Crabomination.** "Exiled this way" is now the union of consecutive exile producers in one effect list; with more than one producer, the pool filter becomes `any_of` over the producers' tags.
+- **Stromgald Spy** stays blocked, with the exact requirement. The only hand-reveal state the mental-poker view honours is controller-relative battlefield static ids, read by `hand_revealed_by_static_ability` in the wasm crate. The Opponents id would over-reveal in multiplayer. It needs a resolved player-scoped designation read by both wasm copies plus crypto public-opening scenarios.
+- **Bindings verified or fixed:**
+  - Oskar's "it": verified. The discard trigger seeds Triggering.
+  - Liege's "each of those lands": verified as a tagged subject.
+  - Soul Immolation: fixed. The X bound was swallowed by the additional-cost effect parse; the line now yields Multiple[AdditionalCost, ThisSpellXMaximum].
+  - The Seventh Doctor's "if you don't": fixed. It is now IfEffectDidNotHappen, bound to the exact cast.
+- **Risks:**
+  - The `exiled this way` union changes the alias for any card with consecutive exile producers before a "this way" reference. The change is intended for one instruction, but it also applies across adjacent sentences.
+  - Freezing restriction comparisons affects every resolving restriction whose power/toughness/mana-value comparison uses a game-wide count. This is rules-correct (CR 608.2h) but newly enforced.
