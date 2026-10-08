@@ -48,3 +48,22 @@ fn gandalf_grants_suspend_only_to_the_card_the_replacement_exiled() {
         );
     }
 }
+
+/// "If that spell would be put into a graveyard, put it on the bottom of its
+/// owner's library instead": a stack zone replacement on the chosen exiled
+/// card, which the engine lets follow the card onto the stack (engine test
+/// register_zone_replacement::tests::test_stack_zone_replacement_follows_card_cast_from_exile_to_library_bottom).
+#[test]
+fn quintorius_puts_the_cast_spell_on_the_bottom_of_its_owners_library() {
+    for definition in support::definitions("Quintorius, Loremaster") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("RegisterZoneReplacementEffect"), "{debug}");
+        assert!(debug.contains("library_placement: Some(Bottom)"), "{debug}");
+        let text = support::rendered(&definition);
+        assert!(
+            text.contains("if that spell would be put into a graveyard, put it on the bottom of its owner's library instead"),
+            "{text}"
+        );
+        assert!(text.contains("without paying its mana cost"), "{text}");
+    }
+}

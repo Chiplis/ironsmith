@@ -8,6 +8,9 @@ use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
+/// Frozen tag naming the card a stack zone replacement follows onto the stack.
+const FOLLOWED_CARD_TAG: &str = "__zone_replacement_followed_card__";
+
 /// Registers a concrete zone-change replacement effect for the currently resolved object(s).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterZoneReplacementEffect {
@@ -85,26 +88,62 @@ impl RegisterZoneReplacementEffect {
         Ok(object_ids
             .into_iter()
             .map(|object_id| {
-                let replacement = zone_replacement_action(
-                    object_id,
-                    self.to_zone,
-                    self.replacement_zone,
-                    self.library_placement,
-                    self.optional,
-                    self.choice_description.clone(),
-                    self.counters.clone(),
-                    self.linked_exile_follow_up,
-                );
-                ReplacementEffect::with_matcher(
-                    ctx.source,
-                    ctx.controller,
-                    crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                // "You may cast that card this turn. If that spell would be
+                // put into a graveyard, ..." (Quintorius): the replacement is
+                // created for a card that is not yet a spell. Casting it makes
+                // a new object (CR 400.7), so the replacement follows the
+                // card's stable identity onto the stack instead of the old id.
+                let follows_onto_stack = self.from_zone == Some(Zone::Stack)
+                    && game
+                        .object(object_id)
+                        .is_some_and(|object| object.zone != Zone::Stack);
+                let replacement = match self.library_placement {
+                    Some(placement)
+                        if follows_onto_stack
+                            && self.replacement_zone == Zone::Library
+                            && !self.optional
+                            && self.counters.is_empty()
+                            && self.linked_exile_follow_up.is_none() =>
+                    {
+                        ReplacementAction::Instead(vec![crate::effect::Effect::new(
+                            super::MoveReplacedObjectToLibraryEffect::new(placement),
+                        )])
+                    }
+                    _ => zone_replacement_action(
+                        object_id,
+                        self.to_zone,
+                        self.replacement_zone,
+                        self.library_placement,
+                        self.optional,
+                        self.choice_description.clone(),
+                        self.counters.clone(),
+                        self.linked_exile_follow_up,
+                    ),
+                };
+                let matcher = match game.object(object_id) {
+                    Some(object) if follows_onto_stack => {
+                        let tag = crate::tag::TagKey::from(FOLLOWED_CARD_TAG);
+                        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+                        crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                            ObjectFilter::default().match_tagged(
+                                tag.clone(),
+                                crate::filter::TaggedOpbjectRelation::SameStableId,
+                            ),
+                            self.from_zone,
+                            self.to_zone,
+                        )
+                        .with_frozen_tagged_objects(std::collections::HashMap::from([(
+                            tag,
+                            vec![snapshot],
+                        )]))
+                    }
+                    _ => crate::events::zones::matchers::WouldChangeZoneMatcher::new(
                         ObjectFilter::specific(object_id),
                         self.from_zone,
                         self.to_zone,
                     ),
-                    replacement,
-                )
+                };
+                ReplacementEffect::with_matcher(ctx.source, ctx.controller, matcher, replacement)
             })
             .collect())
     }
@@ -465,6 +504,60 @@ mod tests {
             Zone::Exile
         );
         assert_eq!(game.counter_count(exiled_id, CounterType::Time), 3);
+    }
+
+    /// Quintorius: a replacement made for an exiled card follows it onto the
+    /// stack (a new object, CR 400.7) and puts the spell on the bottom of its
+    /// owner's library instead of into the graveyard (CR 614.1a).
+    #[test]
+    fn test_stack_zone_replacement_follows_card_cast_from_exile_to_library_bottom() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let filler = create_creature(&mut game, alice, Zone::Library);
+        let card = create_creature(&mut game, alice, Zone::Exile);
+        let stable_id = game.object(card).expect("card should exist").stable_id;
+
+        let effect = RegisterZoneReplacementEffect::new(
+            ChooseSpec::SpecificObject(card),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Library,
+            ReplacementApplyMode::OneShot,
+        )
+        .with_library_placement(ironsmith_core::ZoneReplacementLibraryPlacement::Bottom);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(card, alice, &mut dm);
+        let _ = execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+            .expect("replacement registration should succeed");
+
+        let spell = game
+            .move_object(
+                card,
+                Zone::Stack,
+                crate::events::cause::EventCause::from_game_rule(),
+            )
+            .expect("the card is cast");
+        assert_ne!(spell, card, "the spell is a new object");
+        let _ = execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(spell),
+                Zone::Graveyard,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve");
+
+        let moved = game
+            .find_object_by_stable_id(stable_id)
+            .expect("the card is still findable");
+        assert_eq!(game.object(moved).unwrap().zone, Zone::Library);
+        assert_eq!(
+            game.player(alice).unwrap().library.first(),
+            Some(&moved),
+            "the spell went to the bottom, under {filler:?}"
+        );
     }
 
     /// Gandalf of the Secret Fire: the replacement exiles with time counters

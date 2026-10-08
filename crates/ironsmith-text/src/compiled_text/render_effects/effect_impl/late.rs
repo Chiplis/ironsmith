@@ -4559,6 +4559,25 @@
         {
             return "If that spell would be put into a graveyard, exile it instead".to_string();
         }
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Library
+            && !register.optional
+            && register.counters.is_empty()
+            && matches!(register.target.base(), ChooseSpec::Tagged(_))
+            && let Some(placement) = register.library_placement
+        {
+            let position = match placement {
+                ironsmith_core::ZoneReplacementLibraryPlacement::Top => "on top of",
+                ironsmith_core::ZoneReplacementLibraryPlacement::Bottom => "on the bottom of",
+                ironsmith_core::ZoneReplacementLibraryPlacement::TopOrBottom => {
+                    "on the top or bottom of"
+                }
+            };
+            return format!(
+                "If that spell would be put into a graveyard, put it {position} its owner's library instead"
+            );
+        }
         let target = describe_choose_spec(&register.target);
         let from = register
             .from_zone
