@@ -92,6 +92,13 @@ pub enum KeywordMechanicShape<'a> {
     ManifestTop {
         player: ManifestPlayerShape,
     },
+    /// "manifest the top two cards of your library" / "manifest a number of
+    /// cards from the top of your library equal to <amount>": the amount
+    /// tokens (with their "equal to" lead when `equal_to`).
+    ManifestTopCount {
+        count_tokens: &'a [OwnedLexToken],
+        equal_to: bool,
+    },
     CloakTop {
         player: ManifestPlayerShape,
     },
@@ -495,6 +502,37 @@ fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMecha
     Ok(KeywordMechanicShape::ManifestTop {
         player: ManifestPlayerShape::You,
     })
+}
+
+fn parse_manifest_top_count_you<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::kw("manifest").parse_next(input)?;
+    alt((
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&["the", "top"]).parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::kw("cards").void())?;
+            primitives::phrase(&["cards", "of", "your", "library"]).parse_next(input)?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: false,
+            })
+        },
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&[
+                "a", "number", "of", "cards", "from", "the", "top", "of", "your", "library",
+            ])
+            .parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: true,
+            })
+        },
+    ))
+    .parse_next(input)
 }
 
 fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

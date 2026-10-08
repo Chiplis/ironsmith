@@ -2569,6 +2569,30 @@ pub fn parse_keyword_mechanic_clause(
             };
             EffectAst::subject_verb_manifest_top_card(player)
         }
+        clause_shapes::KeywordMechanicShape::ManifestTopCount {
+            count_tokens,
+            equal_to,
+        } => {
+            // CR 701.40c: multiple cards from a library are manifested one
+            // at a time, so the instruction repeats the single-card manifest.
+            let count = if equal_to {
+                crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(count_tokens)
+                    .or_else(|| {
+                        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(count_tokens)
+                    })
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported manifest amount (clause: '{clause_text}')"
+                        ))
+                    })?
+            } else {
+                parse_keyword_value_tokens(count_tokens, "manifest", &clause_text)?
+            };
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count,
+                effects: vec![EffectAst::subject_verb_manifest_top_card(PlayerAst::You)],
+            })
+        }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {
             let player = match player {
                 clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
