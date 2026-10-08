@@ -3624,16 +3624,35 @@ pub fn parse_token_creation_templates_line(
     let token_filter = filter.unwrap_or_else(|| ObjectFilter::default().token());
     let mut templates = Vec::new();
     for descriptor in shape.templates {
-        let mut recipe = vec![
-            OwnedLexToken::word("create", TextSpan::synthetic()),
-            OwnedLexToken::word("one", TextSpan::synthetic()),
-        ];
+        // "tokens that are copies of enchanted permanent": one copy per
+        // replaced token (CR 707.2).
+        let descriptor_words = parser_token_word_refs(descriptor);
+        let copy_of = match descriptor_words.as_slice() {
+            ["tokens", "that", "are", "copies", "of", ..] => Some(5),
+            ["token", "thats", "a", "copy", "of", ..] | ["token", "that's", "a", "copy", "of", ..] => Some(5),
+            _ => None,
+        };
+        let mut recipe = if let Some(prefix_words) = copy_of {
+            let start = crate::lexer::TokenWordView::new(descriptor)
+                .token_span_for_words(0, prefix_words)
+                .map(|span| span.end)
+                .ok_or_else(|| CardTextError::ParseError("token copy template".to_string()))?;
+            let mut recipe = crate::lexer::lex_line("create a token that's a copy of", 0)?;
+            recipe.extend_from_slice(&descriptor[start..]);
+            templates.extend(crate::clause_support::parse_effect_sentences_lexed(&recipe)?);
+            continue;
+        } else {
+            vec![
+                OwnedLexToken::word("create", TextSpan::synthetic()),
+                OwnedLexToken::word("one", TextSpan::synthetic()),
+            ]
+        };
         recipe.extend_from_slice(descriptor);
         templates.extend(crate::clause_support::parse_effect_sentences_lexed(
             &recipe,
         )?);
     }
-    Ok(Some(StaticAbilityAst::TokenCreationTemplates {
+    let ability = StaticAbilityAst::TokenCreationTemplates {
         controller: PlayerFilter::You,
         token_filter,
         templates,
@@ -3641,6 +3660,21 @@ pub fn parse_token_creation_templates_line(
         choose_one: shape.choose_one,
         optional: shape.optional,
         display: display_text_for_tokens(tokens, true),
+    };
+    if !shape.first_time_each_turn {
+        return Ok(Some(ability));
+    }
+    // CR 614.1: only the first token creation event of the turn qualifies,
+    // so no token has been created under your control this turn yet.
+    Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(ability),
+        condition: crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::TurnHistoryCount(
+                ironsmith_core::TurnHistoryCount::TokensCreated(PlayerFilter::You),
+            ),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(0),
+        },
     }))
 }
 
