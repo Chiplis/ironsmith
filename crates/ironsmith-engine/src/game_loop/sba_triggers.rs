@@ -2233,6 +2233,7 @@ pub(crate) fn announce_trigger_target_distributions(
         source,
         controller,
         x_value,
+        None,
         &entry.targets,
         &entry.target_assignments,
         requirements,

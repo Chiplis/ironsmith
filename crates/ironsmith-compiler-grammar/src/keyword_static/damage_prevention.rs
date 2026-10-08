@@ -213,10 +213,64 @@ pub fn parse_persistent_filtered_damage_prevention_line(
     })))
 }
 
+/// "Prevent all damage that would be dealt to a creature by another creature
+/// if they share a color." (Well-Laid Plans): an ordinary persistent shield
+/// whose recipient must share a color with that damage's source when the
+/// damage would be dealt; "another" makes source and recipient different
+/// objects (checked with the pair, not against this permanent).
+pub fn parse_shared_color_pair_damage_prevention_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clean = trim_edge_punctuation_tokens(tokens);
+    let Some((head, ())) = crate::grammar::primitives::split_lexed_once_before_suffix(clean, 1, || {
+        crate::grammar::primitives::phrase(&["if", "they", "share", "a", "color"])
+    }) else {
+        return Ok(None);
+    };
+    let Some(ability) = parse_persistent_filtered_damage_prevention_line(head)? else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(mut spec) = ability.payload
+    else {
+        return Ok(None);
+    };
+    if spec.target_player_filter.is_some() || !spec.source_filter.other {
+        return Ok(None);
+    }
+    let Some(recipient) = spec.target_object_filter.as_mut() else {
+        return Ok(None);
+    };
+    spec.source_filter.other = false;
+    recipient
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::TriggeringSource.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::SharesColorWithTagged,
+        });
+    spec.display = render_token_slice(tokens);
+    Ok(Some(StaticAbility::prevent_matching_damage(spec)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexer::lex_line;
+
+    #[test]
+    fn shared_color_pair_relation_rides_on_the_recipient() {
+        let ability = parse_shared_color_pair_damage_prevention_line(&lex_line(
+            "Prevent all damage that would be dealt to a creature by another creature if they share a color.",
+            0,
+        ).unwrap()).unwrap().expect("pair shield");
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload
+        else {
+            panic!("typed prevention payload required");
+        };
+        assert!(!spec.source_filter.other);
+        assert!(spec.target_object_filter.unwrap().tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SharesColorWithTagged
+        }));
+    }
 
     fn parse(text: &str) -> Option<StaticAbility> {
         parse_filtered_damage_prevention_line(&lex_line(text, 0).unwrap()).unwrap()

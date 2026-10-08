@@ -2855,6 +2855,56 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         *effects.last_mut().expect("checked") = replacement;
         return true;
     }
+    // "If this spell was kicked, prevent the next 6 damage this way instead."
+    // (Pollen Remedy): the divided total depends on the announced kicker.
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+                amount,
+                divided: true,
+                ..
+            }),
+        ..
+    })) = effects.last_mut()
+        && let Value::Fixed(base) = *amount.unhinted()
+        && let Some(kicked) = super::prevention_source_riders::parse_kicked_amount_override(sentence)
+    {
+        *amount = Value::Add(
+            Box::new(Value::Fixed(base)),
+            Box::new(Value::Scaled(Box::new(Value::WasKicked), kicked - base)),
+        );
+        return true;
+    }
+    // CR 615.5: the additional part reads the prevented damage's source
+    // (Channel Harm, Comeuppance, Judgment of Alexander, Samite Ministration).
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut() {
+        let slot = match action {
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    of_chosen_color: false,
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    source_of_your_choice: true,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                    target: TargetAst::Player(crate::target::PlayerFilter::You, _),
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            _ => None,
+        };
+        if let Some(slot) = slot
+            && let Ok(Some(rider)) = super::prevention_source_riders::parse(sentence)
+        {
+            slot.push(rider);
+            return true;
+        }
+    }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;

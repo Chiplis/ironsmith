@@ -1373,6 +1373,22 @@ fn parse_damage_sources_filter(
         |token: &OwnedLexToken| token.is_word("sources") || token.is_word("source");
     let parts: Vec<&[OwnedLexToken]> = tokens.split(|token| token.is_word("and")).collect();
     let parse_part = |part: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
+        // "sources you don't control", "sources your opponents control": a
+        // controller clause after the source noun scopes the source set.
+        if let Some(noun_idx) = part.iter().position(is_source_noun)
+            && noun_idx + 1 < part.len()
+            && let Some(controller) = damage_source_controller_clause(&part[noun_idx + 1..])
+        {
+            let mut filter = if noun_idx == 0 {
+                ObjectFilter::default()
+            } else {
+                let mut filter = parse_object_filter(&part[..noun_idx], false)?;
+                filter.zone = None;
+                filter
+            };
+            filter.controller = Some(controller);
+            return Ok(filter);
+        }
         let Some((last, descriptor)) = part.split_last() else {
             return Err(CardTextError::ParseError(
                 "missing damage source".to_string(),
@@ -1403,6 +1419,33 @@ fn parse_damage_sources_filter(
         return Ok((filter, of_chosen_color));
     }
     Ok((parse_part(tokens)?, of_chosen_color))
+}
+
+/// The controller clause after a damage-source noun.
+fn damage_source_controller_clause(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+    use crate::grammar::primitives;
+    use winnow::Parser;
+    use winnow::combinator::alt;
+    primitives::parse_all(
+        tokens,
+        alt((
+            primitives::phrase(&["you", "control"]).value(PlayerFilter::You),
+            alt((
+                primitives::phrase(&["you", "don't", "control"]),
+                primitives::phrase(&["you", "dont", "control"]),
+                primitives::phrase(&["you", "do", "not", "control"]),
+            ))
+            .value(PlayerFilter::NotYou),
+            alt((
+                primitives::phrase(&["your", "opponents", "control"]),
+                primitives::phrase(&["an", "opponent", "controls"]),
+                primitives::phrase(&["opponents", "control"]),
+            ))
+            .value(PlayerFilter::Opponent),
+        )),
+        "damage source controller",
+    )
+    .ok()
 }
 
 pub fn parse_prevent_all_damage_clause(

@@ -135,16 +135,19 @@ fn you_and_permanents_filter<'a>(input: &mut LexStream<'a>) -> WResult<(bool, Ob
     ))
     .parse_next(input)?;
     let other = opt(primitives::kw("other")).parse_next(input)?.is_some();
-    let creatures = alt((
-        alt((primitives::kw("creature"), primitives::kw("creatures"))).value(true),
-        alt((primitives::kw("permanent"), primitives::kw("permanents"))).value(false),
+    let kind = alt((
+        alt((primitives::kw("creature"), primitives::kw("creatures")))
+            .value(Some(crate::types::CardType::Creature)),
+        alt((primitives::kw("planeswalker"), primitives::kw("planeswalkers")))
+            .value(Some(crate::types::CardType::Planeswalker)),
+        alt((primitives::kw("permanent"), primitives::kw("permanents"))).value(None),
     ))
     .parse_next(input)?;
     primitives::phrase(&["you", "control"]).parse_next(input)?;
-    let filter = if creatures {
-        ObjectFilter::creature().you_control()
-    } else {
-        ObjectFilter::permanent().you_control()
+    let filter = match kind {
+        Some(crate::types::CardType::Creature) => ObjectFilter::creature().you_control(),
+        Some(card_type) => ObjectFilter::permanent().with_type(card_type).you_control(),
+        None => ObjectFilter::permanent().you_control(),
     };
     Ok((other, if other { filter.other() } else { filter }))
 }

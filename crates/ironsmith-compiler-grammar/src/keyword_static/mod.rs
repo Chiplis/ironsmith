@@ -25,7 +25,7 @@ mod life_change_replacements;
 mod event_instead_replacements;
 pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
 mod prevention_follow_ups;
-pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line};
+pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line, parse_shared_color_pair_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
 pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
@@ -721,7 +721,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
         }
         "parse_prevent_all_damage_to_you_line" | "parse_permanent_self_damage_prevention_line"
-        | "parse_persistent_filtered_damage_prevention_line" => {
+        | "parse_persistent_filtered_damage_prevention_line"
+        | "parse_shared_color_pair_damage_prevention_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
         }
         "parse_if_you_would_gain_life_replacement_line"
@@ -1494,6 +1495,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_permanent_self_damage_prevention_line),
         single_static_ability_ast_rule!(parse_persistent_filtered_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_shared_color_pair_damage_prevention_line),
         single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
