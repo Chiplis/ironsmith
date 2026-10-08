@@ -2384,6 +2384,11 @@ fn parse_generic_consult_reveal_until_subject_verb(
         return Ok(None);
     }
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
+    if super::consult_family::consult_subject_is_each_opponent(&sentence_tokens) {
+        return Ok(Some(super::consult_family::wrap_each_opponent_consult(
+            parts.effects,
+        )));
+    }
     Ok(Some(parts.effects))
 }
 

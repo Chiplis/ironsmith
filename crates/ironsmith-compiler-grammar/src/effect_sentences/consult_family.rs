@@ -210,32 +210,51 @@ pub fn parse_consult_traversal_with_inline_followup(
     let mut effects = parts.effects;
     effects.append(&mut trailing);
     if each_opponent {
-        for effect in &mut effects {
-            super::chain_carry::bind_implicit_player_context(effect, PlayerAst::That);
-            if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                subject,
-                action:
-                    crate::cards::builders::SubjectVerbActionAst::Library(
-                        crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary {
-                            player,
-                            ..
-                        },
-                    ),
-            }) = effect
-            {
-                // The consult action carries its library owner separately
-                // from the subject surface. Both must point at the active
-                // loop participant; changing only the subject leaves the
-                // executable consult bound to the broad Opponent filter.
-                subject.player = PlayerAst::That;
-                *player = PlayerAst::That;
-            }
-        }
-        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-            effects,
-        })];
+        effects = wrap_each_opponent_consult(effects);
     }
     Ok(Some(effects))
+}
+
+/// Whether a consult sentence's subject is "each opponent".
+pub(crate) fn consult_subject_is_each_opponent(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::parse_consult_traversal_shape(tokens).is_some_and(|shape| {
+        matches!(
+            &shape.player,
+            effect_grammar::ConsultTraversalPlayerShape::Subject(subject)
+                if crate::word_primitives::parse_sequence_complete(
+                    &crate::lexer::parser_token_word_refs(subject),
+                    &["each", "opponent"],
+                )
+        )
+    })
+}
+
+/// "Each opponent exiles cards from the top of their library until ...":
+/// each opponent consults their own library in turn (CR 101.4 APNAP order),
+/// so the program runs once per opponent with "that player" bound to them.
+/// The per-player exposed and matched collections aggregate across the loop.
+pub(crate) fn wrap_each_opponent_consult(mut effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    for effect in &mut effects {
+        super::chain_carry::bind_implicit_player_context(effect, PlayerAst::That);
+        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            subject,
+            action:
+                crate::cards::builders::SubjectVerbActionAst::Library(
+                    crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary {
+                        player, ..
+                    },
+                ),
+        }) = effect
+        {
+            // The consult action carries its library owner separately
+            // from the subject surface. Both must point at the active
+            // loop participant; changing only the subject leaves the
+            // executable consult bound to the broad Opponent filter.
+            subject.player = PlayerAst::That;
+            *player = PlayerAst::That;
+        }
+    }
+    vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]
 }
 
 /// "... reveals cards from the top of their library until they reveal a land
