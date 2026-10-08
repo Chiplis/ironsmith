@@ -4360,7 +4360,16 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
         filter.owner = Some(PlayerFilter::You);
     }
 
-    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
+    // "if a creature card is in your graveyard": an indefinite article
+    // states presence, not an exact cardinality of one.
+    let indefinite = subject_tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["a", "an"]));
+    let (operator, count) = if indefinite {
+        (crate::effect::ValueComparisonOperator::GreaterThanOrEqual, 1)
+    } else {
+        comparison_to_value_comparison_operator(comparison)?
+    };
     Some(PredicateAst::ValueComparison {
         left: Value::Count(filter),
         operator,
