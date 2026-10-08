@@ -6441,6 +6441,7 @@ pub fn parse_exile_would_die_instead_line(
         }
         keyword_static_lines::ExileWouldDieSpec::SimpleCreature {
             controller: player,
+            other,
             follow_up_tokens,
         } => {
             let player = match player {
@@ -6448,8 +6449,12 @@ pub fn parse_exile_would_die_instead_line(
                 keyword_static_lines::ReplacementPlayerKind::You => PlayerFilter::You,
                 keyword_static_lines::ReplacementPlayerKind::Opponent => PlayerFilter::Opponent,
             };
+            let mut filter = ObjectFilter::creature().controlled_by(player);
+            if other {
+                filter = filter.other();
+            }
             StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
-                ObjectFilter::creature().controlled_by(player),
+                filter,
                 None,
                 Vec::new(),
                 super::super::clause_support::parse_effect_sentences_lexed(&follow_up_tokens)?,

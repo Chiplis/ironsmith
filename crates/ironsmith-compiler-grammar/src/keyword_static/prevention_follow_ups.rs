@@ -82,12 +82,21 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
     }
     let view = TokenWordView::new(tokens_without_period);
     let words = view.word_refs();
-    let Some(boundary) = words.windows(4).position(|words|
+    // "prevent that damage and <program>" or, with a serial program, "prevent
+    // that damage, <first>, and <second>" (Sekki, Seasons' Guide).
+    let Some((boundary, tail_start)) = words.windows(4).position(|words|
         words == ["prevent", "that", "damage", "and"])
+        .map(|start| (start, start + 4))
+        .or_else(|| {
+            let start = words.windows(3).position(|words| words == ["prevent", "that", "damage"])?;
+            let range = view.token_span_for_words(start, start + 3)?;
+            tokens_without_period.get(range.end).filter(|token| token.is_comma())?;
+            Some((start, start + 3))
+        })
     else { return Ok(None); };
     let Some(head_range) = view.token_span_for_words(0, boundary + 3)
     else { return Ok(None); };
-    let Some(tail_range) = view.token_span_for_words(boundary + 4, words.len())
+    let Some(tail_range) = view.token_span_for_words(tail_start, words.len())
     else { return Ok(None); };
     let head = &tokens_without_period[head_range];
     let tail = &tokens_without_period[tail_range];
@@ -120,7 +129,24 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
                 SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount }),
             )],
         })]
-    } else { return Ok(None); };
+    } else {
+        // Any other complete program reads "that many" as the proposed damage
+        // (Gloom Surgeon, Nine Lives). Programs that name a pronoun
+        // antecedent, a choice, or a reflexive/conditional part keep their
+        // own readers.
+        const DECLINED: &[&str] = &[
+            "it", "its", "may", "unless", "if", "when", "whenever", "instead", "damage",
+            // Counter removal / +1/+1 placement on the recipient are the
+            // put-counter and remove-counter prevention readers' programs.
+            "remove", "+1/+1",
+        ];
+        if words.iter().any(|word| DECLINED.contains(word)) { return Ok(None); }
+        let tail = trim_edge_punctuation_tokens(tail);
+        if tail.is_empty() { return Ok(None); }
+        let effects = crate::clause_support::parse_effect_sentences_lexed(tail)?;
+        if effects.is_empty() { return Ok(None); }
+        effects
+    };
     Ok(Some(StaticAbility::prevent_matching_damage_with_follow_up(
         ironsmith_core::StaticDamagePreventionFollowUp {
             source_filter, target_player_filter, target_object_filter,

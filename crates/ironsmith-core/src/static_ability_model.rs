@@ -1524,6 +1524,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         pair: Option<crate::LinkedExilePair>,
         source: SourceReferenceSurface,
     },
+    /// "If <event> would happen, <effects> instead." (Tainted Remedy, Lich,
+    /// Delaying Shield): a replacement whose program runs in place of the
+    /// event with the replaced event as context (CR 614.1a, 614.6).
+    /// Appended to preserve published payload variant ordinals.
+    EventReplacementWithEffects {
+        event: crate::ReplacedEventSpec,
+        replacement_effects: Vec<E>,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1954,6 +1963,18 @@ where
             StaticAbilityPayload::LookAtSourceExiledCards { pair, source } => {
                 StaticAbilityPayload::LookAtSourceExiledCards { pair, source }
             }
+            StaticAbilityPayload::EventReplacementWithEffects {
+                event,
+                replacement_effects,
+                display,
+            } => StaticAbilityPayload::EventReplacementWithEffects {
+                event,
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(&mut *map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
             }
@@ -6976,6 +6997,23 @@ impl<
                 damager_filter_surface: None,
                 exile_with_counters,
                 follow_up_effects,
+            },
+        }
+    }
+    /// "If <event> would happen, <effects> instead." (CR 614.1a)
+    pub fn event_replacement_with_effects(
+        event: crate::ReplacedEventSpec,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EventReplacementWithEffects),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EventReplacementWithEffects {
+                event,
+                replacement_effects,
+                display,
             },
         }
     }

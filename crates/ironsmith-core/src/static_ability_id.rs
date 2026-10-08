@@ -398,6 +398,8 @@ pub enum StaticAbilityId {
     FirstCoinBatchHeadsWin,
     /// Standalone paired private inspection; appended for wire compatibility.
     LookAtSourceExiledCards,
+    /// Generic "<event> instead" replacement; appended for wire compatibility.
+    EventReplacementWithEffects,
 }
 
 impl StaticAbilityId {
@@ -717,6 +719,7 @@ impl StaticAbilityId {
             | MultiplyTokenCreationReplacement
             | RedirectDrawReplacement
             | DrawReplacementWithEffects
+            | EventReplacementWithEffects
             | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

@@ -857,7 +857,15 @@ fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option
     let relation = parse_has_relation_clauses(tokens)?;
     if !surface::exact_any(
         relation.subject_clause,
-        &[&["it"], &["that", "object"], &["that", "spell"]],
+        // "If that creature has infect" (Burn the Impure): the demonstrative
+        // names the same referenced object as "it".
+        &[
+            &["it"],
+            &["that", "object"],
+            &["that", "spell"],
+            &["that", "creature"],
+            &["that", "permanent"],
+        ],
     ) {
         return None;
     }
@@ -1217,6 +1225,8 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
                 "tapped",
                 "untapped",
                 "saddled",
+                "prepared",
+                "monstrous",
             ]),
         ),
     ];
@@ -1322,6 +1332,28 @@ fn source_state_predicate_from_clause(
             ))))
         } else {
             Some(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))
+        };
+    }
+    // "if this creature isn't prepared" (Paradox Shaper): the source's
+    // prepared designation, which a permanent cannot hold twice.
+    if surface::exact(clause, &["prepared"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsPrepared,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsPrepared))
+        };
+    }
+    // "if this creature is monstrous" (Polis Crusher): the source's
+    // monstrosity designation (CR 701.37b).
+    if surface::exact(clause, &["monstrous"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsMonstrous,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
         };
     }
     None
@@ -4992,12 +5024,31 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         .or_else(|| words.strip_prefix(&["any", "of", "those", "results", "were"]))
     {
         (true, rest)
-    } else if let Some(rest) = words.strip_prefix(&["the", "roll", "was"]) {
+    } else if let Some(rest) = words
+        .strip_prefix(&["the", "roll", "was"])
+        .or_else(|| words.strip_prefix(&["the", "result", "is"]))
+        .or_else(|| words.strip_prefix(&["the", "result", "was"]))
+    {
         (false, rest)
     } else {
         return None;
     };
-    let number = number.strip_suffix(&["or", "higher"])?;
+    // "If the result is 3 or less" (Dissatisfied Customer, Non-Human
+    // Cannonball): the completed roll's result at most the bound.
+    let (number, operator) = if let Some(number) = number
+        .strip_suffix(&["or", "higher"])
+        .or_else(|| number.strip_suffix(&["or", "greater"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::GreaterThanOrEqual)
+    } else if !grouped
+        && let Some(number) = number
+            .strip_suffix(&["or", "less"])
+            .or_else(|| number.strip_suffix(&["or", "lower"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::LessThanOrEqual)
+    } else {
+        return None;
+    };
     let value = crate::grammar::trigger_clauses::parse_roll_result_words(number)?;
     let crate::grammar::trigger_clauses::RollResultShape::Fixed(value) = value else {
         return None;
@@ -5018,7 +5069,7 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
                 )
                 .with_action(ironsmith_core::PriorEffectAction::Rolled),
             ),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            operator,
             right: Value::Fixed(value),
         }
     })

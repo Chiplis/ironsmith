@@ -572,7 +572,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::SourceControllersMainPhase
         | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
-        | Condition::SourceIsHarnessed | Condition::SourceIsRenowned | Condition::SourceIsFaceDown
+        | Condition::SourceIsHarnessed | Condition::SourceIsPrepared | Condition::SourceIsRenowned | Condition::SourceIsFaceDown
         | Condition::SourceHasNoCounter(_) | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceHasCountersAtLeast(_) | Condition::SourcePowerAtLeast(_)
         | Condition::SourceDealtCombatDamageToPlayerThisTurn | Condition::ManaSpentToCastThisSpellAtLeast { .. }
