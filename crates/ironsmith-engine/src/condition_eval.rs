@@ -5558,6 +5558,20 @@ fn evaluate_condition_in_context(
                             )
                             && game.stack_is_empty()
                     }
+                    crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+                        game.turn.phase == crate::game_state::Phase::Combat
+                            && game.turn.step
+                                == Some(crate::game_state::Step::DeclareAttackers)
+                            && game.combat.as_ref().is_some_and(|combat| {
+                                combat.attackers.iter().any(|info| {
+                                    info.creature == ctx.source
+                                        && info.target
+                                            == crate::combat_state::AttackTarget::Player(
+                                                ctx.controller,
+                                            )
+                                })
+                            })
+                    }
                     crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                         game.object(ctx.source)
                             .is_some_and(|object| game.is_active_player(object.owner))
