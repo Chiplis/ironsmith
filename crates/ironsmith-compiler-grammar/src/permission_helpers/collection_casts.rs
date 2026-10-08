@@ -180,8 +180,13 @@ fn parse_tagged_collection(tokens: &[OwnedLexToken]) -> Option<Collection> {
     )
 }
 
-/// Read one complete collection cast clause. Shapes another reader owns
-/// (or rejects with a diagnostic) are left to it.
+/// Read one complete collection cast clause.
+///
+/// Two owners reach it, so no clause is ever claimed twice: the
+/// `cast`-headed clause primitive (imperative "Cast any number of ...",
+/// which no other primitive reads), and the final fallback of
+/// [`parse_cast_or_play_tagged_clause`] for "you may cast ..." clauses,
+/// reached only when every established permission shape declined.
 pub(crate) fn parse_collection_cast_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -251,14 +256,6 @@ pub(crate) fn parse_collection_cast_clause(
         }
         CollectionMarker::ManaValue => return Ok(None),
     };
-
-    // Leave every shape the established permission reader already reads to
-    // that reader, so the two never claim the same clause. Its diagnostics
-    // concern durations and prices, which this complete one-shot shape (no
-    // tail beyond the free-cast price) never carries.
-    if matches!(parse_cast_or_play_tagged_clause(tokens), Ok(Some(_))) {
-        return Ok(None);
-    }
 
     let subject_words = token_word_refs(subject_tokens);
     let plural_subject = matches!(subject_words.last(), Some(&"spells" | &"cards"));

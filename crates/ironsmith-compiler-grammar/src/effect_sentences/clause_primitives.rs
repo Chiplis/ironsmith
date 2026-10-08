@@ -486,7 +486,10 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "collection-cast-clause",
-            &["you", "cast"],
+            // "you may cast ... from among ..." is read by the
+            // cast-or-play-tagged clause's fallback; only the imperative
+            // form opens with `cast`.
+            &["cast"],
             crate::permission_helpers::collection_casts::parse_collection_cast_clause,
         ),
         specific_primitive!(
