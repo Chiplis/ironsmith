@@ -427,6 +427,14 @@ pub fn parse_trigger_subject_filter_lexed(
     if subject_facts.any_source {
         return Ok(Some(ObjectFilter::default()));
     }
+    // "Whenever a source of the chosen color deals damage to you" (Circle of
+    // Affliction): any source, restricted by the color chosen as the
+    // permanent entered (CR 607.2a links the choice to this ability).
+    if trigger_subject_grammar::parse_trigger_chosen_color_source(&subject_words) {
+        let mut filter = ObjectFilter::default();
+        filter.chosen_color = true;
+        return Ok(Some(filter));
+    }
     if subject_facts.relative_pronoun {
         // "Whenever one or more creatures you control that entered this turn
         // attack/deal combat damage ..." (Goro-Goro and Satoru, Whirlwind,
@@ -457,6 +465,21 @@ pub fn parse_trigger_subject_filter_lexed(
             if other {
                 filter.other = true;
             }
+            return Ok(Some(filter));
+        }
+        // "Whenever one or more creatures that are enchanted by an Aura you
+        // control attack" (Killian, Decisive Mentor): the relative clause is
+        // the object grammar's attached-Aura predicate, which the general
+        // filter parser reads as a whole.
+        if trigger_subject_grammar::parse_trigger_enchanted_by_relative_clause(&subject_words)
+        {
+            let mut filter = parse_object_filter_lexed(subject_tokens, other).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                ))
+            })?;
+            filter.zone.get_or_insert(Zone::Battlefield);
             return Ok(Some(filter));
         }
         // "Whenever that creature deals combat damage ... this turn" (Hunter's

@@ -344,6 +344,28 @@ pub fn parse_trigger_entered_this_turn_suffix(words: &[&str]) -> Option<usize> {
     })
 }
 
+/// Recognizes a relative "that are/is enchanted by <Aura filter>" clause on a
+/// trigger subject ("creatures that are enchanted by an Aura you control").
+pub fn parse_trigger_enchanted_by_relative_clause(words: &[&str]) -> bool {
+    words.windows(4).any(|window| {
+        matches!(
+            window,
+            ["that", "are" | "is", "enchanted", "by"]
+        )
+    }) || words
+        .windows(3)
+        .any(|window| matches!(window, ["that's" | "thats", "enchanted", "by"]))
+}
+
+/// "a source of the chosen color" as a complete damage-source subject.
+pub fn parse_trigger_chosen_color_source(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["a" | "any", "source", "of", "the", "chosen", "color"]
+            | ["source", "of", "the", "chosen", "color"]
+    )
+}
+
 pub fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerControlSuffix> {
     for suffix_words in [3usize, 2usize] {
         if words.len() < suffix_words {
