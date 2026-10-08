@@ -2108,6 +2108,26 @@ fn parse_complete_attached_restriction_quoted_activation(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The static line grammar is also used as a speculative probe: line
+    // recognizers, trigger-body readers and the document dispatcher all ask
+    // "is this a static ability?" before trying other families. Its direct
+    // (non-registry) readers may record recovery diagnostics while reading a
+    // subject and then decline the body. Like the registry candidates, losses
+    // belong only to a committed reading: replay them when this call returns
+    // static abilities, and drop them when it declines or errors, so an
+    // abandoned static probe cannot taint the trigger/activated/effect
+    // reading that actually owns the line.
+    let (result, loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed_committed(tokens));
+    if matches!(result, Ok(Some(_))) {
+        crate::parse_loss::replay(loss.diagnostics());
+    }
+    result
+}
+
+fn parse_static_ability_ast_line_lexed_committed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_attached_restriction_quoted_activation(tokens)? {
         return Ok(Some(abilities));
