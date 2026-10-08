@@ -1484,7 +1484,26 @@ fn parse_effect_chain_inner_lexed_unstacked(
             false
         }
     };
-    let mut coordination_plan = if lists_mana_combination || sacrifices_object_union {
+    // "target creature gains your choice of flying, vigilance, deathtouch, or
+    // lifelink until end of turn" (Atraxa's Skitterfang, Éowyn): the commas
+    // and "or" after "your choice of" list the options of one choice; they
+    // never coordinate separate actions. Only claimed when nothing before the
+    // list and no conjunction elsewhere could coordinate a real action.
+    let lists_explicit_choice = effect_chain_tokens
+        .windows(3)
+        .position(|window| {
+            window[0].is_word("your") && window[1].is_word("choice") && window[2].is_word("of")
+        })
+        .is_some_and(|choice_idx| {
+            !effect_chain_tokens[..choice_idx].iter().any(OwnedLexToken::is_comma)
+                && !effect_chain_tokens
+                    .iter()
+                    .any(|token| token.is_any_word(&["and", "then", "unless", "if"]))
+        });
+    let mut coordination_plan = if lists_mana_combination
+        || sacrifices_object_union
+        || lists_explicit_choice
+    {
         None
     } else {
         match super::super::grammar::effects::coordination::recognize_coordination(
