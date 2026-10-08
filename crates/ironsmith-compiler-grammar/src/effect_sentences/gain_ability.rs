@@ -563,6 +563,31 @@ fn player_gain_effects_for_abilities(
                     duration.clone(),
                 ));
             }
+            // "You gain protection from that player until your next turn"
+            // (Eon Frolicker, Noble Heritage): a player with protection
+            // can't be targeted by matching spells or abilities and damage
+            // from matching sources is prevented (CR 702.16b, 702.16e).
+            KeywordAction::ProtectionFromFilter(filter)
+                if filter.controller.as_ref().is_some_and(|player| {
+                    player.mentions_iterated_player()
+                }) =>
+            {
+                effects.push(EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_targeted_player_from(
+                        player_filter.clone(),
+                        filter.clone(),
+                    ),
+                    duration.clone(),
+                    None,
+                ));
+                effects.push(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+                        player_target.clone(),
+                        filter.clone(),
+                        duration.clone(),
+                    ),
+                );
+            }
             _ => return None,
         }
     }

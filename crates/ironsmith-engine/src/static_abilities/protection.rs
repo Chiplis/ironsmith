@@ -182,6 +182,15 @@ impl StaticAbilityKind for Protection {
         game: &crate::game_state::GameState,
         ctx: &mut crate::effects::ExecutionContext<'_>,
     ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        // "Planeswalkers you control gain protection from that player": the
+        // player is the one this resolution named (CR 702.16k, 611.2c).
+        if let ProtectionFrom::Permanents(filter) = &self.from {
+            let bound = crate::effects::player_reference_binding::bind_filter_player_references(
+                filter, game, ctx,
+            );
+            return Ok((bound != *filter)
+                .then(|| super::StaticAbility::protection(ProtectionFrom::Permanents(bound))));
+        }
         if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
             let context = ctx.filter_context(game);
             let mut colors = crate::color::ColorSet::new();

@@ -867,6 +867,17 @@ pub(super) fn compile_grant_abilities_all_action(
         let crate::continuous::Modification::AddAbility(ability) = modification else {
             continue;
         };
+        // "planeswalkers you control gain protection from that player": the
+        // player reference names the instruction's antecedent player, which
+        // the runtime then locks as the grant resolves.
+        if let ironsmith_core::StaticAbilityPayload::Protection(
+            ironsmith_core::ProtectionFrom::Permanents(protected_from),
+        ) = &mut ability.payload
+            && protected_from.mentions_iterated_player()
+        {
+            *protected_from = resolve_it_tag(protected_from, &current_reference_env(ctx))?;
+            continue;
+        }
         let ironsmith_core::StaticAbilityPayload::Protection(
             ironsmith_core::ProtectionFrom::ColorsOf(spec),
         ) = &mut ability.payload

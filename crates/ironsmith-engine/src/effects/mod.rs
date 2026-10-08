@@ -73,6 +73,7 @@ pub(crate) use action_observation::{
 pub(crate) mod outcome_recording;
 pub mod permanents;
 pub mod player;
+pub(crate) mod player_reference_binding;
 pub mod replacement;
 pub mod restrictions;
 mod runtime;

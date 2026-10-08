@@ -506,6 +506,13 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
             )),
             ProtectionTargetKind::ChosenPlayer => Some(KeywordAction::ProtectionFromChosenPlayer),
+            // CR 702.16k: protection from a player is protection from each
+            // object that player controls. "That player" is the discourse
+            // player reference; reference resolution binds it to its
+            // antecedent and the runtime locks it as the grant resolves.
+            ProtectionTargetKind::ThatPlayer => Some(KeywordAction::ProtectionFromFilter(
+                ObjectFilter::default().controlled_by(PlayerFilter::IteratedPlayer),
+            )),
             ProtectionTargetKind::ChosenColor => Some(KeywordAction::ProtectionFromChosenColor),
             ProtectionTargetKind::ExiledCardTypes => {
                 let mut filter = ObjectFilter::default();

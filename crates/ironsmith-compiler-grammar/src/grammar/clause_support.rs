@@ -32,6 +32,9 @@ pub enum ProtectionTargetKind {
         counter_word_first: usize,
     },
     ChosenPlayer,
+    /// "protection from that player" (Eon Frolicker, Noble Heritage): the
+    /// player named earlier in the instruction, bound as it resolves.
+    ThatPlayer,
     Opponents,
     ChosenColor,
     /// "protection from each of the exiled card's card types" (Mirror
@@ -462,6 +465,9 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     }
     if tail == ["the", "chosen", "player"] {
         return ProtectionTargetKind::ChosenPlayer;
+    }
+    if tail == ["that", "player"] {
+        return ProtectionTargetKind::ThatPlayer;
     }
     if tail == ["the", "chosen", "color"]
         || tail == ["the", "last", "chosen", "color"]
