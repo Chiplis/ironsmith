@@ -1590,6 +1590,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_skip_extra_turns_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_skip_untap_steps_line),
+        single_static_ability_ast_rule!(parse_players_cast_spells_only_during_own_turns_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2566,6 +2567,34 @@ fn parse_players_cant_search_with_any_player_ignore_line(
 }
 
 mod single_line_readings;
+
+/// "Players can cast spells only during their own turns." (Dosan the Falling
+/// Leaf): a player who isn't the active player can't cast spells (CR 101.2,
+/// 505.6 timing restriction on every player).
+fn parse_players_cast_spells_only_during_own_turns_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&[
+            "players", "can", "cast", "spells", "only", "during", "their", "own", "turns",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::cast_spells(PlayerFilter::Excluding {
+            base: Box::new(PlayerFilter::Any),
+            excluded: Box::new(PlayerFilter::Active),
+        }),
+        "Players can cast spells only during their own turns".to_string(),
+    )))
+}
 
 /// "Players skip their untap steps." (Stasis), "Each player skips their untap
 /// step.", "Skip your untap step." (CR 502, 614.10).
