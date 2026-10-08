@@ -19,4 +19,9 @@ pub enum ThisSpellCastTiming {
     DuringCombatOnYourTurn,
     DuringYourTurn,
     DuringOpponentsTurn,
+    /// Appended. "You can't cast this spell during your first[, second, or
+    /// third] turns of the game": prohibited while the caster is the active
+    /// player and has taken at most this many turns, counting the current
+    /// one (CR 500.1, 500.7 extra turns count as turns taken).
+    NotDuringYourFirstTurns(u32),
 }

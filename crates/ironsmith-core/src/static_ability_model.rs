@@ -487,12 +487,6 @@ impl ThisSpellCastRestrictionKind {
     pub fn if_you_control_subtype_or_more(subtype: Subtype, count: u32) -> Self {
         Self::named(format!("if you control {count}+ {subtype}"))
     }
-
-    /// "You can't cast this spell during your first[, second, or third]
-    /// turns of the game."
-    pub fn not_during_your_first_turns(count: u32) -> Self {
-        Self::named(format!("not during your first {count} turns"))
-    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1897,6 +1897,10 @@ pub(crate) fn this_spell_cast_timing_allows(
         }
         ThisSpellCastTiming::DuringYourTurn => game.is_active_player(player),
         ThisSpellCastTiming::DuringOpponentsTurn => opponents_turn,
+        // Count the caster's own turns taken, including the current one.
+        ThisSpellCastTiming::NotDuringYourFirstTurns(count) => {
+            !(game.is_active_player(player) && game.turns_taken_by(player) <= count)
+        }
         ThisSpellCastTiming::DuringDeclareAttackersStep => {
             matches!(game.turn.phase, Phase::Combat)
                 && game.turn.step == Some(Step::DeclareAttackers)
@@ -2051,9 +2055,6 @@ pub(crate) fn this_spell_cast_condition_allows(
                 })
                 .count()
                 >= *count as usize
-        }
-        crate::static_abilities::ThisSpellCastCondition::NotDuringYourFirstTurns(count) => {
-            !(game.is_active_player(player) && game.turns_taken_by(player) <= *count)
         }
         crate::static_abilities::ThisSpellCastCondition::YouControlFewerCreaturesThanEachOpponent => {
             let your_creatures = game.creatures_controlled_by(player).len();

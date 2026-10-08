@@ -348,7 +348,9 @@ fn read_cant_cast_this_during_first_turns(
     }
     Ok(Some(vec![
         StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::not_during_your_first_turns(3),
+            crate::static_abilities::ThisSpellCastRestrictionKind::timing(
+                ironsmith_core::ThisSpellCastTiming::NotDuringYourFirstTurns(3),
+            ),
             "You can't cast this spell during your first, second, or third turns of the game.",
         )
         .into(),

@@ -958,13 +958,6 @@ impl StaticAbilityModelInterpreter {
                 super::ThisSpellCastRestrictionKind::if_you_control_fewer_creatures_than_each_opponent()
             }
             label => {
-                if let Some(count) = label
-                    .strip_prefix("not during your first ")
-                    .and_then(|rest| rest.strip_suffix(" turns"))
-                    .and_then(|count| count.parse::<u32>().ok())
-                {
-                    return super::ThisSpellCastRestrictionKind::not_during_your_first_turns(count);
-                }
                 if let Some(name) = label.strip_prefix("if no permanents named ") {
                     return super::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield(
                         name.to_string(),

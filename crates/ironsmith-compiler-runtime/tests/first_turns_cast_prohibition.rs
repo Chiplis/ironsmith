@@ -32,7 +32,13 @@ fn first_three_turns_prohibition_is_a_typed_cast_condition() {
         let kinds = restriction_kinds(name, text);
         assert_eq!(kinds.len(), 2, "{name}: one restriction per route");
         for kind in kinds {
-            assert_eq!(kind, ThisSpellCastRestrictionKind::not_during_your_first_turns(3), "{name}");
+            assert_eq!(
+                kind,
+                ThisSpellCastRestrictionKind::timing(
+                    ironsmith_core::ThisSpellCastTiming::NotDuringYourFirstTurns(3)
+                ),
+                "{name}"
+            );
         }
     }
 }
