@@ -49,6 +49,11 @@ enum CopyStatement {
     Gated,
     /// "Copy it, then you may cast the copy." — the cast came with it.
     ThenCast,
+    /// "Copy that card three times." — several copies of the one card
+    /// (CR 707.12), each cast by the plural cast statement that follows.
+    Times(CopyInstructionSurface, u32),
+    /// "Copy them." / "Copy those cards." — one copy of each exiled card.
+    Each,
 }
 
 enum Exiled {
@@ -77,6 +82,59 @@ fn is_reference_to(tag: &TagKey, exiled: &TagKey) -> bool {
         || tag.as_str() == CompilerReferenceTag::PriorExiledCard.as_str()
         || tag == exiled
         || crate::util::is_sentence_helper_tag(tag, "exiled")
+}
+
+/// "You may cast [any number of] the copies [without paying their mana
+/// costs]." — each copy may be cast in turn while the procedure resolves
+/// (CR 707.12, CR 608.2g).
+fn plural_cast_statement(sentence: &SentenceInput) -> Option<MayCastTaggedSpec> {
+    let words = crate::lexer::parser_token_word_refs(sentence.lowered());
+    let rest = words.strip_prefix(&["you", "may", "cast"][..])?;
+    let rest = rest
+        .strip_prefix(&["any", "number", "of"][..])
+        .unwrap_or(rest);
+    let rest = rest.strip_prefix(&["the", "copies"][..])?;
+    let without_paying_mana_cost = match rest {
+        [] => false,
+        ["without", "paying", "their", "mana", "costs" | "cost"] => true,
+        _ => return None,
+    };
+    Some(MayCastTaggedSpec {
+        tag: CompilerReferenceTag::It.bind().key.clone(),
+        alternative_cost: None,
+        player: PlayerAst::Implicit,
+        verb: crate::activation_and_restrictions::trigger_subject_filters::MayCastItVerb::Cast,
+        as_copy: true,
+        without_paying_mana_cost,
+        copy_instruction_surface: None,
+        predicate: None,
+        cost_reduction: None,
+    })
+}
+
+/// "Copy it N times." / "Copy that card N times." / "Copy them." /
+/// "Copy those cards." over the exiled card or cards.
+fn plural_copy_statement(sentence: &SentenceInput) -> Option<CopyStatement> {
+    let words = crate::lexer::parser_token_word_refs(sentence.lowered());
+    match words.as_slice() {
+        ["copy", "them"] | ["copy", "those", "cards"] | ["copy", "those", "exiled", "cards"] => {
+            Some(CopyStatement::Each)
+        }
+        ["copy", reference @ .., count, "times"] => {
+            let surface = match reference {
+                ["it"] => CopyInstructionSurface::SeparateIt,
+                ["that", "card"] => CopyInstructionSurface::SeparateThatCard,
+                _ => return None,
+            };
+            let count = crate::util::parse_number_word_u32(count)?;
+            (count >= 2).then_some(CopyStatement::Times(surface, count))
+        }
+        _ => None,
+    }
+}
+
+fn is_plural_copy(statement: &CopyStatement) -> bool {
+    matches!(statement, CopyStatement::Times(..) | CopyStatement::Each)
 }
 
 /// "You may cast the copy [without paying its mana cost]."
@@ -148,6 +206,9 @@ fn gated_copy(sentence: &SentenceInput, exiled: &TagKey) -> bool {
 
 /// The copy statement a sentence makes over the exiled card, if any.
 fn copy_statement(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyStatement> {
+    if let Some(plural) = plural_copy_statement(sentence) {
+        return Some(plural);
+    }
     if copy_then_cast(sentence).is_some() {
         return Some(CopyStatement::ThenCast);
     }
@@ -231,6 +292,9 @@ pub(super) fn open(
         if let Some(tag) = tag_card_exile(&mut exile, sentence) {
             let continues = match copy_statement(next, &tag) {
                 Some(CopyStatement::ThenCast) => true,
+                Some(statement) if is_plural_copy(&statement) => {
+                    following.is_some_and(|third| plural_cast_statement(third).is_some())
+                }
                 Some(_) => following.is_some_and(|third| cast_statement(third).is_some()),
                 None => false,
             };
@@ -325,8 +389,13 @@ pub(super) fn continue_with(
                 copy: Some(statement),
             };
         }
-        Exiled::Card { copy: Some(_) } => {
-            let Some(cast) = cast_statement(sentence) else {
+        Exiled::Card { copy: Some(statement) } => {
+            let cast = if is_plural_copy(statement) {
+                plural_cast_statement(sentence)
+            } else {
+                cast_statement(sentence)
+            };
+            let Some(cast) = cast else {
                 return Ok(false);
             };
             group.cast = Some(cast);
@@ -375,7 +444,7 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
     };
     match group.exiled {
         Exiled::Card { copy } => {
-            cast.tag = group.tag;
+            cast.tag = group.tag.clone();
             match copy {
                 Some(CopyStatement::Coordinated {
                     surface,
@@ -399,6 +468,26 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                         predicate: IfResultPredicate::Did,
                         effects: vec![build_may_cast_tagged_effect(&cast)],
                     }))
+                }
+                Some(CopyStatement::Times(surface, count)) => {
+                    cast.copy_instruction_surface = Some(surface);
+                    effects.push(EffectAst::ForEach(
+                        crate::cards::builders::ForEachEffectAst::RepeatEffects {
+                            count: crate::effect::Value::Fixed(count as i32),
+                            effects: vec![build_may_cast_tagged_effect(&cast)],
+                        },
+                    ));
+                }
+                Some(CopyStatement::Each) => {
+                    // Each exiled card is copied, and each copy may be cast
+                    // in turn; the iteration binds the current card as "it".
+                    cast.tag = CompilerReferenceTag::It.bind().key.clone();
+                    effects.push(EffectAst::ForEach(
+                        crate::cards::builders::ForEachEffectAst::ForEachTagged {
+                            tag: crate::tag::TagRef::of(group.tag.clone()),
+                            effects: vec![build_may_cast_tagged_effect(&cast)],
+                        },
+                    ));
                 }
                 None => effects.push(build_may_cast_tagged_effect(&cast)),
             }
