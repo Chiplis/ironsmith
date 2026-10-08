@@ -470,14 +470,16 @@ fn parse_draw_for_each_player_condition(
     });
     let predicate = match iterated_life_loss {
         Some(predicate) => predicate,
-        None => bind_loop_player_predicate(
-            parse_who_player_predicate_lexed(inner_tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing predicate in draw for-each clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?,
-        ),
+        None => {
+            // A player predicate this loop can't express ("who was dealt
+            // combat damage this turn") may still be a turn-history count
+            // ("draw a card for each player who ..."): leave it to the
+            // dynamic-count reading instead of failing the clause.
+            let Some(predicate) = parse_who_player_predicate_lexed(inner_tokens) else {
+                return Ok(None);
+            };
+            bind_loop_player_predicate(predicate)
+        }
     };
 
     let mut draw_effect = draw_effect;
