@@ -851,7 +851,15 @@ fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option
     let relation = parse_has_relation_clauses(tokens)?;
     if !surface::exact_any(
         relation.subject_clause,
-        &[&["it"], &["that", "object"], &["that", "spell"]],
+        // "If that creature has infect" (Burn the Impure): the demonstrative
+        // names the same referenced object as "it".
+        &[
+            &["it"],
+            &["that", "object"],
+            &["that", "spell"],
+            &["that", "creature"],
+            &["that", "permanent"],
+        ],
     ) {
         return None;
     }

@@ -72,6 +72,50 @@ const NEGATED_COPULAS: &[(&[&str], &str)] = &[
     (&["does", "not", "have"], "has"),
 ];
 
+/// Base verbs a "didn't" negation may deny, with the past tense the positive
+/// clause is written in.
+const DID_NOT_VERBS: &[(&str, &str)] = &[
+    ("lose", "lost"),
+    ("gain", "gained"),
+    ("cast", "cast"),
+    ("play", "played"),
+    ("attack", "attacked"),
+    ("block", "blocked"),
+    ("discard", "discarded"),
+    ("sacrifice", "sacrificed"),
+    ("die", "died"),
+];
+
+/// "you didn't lose life this turn" (Luminarch Ascension): the past-tense
+/// positive clause of a "didn't" negation over "you" or a short reference.
+fn did_not_positive<'a>(words: &[&'a str]) -> Option<Vec<&'a str>> {
+    let subject_len = match words {
+        ["you", ..] => 1,
+        ["it", ..] => 1,
+        ["this" | "that", noun, ..] if !is_negation_or_copula(noun) => 2,
+        _ => return None,
+    };
+    let (subject, after) = words.split_at(subject_len);
+    let (verb, complement) = match after {
+        ["didnt", verb, complement @ ..] | ["did", "not", verb, complement @ ..] => {
+            (*verb, complement)
+        }
+        _ => return None,
+    };
+    let past = DID_NOT_VERBS
+        .iter()
+        .find(|(base, _)| *base == verb)
+        .map(|(_, past)| *past)?;
+    Some(
+        subject
+            .iter()
+            .copied()
+            .chain(std::iter::once(past))
+            .chain(complement.iter().copied())
+            .collect(),
+    )
+}
+
 /// Words that open a relative or prepositional qualifier: a subject holding
 /// one is a noun phrase whose negation may belong to the qualifier.
 const QUALIFIER_WORDS: &[&str] = &["that", "which", "who", "with", "without", "you", "of"];
@@ -121,6 +165,7 @@ fn negated_copula(words: &[&str]) -> Option<PredicateAst> {
             .into_iter()
             .chain(rest.iter().copied())
             .collect(),
+        _ if did_not_positive(words).is_some() => did_not_positive(words)?,
         _ => {
             let subject_len = negated_copula_subject_len(words)?;
             let (subject, after) = words.split_at(subject_len);
@@ -169,6 +214,11 @@ const SHAPES: &[Shape] = &[
     graveyard_size_threshold,
     mana_values_among_your_graveyard,
     cards_exiled_with_source,
+    you_have_less_life_than_opponent,
+    you_committed_crime_this_turn,
+    you_played_land_this_turn,
+    you_activated_loyalty_ability_this_turn,
+    you_gained_and_lost_life_this_turn,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -429,6 +479,17 @@ fn you_discarded_this_turn(words: &[&str]) -> Option<PredicateAst> {
         ["youve" | "you", "discarded", "a", "card", "this", "turn"] => 1,
         ["youve" | "you", "discarded", count, "or", "more", "cards", "this", "turn"] => {
             number(count)?
+        }
+        // "a player discarded a card this turn" (The Raven Man): the turn's
+        // discards summed over every player.
+        ["a", "player", "discarded", "a", "card", "this", "turn"] => {
+            return Some(at_least(Value::CardsDiscardedThisTurn(PlayerFilter::Any), 1));
+        }
+        ["an", "opponent", "discarded", "a", "card", "this", "turn"] => {
+            return Some(at_least(
+                Value::CardsDiscardedThisTurn(PlayerFilter::Opponent),
+                1,
+            ));
         }
         _ => return None,
     };
@@ -749,4 +810,61 @@ fn cards_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
         )
         .in_zone(Zone::Exile);
     Some(at_least(Value::Count(filter), count))
+}
+
+/// "you have less life than an opponent" (Timely Reinforcements): some
+/// opponent has more life than you.
+fn you_have_less_life_than_opponent(words: &[&str]) -> Option<PredicateAst> {
+    let ["you", "have", "less", "life", "than", "an", "opponent"] = words else {
+        return None;
+    };
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou {
+        player: PlayerAst::Opponent,
+    }))
+}
+
+/// "you've committed a crime this turn" (Servant of the Stinger, Oko, the
+/// Ringleader): you targeted an opponent, or something they control, this
+/// turn (CR 700.13).
+fn you_committed_crime_this_turn(words: &[&str]) -> Option<PredicateAst> {
+    let ["youve" | "you", "committed", "a", "crime", "this", "turn"] = words else {
+        return None;
+    };
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerCommittedCrimeThisTurn {
+        player: PlayerAst::You,
+    }))
+}
+
+/// "you played a land this turn" (River of Tears).
+fn you_played_land_this_turn(words: &[&str]) -> Option<PredicateAst> {
+    let ["youve" | "you", "played", "a", "land", "this", "turn"] = words else {
+        return None;
+    };
+    Some(PredicateAst::TurnHistory(
+        TurnHistoryPredicateAst::PlayerPlayedLandThisTurn(PlayerAst::You),
+    ))
+}
+
+/// "you've activated a loyalty ability this turn" (Kiora of Salt and Sand).
+fn you_activated_loyalty_ability_this_turn(words: &[&str]) -> Option<PredicateAst> {
+    let ["youve" | "you", "activated", "a", "loyalty", "ability", "this", "turn"] = words else {
+        return None;
+    };
+    Some(PredicateAst::TurnHistory(
+        TurnHistoryPredicateAst::PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst::You),
+    ))
+}
+
+/// "you gained and lost life this turn" (Lunar Convocation): both turn
+/// facts, each read as its own clause.
+fn you_gained_and_lost_life_this_turn(words: &[&str]) -> Option<PredicateAst> {
+    let ["you", "gained", "and", "lost", "life", "this", "turn"] = words else {
+        return None;
+    };
+    let gained = crate::lexer::synthetic_word_tokens(["you", "gained", "life", "this", "turn"]);
+    let lost = crate::lexer::synthetic_word_tokens(["you", "lost", "life", "this", "turn"]);
+    Some(PredicateAst::And(
+        Box::new(parse_predicate(&gained).ok()?),
+        Box::new(parse_predicate(&lost).ok()?),
+    ))
 }
