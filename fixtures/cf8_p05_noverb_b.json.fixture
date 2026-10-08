@@ -313,5 +313,33 @@
     "oracle_text": "Landfall — Whenever a land you control enters, manifest dread if this is the first time this ability has resolved this turn. Otherwise, you may turn a permanent you control face up.",
     "power": "3",
     "toughness": "3"
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Misleading Signpost",
+    "oracle_id": "eaffdf95-8e20-408d-99fa-3adc9e19523d",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact",
+    "oracle_text": "Flash\nWhen this artifact enters during the declare attackers step, you may reselect which player or permanent target attacking creature is attacking.\n{T}: Add {U}."
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Portal Mage",
+    "oracle_id": "4d19ea6d-cabe-4a25-a911-dd744517dd73",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, you may reselect which player or permanent target attacking creature is attacking.",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Windshaper Planetar",
+    "oracle_id": "c47050c2-9b46-427e-85d6-058fd6a61e67",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flash\nFlying\nWhen this creature enters during the declare attackers step, for each attacking creature, you may reselect which player or permanent that creature is attacking.",
+    "power": "4",
+    "toughness": "4"
   }
 ]
