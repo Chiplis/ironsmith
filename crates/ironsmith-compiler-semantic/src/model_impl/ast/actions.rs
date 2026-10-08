@@ -1388,6 +1388,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_tapped,
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only,
                 battlefield_face_down,
                 battlefield_transformed,
                 attached_to,
@@ -1417,6 +1418,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "battlefield_attack_target_player_or_planeswalker_controlled_by",
                     battlefield_attack_target_player_or_planeswalker_controlled_by,
                 )
+                .field("battlefield_attack_player_only", battlefield_attack_player_only)
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("battlefield_transformed", battlefield_transformed)
                 .field("attached_to", attached_to)

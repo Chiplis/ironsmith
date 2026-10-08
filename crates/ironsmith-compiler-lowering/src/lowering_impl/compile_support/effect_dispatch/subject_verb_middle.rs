@@ -2290,6 +2290,7 @@ pub(super) fn compile_subject_verb_middle(
             battlefield_tapped,
             battlefield_attacking,
             battlefield_attack_target_player_or_planeswalker_controlled_by,
+            battlefield_attack_player_only,
             battlefield_face_down,
             battlefield_transformed,
             attached_to,
@@ -2480,7 +2481,12 @@ pub(super) fn compile_subject_verb_middle(
                         *attack_player,
                         &current_reference_env(ctx),
                     )?;
-                    move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                    if *battlefield_attack_player_only {
+                        move_effect.attacking_player_only(attack_player_filter)
+                    } else {
+                        move_effect
+                            .attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                    }
                 } else {
                     move_effect
                 };
@@ -2643,7 +2649,11 @@ pub(super) fn compile_subject_verb_middle(
             {
                 let attack_player_filter =
                     resolve_non_target_player_filter(*attack_player, &current_reference_env(ctx))?;
-                move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                if *battlefield_attack_player_only {
+                    move_effect.attacking_player_only(attack_player_filter)
+                } else {
+                    move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                }
             } else {
                 move_effect
             };

@@ -3190,6 +3190,9 @@ pub struct MoveToZoneEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum MoveToZoneAttackTargetMode {
     PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+    /// "tapped and attacking that opponent" (Kaalia of the Vast): the named
+    /// player itself (CR 508.4). Appended to preserve serialized ordinals.
+    Player(PlayerFilter),
 }
 
 impl MoveToZoneEffect {
@@ -3326,6 +3329,10 @@ impl MoveToZoneEffect {
         self.attack_target_mode(
             MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player),
         )
+    }
+
+    pub fn attacking_player_only(self, player: PlayerFilter) -> Self {
+        self.attack_target_mode(MoveToZoneAttackTargetMode::Player(player))
     }
 
     pub fn face_down(mut self) -> Self {
