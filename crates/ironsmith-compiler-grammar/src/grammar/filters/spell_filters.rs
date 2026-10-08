@@ -175,6 +175,19 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
         return Ok(filter);
     }
+    // "<noun> with the most votes or tied for most votes" (CR 701.38, will of
+    // the council / secret votes): the vote-result suffix selects the vote
+    // winners recorded by the preceding vote. The head is an ordinary filter.
+    {
+        let (head, vote_winners_only) = trim_vote_winner_suffix(tokens);
+        if vote_winners_only && !head.is_empty() {
+            let filter = parse_object_filter_with_grammar_entrypoint(&head, other)?;
+            return Ok(filter.match_tagged(
+                crate::tag::CompilerReferenceTag::VoteWinners.bind(),
+                TaggedOpbjectRelation::IsTaggedObject,
+            ));
+        }
+    }
     // A bare `permanent or suspended card` has no relational keyword after
     // target extraction, but its two arms have different zones and predicates.
     // Let the complete union owner decide, including rejecting unknown tails;
