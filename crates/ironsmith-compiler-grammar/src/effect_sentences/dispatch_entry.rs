@@ -3980,6 +3980,9 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(Some(effect));
     }

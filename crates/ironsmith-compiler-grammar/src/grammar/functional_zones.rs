@@ -184,6 +184,10 @@ const TRIGGER_ZONE_OR_BATTLEFIELD_HINT_PHRASES: &[&[&str]] = &[
 const RETURN_SELF_FROM_GRAVEYARD_PHRASES: &[&[&str]] = &[
     &["return", "this", "from", "your", "graveyard"],
     &["return", "this", "card", "from", "your", "graveyard"],
+    // Casting the card moves it out of the graveyard too (CR 113.6k).
+    &["cast", "this", "card", "from", "your", "graveyard"],
+    &["cast", "this", "creature", "from", "your", "graveyard"],
+    &["cast", "this", "permanent", "from", "your", "graveyard"],
 ];
 const DISCARD_THIS_CARD_PHRASE: &[&str] = &["discard", "this", "card"];
 

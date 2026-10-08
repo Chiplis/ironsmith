@@ -599,6 +599,9 @@ fn parse_effect_chain_lexed_inner(
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
         return Ok(vec![effect]);
     }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(vec![effect]);
     }
@@ -1415,6 +1418,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
         return Ok(vec![effect]);
     }
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
         return Ok(vec![effect]);
     }
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {

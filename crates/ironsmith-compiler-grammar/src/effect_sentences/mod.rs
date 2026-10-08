@@ -10,6 +10,7 @@ mod temporary_prevention_binding_tests;
 pub(crate) mod life_unit_programs;
 mod temporary_attack_requirement;
 mod attacked_turn_permission;
+mod graveyard_self_cast;
 mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
 pub(crate) mod turn_scoped_enter_replacement;
