@@ -47,6 +47,8 @@ pub struct ReturnDestinationShape {
     pub has_unparsed_timing_words: bool,
     pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
     pub excluded_subtypes: Vec<Subtype>,
+    /// "except for Giants, Wizards, and lands": excluded card types.
+    pub excluded_card_types: Vec<crate::types::CardType>,
     /// Counters the returned object enters with, as authored after `with`.
     pub entry_counter_tokens: Option<Vec<OwnedLexToken>>,
 }
@@ -303,6 +305,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
             (without_attachment, None)
         };
     let mut excluded_subtypes = Vec::new();
+    let mut excluded_card_types = Vec::new();
     for token in exception_tokens.unwrap_or_default() {
         if token_is(token, "and") || token_is(token, "or") {
             continue;
@@ -310,15 +313,24 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         let Some(word) = token.as_word() else {
             continue;
         };
-        let subtype = parse_subtype_flexible(word)?;
-        if excluded_subtypes
-            .iter()
-            .all(|existing| existing != &subtype)
-        {
-            excluded_subtypes.push(subtype);
+        if let Some(subtype) = parse_subtype_flexible(word) {
+            if excluded_subtypes
+                .iter()
+                .all(|existing| existing != &subtype)
+            {
+                excluded_subtypes.push(subtype);
+            }
+            continue;
+        }
+        let card_type = crate::util::parse_card_type(word).or_else(|| {
+            crate::word_primitives::strip_word_suffix(word, "s")
+                .and_then(crate::util::parse_card_type)
+        })?;
+        if !excluded_card_types.contains(&card_type) {
+            excluded_card_types.push(card_type);
         }
     }
-    if exception_tokens.is_some() && excluded_subtypes.is_empty() {
+    if exception_tokens.is_some() && excluded_subtypes.is_empty() && excluded_card_types.is_empty() {
         return None;
     }
     let (_, zone) = first_zone(destination_head)?;
@@ -417,6 +429,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         has_unparsed_timing_words,
         attached_to_tokens,
         excluded_subtypes,
+        excluded_card_types,
         entry_counter_tokens,
     })
 }

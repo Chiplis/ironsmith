@@ -486,6 +486,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         filter.excluded_subtypes.push(*subtype);
                     }
                 }
+                for card_type in &destination.excluded_card_types {
+                    if !filter.excluded_card_types.contains(card_type) {
+                        filter.excluded_card_types.push(*card_type);
+                    }
+                }
                 return Ok(wrap_return_with_delayed_timing(
                     EffectAst::subject_verb_return_all_to_hand_of_chosen_color(filter),
                     delayed_timing,
@@ -530,6 +535,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     .all(|existing| existing != subtype)
                 {
                     filter.excluded_subtypes.push(*subtype);
+                }
+            }
+            for card_type in &destination.excluded_card_types {
+                if !filter.excluded_card_types.contains(card_type) {
+                    filter.excluded_card_types.push(*card_type);
                 }
             }
             if let Some(excluded) = chosen_this_way_excluded {
@@ -591,7 +601,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 .as_ref()
                 .map(|choice| choice.object_tokens.clone())
                 .unwrap_or(target_tokens);
-            if !destination.excluded_subtypes.is_empty() {
+            if !destination.excluded_subtypes.is_empty()
+                || !destination.excluded_card_types.is_empty()
+            {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception on non-return-all clause (clause: '{clause_text}')"
                 )));
