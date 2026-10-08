@@ -3544,6 +3544,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SolveCase
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::GrantLoyaltyActivationAllowance { .. }
         | EffectAst::PayToEndThisEffect { .. }
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)

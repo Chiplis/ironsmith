@@ -45,6 +45,7 @@ mod grant_play_tagged;
 mod grant_tagged_spell_free_cast_until_end_of_turn;
 mod grant_tagged_spell_life_cost_by_mana_value;
 mod lose_the_game;
+pub(crate) mod loyalty_activation_allowance;
 mod may_cast_madness;
 mod may_cast_matching_spell;
 mod may_cast_miracle;
@@ -114,6 +115,9 @@ pub use grant_play_tagged::{GrantPlayTaggedDuration, GrantPlayTaggedEffect};
 pub use grant_tagged_spell_free_cast_until_end_of_turn::GrantTaggedSpellFreeCastUntilEndOfTurnEffect;
 pub use grant_tagged_spell_life_cost_by_mana_value::GrantTaggedSpellLifeCostByManaValueEffect;
 pub use lose_the_game::LoseTheGameEffect;
+pub use loyalty_activation_allowance::{
+    GrantLoyaltyActivationAllowanceEffect, LoyaltyActivationAllowance, LoyaltyActivationScope,
+};
 pub use may_cast_madness::MayCastForMadnessCostEffect;
 pub use may_cast_matching_spell::MayCastMatchingSpellWithoutPayingManaCostEffect;
 pub use may_cast_miracle::MayCastForMiracleCostEffect;

@@ -2011,6 +2011,34 @@
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }
+    if let Some(allowance) =
+        effect.downcast_ref::<crate::effects::GrantLoyaltyActivationAllowanceEffect>()
+    {
+        let planeswalkers = match &allowance.scope {
+            crate::effects::LoyaltyActivationScope::Source => "this permanent".to_string(),
+            crate::effects::LoyaltyActivationScope::EachControlledPlaneswalkerNow => {
+                "each planeswalker you control".to_string()
+            }
+            crate::effects::LoyaltyActivationScope::ControlledPlaneswalkers { subtype } => {
+                match subtype {
+                    Some(subtype) => format!("{subtype} planeswalkers you control"),
+                    None => "planeswalkers you control".to_string(),
+                }
+            }
+        };
+        return match (&allowance.scope, allowance.allowance) {
+            (
+                crate::effects::LoyaltyActivationScope::EachControlledPlaneswalkerNow,
+                crate::effects::LoyaltyActivationAllowance::ExtraActivation,
+            ) => "For each planeswalker you control, you may activate one of its loyalty abilities once this turn as though none of its loyalty abilities have been activated this turn".to_string(),
+            (_, crate::effects::LoyaltyActivationAllowance::ExtraActivation) => format!(
+                "You may activate the loyalty abilities of {planeswalkers} twice this turn rather than only once"
+            ),
+            (_, crate::effects::LoyaltyActivationAllowance::InstantSpeed) => format!(
+                "Until end of turn, you may activate loyalty abilities of {planeswalkers} on any player's turn any time you could cast an instant"
+            ),
+        };
+    }
     if let Some(plotted) = effect.downcast_ref::<crate::effects::BecomePlottedEffect>() {
         // Plotting always follows the exile that moved the card, so a tagged
         // card is the just-exiled one and oracle refers back with "it".

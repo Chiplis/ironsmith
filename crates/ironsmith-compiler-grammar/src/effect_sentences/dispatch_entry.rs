@@ -3977,6 +3977,9 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     // A relative player subject remains the actor of its simple action.
     // Select the current leader at resolution instead of discarding the
     // qualifier and falling back to the ability controller.

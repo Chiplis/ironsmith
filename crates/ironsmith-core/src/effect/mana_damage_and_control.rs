@@ -5487,3 +5487,44 @@ pub struct RegisterDamageAdditionEffect {
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
 }
+
+/// What a loyalty-activation allowance relaxes this turn (CR 606.3 lets each
+/// permanent activate one loyalty ability per turn, at sorcery speed).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationAllowance {
+    /// One more loyalty activation this turn ("twice this turn rather than
+    /// only once", "once this turn as though none ... have been activated").
+    ExtraActivation,
+    /// Loyalty abilities may be activated any time the player could cast an
+    /// instant, on any player's turn.
+    InstantSpeed,
+}
+
+/// Which permanents a loyalty-activation allowance covers.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationScope {
+    /// The resolving ability's source ("loyalty abilities of Kaito").
+    Source,
+    /// Each planeswalker the resolving player controls as the effect
+    /// resolves ("For each planeswalker you control, ...").
+    EachControlledPlaneswalkerNow,
+    /// Planeswalkers the resolving player controls at any time this turn,
+    /// optionally of one subtype ("Jace planeswalkers you control").
+    ControlledPlaneswalkers { subtype: Option<Subtype> },
+}
+
+/// Relax the loyalty-ability activation rule for the rest of this turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct GrantLoyaltyActivationAllowanceEffect {
+    pub scope: LoyaltyActivationScope,
+    pub allowance: LoyaltyActivationAllowance,
+}
+
+impl GrantLoyaltyActivationAllowanceEffect {
+    pub fn new(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> Self {
+        Self { scope, allowance }
+    }
+}

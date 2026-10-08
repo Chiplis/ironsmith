@@ -63,6 +63,11 @@ pub enum EffectAst {
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."
     NoteActivationManaType,
+    /// Relax the loyalty-ability activation rule this turn (CR 606.3).
+    GrantLoyaltyActivationAllowance {
+        scope: ironsmith_core::LoyaltyActivationScope,
+        allowance: ironsmith_core::LoyaltyActivationAllowance,
+    },
     /// "You may pay [cost] to end this effect." (Licids): offers the
     /// resolving ability's controller a special action (CR 116.2c) that ends
     /// the continuous effects the ability's earlier instructions created.

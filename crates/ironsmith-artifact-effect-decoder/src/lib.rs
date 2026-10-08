@@ -353,6 +353,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ScaleXValueEffect" => Some(EffectFamily::StackEvent),
         "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
         "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
+        "GrantLoyaltyActivationAllowanceEffect" => Some(EffectFamily::Player),
         "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
         "SaddleCostEffect" => Some(EffectFamily::Permanent),
         "AddManaOfNotedTypeEffect" => Some(EffectFamily::Resources),

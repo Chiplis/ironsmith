@@ -1919,6 +1919,11 @@ where
         }
         return Ok(Effect::new(goad));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::GrantLoyaltyActivationAllowanceEffect>(&effect)
+    {
+        return Ok(Effect::new(payload.clone()));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomePlottedEffect>(&effect) {
         return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(
             payload.target.clone(),

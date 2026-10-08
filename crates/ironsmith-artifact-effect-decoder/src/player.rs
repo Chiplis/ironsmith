@@ -154,6 +154,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RevealChosenSubtypeEffect" => {
             decode_as::<ironsmith_core::RevealChosenSubtypeEffect>(payload).map(Some)
         }
+        "GrantLoyaltyActivationAllowanceEffect" => {
+            decode_as::<ironsmith_core::GrantLoyaltyActivationAllowanceEffect>(payload).map(Some)
+        }
         "GrantEndThisEffectPaymentEffect" => {
             decode_as::<ironsmith_core::GrantEndThisEffectPaymentEffect>(payload).map(Some)
         }
@@ -403,6 +406,10 @@ pub(super) fn map_card_ids(
         }
         "RevealChosenSubtypeEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RevealChosenSubtypeEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantLoyaltyActivationAllowanceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantLoyaltyActivationAllowanceEffect,
         >(payload, context)
         .map(Some),
         "GrantEndThisEffectPaymentEffect" => super::card_graph::map_payload_as::<
