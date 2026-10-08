@@ -425,12 +425,47 @@ fn parse_prevent_next_damage_lexed<'a>(
     })
 }
 
+/// "Prevent the next N damage that a source of your choice would deal to
+/// <recipient> this turn." (Refraction Trap): the active-voice spelling of
+/// the chosen-source finite shield (CR 615.7, 609.7a).
+fn parse_prevent_next_damage_by_chosen_source_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventNextDamageShape<'a>> {
+    primitives::kw("prevent").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("next").parse_next(input)?;
+    let amount_tokens = any.void().take().parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::phrase(&["damage", "that"]).parse_next(input)?;
+    source_of_your_choice.parse_next(input)?;
+    primitives::phrase(&["would", "deal", "to"]).parse_next(input)?;
+    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    let protects_you_and_permanents_you_control = primitives::parse_all(
+        target_tokens,
+        (you_and_permanents, winnow::combinator::eof).map(|(_, _)| ()),
+        "prevent-next combined target",
+    )
+    .is_ok();
+    Ok(PreventNextDamageShape {
+        amount_tokens,
+        target_tokens,
+        source_of_your_choice: true,
+        protects_you_and_permanents_you_control,
+        combat_only,
+    })
+}
+
 pub fn parse_prevent_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextDamageShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
-        parse_prevent_next_damage_lexed,
+        alt((
+            parse_prevent_next_damage_lexed,
+            parse_prevent_next_damage_by_chosen_source_lexed,
+        )),
         "prevent next damage",
     )
 }
