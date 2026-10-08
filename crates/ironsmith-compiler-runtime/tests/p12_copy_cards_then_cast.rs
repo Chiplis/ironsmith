@@ -7,6 +7,7 @@ use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 
 const MNEMONIC_DELUGE: &str = "Mana cost: {6}{U}{U}{U}\nType: Sorcery\nExile target instant or sorcery card from a graveyard. Copy that card three times. You may cast the copies without paying their mana costs. Exile Mnemonic Deluge.";
+const CHANDRA_PYROMASTER: &str = "Mana cost: {2}{R}{R}\nType: Legendary Planeswalker — Chandra\nLoyalty: 4\n+1: Chandra deals 1 damage to target player or planeswalker and 1 damage to up to one target creature that player or that planeswalker's controller controls. That creature can't block this turn.\n0: Exile the top card of your library. You may play it this turn.\n−7: Exile the top ten cards of your library. Choose an instant or sorcery card exiled this way and copy it three times. You may cast the copies without paying their mana costs.";
 const TALE_OF_TAMIYO: &str = "Mana cost: {2}{U}\nType: Legendary Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after IV.)\nI, II, III — Mill two cards. If two cards that share a card type were milled this way, draw a card and repeat this process.\nIV — Exile any number of target instant, sorcery, and/or Tamiyo planeswalker cards from your graveyard. Copy them. You may cast any number of the copies.";
 
 fn definitions(name: &str, text: &str) -> [CardDefinition; 2] {
@@ -46,5 +47,15 @@ fn tale_of_tamiyo_copies_each_exiled_card() {
         assert!(debug.contains("ForEachTagged"), "{debug}");
         assert!(debug.contains("as_copy: true"), "{debug}");
         assert!(!debug.contains("CopySpellEffect"), "{debug}");
+    }
+}
+
+#[test]
+fn chandra_ultimate_casts_three_copies_of_the_chosen_exiled_card() {
+    for definition in definitions("Chandra, Pyromaster", CHANDRA_PYROMASTER) {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("ChooseObjects") || debug.contains("ChooseTagged"), "{debug}");
+        assert!(debug.contains("Fixed(3)"), "{debug}");
+        assert!(debug.contains("as_copy: true"), "{debug}");
     }
 }

@@ -32,6 +32,7 @@ use crate::grammar::effects::{CopyCardReferenceShape, parse_copy_card_reference_
 use crate::tag::{CompilerReferenceTag, TagKey};
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::util::helper_tag_for_tokens;
+use crate::lexer::OwnedLexToken;
 use crate::zone::Zone;
 use ironsmith_core::effect::CopyInstructionSurface;
 
@@ -61,7 +62,7 @@ enum Exiled {
     Card { copy: Option<CopyStatement> },
     /// Several cards exiled at random; one chosen from among them is copied.
     Collection {
-        chosen: Option<(ObjectFilter, TagKey)>,
+        chosen: Option<(ObjectFilter, TagKey, u32)>,
     },
 }
 
@@ -218,16 +219,49 @@ fn copy_statement(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyState
     separate_copy(sentence, exiled).map(CopyStatement::Separate)
 }
 
+/// "Choose an instant or sorcery card exiled this way and copy it three
+/// times." (Chandra, Pyromaster): the chosen card's filter tokens and the
+/// number of copies.
+fn choose_exiled_this_way_and_copy(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], u32)> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let exiled = words
+        .windows(6)
+        .position(|window| window == ["exiled", "this", "way", "and", "copy", "it"])?;
+    if words.first() != Some(&"choose") {
+        return None;
+    }
+    let times = match &words[exiled + 6..] {
+        [] => 1,
+        [count, "times"] => crate::util::parse_number_word_u32(count).filter(|count| *count >= 2)?,
+        _ => return None,
+    };
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let span = view.token_span_for_words(1, exiled)?;
+    Some((&tokens[span], times))
+}
+
 /// "Choose a noncreature, nonland card from among them and copy it."
-fn choose_and_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<(ObjectFilter, TagKey)> {
+fn choose_and_copy(
+    sentence: &SentenceInput,
+    exiled: &TagKey,
+) -> Option<(ObjectFilter, TagKey, u32)> {
     let tokens = sentence.lowered();
     if !contains_word_phrase(tokens, &["and", "copy", "it"]) {
         return None;
     }
-    let shape =
-        crate::grammar::effects::control_copy_attach_shapes::parse_from_among_them_shape(tokens)?;
-    let filter_tokens =
-        crate::util::strip_leading_token_words_any(shape.filter_tokens, &["choose"]);
+    let (filter_tokens, times) =
+        if let Some((filter_tokens, times)) = choose_exiled_this_way_and_copy(tokens) {
+            (filter_tokens, times)
+        } else {
+            let shape =
+                crate::grammar::effects::control_copy_attach_shapes::parse_from_among_them_shape(
+                    tokens,
+                )?;
+            (
+                crate::util::strip_leading_token_words_any(shape.filter_tokens, &["choose"]),
+                1,
+            )
+        };
     let mut filter = super::looked_cards_family::parse_looked_card_choice_filter(filter_tokens)?;
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -237,7 +271,19 @@ fn choose_and_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<(ObjectF
     Some((
         filter,
         helper_tag_for_tokens(tokens, "chosen_exiled").into(),
+        times,
     ))
+}
+
+/// The free cast that follows a chosen exiled card's copies: singular for one
+/// copy, plural for several.
+fn chosen_copy_cast(sentence: &SentenceInput, times: u32) -> Option<MayCastTaggedSpec> {
+    let cast = if times > 1 {
+        plural_cast_statement(sentence)
+    } else {
+        cast_statement(sentence)
+    };
+    cast.filter(|cast| cast.without_paying_mana_cost)
 }
 
 /// Tag the exile of one card from a graveyard, minting a tag when the
@@ -354,10 +400,8 @@ pub(super) fn open(
     let mut collection = effects;
     let tag = helper_tag_for_tokens(sentence.lowered(), "exiled");
     if tag_first_exile_in_effects(&mut collection, &tag)
-        && choose_and_copy(next, &tag).is_some()
-        && following.is_some_and(|third| {
-            cast_statement(third).is_some_and(|cast| cast.without_paying_mana_cost)
-        })
+        && let Some((_, _, times)) = choose_and_copy(next, &tag)
+        && following.is_some_and(|third| chosen_copy_cast(third, times).is_some())
     {
         return Ok(Some(group(
             collection,
@@ -408,9 +452,10 @@ pub(super) fn continue_with(
                 chosen: Some(chosen),
             };
         }
-        Exiled::Collection { chosen: Some(_) } => {
-            let Some(cast) = cast_statement(sentence).filter(|cast| cast.without_paying_mana_cost)
-            else {
+        Exiled::Collection {
+            chosen: Some((_, _, times)),
+        } => {
+            let Some(cast) = chosen_copy_cast(sentence, *times) else {
                 return Ok(false);
             };
             group.cast = Some(cast);
@@ -493,7 +538,7 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
             }
         }
         Exiled::Collection { chosen } => {
-            let Some((filter, chosen_tag)) = chosen else {
+            let Some((filter, chosen_tag, times)) = chosen else {
                 return effects;
             };
             effects.push(EffectAst::ObjectChoices(
@@ -505,7 +550,7 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                     zone: Zone::Exile,
                 },
             ));
-            effects.push(EffectAst::Permissions(PermissionEffectAst::May {
+            let may_cast = EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![EffectAst::subject_verb_cast_tagged(
                     crate::tag::TagRef::of(chosen_tag),
                     cast.player,
@@ -514,7 +559,16 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                     true,
                     cast.cost_reduction,
                 )],
-            }));
+            });
+            effects.push(if times > 1 {
+                // "copy it three times. You may cast the copies" (CR 707.12).
+                EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::RepeatEffects {
+                    count: crate::effect::Value::Fixed(times as i32),
+                    effects: vec![may_cast],
+                })
+            } else {
+                may_cast
+            });
         }
     }
     effects
