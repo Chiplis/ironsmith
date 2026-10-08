@@ -1546,6 +1546,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
             segments = sibling_segments;
         }
     }
+    segments = expand_bare_tap_state_verb_shared_object_lexed(segments);
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     segments = merge_for_each_counter_group_segments_lexed(segments);
@@ -2172,6 +2173,40 @@ fn parse_effect_chain_inner_lexed_unstacked(
         return Ok(vec![EffectAst::Coordination(coordination)]);
     }
     Ok(effects)
+}
+
+/// "Untap and goad that creature" (Besmirch): a bare tap-state verb shares
+/// the object of the following coordinated action. Materialize the shared
+/// operand on the bare arm ("untap that creature") so each arm owns the same
+/// antecedent reference instead of an untargeted untap.
+fn expand_bare_tap_state_verb_shared_object_lexed(
+    mut segments: Vec<Vec<OwnedLexToken>>,
+) -> Vec<Vec<OwnedLexToken>> {
+    for idx in 0..segments.len().saturating_sub(1) {
+        let [verb] = segments[idx].as_slice() else {
+            continue;
+        };
+        if !verb.is_any_word(&["tap", "untap"]) {
+            continue;
+        }
+        let next = &segments[idx + 1];
+        if !next.first().is_some_and(|token| token.as_word().is_some())
+            || !matches!(find_verb_lexed(next), Some((_, 0)))
+        {
+            continue;
+        }
+        let object = &next[1..];
+        if !object
+            .first()
+            .is_some_and(|token| token.is_any_word(&["that", "it", "them", "those", "target"]))
+        {
+            continue;
+        }
+        let mut expanded = segments[idx].clone();
+        expanded.extend(object.iter().cloned());
+        segments[idx] = expanded;
+    }
+    segments
 }
 
 pub(super) fn parse_inline_looked_card_partition_chain(
