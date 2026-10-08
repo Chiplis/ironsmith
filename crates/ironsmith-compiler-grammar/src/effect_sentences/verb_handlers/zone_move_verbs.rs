@@ -664,6 +664,15 @@ pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
         return Ok(None);
     };
     let words = crate::lexer::token_word_refs(tokens);
+    // "that player discards cards equal to the damage" (Jagged Poppet): the
+    // amount of the triggering damage event. Trigger compatibility is
+    // validated where event-derived amounts are lowered.
+    if matches!(
+        words.as_slice(),
+        ["equal", "to", "the" | "that", "damage"]
+    ) {
+        return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
+    }
     if crate::word_primitives::sequence_occurs(&words, &["differently", "named"])
         && let Some(value) = parse_equal_to_number_of_filter_value(tokens)
     {

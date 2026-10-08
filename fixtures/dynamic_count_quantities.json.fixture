@@ -1,0 +1,29 @@
+[
+ {
+  "name": "Lifeblood Hydra",
+  "oracle_id": "b14d05c0-fe10-4079-a90e-0aea1a8fd375",
+  "mana_cost": "{X}{G}{G}{G}",
+  "type_line": "Creature — Hydra",
+  "oracle_text": "Trample\nThis creature enters with X +1/+1 counters on it.\nWhen this creature dies, you gain life and draw cards equal to its power.",
+  "power": "0",
+  "toughness": "0"
+ },
+ {
+  "name": "Blim, Comedic Genius",
+  "oracle_id": "c7cf9574-e2cf-4137-a224-73f76c5d11d7",
+  "mana_cost": "{2}{B}{R}",
+  "type_line": "Legendary Creature — Imp",
+  "oracle_text": "Flying\nWhenever Blim deals combat damage to a player, that player gains control of target permanent you control. Then each player loses life and discards cards equal to the number of permanents they control but don't own.",
+  "power": "4",
+  "toughness": "3"
+ },
+ {
+  "name": "Jagged Poppet",
+  "oracle_id": "4beec1a6-a9c6-471f-b6fa-c754a42ad227",
+  "mana_cost": "{1}{B}{R}",
+  "type_line": "Creature — Ogre Warrior",
+  "oracle_text": "Whenever this creature is dealt damage, discard that many cards.\nHellbent — Whenever this creature deals combat damage to a player, if you have no cards in hand, that player discards cards equal to the damage.",
+  "power": "3",
+  "toughness": "4"
+ }
+]

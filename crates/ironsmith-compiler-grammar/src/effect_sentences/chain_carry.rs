@@ -1349,10 +1349,49 @@ pub fn parse_effect_chain_inner_lexed(
 #[path = "chain_carry/inner_chain_readings.rs"]
 mod inner_chain_readings;
 
+/// "you gain life and draw cards equal to its power" (Lifeblood Hydra),
+/// "each player loses life and discards cards equal to ..." (Blim): a bare
+/// life gain/loss coordinated with a later instruction shares that
+/// instruction's terminal "equal to" amount. Restate the amount on the life
+/// clause so each coordinated action reads its own complete quantity.
+fn expand_shared_life_equal_to_amount(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let head = &tokens[..and_idx];
+    let (life, before_life) = head.split_last()?;
+    if !life.is_word("life")
+        || !before_life
+            .last()
+            .is_some_and(|verb| verb.is_any_word(&["gain", "gains", "lose", "loses"]))
+    {
+        return None;
+    }
+    let tail = &tokens[and_idx + 1..];
+    let equal_idx = tail
+        .windows(2)
+        .rposition(|pair| pair[0].is_word("equal") && pair[1].is_word("to"))?;
+    let equal_tail = crate::util::trim_edge_punctuation_tokens(&tail[equal_idx..]);
+    // Only a single terminal amount phrase is shared; a further coordinated
+    // or sequenced action after it would make the scope ambiguous.
+    if equal_tail.len() <= 2
+        || equal_tail
+            .iter()
+            .any(|token| token.is_any_word(&["and", "then"]) || token.is_comma())
+    {
+        return None;
+    }
+    let mut expanded = head.to_vec();
+    expanded.extend_from_slice(equal_tail);
+    expanded.extend_from_slice(&tokens[and_idx..]);
+    Some(expanded)
+}
+
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(expanded) = expand_shared_life_equal_to_amount(tokens) {
+        return parse_effect_chain_inner_lexed_unstacked(&expanded, recognize_control_flow);
+    }
     if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
         return Ok(vec![effect]);
     }
