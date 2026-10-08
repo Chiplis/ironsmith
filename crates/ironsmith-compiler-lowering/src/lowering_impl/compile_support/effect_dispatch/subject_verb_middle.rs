@@ -4023,6 +4023,8 @@ pub(super) fn compile_subject_verb_middle(
             set_base_power_toughness_to_source_totals,
             starting_loyalty,
             granted_abilities,
+            set_name,
+            added_supertypes,
         }) => {
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
@@ -4082,7 +4084,9 @@ pub(super) fn compile_subject_verb_middle(
                 && set_base_power_toughness.is_none()
                 && !*set_base_power_toughness_to_source_totals
                 && starting_loyalty.is_none()
-                && granted_abilities.is_empty();
+                && granted_abilities.is_empty()
+                && set_name.is_none()
+                && added_supertypes.is_empty();
             source_spec = with_target_reference_surface_hint(source_spec, source);
             let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
                 Some(
@@ -4164,6 +4168,9 @@ pub(super) fn compile_subject_verb_middle(
             for supertype in removed_supertypes {
                 effect = effect.removed_supertype(*supertype);
             }
+            // CR 707.9b: name/supertype exceptions are copiable values.
+            effect.set_name = set_name.clone();
+            effect.added_supertypes = added_supertypes.clone();
             if let Some((power, toughness)) = set_base_power_toughness {
                 effect = effect.set_base_power_toughness(*power, *toughness);
             }

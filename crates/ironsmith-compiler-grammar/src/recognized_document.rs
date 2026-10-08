@@ -102,6 +102,7 @@ pub enum KeywordLineKind {
     Craft,
     Cycling,
     Equip,
+    Fortify,
     Escape,
     Flashback,
     Harmonize,

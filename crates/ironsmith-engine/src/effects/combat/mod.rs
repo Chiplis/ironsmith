@@ -17,6 +17,7 @@ mod goad;
 mod grant_abilities_all;
 mod grant_abilities_target;
 mod melee;
+mod must_attack_player;
 mod modify_power_toughness;
 mod modify_power_toughness_all;
 mod modify_power_toughness_for_each;
@@ -39,6 +40,7 @@ pub(crate) use enter_attacking::{
 pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
 pub use fight::FightEffect;
 pub use goad::{ClearGoadEffect, GoadEffect};
+pub use must_attack_player::MustAttackPlayerThisTurnEffect;
 pub use grant_abilities_all::GrantAbilitiesAllEffect;
 pub use grant_abilities_target::GrantAbilitiesTargetEffect;
 pub use melee::MeleeEffect;

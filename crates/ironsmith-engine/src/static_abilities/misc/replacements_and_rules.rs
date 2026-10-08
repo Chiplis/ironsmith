@@ -239,7 +239,7 @@ impl DamageAmountReplacementMatcher {
         // other attachment filters use the explicit inverse relation. Neither
         // form may fall through to historical or intrinsic attachment evidence.
         let requires_current_attachment = self.source_filter.tagged_constraints.iter().any(|constraint| {
-            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }) || self.source_filter.with_attached_object.as_deref().is_some_and(|filter| filter.source);
         if requires_current_attachment {

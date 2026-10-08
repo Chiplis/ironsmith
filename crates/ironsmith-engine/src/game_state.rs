@@ -6024,6 +6024,7 @@ impl GameState {
             || filter.controlled_continuously_since_turn_began.is_some()
             || filter.didnt_enter_battlefield_this_turn
             || filter.entered_battlefield_this_turn
+            || filter.turned_face_up_this_turn
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn

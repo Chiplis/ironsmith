@@ -251,6 +251,8 @@ const SENTENCE_READINGS: &[Reading] = &[
                 && !crate::word_primitives::sequence_occurs(&crate::lexer::parser_token_word_refs(tokens), &["shares", "a", "color"])
                 // A where-X sentence is read with its binding by the and-split composition.
                 && sentence_shapes::parse_where_x_sentence_tokens(tokens).is_none()
+                // A turn-scoped would-enter replacement is the future-zone reader's.
+                && crate::effect_sentences::turn_scoped_enter_replacement::parse(tokens).is_none()
         },
         read: |input| input.outcome(part_1::read_coordinated_leading_duration(input)),
     },

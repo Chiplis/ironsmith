@@ -69,6 +69,8 @@ pub fn parse_token_definition_shape_tokens(
         Some(BuiltinTokenShape::RoyalRole)
     } else if all(&["cursed", "role"]) {
         Some(BuiltinTokenShape::CursedRole)
+    } else if all(&["virtuous", "role"]) {
+        Some(BuiltinTokenShape::VirtuousRole)
     } else if has("blood") && !has("creature") {
         Some(BuiltinTokenShape::Blood)
     } else if has("powerstone") && !has("creature") {
@@ -114,6 +116,7 @@ pub fn parse_token_definition_shape_tokens(
             BuiltinTokenShape::SorcererRole => &["sorcerer", "role"],
             BuiltinTokenShape::RoyalRole => &["royal", "role"],
             BuiltinTokenShape::CursedRole => &["cursed", "role"],
+            BuiltinTokenShape::VirtuousRole => &["virtuous", "role"],
             BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
             | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
         };

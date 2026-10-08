@@ -4579,6 +4579,23 @@ impl GoadEffect {
     }
 }
 
+/// "Target creature attacks <player> this turn if able" (CR 508.1d): a
+/// requirement, for this turn only, that each affected creature attacks the
+/// resolved player if able. It does not require the creature to attack at
+/// all when it can't attack that player.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct MustAttackPlayerThisTurnEffect {
+    pub target: ChooseSpec,
+    pub player: ChooseSpec,
+}
+
+impl MustAttackPlayerThisTurnEffect {
+    pub fn new(target: ChooseSpec, player: ChooseSpec) -> Self {
+        Self { target, player }
+    }
+}
+
 /// Mark an exiled card as plotted. This does not perform the plot special
 /// action or emit its keyword-action event.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5281,6 +5298,12 @@ pub struct CreateTokenCopyEffect<A> {
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub removed_supertypes: Vec<Supertype>,
+    /// CR 707.9b copy exception "except it's legendary": added supertypes.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub added_supertypes: Vec<Supertype>,
+    /// CR 707.9b copy exception "except its name is X" / "named X".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub set_name: Option<String>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// Dynamic copiable base power/toughness values evaluated as the token is
     /// created. This is distinct from a later continuous-effect modification:
@@ -5323,6 +5346,8 @@ impl<A> CreateTokenCopyEffect<A> {
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             removed_supertypes: Vec::new(),
+            added_supertypes: Vec::new(),
+            set_name: None,
             set_base_power_toughness: None,
             set_base_power_toughness_value: None,
             starting_loyalty: None,

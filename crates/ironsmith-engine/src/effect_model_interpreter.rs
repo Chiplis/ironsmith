@@ -575,6 +575,8 @@ where
             added_card_types: payload.added_card_types.clone(),
             added_subtypes: payload.added_subtypes.clone(),
             removed_supertypes: payload.removed_supertypes.clone(),
+            added_supertypes: payload.added_supertypes.clone(),
+            set_name: payload.set_name.clone(),
             set_base_power_toughness: payload.set_base_power_toughness,
             set_base_power_toughness_value: payload.set_base_power_toughness_value.clone(),
             starting_loyalty: payload.starting_loyalty,
@@ -1929,6 +1931,14 @@ where
         M::downcast_ref::<ironsmith_core::GrantLoyaltyActivationAllowanceEffect>(&effect)
     {
         return Ok(Effect::new(payload.clone()));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::MustAttackPlayerThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::MustAttackPlayerThisTurnEffect::new(
+            payload.target.clone(),
+            payload.player.clone(),
+        )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomePlottedEffect>(&effect) {
         return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(

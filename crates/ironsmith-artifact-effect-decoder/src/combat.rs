@@ -30,6 +30,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "FightEffect" => decode_as::<ironsmith_core::FightEffect>(payload).map(Some),
         "GoadEffect" => decode_as::<ironsmith_core::GoadEffect>(payload).map(Some),
         "ClearGoadEffect" => decode_as::<ironsmith_core::ClearGoadEffect>(payload).map(Some),
+        "MustAttackPlayerThisTurnEffect" => {
+            decode_as::<ironsmith_core::MustAttackPlayerThisTurnEffect>(payload).map(Some)
+        }
         "GrantAbilitiesTargetEffect" => decode_as::<
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
         >(payload)
@@ -128,6 +131,10 @@ pub(super) fn map_card_ids(
             super::card_graph::map_payload_as::<ironsmith_core::ClearGoadEffect>(payload, context)
                 .map(Some)
         }
+        "MustAttackPlayerThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::MustAttackPlayerThisTurnEffect,
+        >(payload, context)
+        .map(Some),
         "GrantAbilitiesTargetEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
         >(payload, context)

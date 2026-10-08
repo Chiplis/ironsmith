@@ -772,6 +772,13 @@ pub enum TriggerKind {
     KeywordActionMatchingObjectOneOrMore { action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter },
     PlayerPaysLife { player: PlayerFilter },
     PlayerBecomesMonarch { player: PlayerFilter },
+    /// One arm of an "A or B" trigger that functions only while its source is
+    /// in one of `zones` (CR 113.6). The union ability's functional zones are
+    /// the union of its arms; each arm keeps its own zones through this gate
+    /// ("When you cycle this card or cycle another card while this
+    /// enchantment is on the battlefield", "When you cast or cycle ~").
+    /// Appended to preserve serialized variant ordinals.
+    ZoneGated { trigger: Box<Trigger>, zones: Vec<Zone> },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -2518,6 +2525,18 @@ impl Trigger {
     pub fn custom(id: impl Into<String>, label: String) -> Self {
         let id = id.into();
         Self::typed(label.clone(), TriggerKind::Custom { id, label })
+    }
+    /// Gate one union arm to the zones its event can be observed from. The
+    /// label is the arm's own wording: the gate adds no rules text.
+    pub fn zone_gated(trigger: Trigger, zones: Vec<Zone>) -> Self {
+        let label = trigger.label.clone();
+        Self::typed(
+            label,
+            TriggerKind::ZoneGated {
+                trigger: Box::new(trigger),
+                zones,
+            },
+        )
     }
     pub fn either(left: Trigger, right: Trigger) -> Self {
         Self::typed(

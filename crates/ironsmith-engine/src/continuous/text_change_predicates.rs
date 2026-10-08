@@ -124,7 +124,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         unblocked, is_target_object, in_combat_with_source, attacking_same_defender_as_source,
         could_be_enchanted_by_source, in_combat_with, entered_since_your_last_turn_ended,
         controlled_continuously_since_turn_began, didnt_enter_battlefield_this_turn,
-        entered_battlefield_this_turn, entered_battlefield_controller,
+        entered_battlefield_this_turn, entered_battlefield_controller, turned_face_up_this_turn,
         put_onto_battlefield_with_source, put_onto_battlefield_with_source_surface,
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,

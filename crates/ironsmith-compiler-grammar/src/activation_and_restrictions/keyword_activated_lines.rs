@@ -537,6 +537,33 @@ pub fn parse_equip_line_lexed(
     parse_equip_line(tokens)
 }
 
+/// CR 702.67a: "Fortify [cost]" means "[Cost]: Attach this Fortification to
+/// target land you control. Activate only as a sorcery." Like Equip
+/// (CR 301.6), the land is a target and the ability fizzles if it becomes
+/// illegal.
+pub fn parse_fortify_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let Some((_, cost_tokens)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::kw("fortify"),
+    ) else {
+        return Ok(None);
+    };
+    let cost_tokens = crate::util::trim_edge_punctuation_tokens(cost_tokens);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "fortify missing activation cost".to_string(),
+        ));
+    }
+    let total_cost = parse_compiler_activation_cost(cost_tokens)?;
+    let mut parsed = build_equip_ability(total_cost, ObjectFilter::land().you_control());
+    if let AbilityKind::Activated(activated) = &mut parsed.ability.kind {
+        activated.keyword = None;
+    }
+    Ok(Some(parsed))
+}
+
 pub fn parse_reconfigure_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedAbility>>, CardTextError> {

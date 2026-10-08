@@ -29,6 +29,19 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             return Some((value, used));
         }
     }
+    // "You gain 1 life for each player" (Benediction of Moons): the number
+    // of players in the game (CR 102.1).
+    if let ["for", "each", noun @ ("player" | "opponent")] = words {
+        let filter = if *noun == "player" {
+            PlayerFilter::Any
+        } else {
+            PlayerFilter::Opponent
+        };
+        return Some((
+            Value::CountPlayers(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            3,
+        ));
+    }
     if let ["for", "each" | "every", number, "life", rest @ ..] = words
         && let Some(group) = crate::util::parse_number_word_u32(number)
         && group > 0
@@ -123,6 +136,17 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         }
     }
 
+    // "for each of its colors" (Breathe Your Last): the colors of the object
+    // the sentence's antecedent names, read through its tagged snapshot.
+    if let ["its", "colors", ..] = &words[idx..] {
+        return Some((
+            Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 2,
+        ));
+    }
     // "for each of that spell's colors" (Ancient Cornucopia, Moonveil Regent,
     // Ramos): the colors of the referenced spell.
     if let ["that", "spell's" | "spells", "colors", ..] = &words[idx..] {

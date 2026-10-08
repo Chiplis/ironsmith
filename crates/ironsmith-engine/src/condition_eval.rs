@@ -1970,7 +1970,7 @@ fn evaluate_value_comparison(
         .and_then(|id| game.object(id))
     {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
-        for tag in ["enchanted", "equipped"] {
+        for tag in ["enchanted", "equipped", "fortified"] {
             ctx.set_tagged_objects(tag, vec![snapshot.clone()]);
         }
     }
@@ -2998,7 +2998,7 @@ fn evaluate_turn_history_condition(
                 .and_then(|id| game.object(id))
             {
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
-                for tag in ["enchanted", "equipped"] {
+                for tag in ["enchanted", "equipped", "fortified"] {
                     filter_ctx
                         .tagged_objects
                         .insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);

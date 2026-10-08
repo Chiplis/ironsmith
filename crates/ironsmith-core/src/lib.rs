@@ -127,6 +127,7 @@ pub use effect::{
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
     ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
+    MustAttackPlayerThisTurnEffect,
     GrantAbilitiesTargetEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
     GrantNextSpellCostReductionEffect, NextSpellGrantMode, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantPlayTaggedManaReferenceSurface, GrantPlayTaggedObjectSurface, GrantPlayTaggedSurface,

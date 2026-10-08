@@ -31,6 +31,7 @@ pub enum BuiltinTokenShape {
     SorcererRole,
     RoyalRole,
     CursedRole,
+    VirtuousRole,
     Blood,
     Powerstone,
     Heartwood,
@@ -49,7 +50,8 @@ impl BuiltinTokenShape {
             Self::Gingerbrute => vec![CardType::Artifact, CardType::Creature],
             Self::Mutavault => vec![CardType::Land],
             Self::Shard | Self::WickedRole | Self::YoungHeroRole | Self::MonsterRole
-            | Self::SorcererRole | Self::RoyalRole | Self::CursedRole => vec![CardType::Enchantment],
+            | Self::SorcererRole | Self::RoyalRole | Self::CursedRole
+            | Self::VirtuousRole => vec![CardType::Enchantment],
             Self::Treasure | Self::Clue | Self::Map | Self::Lander | Self::Junk
             | Self::Mutagen | Self::Gold | Self::Food | Self::Blood | Self::Powerstone
             | Self::Heartwood | Self::Vibranium => vec![CardType::Artifact],
@@ -69,7 +71,8 @@ impl BuiltinTokenShape {
             Self::Powerstone => vec![Subtype::Powerstone], Self::Heartwood => vec![Subtype::Heartwood],
             Self::Vibranium => vec![Subtype::Vibranium],
             Self::WickedRole | Self::YoungHeroRole | Self::MonsterRole
-            | Self::SorcererRole | Self::RoyalRole | Self::CursedRole => vec![Subtype::Aura, Subtype::Role],
+            | Self::SorcererRole | Self::RoyalRole | Self::CursedRole
+            | Self::VirtuousRole => vec![Subtype::Aura, Subtype::Role],
             Self::Gingerbrute => vec![Subtype::Food, Subtype::Golem],
             Self::Mutavault => Vec::new(), Self::SpellgorgerWeird => vec![Subtype::Weird],
             Self::Tarmogoyf => vec![Subtype::Lhurgoyf],
@@ -86,6 +89,7 @@ impl BuiltinTokenShape {
             Self::SorcererRole => Some("Sorcerer"),
             Self::RoyalRole => Some("Royal"),
             Self::CursedRole => Some("Cursed"),
+            Self::VirtuousRole => Some("Virtuous"),
             Self::Gingerbrute => Some("Gingerbrute"),
             Self::Mutavault => Some("Mutavault"),
             Self::SpellgorgerWeird => Some("Spellgorger Weird"),

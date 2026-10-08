@@ -131,6 +131,8 @@ pub enum DiscardTrailingShape {
     ChosenColor,
     SameManaValueAsTriggering,
     Colors(ColorSet),
+    /// "of that type" / "of the chosen type" after "Choose a creature type".
+    ChosenCreatureType,
     Other,
 }
 
@@ -339,6 +341,11 @@ pub fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailing
         DiscardTrailingShape::Random
     } else if common::exact(&words, &["with", "that", "name"]) {
         DiscardTrailingShape::ChosenName
+    } else if common::exact_any(
+        &words,
+        &[&["of", "that", "type"], &["of", "the", "chosen", "type"]],
+    ) {
+        DiscardTrailingShape::ChosenCreatureType
     } else if chosen_color_reference(tokens) {
         DiscardTrailingShape::ChosenColor
     } else if common::exact_any(&words, SAME_MANA_VALUE_REFERENCES) {

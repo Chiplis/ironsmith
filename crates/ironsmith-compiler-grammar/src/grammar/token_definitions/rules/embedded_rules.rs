@@ -30,6 +30,7 @@ fn parse_builtin_token_kind<'a>(
             primitives::phrase(&["sorcerer", "role"]).value(BuiltinTokenShape::SorcererRole),
             primitives::phrase(&["royal", "role"]).value(BuiltinTokenShape::RoyalRole),
             primitives::phrase(&["cursed", "role"]).value(BuiltinTokenShape::CursedRole),
+            primitives::phrase(&["virtuous", "role"]).value(BuiltinTokenShape::VirtuousRole),
             primitives::kw("blood").value(BuiltinTokenShape::Blood),
             primitives::kw("powerstone").value(BuiltinTokenShape::Powerstone),
         )),

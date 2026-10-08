@@ -906,6 +906,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let _ = try_apply_controlled_continuously_since_turn_began_clause(&mut filter, &mut all_words);
 
+    strip_turned_face_up_this_turn_words(&mut filter, &mut all_words);
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
     if parse_phrase_anywhere(
@@ -2843,7 +2844,14 @@ pub(in super::super) fn parse_object_filter_inner(
         // introduce a supported qualifier or another selector; an arbitrary
         // noun cannot be silently discarded by the domain fallback.
         for (index, words) in all_words.windows(2).enumerate() {
+            // "target token you control not named Dutiful Replicator": a
+            // trailing negated name is admitted only once the excluded name
+            // was actually captured on the filter.
+            let negated_name_tail = all_words.get(index + 2) == Some(&"not")
+                && all_words.get(index + 3) == Some(&"named")
+                && filter.excluded_name.is_some();
             if words == ["you", "control"]
+                && !negated_name_tail
                 && let Some(next) = all_words.get(index + 2)
                 && !matches!(
                     *next,

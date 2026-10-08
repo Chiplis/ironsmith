@@ -364,6 +364,17 @@ fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
     let after_each = refs.get(start..)?;
+    // "that player mills a card for each 1 damage dealt to them" (Anowon,
+    // the Ruin Thief): one card per point of the triggering damage event.
+    if matches!(
+        after_each,
+        ["1" | "one", "damage", "dealt", "to", "them" | "that" | "you", ..]
+    ) && matches!(
+        &after_each[4..],
+        ["them"] | ["that", "player"] | ["you"]
+    ) {
+        return Some(Value::EventValue(EventValueSpec::Amount));
+    }
     if let Some(on) = permission_shapes::find_words(after_each, &["on"])
         && on > 0
     {

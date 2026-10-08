@@ -5613,6 +5613,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.didnt_enter_battlefield_this_turn
         || filter.entered_battlefield_this_turn
         || filter.entered_battlefield_controller.is_some()
+        || filter.turned_face_up_this_turn
         || filter.entered_graveyard_this_turn
         || filter.entered_graveyard_from_battlefield_this_turn
         || filter.entered_graveyard_from_library_this_turn

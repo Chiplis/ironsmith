@@ -1293,7 +1293,7 @@ pub(crate) fn describe_attached_and_related_creatures_filter(
             continue;
         };
         if attached_constraint.relation != TaggedOpbjectRelation::IsTaggedObject
-            || !matches!(attached_constraint.tag.as_str(), "enchanted" | "equipped")
+            || !matches!(attached_constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         {
             continue;
         }
@@ -2790,7 +2790,7 @@ pub(crate) fn plural_non_target_land_animation_target(
     }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
     }) {
         return None;
     }
@@ -4613,7 +4613,7 @@ pub(crate) fn describe_tag_attached_then_tap_or_untap(
     next: &Effect,
 ) -> Option<String> {
     let tag = tag_attached.tag.as_str();
-    if !matches!(tag, "enchanted" | "equipped") {
+    if !matches!(tag, "enchanted" | "equipped" | "fortified") {
         return None;
     }
 
@@ -4637,7 +4637,7 @@ pub(crate) fn describe_tag_attached_then_unattach(
     next: &Effect,
 ) -> Option<String> {
     let tag = tag_attached.tag.as_str();
-    if !matches!(tag, "enchanted" | "equipped") {
+    if !matches!(tag, "enchanted" | "equipped" | "fortified") {
         return None;
     }
     let unattach = next.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;

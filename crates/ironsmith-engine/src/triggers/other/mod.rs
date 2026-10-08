@@ -6,6 +6,7 @@ mod becomes_untapped;
 mod chapter_ability_resolved;
 mod class_becomes_level;
 mod condition_qualified;
+mod zone_gated;
 mod each_players_turn;
 mod event_kind;
 mod expend;
@@ -48,6 +49,7 @@ pub use becomes_untapped::BecomesUntappedTrigger;
 pub use chapter_ability_resolved::FinalChapterAbilityResolvedTrigger;
 pub use class_becomes_level::ClassBecomesLevelTrigger;
 pub use condition_qualified::ConditionQualifiedTrigger;
+pub use zone_gated::ZoneGatedTrigger;
 pub use each_players_turn::EachPlayersTurnTrigger;
 pub use event_kind::{
     EventKindTrigger, SourceControllerLosesControlTrigger, ThisEventObjectTrigger,

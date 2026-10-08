@@ -1492,8 +1492,25 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                         .unwrap_or(right);
                     format!("{left} and {right}")
                 });
-            let trigger =
-                Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right));
+            // CR 113.6: when the arms are observed from different zones, the
+            // ability functions from their union, but each arm keeps its own
+            // zones ("cycle this card" after cycling; "cycle another card"
+            // only while the permanent is on the battlefield).
+            let left_zones = crate::lower::base_trigger_functional_zones(&left);
+            let right_zones = crate::lower::base_trigger_functional_zones(&right);
+            let same_zones = left_zones.len() == right_zones.len()
+                && left_zones.iter().all(|zone| right_zones.contains(zone));
+            let gate = |trigger: Trigger, zones: Vec<crate::zone::Zone>| {
+                if same_zones {
+                    trigger
+                } else {
+                    Trigger::zone_gated(trigger, zones)
+                }
+            };
+            let trigger = Trigger::either(
+                gate(compile_trigger_spec(*left), left_zones),
+                gate(compile_trigger_spec(*right), right_zones),
+            );
             if let Some(display) = display
                 .or(source_and_or_other_display)
                 .or(repeated_intro_display)

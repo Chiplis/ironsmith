@@ -1246,7 +1246,7 @@ fn source_attachment_host_for_tag(
     tag: &TagKey,
     game: &GameState,
 ) -> Option<crate::ids::ObjectId> {
-    if !matches!(tag.as_str(), "enchanted" | "equipped") {
+    if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
         return None;
     }
     let source = game.object(source?)?;
@@ -1275,6 +1275,7 @@ fn intrinsic_attachment_tag_constraint_matches_subject(
 ) -> Option<bool> {
     let matches_intrinsic = match tag.as_str() {
         "equipped" => subject_has_attached_subtype(subject, Subtype::Equipment, game),
+        "fortified" => subject_has_attached_subtype(subject, Subtype::Fortification, game),
         "enchanted" => {
             subject.subject_was_enchanted()
                 || subject_has_attached_subtype(subject, Subtype::Aura, game)
@@ -3820,7 +3821,9 @@ impl ObjectFilterExt for ObjectFilter {
                             live.zone != source.zone || live.stable_id != source.stable_id
                         })
                     });
-                    if !departed || !matches!(constraint.tag.as_str(), "enchanted" | "equipped") {
+                    if !departed
+                        || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
+                    {
                         return None;
                     }
                     match source.attached_to {
@@ -3840,7 +3843,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 // A source-relative attachment reference has no subject when
                 // that Aura or Equipment is unattached.
-                if matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                if matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                     && ctx
                         .source
                         .and_then(|source| game.object(source))
@@ -4855,6 +4858,7 @@ impl ObjectFilterExt for ObjectFilter {
                         "it" | "__it__" | "blocking" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
+                        "fortified" => parts.push("fortified".to_string()),
                         "convoked_this_spell" => {
                             post_noun_qualifiers.push("that convoked this spell".to_string());
                         }
@@ -6049,6 +6053,10 @@ impl ObjectFilterExt for ObjectFilter {
                 "that entered this turn".to_string()
             };
             parts.push(clause);
+        }
+
+        if self.turned_face_up_this_turn {
+            parts.push("that was turned face up this turn".to_string());
         }
 
         if self.put_onto_battlefield_with_source {

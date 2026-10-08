@@ -130,6 +130,7 @@ pub use combat::{
     AssignNoCombatDamageEffect, BecomeBlockedEffect, ClearGoadEffect, CombatDamagePreventionTarget,
     EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
     FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
+    MustAttackPlayerThisTurnEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,

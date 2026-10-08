@@ -1274,6 +1274,27 @@ pub fn attach_mixed_pronoun_token_rules_to_last_create(
     false
 }
 
+/// Recover the authored casing of a copy-exception name ("Mishra's Warform")
+/// from the clause tokens, given its lowercase parser words.
+fn copy_exception_name_surface(tokens: &[OwnedLexToken], name_words: &[String]) -> Option<String> {
+    let view = crate::grammar::primitives::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let start = (0..words.len().checked_sub(name_words.len())? + 1)
+        .rev()
+        .find(|&start| {
+            words[start..start + name_words.len()]
+                .iter()
+                .zip(name_words)
+                .all(|(word, expected)| *word == expected.as_str())
+        })?;
+    let first = *view.token_start_indices().get(start)?;
+    let end = view.token_index_after_words(start + name_words.len())?;
+    let surface = crate::lexer::render_literal_token_slice(&tokens[first..end])
+        .trim()
+        .to_string();
+    (!surface.is_empty()).then_some(surface)
+}
+
 /// "Create your choice of a Clue token, a Food token, or a Treasure token" —
 /// exactly one of the listed tokens is created, so lower one create mode per
 /// option instead of splitting into sequential creates.
@@ -1704,6 +1725,19 @@ pub fn parse_create(
                 granted_abilities,
                 loses_soulbond,
             ) = parse_copy_modifiers_from_tail(&tail_words)?;
+            // CR 707.9b: name and supertype exceptions of the copy.
+            let copy_identity = creation_grammar::parse_copy_modifier_words(&tail_words)?;
+            let copy_name = match copy_identity.name_words.as_deref() {
+                Some(words) => Some(copy_exception_name_surface(&tail_tokens, words).ok_or_else(
+                    || {
+                        CardTextError::ParseError(
+                            "unable to recover the copy exception name".to_string(),
+                        )
+                    },
+                )?),
+                None => None,
+            };
+            let added_supertypes = copy_identity.added_supertypes;
             let mut granted_abilities: Vec<_> = granted_abilities
                 .into_iter()
                 .map(|ability| {
@@ -1810,12 +1844,19 @@ pub fn parse_create(
                             set_base_power_toughness_to_source_totals,
                             starting_loyalty,
                             granted_abilities,
+                            set_name: copy_name,
+                            added_supertypes,
                         }),
                     );
                     return Ok(wrap_for_each_player_condition(wrap_delayed_create(
                         wrap_for_each_when_needed(create, references_iterated_object),
                     )));
                 }
+            }
+            if copy_name.is_some() || !added_supertypes.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "unsupported name/supertype exception on an anaphoric token copy".to_string(),
+                ));
             }
             let references_iterated_object = true;
             let create = EffectAst::subject_verb(

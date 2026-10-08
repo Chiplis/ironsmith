@@ -129,6 +129,9 @@ const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "earthbend",
     "harness",
     "harnesses",
+    // "draw a card and blight 1" (Sinister Gnarlbark): blight is a keyword
+    // action, so the conjunction starts a second executable arm.
+    "blight",
 ];
 const KEYWORD_ACTION_WORDS: &[&str] = &[
     "adapt",
@@ -650,9 +653,17 @@ pub fn starts_effect_clause_tokens(after: &[OwnedLexToken]) -> bool {
                 &["defending", "player"],
             ],
         );
+    // "Target player gains 5 life, Inspired Ultimatum deals 5 damage to any
+    // target, then ..." : a self-referential source subject ("this" or
+    // "this <noun>") followed by its deal-damage verb starts a sibling action.
+    let self_source_damage = starts_any(after, &[&["this"]])
+        && after_verb.is_some_and(|found| {
+            found.kind == super::ChainVerbKind::Deal && (1..=2).contains(&found.word_index)
+        });
     starts_any(after, &[&["can", "attack", "as", "though"]])
         || after_verb.is_some_and(|found| found.word_index == 0)
         || explicit_subject_action
+        || self_source_damage
         || has_extended_effect_head_tokens(after)
 }
 

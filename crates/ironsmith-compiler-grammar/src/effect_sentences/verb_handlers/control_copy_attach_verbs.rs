@@ -276,6 +276,26 @@ pub fn parse_gain_life(
             }));
         }
         if let Some(unless_tail) = cca_shapes::parse_life_surface_shape(&trailing).unless_tail {
+            // "you gain 2 life unless that creature's controller pays {2}"
+            // (Soul Charmer): a punisher payment, not a state predicate.
+            if crate::grammar::effects::parse_unless_pays_shape_tokens(unless_tail).is_some() {
+                let (payer, cost) =
+                    crate::effect_sentences::clause_primitives::parse_unless_pays_clause(
+                        unless_tail,
+                    )?;
+                if payer == PlayerAst::Implicit {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported life-gain unless payer (clause: '{}')",
+                        crate::lexer::token_word_refs(tokens).join(" ")
+                    )));
+                }
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                    effects: vec![base_effect],
+                    player: payer,
+                    cost,
+                    before_delayed_step: false,
+                }));
+            }
             let mut unless_as_if_tokens = Vec::with_capacity(unless_tail.len() + 1);
             unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
             unless_as_if_tokens.extend_from_slice(unless_tail);

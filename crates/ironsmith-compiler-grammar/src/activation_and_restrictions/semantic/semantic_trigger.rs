@@ -1350,6 +1350,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             {
                 return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
             }
+            // "Whenever you play an Island" (Jokulmorder): CR 305.1 — only a
+            // land is played, so a land-subtype noun names the played land.
+            if let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
+                && !filter.subtypes.is_empty()
+                && filter.subtypes.iter().all(|subtype| subtype.is_land_subtype())
+                && filter.card_types.is_empty()
+                && filter.any_of.is_empty()
+            {
+                return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
+            }
         }
     }
 
@@ -1503,6 +1513,27 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             another: false,
             source_filter: None,
             caused_by_source_entering: false,
+        });
+    }
+
+    // "Whenever an ability of equipped creature is activated" (Battlemage's
+    // Bracers): the passive form names no activator, so any player's
+    // activation of an ability whose source matches counts (CR 602.2).
+    if let [.., "is", "activated"] = &words[..]
+        && words.len() > 2
+        && let Some(is_token) =
+            trigger_word_token_start(tokens, words.len() - 2)
+        && let Some((filter, non_mana_only)) = parse_ability_of_object_trigger_tail_lexed(
+            &tokens[..is_token],
+            &words[..words.len() - 2],
+        )?
+    {
+        return Ok(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::Any,
+            filter,
+            non_mana_only,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
         });
     }
 

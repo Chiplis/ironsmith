@@ -8,7 +8,7 @@ use crate::zone::Zone;
 
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_craft_line_lexed, parse_cycling_line_lexed,
-    parse_equip_line_lexed, parse_reconfigure_line_lexed,
+    parse_equip_line_lexed, parse_fortify_line_lexed, parse_reconfigure_line_lexed,
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::grammar::abilities::{
@@ -428,6 +428,7 @@ ability_parser!(parse_cycling, parse_cycling_line_lexed);
 ability_parser!(parse_craft, parse_craft_line_lexed);
 ability_parser!(parse_reinforce, parse_reinforce_line_lexed);
 ability_parser!(parse_equip, parse_equip_line_lexed);
+ability_parser!(parse_fortify, parse_fortify_line_lexed);
 pub(super) fn parse_reconfigure(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],

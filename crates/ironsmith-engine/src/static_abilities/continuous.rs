@@ -43,6 +43,7 @@ fn attached_subject(filter: &ObjectFilter) -> Option<String> {
         match constraint.tag.as_str() {
             "enchanted" => Some("enchanted"),
             "equipped" => Some("equipped"),
+            "fortified" => Some("fortified"),
             _ => None,
         }
     })?;
@@ -68,7 +69,7 @@ fn filter_for_attached_subject_match(filter: &ObjectFilter) -> ObjectFilter {
     if attached_subject(filter).is_some() {
         stripped.tagged_constraints.retain(|constraint| {
             constraint.relation != TaggedOpbjectRelation::IsTaggedObject
-                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         });
     }
     stripped
@@ -389,7 +390,7 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
                     .iter()
                     .position(|constraint| {
                         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                            && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                     })
                 else {
                     attachments.clear();
@@ -443,7 +444,7 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         && let Some(attachment) = filter.tagged_constraints.iter().find_map(|constraint| {
             (constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
                 .then_some(constraint.tag.as_str())
-                .filter(|tag| matches!(*tag, "enchanted" | "equipped"))
+                .filter(|tag| matches!(*tag, "enchanted" | "equipped" | "fortified"))
         })
     {
         let without_article = strip_plural_subject_article(&subject);
@@ -2652,7 +2653,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 let subject = match player {
                     crate::target::PlayerFilter::ControllerOf(
                         crate::filter::ObjectRef::Tagged(tag),
-                    ) if matches!(tag.as_str(), "enchanted" | "equipped") => "its controller",
+                    ) if matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") => "its controller",
                     _ => describe_static_player(player),
                 };
                 return format!("as long as {subject} has {comparison} cards in their graveyard");

@@ -183,3 +183,16 @@ fn this_source_parser_preserves_canonical_surface_rules() {
         ))
     );
 }
+
+#[test]
+fn leading_function_words_never_become_short_name_aliases() {
+    for (name, word) in [
+        ("And They Shall Know No Fear", "and"),
+        ("Into the Roil", "into"),
+        ("Up the Beanstalk", "up"),
+        ("No Mercy", "no"),
+    ] {
+        let aliases = parse_leaf_source_reference_aliases_for_name(name);
+        assert_eq!(exact(&aliases, &[word]), None, "{name}");
+    }
+}

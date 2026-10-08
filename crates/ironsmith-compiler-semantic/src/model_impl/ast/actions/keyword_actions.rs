@@ -133,6 +133,11 @@ pub enum KeywordActionAst {
     BecomePlotted {
         target: TargetAst,
     },
+    /// "<creature> attacks <player> this turn if able" (CR 508.1d).
+    MustAttackPlayerThisTurn {
+        target: TargetAst,
+        player: TargetAst,
+    },
     Suspect {
         target: TargetAst,
     },
