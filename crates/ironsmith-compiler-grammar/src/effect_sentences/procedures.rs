@@ -9,7 +9,7 @@
 use super::dispatch_entry::SentenceInput;
 use super::{
     consult_procedure, copy_cast_procedure, exiled_top_procedure, graveyard_cast_procedure,
-    hand_procedure, keyword_choice_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
+    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -29,6 +29,7 @@ pub(super) enum Procedure {
     Hand(hand_procedure::HandGroup),
     KeywordChoice(keyword_choice_procedure::KeywordChoiceGroup),
     SearchPartition(search_partition_procedure::SearchPartitionGroup),
+    AssignUnblocked(assign_unblocked_procedure::AssignUnblockedGroup),
 }
 
 /// A closed procedure: its effects and the sentences it consumed.
@@ -87,6 +88,10 @@ fn open_all(
     );
     consider(hand_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Hand)));
     consider(
+        assign_unblocked_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::AssignUnblocked)),
+    );
+    consider(
         keyword_choice_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::KeywordChoice)),
     );
@@ -116,6 +121,7 @@ pub(super) fn continue_with(
         Procedure::Hand(group) => hand_procedure::continue_with(group, sentence),
         Procedure::KeywordChoice(group) => keyword_choice_procedure::continue_with(group, sentence),
         Procedure::SearchPartition(group) => search_partition_procedure::continue_with(group, sentence),
+        Procedure::AssignUnblocked(group) => assign_unblocked_procedure::continue_with(group, sentence),
     }
 }
 
@@ -176,6 +182,11 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             consumed: group.consumed,
             effects: search_partition_procedure::finish(group),
         },
+        Procedure::AssignUnblocked(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: assign_unblocked_procedure::finish(group),
+        },
     }
 }
 
@@ -192,6 +203,7 @@ pub(super) fn kind(procedure: &Procedure) -> &'static str {
         Procedure::Hand(_) => "hand",
         Procedure::KeywordChoice(_) => "keyword-choice",
         Procedure::SearchPartition(_) => "search-partition",
+        Procedure::AssignUnblocked(_) => "assign-unblocked",
     }
 }
 
@@ -208,6 +220,7 @@ fn name(procedure: &Procedure) -> &'static str {
         Procedure::Hand(_) => "hand-procedure",
         Procedure::KeywordChoice(_) => "keyword-choice-procedure",
         Procedure::SearchPartition(_) => "search-partition-procedure",
+        Procedure::AssignUnblocked(_) => "assign-unblocked-procedure",
     }
 }
 

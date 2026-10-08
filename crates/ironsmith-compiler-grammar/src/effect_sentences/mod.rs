@@ -98,6 +98,7 @@ mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
 mod graveyard_cast_procedure;
+mod assign_unblocked_procedure;
 mod hand_procedure;
 mod keyword_choice_procedure;
 mod search_partition_procedure;

@@ -214,6 +214,35 @@ pub fn parse_anthem_color_and_quoted_activated_grant_line(
     Ok(Some(result))
 }
 
+/// "[As long as this creature is attacking,] for each creature you control,
+/// you may have that creature assign its combat damage as though it weren't
+/// blocked." (Siege Behemoth): grants the unblocked-assignment permission
+/// (CR 510.1c) to each creature you control under the leading condition.
+pub fn parse_controlled_creatures_may_assign_as_unblocked_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let (condition, body) = match crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens) {
+        Some(split) => (
+            Some(parse_static_condition_clause(split.condition_tokens)?),
+            split.remainder_tokens,
+        ),
+        None => (None, tokens),
+    };
+    if !crate::grammar::abilities::is_each_controlled_may_assign_damage_as_unblocked_lexed(body) {
+        return Ok(None);
+    }
+    let filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    Ok(Some(vec![StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::may_assign_damage_as_unblocked(),
+        )),
+        condition,
+    }]))
+}
+
 pub fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

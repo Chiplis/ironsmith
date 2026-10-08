@@ -1383,6 +1383,72 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
         .parse_next(input)
 }
 
+fn parse_werent_blocked_tail<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
+    (
+        winnow::combinator::alt((
+            primitives::kw("werent"),
+            primitives::kw("weren't"),
+            primitives::kw("wasnt"),
+            primitives::kw("wasn't"),
+        )),
+        primitives::kw("blocked"),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
+/// "for each creature you control, you may have that creature assign its
+/// combat damage as though it weren't blocked" (Siege Behemoth): each of your
+/// creatures has the unblocked-assignment permission (CR 510.1c).
+fn parse_each_controlled_may_assign_damage_as_unblocked<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&["for", "each", "creature", "you", "control"]),
+        opt(primitives::comma()),
+        primitives::phrase(&[
+            "you", "may", "have", "that", "creature", "assign", "its", "combat", "damage", "as",
+            "though", "it",
+        ]),
+        parse_werent_blocked_tail,
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_each_controlled_may_assign_damage_as_unblocked_lexed(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, parse_each_controlled_may_assign_damage_as_unblocked)
+        .is_some()
+}
+
+/// "You may have creatures you control assign their combat damage this turn
+/// as though they weren't blocked." (Predatory Focus): a resolving grant of
+/// the permission to the creatures you control (CR 510.1c, 611.2c).
+fn parse_controlled_creatures_may_assign_this_turn_as_unblocked<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&[
+            "you", "may", "have", "creatures", "you", "control", "assign", "their", "combat",
+            "damage", "this", "turn", "as", "though", "they",
+        ]),
+        parse_werent_blocked_tail,
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_controlled_creatures_may_assign_this_turn_as_unblocked_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        parse_controlled_creatures_may_assign_this_turn_as_unblocked,
+    )
+    .is_some()
+}
+
 pub fn is_may_assign_damage_as_unblocked_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_may_assign_damage_as_unblocked_line).is_some()
 }
