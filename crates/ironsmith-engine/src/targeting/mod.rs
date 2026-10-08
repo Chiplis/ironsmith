@@ -19,10 +19,12 @@
 
 mod assignment;
 mod computation;
+mod random_targets;
 mod types;
 mod ward;
 
 pub use assignment::*;
 pub use computation::*;
+pub use random_targets::*;
 pub use types::*;
 pub use ward::*;

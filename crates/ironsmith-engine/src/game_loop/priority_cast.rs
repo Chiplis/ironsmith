@@ -3908,6 +3908,11 @@ pub(super) fn continue_to_targets_or_mana_payment(
             chooser,
             &mut pending.remaining_requirements[..requirement_count],
         );
+        // Random targets are picked by the game and stored on the pending
+        // requirement, so validation of the announcement sees the same pick.
+        for requirement in &mut pending.remaining_requirements[..requirement_count] {
+            crate::targeting::narrow_requirement_to_random_targets(game, requirement);
+        }
         let requirements = pending.remaining_requirements[..requirement_count].to_vec();
         pending.stage = CastStage::ChoosingTargets;
         pending.active_target_requirement_count = requirements.len();
@@ -7899,6 +7904,9 @@ pub(super) fn continue_activation(
                         chooser,
                         &mut pending.remaining_requirements[..requirement_count],
                     );
+                    for requirement in &mut pending.remaining_requirements[..requirement_count] {
+                        crate::targeting::narrow_requirement_to_random_targets(game, requirement);
+                    }
                     let requirements = pending.remaining_requirements[..requirement_count].to_vec();
                     pending.stage = ActivationStage::ChoosingTargets;
                     pending.active_target_requirement_count = requirements.len();
