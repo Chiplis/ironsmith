@@ -30,6 +30,10 @@ fn bind(effects: &mut Vec<EffectAst>, sentence: &SentenceInput) -> bool {
         || super::chain_carry::bind_self_animate_after_life_gain(effects, sentence.lowered())
         || super::chain_carry::bind_destroy_typed_subset(effects, sentence.lowered())
         || super::chain_carry::bind_return_exiled_to_owners_hands(effects, sentence.lowered())
+        || super::cast_spell_graveyard_rider::bind_cast_spell_graveyard_exile_rider(
+            effects,
+            sentence.lowered(),
+        )
 }
 
 /// Open at a statement whose next sentence binds back to it.

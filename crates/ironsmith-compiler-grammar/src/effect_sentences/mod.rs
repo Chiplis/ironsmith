@@ -125,6 +125,7 @@ pub(crate) fn recognizes_scalar_self_replacement_sentence(
 mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;
+mod cast_spell_graveyard_rider;
 mod statement_readings;
 pub use procedures::RIDDEN_STATEMENT;
 mod search_library;
