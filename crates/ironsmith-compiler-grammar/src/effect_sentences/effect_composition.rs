@@ -1027,6 +1027,50 @@ pub(super) fn parse_reveal_from_outside_game_to_hand(
     Ok(Some(outer))
 }
 
+/// "[You may] put a card you own from outside the game into your hand / on
+/// top of your library": choose one owned card from outside the game (the
+/// sideboard, CR 400.11) and move it. No reveal is instructed.
+pub(super) fn parse_put_from_outside_game(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = bundle_grammar::parse_outside_game_put_shape(tokens) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&shape.filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported outside-game put filter in clause '{}'",
+            words(&trim_commas(tokens)).join(" ")
+        ))
+    })?;
+    filter.owner = Some(PlayerFilter::You);
+    filter.zone = Some(Zone::OutsideGame);
+    let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
+    let effects = vec![
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+            zones: vec![Zone::OutsideGame],
+            search_mode: None,
+        }),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(tag, span_from_tokens(tokens)),
+            if shape.to_library_top { Zone::Library } else { Zone::Hand },
+            shape.to_library_top,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+    ];
+    Ok(Some(if shape.optional {
+        vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]
+    } else {
+        effects
+    }))
+}
+
 fn parse_choose_objects_then_for_each_of_those_bundle(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
