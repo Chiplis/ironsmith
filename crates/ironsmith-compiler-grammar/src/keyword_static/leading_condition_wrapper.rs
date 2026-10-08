@@ -79,10 +79,7 @@ pub fn parse_leading_condition_wrapped_static_line(
     }
     {
         let _guard = WrappingGuard::set(true);
-        if !matches!(
-            recognize_static_ability_ast_line_registry(&tokens),
-            ParseOutcome::NoMatch
-        ) {
+        if !matches!(parse_static_ability_ast_line_lexed(&tokens), Ok(None)) {
             return Ok(None);
         }
     }
