@@ -1109,13 +1109,34 @@ pub(super) fn compile_cant_action(
         let crate::effect::Restriction::Untap(filter) = &restriction else {
             return Err(CardTextError::ParseError("a named next untap step requires an untap rule".into()));
         };
-        let Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) = &filter.controller else {
-            return Err(CardTextError::ParseError("named next untap step has no explicit player antecedent".into()));
+        // "Tap all creatures target player controls. Those creatures don't
+        // untap during that player's next untap step." (Sleep): the tagged
+        // set carries no controller of its own, so "that player" is the
+        // declared target player the preceding instruction already bound.
+        let player = match &filter.controller {
+            Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) => {
+                player.clone()
+            }
+            None if !filter.tagged_constraints.is_empty() => match ctx.last_player_filter.as_ref() {
+                Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) => {
+                    player.clone()
+                }
+                _ => {
+                    return Err(CardTextError::ParseError(
+                        "named next untap step has no explicit player antecedent".into(),
+                    ));
+                }
+            },
+            _ => {
+                return Err(CardTextError::ParseError(
+                    "named next untap step has no explicit player antecedent".into(),
+                ));
+            }
         };
         if condition.is_some() {
             return Err(CardTextError::ParseError("conditional named next untap rule is not represented".into()));
         }
-        Some(crate::effect::Until::PlayersNextUntapStep { player: player.clone() })
+        Some(crate::effect::Until::PlayersNextUntapStep { player })
     } else { None };
     let duration = named_step_duration.as_ref().unwrap_or(duration);
     if let Some(condition) = condition {
