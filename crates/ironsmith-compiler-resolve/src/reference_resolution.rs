@@ -1668,8 +1668,45 @@ fn advance_reference_frames(
     id_gen: &mut IdGenContext,
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
+    // "Target opponent exiles the top card of their library, a card at random
+    // from their graveyard, and a card at random from their hand. You may
+    // cast a spell from among cards exiled this way." (Crabomination): one
+    // instruction exiles several groups, and "this way" names all of them.
+    // Consecutive exile producers in one effect list (choice helpers between
+    // them do not interrupt the instruction) keep one "exiled this way"
+    // alias per producer; the resolver reads them as a union.
+    let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+    let mut exile_group: Vec<TagKey> = Vec::new();
     for effect in effects {
         advance_reference_frame_for_effect(effect, id_gen, frame)?;
+        if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
+            if let Some((_, exiled)) = frame
+                .snapshot_tag_aliases
+                .iter()
+                .rev()
+                .find(|(existing, _)| existing == &alias)
+                && !exile_group.contains(exiled)
+            {
+                exile_group.push(exiled.clone());
+            }
+            if exile_group.len() > 1 {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(existing, _)| existing != &alias);
+                for exiled in &exile_group {
+                    frame.snapshot_tag_aliases.push((alias.clone(), exiled.clone()));
+                }
+            }
+        } else if !matches!(
+            effect,
+            EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjects { .. }
+                    | ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }
+                    | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }
+            )
+        ) {
+            exile_group.clear();
+        }
     }
     Ok(())
 }
