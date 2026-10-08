@@ -1252,6 +1252,14 @@ pub enum Restriction {
     /// activated ability, mana abilities included, from any zone (City of
     /// Solitude off-turn, CR 602.5). Appended to preserve serialized ordinals.
     ActivateAbilities(PlayerFilter),
+    /// "[creatures] can't attack <permanents>" (Jace, Multiverse Architect:
+    /// "creatures they control can't attack Jaces you control"): matching
+    /// attackers can't choose a matching planeswalker or battle as their
+    /// attack target (CR 508.1b). Appended to preserve serialized ordinals.
+    AttackPermanents {
+        attackers: ObjectFilter,
+        permanents: ObjectFilter,
+    },
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -1686,6 +1694,13 @@ impl Restriction {
 
     pub fn attack_tax(rule: AttackTaxRule) -> Self {
         Self::AttackTax(rule)
+    }
+
+    pub fn attack_permanents(attackers: ObjectFilter, permanents: ObjectFilter) -> Self {
+        Self::AttackPermanents {
+            attackers,
+            permanents,
+        }
     }
 
     pub fn activate_abilities(player: PlayerFilter) -> Self {

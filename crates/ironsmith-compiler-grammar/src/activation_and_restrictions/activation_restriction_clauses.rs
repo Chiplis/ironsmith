@@ -1344,6 +1344,24 @@ pub fn parse_negated_object_restriction_clause(
         }));
     }
 
+    // "can't attack Jaces you control" (Jace, Multiverse Architect): a ban
+    // on choosing particular planeswalkers or battles as attack targets.
+    if remainder_words.first() == Some(&"attack")
+        && !matches!(remainder_words.get(1), Some(&"you") | Some(&"alone") | None)
+        && let Some(permanents) = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &remainder_tokens[1..],
+            false,
+        ))
+        && (!permanents.subtypes.is_empty()
+            || permanents.card_types.contains(&crate::types::CardType::Planeswalker)
+            || permanents.card_types.contains(&crate::types::CardType::Battle))
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::attack_permanents(filter, permanents),
+            target,
+        }));
+    }
+
     use restriction_grammar::NegatedObjectTailShape;
     let tail_shape = restriction_grammar::parse_negated_object_tail_words(&remainder_words);
     let restriction = match tail_shape {

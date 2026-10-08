@@ -621,7 +621,11 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BlockSpecificAttacker { blockers, attacker }
         | MustBlockSpecificAttacker { blockers, attacker }
         | BeTargetedFrom(blockers, attacker)
-        | BeAttachedBy(blockers, attacker) => {
+        | BeAttachedBy(blockers, attacker)
+        | AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_mentions_iterated_player(blockers)
                 || object_filter_mentions_iterated_player(attacker)
         }

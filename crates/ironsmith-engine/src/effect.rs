@@ -1448,6 +1448,34 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::AttackPermanents {
+                attackers,
+                permanents,
+            } => {
+                let banned = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| permanents.matches(object, &ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                if banned.is_empty() {
+                    return;
+                }
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker
+                            .cant_attack_permanents
+                            .entry(obj_id)
+                            .or_default()
+                            .extend(banned.iter().copied());
+                    }
+                }
+            }
             Restriction::ActivateAbilities(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

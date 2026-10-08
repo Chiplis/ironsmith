@@ -1956,6 +1956,10 @@ pub struct CantEffectTracker {
     /// Players who draw from the bottom of their library (River Song).
     pub draws_from_bottom: HashSet<PlayerId>,
 
+    /// Attackers that can't attack particular planeswalkers or battles
+    /// ("can't attack Jaces you control").
+    pub cant_attack_permanents: HashMap<ObjectId, HashSet<ObjectId>>,
+
     /// Players who can't activate any abilities, mana abilities included,
     /// from any zone (City of Solitude during other players' turns).
     pub cant_activate_abilities: HashSet<PlayerId>,
@@ -2720,6 +2724,12 @@ impl CantEffectTracker {
         }
         self.draws_from_bottom.extend(other.draws_from_bottom);
         self.cant_activate_abilities.extend(other.cant_activate_abilities);
+        for (creature, permanents) in other.cant_attack_permanents {
+            self.cant_attack_permanents
+                .entry(creature)
+                .or_default()
+                .extend(permanents);
+        }
         for (player, limits) in other.cant_cast_more_than {
             for (filter, maximum) in limits {
                 self.add_counted_cast_limit(player, filter, maximum);
@@ -2816,6 +2826,7 @@ impl CantEffectTracker {
         self.cant_cast_more_than.clear();
         self.draws_from_bottom.clear();
         self.cant_activate_abilities.clear();
+        self.cant_attack_permanents.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -2914,6 +2925,13 @@ impl CantEffectTracker {
     /// Check if a creature can attack alone (as the only attacker).
     pub fn can_attack_alone(&self, creature: ObjectId) -> bool {
         !self.cant_attack_alone.contains(&creature)
+    }
+
+    /// Check if a creature can attack a particular planeswalker or battle.
+    pub fn can_attack_permanent(&self, creature: ObjectId, permanent: ObjectId) -> bool {
+        self.cant_attack_permanents
+            .get(&creature)
+            .is_none_or(|banned| !banned.contains(&permanent))
     }
 
     /// Check if a creature can block.

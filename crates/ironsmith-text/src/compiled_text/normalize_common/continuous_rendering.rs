@@ -5486,6 +5486,14 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::AttackPermanents {
+            attackers,
+            permanents,
+        } => format!(
+            "{} can't attack {}",
+            pluralize_relative_object_phrase(&attackers.description()),
+            pluralize_relative_object_phrase(&permanents.description())
+        ),
         crate::effect::Restriction::ActivateAbilities(filter) => {
             format!("{} can't activate abilities", describe_player_set_filter(filter))
         }

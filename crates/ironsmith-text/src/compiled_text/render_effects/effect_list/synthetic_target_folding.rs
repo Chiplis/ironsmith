@@ -299,7 +299,11 @@ fn restriction_references_identity(
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
         | Restriction::BeTargetedFrom(blockers, attacker)
-        | Restriction::BeAttachedBy(blockers, attacker) => {
+        | Restriction::BeAttachedBy(blockers, attacker)
+        | Restriction::AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
         }
