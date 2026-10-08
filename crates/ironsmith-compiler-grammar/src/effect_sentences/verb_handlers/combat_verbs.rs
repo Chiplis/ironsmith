@@ -549,9 +549,53 @@ pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexTok
     )
 }
 
+/// "each creature and each planeswalker": two independently quantified
+/// object sets damaged by one simultaneous event. Player sets ("and each
+/// player/opponent") are owned by the player-damage readings instead.
+fn parse_each_object_set_union(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((and_idx, (), after)) = crate::grammar::primitives::find_prefix(filter_tokens, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    if and_idx == 0
+        || after.is_empty()
+        || after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["player", "players", "opponent", "opponents", "other"]))
+        || crate::grammar::primitives::find_prefix(after, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let (Ok(mut left), Ok(mut right)) = (
+        parse_object_filter(&filter_tokens[..and_idx], false),
+        parse_object_filter(after, false),
+    ) else {
+        return Ok(None);
+    };
+    for branch in [&mut left, &mut right] {
+        if branch.zone.is_none() {
+            branch.zone = Some(Zone::Battlefield);
+        }
+    }
+    Ok(Some(ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        any_of: vec![left, right],
+        ..Default::default()
+    }))
+}
+
 fn parse_damage_each_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(union) = parse_each_object_set_union(filter_tokens)? {
+        return Ok(union);
+    }
     if let Some(shape) = combat_grammar::parse_combat_except_filter_shape_lexed(filter_tokens) {
         let mut included = parse_object_filter(shape.included_filter_tokens, false)?;
         let excluded = parse_object_filter(shape.excluded_filter_tokens, false)?;
