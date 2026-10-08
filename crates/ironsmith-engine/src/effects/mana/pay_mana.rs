@@ -45,15 +45,9 @@ fn try_pay_interactively(
     player_id: PlayerId,
     x_value: u32,
 ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, ExecutionError> {
-    let checkpoint = game.clone();
-    let result = try_pay_interactively_inner(effect, game, ctx, player_id, x_value);
-    if !matches!(&result, Ok(Some(_))) || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-    }
-    result
+    crate::effects::composition::execute_optional_world_transaction(game, ctx, |game, ctx| {
+        try_pay_interactively_inner(effect, game, ctx, player_id, x_value)
+    })
 }
 
 fn try_pay_interactively_inner(

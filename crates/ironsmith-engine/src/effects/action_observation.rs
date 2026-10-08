@@ -86,36 +86,39 @@ fn observe_action_completions_with_grouping(
     }
     if !fresh.is_empty() {
         // Completion errors must not leave projected rows or provenance behind.
-        let checkpoint = game.clone();
-        let opened = group_fresh && fresh.len() > 1 && game.open_simultaneous_action();
-        let result = (|| {
-            let mut events = Vec::with_capacity(fresh.len());
-            for (mut event, parent) in fresh {
-                let provenance = match parent {
-                    Some(parent) => game.alloc_child_event_provenance(parent, event.kind()),
-                    None => game.provenance_graph_mut().alloc_root_event(event.kind()),
-                };
-                event.set_provenance(provenance);
-                if event.simultaneous_batch().is_none()
-                    && let Some(batch) = game.simultaneous_action_batch()
-                {
-                    event = event.with_simultaneous_batch(batch);
-                }
-                events.push(event);
-            }
-            for event in &events {
-                game.stage_turn_history_event(event);
-            }
-            crate::events::other::freeze_completed_lifecycle_events(game, &mut events)?;
-            for event in &mut events {
-                event.mark_action_completed(
-                    game.provenance_graph().node(event.provenance()).unwrap(),
-                );
-                game.stage_turn_history_event(event);
-            }
-            Ok::<_, ExecutionError>(events)
-        })();
-        game.close_simultaneous_action(opened);
+        let result =
+            crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
+                let opened = group_fresh && fresh.len() > 1 && game.open_simultaneous_action();
+                let result = (|| {
+                    let mut events = Vec::with_capacity(fresh.len());
+                    for (mut event, parent) in fresh {
+                        let provenance = match parent {
+                            Some(parent) => game.alloc_child_event_provenance(parent, event.kind()),
+                            None => game.provenance_graph_mut().alloc_root_event(event.kind()),
+                        };
+                        event.set_provenance(provenance);
+                        if event.simultaneous_batch().is_none()
+                            && let Some(batch) = game.simultaneous_action_batch()
+                        {
+                            event = event.with_simultaneous_batch(batch);
+                        }
+                        events.push(event);
+                    }
+                    for event in &events {
+                        game.stage_turn_history_event(event);
+                    }
+                    crate::events::other::freeze_completed_lifecycle_events(game, &mut events)?;
+                    for event in &mut events {
+                        event.mark_action_completed(
+                            game.provenance_graph().node(event.provenance()).unwrap(),
+                        );
+                        game.stage_turn_history_event(event);
+                    }
+                    Ok::<_, ExecutionError>(events)
+                })();
+                game.close_simultaneous_action(opened);
+                result
+            });
         match result {
             Ok(events) => {
                 for event in events {
@@ -123,7 +126,6 @@ fn observe_action_completions_with_grouping(
                 }
             }
             Err(error) => {
-                *game = checkpoint;
                 return Err(error);
             }
         }

@@ -664,9 +664,9 @@ fn commit_token_copy_proposal(
     let committed = match proposal.prepared.take().ok_or_else(|| {
         ExecutionError::InternalError("copy proposal has no prepared creation".into())
     })? {
-        PreparedTokenCreation::Finished { outcome, programs } => {
+        PreparedTokenCreation::Finished { outputs, programs } => {
             crate::effects::SimultaneousEffectCommit {
-                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+                outcome: outputs,
                 completion: Some(super::lifecycle::token_instruction_completion(
                     proposal.instruction.take(),
                     Vec::new(),

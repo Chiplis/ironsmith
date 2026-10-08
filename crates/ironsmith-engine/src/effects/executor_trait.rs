@@ -378,7 +378,7 @@ impl CompletedEffectOutputs {
     /// Copy an alternative routing view of existing completed data. Scope
     /// Arcs and event identities are retained; no original, continuation or
     /// publisher is cloned, and this operation never appends event history.
-    fn clone_projection(&self) -> Self {
+    pub(crate) fn clone_projection(&self) -> Self {
         Self {
             projections_complete: self.projections_complete,
             outcome: self.outcome.clone(),
@@ -678,11 +678,61 @@ impl DamageActionBinding {
     }
 }
 
+/// Whether an owner exposes its original work separately from additions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OriginalPhaseStatus {
+    /// The existing completion still combines both phases. No readiness proof.
+    Combined,
+    /// The owner can finish and retain its original work without its additions.
+    Retained,
+    /// The original phase is complete; this owner contains only additions.
+    Complete,
+}
+
 /// Completion programs are frozen only after every original proposal commits,
 /// then executed after the simultaneous action has closed. The owner preserves
 /// each participant's execution context and rolls back the whole instruction
 /// if completion pauses for a decision or fails.
 pub trait SimultaneousEffectCompletion: Send {
+    /// Unmigrated owners retain their combined completion contract explicitly.
+    fn original_phase_status(&self) -> OriginalPhaseStatus {
+        OriginalPhaseStatus::Combined
+    }
+
+    /// Finish original work and return the actual packet with its still-retained
+    /// additions. Only owners advertising Retained are dispatched here.
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        _original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        Err(ExecutionError::InternalError(
+            "retained original phase has no completion owner".into(),
+        ))
+    }
+
+    /// Consume the actual original packet at an original-only phase boundary.
+    /// The compatibility default preserves the scalar callback and retains the
+    /// incoming packet once after successful completion. An overriding owner
+    /// must preserve or project its actual children without republishing them.
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let mut completed =
+            self.complete_original_phase_with_outputs(game, ctx, original.outcome.clone())?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(SimultaneousEffectCommit::finished(
+                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        completed.outcome.retain_owned_child(original);
+        Ok(completed)
+    }
+
     /// Run only the non-draw prefix, retaining the owner's actual draw and tail.
     /// Existing completion owners without a draw boundary finish normally.
     fn prepare_draw_boundary_with_outputs(
@@ -693,6 +743,22 @@ pub trait SimultaneousEffectCompletion: Send {
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
         self.complete_with_outputs(game, ctx, original)
             .map(SimultaneousEffectCommit::finished)
+    }
+
+    /// Transfer the actual prefix packet through its owner's draw boundary.
+    /// The compatibility default retains the incoming packet once after the
+    /// existing scalar callback. Pending/stop policy stays with native callers;
+    /// this entry point adds no new suspension gate or draw advancement.
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let mut prepared =
+            self.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
+        prepared.outcome.retain_owned_child(original);
+        Ok(prepared)
     }
 
     fn prepare_draw_boundary(
@@ -729,6 +795,26 @@ pub trait SimultaneousEffectCompletion: Send {
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         self.complete(game, ctx, original)
             .map(CompletedEffectOutputs::aggregate_only)
+    }
+
+    /// Consume the actual original packet during full completion. The default
+    /// retains the existing scalar callback's output and the incoming packet
+    /// exactly once. Native composition owners may consume that packet directly
+    /// to preserve child ownership through their own result projection.
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let mut outputs = self.complete_with_outputs(game, ctx, original.outcome.clone())?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        outputs.retain_owned_child(original);
+        Ok(outputs)
     }
 
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError>;

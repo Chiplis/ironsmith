@@ -206,6 +206,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     // Pass continues across empty-stack phases, yields to the remote player,
     // and stops at the configured step without consuming that stop.
     await load(priority(70));
+    await page.evaluate(() => window.context.setAutoResolveEnabled(true));
     await page.evaluate(() => {
       window.context.cyclePriorityStop('step:DeclareBlockers');
       window.context.togglePhasePassing();
@@ -219,6 +220,22 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await page.waitForFunction(() => window.context.phasePassing === false);
     assert.equal(await page.evaluate(() => window.submissions.length), 2);
     assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'once');
+
+    // Consuming a pause manually must not restart either passing path.
+    await page.waitForTimeout(350); // Let the previous automatic pass cooldown finish.
+    assert.equal(await page.evaluate(() => window.context.autoPassEnabled), false);
+    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false);
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
+    await page.waitForFunction(() => window.submissions.length === 3);
+    await page.evaluate(state => window.publish(state), priority(75, {
+      phase: 'combat phase', step: 'declare blockers', stack_size: 1,
+      stack_objects: [{ id: 900, controller: 0, name: 'Test spell' }],
+    }));
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 3, 'manual action after a pause does not resume passing');
+    await page.evaluate(state => window.publish(state), priority(76, { active_player: 1 }));
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 3, 'off-turn smart auto-pass stays stopped');
 
     await load(priority(76));
     await page.evaluate(() => window.context.togglePhasePassing());

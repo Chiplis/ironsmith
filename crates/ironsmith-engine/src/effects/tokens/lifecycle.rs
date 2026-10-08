@@ -902,6 +902,13 @@ struct TokenInstructionCompletion {
     haste_recipients: Vec<ObjectId>,
 }
 impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        // Every producer commits entries, initial grants and cleanup before
+        // constructing this owner. Frozen entry programs and creation programs
+        // are additions; no physical token original is retained here.
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         let entries = self
             .entries
@@ -943,18 +950,24 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
                 EffectOutcome::count(0),
             ));
         }
-        let completed = crate::effects::replacement::complete_deferred_replacement_programs(
-            game,
-            ctx,
-            outputs.outcome.clone(),
-            self.programs,
-        )?;
+        let programs = self.programs;
+        let mut outputs =
+            crate::effects::replacement::complete_replacement_programs_with_original_outputs(
+                game,
+                ctx,
+                outputs,
+                |game, ctx, original| {
+                    crate::effects::replacement::complete_deferred_replacement_programs(
+                        game, ctx, original, programs,
+                    )
+                },
+            )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
         }
-        let mut outputs = outputs.append_batch_program_outputs(completed);
+
         for id in self.haste_recipients {
             if game
                 .object(id)

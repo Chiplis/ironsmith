@@ -86,41 +86,37 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     replacement_scope: &crate::effects::ReplacementExecutionContext,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let checkpoint = game.clone();
-    let result = (|| {
-        let controller = game
-            .current_controller(source)
-            .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
-            .unwrap_or(game.turn.active_player);
-        let mut parent = ExecutionContext::new(source, controller, dm)
-            .with_cause(cause.clone())
-            .with_provenance(provenance);
-        parent.source_snapshot = source_snapshot.cloned();
-        parent.replacement = replacement_scope.clone();
-        let batch = game.simultaneous_action_batch();
-        super::execute_damage_batch(
-            game,
-            &mut parent,
-            vec![SimultaneousDamageEvent {
-                source,
-                target: initial_target,
-                amount,
-                is_combat: source_is_combat,
-                unpreventable,
-                cause,
-                source_snapshot: source_snapshot.cloned(),
-            }],
-            batch,
-        )
-    })();
-    let pending = dm.awaiting_choice();
-    if pending || result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
-    }
-    if pending && result.is_ok() {
-        return Ok(EffectOutcome::count(0));
-    }
-    result
+    let controller = game
+        .current_controller(source)
+        .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
+        .unwrap_or(game.turn.active_player);
+    let mut parent = ExecutionContext::new(source, controller, dm)
+        .with_cause(cause.clone())
+        .with_provenance(provenance);
+    parent.source_snapshot = source_snapshot.cloned();
+    parent.replacement = replacement_scope.clone();
+    crate::effects::composition::execute_transaction_from_body(
+        game,
+        &mut parent,
+        || EffectOutcome::count(0),
+        |game, parent| {
+            let batch = game.simultaneous_action_batch();
+            super::execute_damage_batch(
+                game,
+                parent,
+                vec![SimultaneousDamageEvent {
+                    source,
+                    target: initial_target,
+                    amount,
+                    is_combat: source_is_combat,
+                    unpreventable,
+                    cause,
+                    source_snapshot: source_snapshot.cloned(),
+                }],
+                batch,
+            )
+        },
+    )
 }
 
 /// Execute captured additions after their owning damage operation. Targets

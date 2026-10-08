@@ -1055,6 +1055,50 @@ impl ForPlayersDrawProgress {
 }
 struct PlayerProgramCompletion(ForPlayersDrawContinuation);
 impl crate::effects::SimultaneousEffectCompletion for PlayerProgramCompletion {
+    // This owner retains one reached player instruction. Enclosing replacement
+    // additions are retained by the caller, not by the player cursor.
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Retained
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.complete_original_phase_from_outputs(
+            game,
+            ctx,
+            crate::effects::CompletedEffectOutputs::aggregate_only(original),
+        )
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        super::complete_authored_original_subtree_with_outputs(game, ctx, self, original)
+    }
+
+    fn observe_original(
+        &mut self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), ExecutionError> {
+        self.0.observe_prefix(&original.events);
+        Ok(())
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         self.0.freeze(game)
     }
@@ -2894,10 +2938,8 @@ impl ForPlayersActionState {
                                             let scopes =
                                                 program_path_scopes(path, &program_groups, *index);
                                             with_program_scope(ctx, &scopes, |ctx| {
-                                                completion.prepare_draw_boundary_with_outputs(
-                                                    game,
-                                                    ctx,
-                                                    original.outcome.clone(),
+                                                completion.prepare_draw_boundary_from_outputs(
+                                                    game, ctx, original,
                                                 )
                                             })
                                         })
@@ -2927,13 +2969,9 @@ impl ForPlayersActionState {
                                 ));
                                 prepared
                             }
-                            _ => completion.prepare_draw_boundary_with_outputs(
-                                game,
-                                ctx,
-                                original.outcome.clone(),
-                            )?,
+                            _ => completion
+                                .prepare_draw_boundary_from_outputs(game, ctx, original)?,
                         };
-                        receipt.outcome.retain_owned_child(original);
                     }
                     paused |= receipt.completion.is_some();
                     boundaries.push((player_index, receipt, context));
@@ -3007,6 +3045,78 @@ impl ForPlayersActionState {
                         retained_outputs,
                     ));
                 }
+            }
+            if super::simultaneous::original_cohort_phase_status_with_participants(
+                &mut batch_outcomes,
+                |(_, receipt, _)| receipt,
+            ) != crate::effects::OriginalPhaseStatus::Combined
+            {
+                let Some(phased) = super::simultaneous::complete_original_cohort_phase_with_participants(
+                    game,
+                    ctx,
+                    batch_outcomes,
+                    |(_, receipt, _)| receipt,
+                    |game, ctx, (player_index, mut receipt, completion_context): OriginalBatchOutcome| {
+                        let Some(index) = player_index else {
+                            let Some(PlayerOriginalContext::DamageCohort(bindings)) = completion_context else {
+                                return Err(ExecutionError::InternalError(
+                                    "shared player damage lost its binding contexts".into(),
+                                ));
+                            };
+                            receipt = super::simultaneous::complete_retained_original_phase_with_outputs(
+                                game, ctx, receipt,
+                            )?;
+                            return Ok((None, receipt, Some(PlayerOriginalContext::DamageCohort(bindings))));
+                        };
+                        let PlayerOriginalContext::Instruction(captured, optional, path) =
+                            completion_context.ok_or_else(|| ExecutionError::InternalError(
+                                "player original lost its completion context".into(),
+                            ))?
+                        else {
+                            return Err(ExecutionError::InternalError(
+                                "player instruction received a cohort binding context".into(),
+                            ));
+                        };
+                        captured.restore_preserving_resolution_control(ctx);
+                        let baseline = ctx.tagged_objects.clone();
+                        if ctx.resolution_stopped() {
+                            receipt.completion = None;
+                        } else {
+                            receipt = ctx.with_temp_iterated_player(Some(players[index]), |ctx| {
+                                in_optional_action(ctx, optional, |ctx| {
+                                    let scopes = program_path_scopes(&path, &program_groups, index);
+                                    with_program_scope(ctx, &scopes, |ctx| {
+                                        super::simultaneous::complete_retained_original_phase_with_outputs(
+                                            game, ctx, receipt,
+                                        )
+                                    })
+                                })
+                            })?;
+                        }
+                        let captured = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+                        if !ctx.decision_maker.awaiting_choice() {
+                            effect_outcomes_by_player[index] = ctx.effect_outcomes.clone();
+                            if matches!(purpose, crate::effects::EffectExecutionPurpose::Payment) {
+                                payment_x_by_player[index] = ctx.x_value;
+                            }
+                            tagged_players_by_player[index] = ctx.tagged_players.clone();
+                            capture_player_tagged_object_deltas(
+                                &baseline,
+                                &ctx.tagged_objects,
+                                &mut tagged_objects_by_player[index],
+                                &mut loop_local_tags,
+                            );
+                            merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                        }
+                        Ok((Some(index), receipt, Some(PlayerOriginalContext::Instruction(captured, optional, path))))
+                    },
+                )? else {
+                    return Ok((
+                        ActionRun::Complete(EffectOutcome::count(0)),
+                        retained_outputs,
+                    ));
+                };
+                batch_outcomes = phased;
             }
             let completed_outcomes = {
                 let mut completed = Vec::new();
@@ -3329,6 +3439,24 @@ fn execute_player_program_with_outputs(
 }
 
 impl EffectExecutor for ForPlayersEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects
+            .iter()
+            .all(crate::effects::replacement::replacement_effect_supported)
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.prepare_draw_continuation(game, ctx)
+            .map(ForPlayersDrawProgress::into_commit)
+    }
+
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         self.filter.mentions_player_filter(needle)
     }

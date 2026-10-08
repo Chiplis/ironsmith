@@ -3798,9 +3798,7 @@ pub(crate) fn apply_to_selected_objects_with_prepared(
             outcome: EffectOutcome::count(0),
         });
     }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| -> Result<ObjectApplyResult, ExecutionError> {
+    crate::effects::composition::execute_result_checkpoint_transaction(game, ctx, |game, ctx| {
         let objects = if let Some(objects) = prepared {
             objects
         } else {
@@ -3848,12 +3846,7 @@ pub(crate) fn apply_to_selected_objects_with_prepared(
             applied_count,
             outcome,
         })
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-    }
-    result
+    })
 }
 
 /// Apply a single-target object operation using `ctx.targets` semantics.
@@ -4050,9 +4043,11 @@ pub fn resolve_objects_from_spec(
             };
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.source = Some(id);
-            Ok(game.object(id)
+            Ok(game
+                .object(id)
                 .filter(|object| filter.matches(object, &filter_ctx, game))
-                .map(|_| vec![id]).unwrap_or_default())
+                .map(|_| vec![id])
+                .unwrap_or_default())
         }
         ChooseSpec::Object(filter) => {
             if filter.tagged_constraints.is_empty() {

@@ -29,6 +29,11 @@ test('blue Pass button sits beside the main decision and toggles passing', async
       assert.equal(await pass.getAttribute('aria-pressed'), 'true');
       await pass.click();
       assert.equal(await pass.getAttribute('aria-pressed'), 'false');
+      for (const query of ['kind=priority&scenario=opponent-turn', 'kind=mana_payment']) {
+        await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/diagnostics-layout.html?${query}`, { waitUntil: 'domcontentloaded' });
+        await page.locator('.battlefield-human-quick-controls').waitFor();
+        assert.equal(await pass.count(), 0, `Pass must be hidden for ${query}`);
+      }
       if (width === 1365) await page.screenshot({ path: '/tmp/ironsmith-phase-pass.png' });
       assert.deepEqual(errors, []);
       await page.close();

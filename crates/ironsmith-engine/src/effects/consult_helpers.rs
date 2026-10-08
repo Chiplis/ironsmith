@@ -170,6 +170,7 @@ pub fn execute_library_consult_with_outputs(
             let mut result = LibraryConsultResult::default();
             let mut matched_mana_value = 0u32;
             let mut receipts = Vec::new();
+            let mut published_outputs = Vec::new();
             let additional = ctx.additional_replacement_effects_snapshot();
             let mut stalled_attempts = HashSet::new();
 
@@ -257,12 +258,17 @@ pub fn execute_library_consult_with_outputs(
                         if !stalled_attempts.insert((top_card_id, one_shots)) {
                             return Err(ExecutionError::InternalError("consultation made no progress; mandatory/optional loop classification required".into()));
                         }
-                        let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                        let committed = crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs(
                 game, top_card_id, Zone::Library, Zone::Exile, ctx.cause.clone(), ctx, &additional,
             )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(LibraryConsultResult::default());
                         }
+                        crate::effects::PublishedEffectOutputs::append_distinct(
+                            &mut published_outputs,
+                            committed.published_outputs,
+                        );
+                        let receipt = committed.receipt;
                         let arrivals = match &receipt.original {
                             crate::events::processing::EventOutcome::Proceed(change) => {
                                 change.new_object_ids.clone()
@@ -326,11 +332,10 @@ pub fn execute_library_consult_with_outputs(
             }
 
             // All original consultation tags and source links precede additional programs.
+            let mut original = CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
+            original.retain_published_references(published_outputs);
             let observations = crate::effects::zones::finish_zone_change_receipts_with_outputs(
-                game,
-                ctx,
-                EffectOutcome::resolved(),
-                receipts,
+                game, ctx, original, receipts,
             )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(LibraryConsultResult::default());
@@ -414,6 +419,7 @@ pub fn move_tagged_remainder_to_library_bottom_with_outputs(
             let additional = ctx.additional_replacement_effects_snapshot();
             let opened_batch = game.open_simultaneous_action();
             let mut receipts = Vec::new();
+            let mut published_outputs = Vec::new();
             let mut moved_ids = Vec::new();
             for (owner, ordered) in ordered_groups {
                 let mut arrivals = HashMap::<ObjectId, Vec<ObjectId>>::new();
@@ -422,8 +428,8 @@ pub fn move_tagged_remainder_to_library_bottom_with_outputs(
                         arrivals.insert(candidate.object_id, vec![candidate.object_id]);
                         continue;
                     }
-                    let receipt =
-                    crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                    let committed =
+                    crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs(
                         game,
                         candidate.object_id,
                         Zone::Exile,
@@ -437,6 +443,11 @@ pub fn move_tagged_remainder_to_library_bottom_with_outputs(
                             EffectOutcome::count(0),
                         ));
                     }
+                    crate::effects::PublishedEffectOutputs::append_distinct(
+                        &mut published_outputs,
+                        committed.published_outputs,
+                    );
+                    let receipt = committed.receipt;
                     let ids = match &receipt.original {
                         crate::events::processing::EventOutcome::Proceed(change) => {
                             change.new_object_ids.clone()
@@ -493,6 +504,8 @@ pub fn move_tagged_remainder_to_library_bottom_with_outputs(
             } else {
                 EffectOutcome::with_objects(moved_ids)
             };
+            let mut original = CompletedEffectOutputs::aggregate_only(original);
+            original.retain_published_references(published_outputs);
             crate::effects::zones::finish_zone_change_receipts_with_outputs(
                 game, ctx, original, receipts,
             )

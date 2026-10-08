@@ -47,8 +47,10 @@ pub(crate) use execute_payload::{
     complete_bound_replacement_programs_with_outputs, complete_deferred_replacement_programs,
     complete_deferred_replacement_programs_with_bindings,
     complete_deferred_replacement_programs_with_targets,
+    complete_replacement_programs_with_original_outputs,
     execute_deferred_replacement_programs_with_bindings, execute_event_expansion_with_outputs,
-    execute_replacement_payload_with_outputs,
+    execute_replacement_original_payload_with_outputs, execute_replacement_payload_with_outputs,
+    project_replacement_original_outputs,
 };
 
 mod register_damage_addition;
@@ -61,7 +63,8 @@ pub(crate) use draw_continuation::prepare_draw_continuation_with_outputs;
 
 pub(crate) use draw_continuation::{
     PreparedReplacementChild, ReplacementResume, prepare_committed_draw_boundary,
-    prepare_native_draw_continuation_with_outputs, prepare_replacement_child,
+    prepare_native_draw_continuation_with_outputs,
+    prepare_native_proposal_draw_continuation_with_outputs, prepare_replacement_child,
     prepare_scoped_program_draw_boundary_with_outputs, replacement_effect_contains_draw,
     replacement_effect_supported, resume_replacement_child_with_outputs,
 };

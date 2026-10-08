@@ -4,8 +4,8 @@ use crate::combat_state::{AttackerInfo, get_attack_target};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, finish_battlefield_entry_receipts,
-    move_to_battlefield_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome,
+    finish_battlefield_entry_receipts_with_outputs, move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -30,13 +30,13 @@ fn exile_meld_components(
 ) -> Result<
     (
         Option<(crate::ids::ObjectId, crate::ids::ObjectId)>,
-        EffectOutcome,
+        crate::effects::CompletedEffectOutputs,
     ),
     ExecutionError,
 > {
     use crate::events::processing::{
-        EventOutcome, PreparedEventOutcome, ReplacementEventContext, commit_prepared_zone_change,
-        prepare_zone_change_scoped,
+        EventOutcome, PreparedEventOutcome, ReplacementEventContext,
+        commit_prepared_zone_change_with_outputs, prepare_zone_change_scoped,
     };
     let snapshots = objects
         .iter()
@@ -49,7 +49,10 @@ fn exile_meld_components(
         })
         .collect::<Vec<_>>();
     if snapshots.len() != 2 {
-        return Ok((None, EffectOutcome::resolved()));
+        return Ok((
+            None,
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+        ));
     }
     let lookback = game.trigger_source_lookback_snapshots();
     let additional = ctx.additional_replacement_effects_snapshot();
@@ -86,6 +89,7 @@ fn exile_meld_components(
                 return Ok(None);
             }
         }
+        let mut published_outputs = Vec::new();
         let mut receipts = Vec::new();
         let mut arrivals = Vec::new();
         for (
@@ -102,12 +106,14 @@ fn exile_meld_components(
                         .object(object)
                         .is_some_and(|card| card.zone == Zone::Battlefield)
                     {
-                        let mut committed = commit_prepared_zone_change(
+                        let committed = commit_prepared_zone_change_with_outputs(
                             game,
                             object,
                             proposal,
                             ctx.decision_maker,
                         )?;
+                        published_outputs.extend(committed.published_outputs);
+                        let mut committed = committed.receipt;
                         programs.append(&mut committed.programs);
                         committed.original
                     } else {
@@ -159,18 +165,24 @@ fn exile_meld_components(
             };
             receipts.push((object, PreparedEventOutcome { original, programs }));
         }
-        Ok(Some((receipts, arrivals)))
+        Ok(Some((receipts, arrivals, published_outputs)))
     })();
     game.close_simultaneous_action(opened_batch);
-    let Some((receipts, arrivals)) = prepared? else {
-        return Ok((None, EffectOutcome::count(0)));
+    let Some((receipts, arrivals, published_outputs)) = prepared? else {
+        return Ok((
+            None,
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
     };
     let original = EffectOutcome::with_objects(arrivals.iter().flatten().copied().collect())
         .with_affected_object_memory(snapshots.iter().map(Clone::clone).collect());
     // Exile is the first instruction. Complete its added programs before
     // the following meld instruction, keeping the exact original arrivals.
-    let outcome =
-        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)?;
+    let mut original = crate::effects::CompletedEffectOutputs::aggregate_only(original);
+    original.retain_published_references(published_outputs);
+    let outcome = crate::effects::zones::finish_zone_change_receipts_with_outputs(
+        game, ctx, original, receipts,
+    )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok((None, outcome));
     }
@@ -181,29 +193,41 @@ fn execute_meld_inner(
     effect: &MeldEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let Some(source_id) = current_source_id(game, ctx) else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     let Some(source) = game.object(source_id).cloned() else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     if source.owner != ctx.controller
         || game.controller_of(&source) != ctx.controller
         || source.kind != ObjectKind::Card
         || game.is_phased_out(source_id)
     {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
 
     let Some(counterpart_name) = crate::cards::meld_counterpart_name(&source.name) else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
 
     let candidates = match source.zone {
         Zone::Battlefield => &game.battlefield,
         Zone::Exile => &game.exile,
-        _ => return Ok(EffectOutcome::resolved()),
+        _ => {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
+        }
     };
     let candidates = candidates
         .iter()
@@ -219,7 +243,9 @@ fn execute_meld_inner(
         })
         .collect::<Vec<_>>();
     let Some(&first) = candidates.first() else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     let counterpart_id = if candidates.len() == 1 {
         first
@@ -239,7 +265,9 @@ fn execute_meld_inner(
             spec,
         );
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         crate::effects::helpers::normalize_object_selection(chosen, &candidates, 1)[0]
     };
@@ -252,24 +280,35 @@ fn execute_meld_inner(
         None
     };
 
-    let (arrivals, mut departure_outcome) = if source.zone == Zone::Battlefield {
+    let (arrivals, departure_outcome) = if source.zone == Zone::Battlefield {
         exile_meld_components(game, ctx, [source_id, counterpart_id])?
     } else {
-        (Some((source_id, counterpart_id)), EffectOutcome::resolved())
+        (
+            Some((source_id, counterpart_id)),
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+        )
     };
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
-    let entry_outcome = (|| -> Result<EffectOutcome, ExecutionError> {
+    let entry_outcome = (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let Some((source_exile_id, counterpart_exile_id)) = arrivals else {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         };
 
         let Some(exiled_source) = game.object(source_exile_id) else {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         };
         let Some(exiled_counterpart) = game.object(counterpart_exile_id) else {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         };
         // CR 701.42b/c: only the two cards of the meld pair can be melded. A
         // permanent that was merely copying the counterpart (a Clone named
@@ -284,7 +323,9 @@ fn execute_meld_inner(
                 .name
                 .eq_ignore_ascii_case(counterpart_name)
         {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
 
         // CR 712.8g: the melded permanent's mana value is the sum of the mana
@@ -301,7 +342,9 @@ fn execute_meld_inner(
         let Some(result_def) =
             game.linked_face_definition_by_name_or_id(Some(&effect.result_name), None)
         else {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         };
 
         let meld_components = vec![
@@ -326,7 +369,9 @@ fn execute_meld_inner(
                 .with_linked_face_mana_cost(front_faces_mana_cost),
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let receipt = entry.ok_or_else(|| {
             ExecutionError::InternalError("meld entry has no completed receipt".into())
@@ -350,15 +395,21 @@ fn execute_meld_inner(
             }
             BattlefieldEntryOutcome::Prevented => EffectOutcome::resolved(),
         };
-        finish_battlefield_entry_receipts(game, ctx, original, vec![receipt])
+        finish_battlefield_entry_receipts_with_outputs(game, ctx, original, vec![receipt])
     })()?;
-    departure_outcome.events.extend(entry_outcome.events);
-    departure_outcome
+    let mut aggregate = departure_outcome.outcome.clone();
+    aggregate
+        .events
+        .extend(entry_outcome.outcome.events.iter().cloned());
+    aggregate
         .execution_facts
-        .extend(entry_outcome.execution_facts);
-    departure_outcome.status = entry_outcome.status;
-    departure_outcome.value = entry_outcome.value;
-    Ok(departure_outcome)
+        .extend(entry_outcome.outcome.execution_facts.iter().cloned());
+    aggregate.status = entry_outcome.outcome.status;
+    aggregate.value = entry_outcome.outcome.value.clone();
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        [departure_outcome, entry_outcome],
+        |_| aggregate,
+    ))
 }
 
 impl EffectExecutor for MeldEffect {
@@ -367,23 +418,26 @@ impl EffectExecutor for MeldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        // The instruction owns preliminary exiles and the provisional meld
-        // object as well as the subsequent entry and replacement programs.
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
-        let result = execute_meld_inner(self, game, ctx);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+        crate::effects::composition::execute_checkpoint_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| execute_meld_inner(self, game, ctx),
+        )
     }
 }
 

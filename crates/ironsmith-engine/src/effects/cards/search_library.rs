@@ -14,7 +14,8 @@ use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
 
 use super::search_overrides::{
-    LibrarySearchRequest, execute_library_search_scope, exile_found_cards_for_opposition_agent,
+    LibrarySearchRequest, execute_library_search_scope,
+    exile_found_cards_for_opposition_agent_with_outputs,
 };
 
 pub type SearchLibraryEffect = ironsmith_core::SearchLibraryEffect;
@@ -204,12 +205,13 @@ impl EffectExecutor for SearchLibraryEffect {
                             // Complete the found-card instruction and all permission
                             // links before additions; shuffle only after it resolves.
                             let movement_outputs = if search_override.is_some() {
-                                let found = exile_found_cards_for_opposition_agent(
-                                    game,
-                                    ctx,
-                                    &[card_id],
-                                    chooser_id,
-                                )?;
+                                let (found, published_outputs) =
+                                    exile_found_cards_for_opposition_agent_with_outputs(
+                                        game,
+                                        ctx,
+                                        &[card_id],
+                                        chooser_id,
+                                    )?;
                                 if ctx.decision_maker.awaiting_choice() {
                                     return Ok(EffectOutcome::count(0));
                                 }
@@ -222,6 +224,11 @@ impl EffectExecutor for SearchLibraryEffect {
                                 if let Some(memory) = chosen_memory.clone() {
                                     original = original.with_chosen_object_memory(vec![memory]);
                                 }
+                                let mut original =
+                                    crate::effects::CompletedEffectOutputs::aggregate_only(
+                                        original,
+                                    );
+                                original.retain_published_references(published_outputs);
                                 crate::effects::zones::finish_zone_change_receipts_with_outputs(
                                     game,
                                     ctx,

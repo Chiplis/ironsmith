@@ -916,22 +916,22 @@ fn commit_counter_removal_with_outputs(
                         "counter-removal replacement lost its event".into(),
                     )
                 })?;
-            let payload = crate::effects::replacement::execute_replacement_payload_with_outputs(
+            let mut original = EffectOutcome::replaced();
+            original.set_value(crate::effect::OutcomeValue::Count(0));
+            crate::effects::replacement::execute_replacement_original_payload_with_outputs(
                 game,
                 ctx,
                 &effects,
                 source,
                 controller,
                 &context,
-                Some(vec![removal_target(removal.target())]),
+                crate::effects::replacement::ReplacementProgramBindings {
+                    targets: Some(vec![removal_target(removal.target())]),
+                    object_tags: Vec::new(),
+                },
                 replacement_source_snapshot,
-                Vec::new(),
-            )?;
-            let mut original = EffectOutcome::replaced();
-            original.set_value(crate::effect::OutcomeValue::Count(0));
-            let aggregate =
-                EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
-            Ok(payload.project_aggregate(aggregate))
+                original,
+            )
         }
         TraitEventResult::Prevented => {
             let mut outcome = EffectOutcome::prevented();

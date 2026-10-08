@@ -3,7 +3,9 @@ mod die_roll_replacements;
 use crate::decision::FallbackStrategy;
 use crate::decisions::{ask_choose_multiple, ask_choose_one, ask_may_choice};
 use crate::effect::{EffectOutcome, OutcomeStatus};
-use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError, PayManaEffect};
+use crate::effects::{
+    CompletedEffectOutputs, EffectExecutor, ExecutionContext, ExecutionError, PayManaEffect,
+};
 use crate::filter::PlayerFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -26,20 +28,25 @@ struct AvailableDieRollModifier {
 
 fn draw_die_face(game: &mut GameState, sides: u32) -> Result<u32, ExecutionError> {
     if sides == 0 {
-        return Err(ExecutionError::UnresolvableValue("a die must have at least one side".into()));
+        return Err(ExecutionError::UnresolvableValue(
+            "a die must have at least one side".into(),
+        ));
     }
     if let Some(forced) = game.take_forced_die_roll() {
         return Ok(forced.clamp(1, sides));
     }
     let mut faces = Vec::new();
-    faces.try_reserve_exact(sides as usize).map_err(|_| ExecutionError::ResourceAllocationFailed {
-        resource: "die faces", requested: sides as usize,
+    faces.try_reserve_exact(sides as usize).map_err(|_| {
+        ExecutionError::ResourceAllocationFailed {
+            resource: "die faces",
+            requested: sides as usize,
+        }
     })?;
     faces.extend(1..=sides);
     game.shuffle_slice(&mut faces);
-    faces.first().copied().ok_or_else(|| ExecutionError::UnresolvableValue(
-        "a die must have at least one side".into(),
-    ))
+    faces.first().copied().ok_or_else(|| {
+        ExecutionError::UnresolvableValue("a die must have at least one side".into())
+    })
 }
 
 fn available_modifiers(
@@ -47,9 +54,12 @@ fn available_modifiers(
     player: PlayerId,
     reroll: bool,
 ) -> Result<Vec<AvailableDieRollModifier>, ExecutionError> {
-    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+    let checked = game
+        .continuous_query_snapshot()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     let game = &checked;
-    Ok(game.battlefield
+    Ok(game
+        .battlefield
         .iter()
         .flat_map(|source| {
             let Some(object) = game
@@ -130,9 +140,11 @@ fn pay_mana_cost(
     ctx: &mut ExecutionContext,
     player: PlayerId,
     modifier: &AvailableDieRollModifier,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<CompletedEffectOutputs, ExecutionError> {
     let Some(cost) = modifier.spec.mana_cost.clone() else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     let original_source = ctx.source;
     let original_controller = ctx.controller;
@@ -141,16 +153,17 @@ fn pay_mana_cost(
     ctx.source = modifier.source;
     ctx.controller = player;
     let outcome = PayManaEffect::new(cost, ChooseSpec::SpecificPlayer(player))
-        .execute_child(game, ctx)
+        .execute_child_with_outputs(game, ctx)
         .and_then(|mut outcome| {
             if !ctx.decision_maker.awaiting_choice() {
                 crate::effects::runtime::capture_triggers_before_added_program(
                     game,
                     ctx,
                     None,
-                    outcome.events.iter_mut(),
+                    outcome.outcome.events.iter_mut(),
                 )?;
             }
+            outcome.synchronize_observations();
             Ok(outcome)
         });
     ctx.source = original_source;
@@ -173,7 +186,7 @@ fn apply_reroll_modifiers(
     player: PlayerId,
     sides: u32,
     rolls: &mut [ResolvedDieRoll],
-    payments: &mut Vec<EffectOutcome>,
+    payments: &mut Vec<CompletedEffectOutputs>,
 ) -> Result<bool, ExecutionError> {
     let mut remaining = available_modifiers(game, player, true)?;
     while !remaining.is_empty() {
@@ -207,7 +220,7 @@ fn apply_reroll_modifiers(
             continue;
         }
         let payment = pay_mana_cost(game, ctx, player, &modifier)?;
-        let paid = payment.status != OutcomeStatus::Impossible;
+        let paid = payment.outcome.status != OutcomeStatus::Impossible;
         payments.push(payment);
         if !paid {
             continue;
@@ -259,7 +272,7 @@ fn apply_numerical_modifiers(
     ctx: &mut ExecutionContext,
     player: PlayerId,
     roll: &mut ResolvedDieRoll,
-    payments: &mut Vec<EffectOutcome>,
+    payments: &mut Vec<CompletedEffectOutputs>,
     authored_modifier: Option<&ironsmith_core::effect::DieResultModifier>,
 ) -> Result<bool, ExecutionError> {
     let mut remaining = available_modifiers(game, player, false)?;
@@ -269,23 +282,45 @@ fn apply_numerical_modifiers(
         // numerical modifier too (CR 706.2b). The roller chooses its order
         // relative to external numerical modifiers, after all rerolls.
         let selected = if authored_modifier.is_some() {
-            if remaining.is_empty() { Some(0) } else {
-                let mut options = remaining.iter().enumerate().map(|(index, modifier)| {
-                    (format!("{} (current die result: {})", modifier.display, roll.result), index)
-                }).collect::<Vec<_>>();
-                options.push(("Apply this instruction's die-result arithmetic".into(), remaining.len()));
+            if remaining.is_empty() {
+                Some(0)
+            } else {
+                let mut options = remaining
+                    .iter()
+                    .enumerate()
+                    .map(|(index, modifier)| {
+                        (
+                            format!("{} (current die result: {})", modifier.display, roll.result),
+                            index,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                options.push((
+                    "Apply this instruction's die-result arithmetic".into(),
+                    remaining.len(),
+                ));
                 ask_choose_one(game, &mut ctx.decision_maker, player, ctx.source, &options)
             }
         } else {
             choose_next_modifier(game, ctx, player, &remaining, std::slice::from_ref(roll))
         };
-        let Some(index) = selected else { return Ok(false); };
-        if ctx.decision_maker.awaiting_choice() { return Ok(false); }
-        if index == remaining.len() && let Some(modifier) = authored_modifier.take() {
+        let Some(index) = selected else {
+            return Ok(false);
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        if index == remaining.len()
+            && let Some(modifier) = authored_modifier.take()
+        {
             let amount = crate::effects::helpers::resolve_value_wide(game, modifier.value(), ctx)?;
             let result = match modifier {
-                ironsmith_core::effect::DieResultModifier::Add(_) => i128::from(roll.result) + i128::from(amount),
-                ironsmith_core::effect::DieResultModifier::Subtract(_) => i128::from(roll.result) - i128::from(amount),
+                ironsmith_core::effect::DieResultModifier::Add(_) => {
+                    i128::from(roll.result) + i128::from(amount)
+                }
+                ironsmith_core::effect::DieResultModifier::Subtract(_) => {
+                    i128::from(roll.result) - i128::from(amount)
+                }
             };
             roll.result = bounded_die_result(result)?;
             continue;
@@ -329,7 +364,8 @@ fn apply_numerical_modifiers(
             return Ok(false);
         }
         if modifier.spec.life_cost > 0 {
-            let payment = game.pay_life_with_context(player, modifier.spec.life_cost, ctx)?;
+            let payment =
+                game.pay_life_with_context_and_outputs(player, modifier.spec.life_cost, ctx)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(false);
             }
@@ -340,8 +376,9 @@ fn apply_numerical_modifiers(
                 game,
                 ctx,
                 None,
-                payment.events.iter_mut(),
+                payment.outcome.events.iter_mut(),
             )?;
+            payment.synchronize_observations();
             payments.push(payment);
         }
         roll.result = bounded_die_result(if increase {
@@ -358,7 +395,9 @@ fn bounded_die_result(result: i128) -> Result<u32, ExecutionError> {
     // CR 107.1b: a negative result of an effect is zero; an unrepresentable
     // positive result is an execution-resource error, never saturation.
     u32::try_from(result.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
-        resource: "modified die result", requested: result.max(0) as u128, maximum: u32::MAX as u128,
+        resource: "modified die result",
+        requested: result.max(0) as u128,
+        maximum: u32::MAX as u128,
     })
 }
 
@@ -400,7 +439,38 @@ pub(crate) fn roll_dice_with_authored_modifier(
 /// Retained dice and complete modifier payments are separate observations.
 pub(crate) struct DieRollTransaction {
     pub rolls: Vec<ResolvedDieRoll>,
-    pub payments: Vec<EffectOutcome>,
+    pub payments: Vec<CompletedEffectOutputs>,
+}
+
+impl DieRollTransaction {
+    /// Complete the retained dice after caller-owned result selection, keeping
+    /// each modifier payment and the native completion observation as children.
+    pub(crate) fn complete_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        player: PlayerId,
+        sides: u32,
+        displayed_result: u32,
+        mode: DieRollCompletion,
+        primary: EffectOutcome,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let completion = complete_die_rolls(
+            game,
+            ctx,
+            player,
+            sides,
+            &self.rolls,
+            displayed_result,
+            mode,
+        )?;
+        Ok(CompletedEffectOutputs::from_children(
+            self.payments
+                .into_iter()
+                .chain([CompletedEffectOutputs::aggregate_only(completion)]),
+            |children| EffectOutcome::aggregate_with_primary_result(primary, children),
+        ))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -450,10 +520,8 @@ pub(crate) fn complete_die_rolls(
         .map(|(index, roll)| {
             // The instruction is the causal parent. Every retained physical
             // roll has its own completion identity, including single dice.
-            let provenance = game.alloc_child_event_provenance(
-                ctx.provenance,
-                crate::events::EventKind::DieRolled,
-            );
+            let provenance = game
+                .alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::DieRolled);
             let observation = crate::events::other::DieRolledEvent::new_with_natural_result(
                 player,
                 ctx.source,

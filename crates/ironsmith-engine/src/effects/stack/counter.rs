@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
@@ -35,13 +35,22 @@ fn counter_one_stack_object_of_kind_with_outputs(
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
             let mut receipts = Vec::new();
-            let original =
-                counter_one_stack_object_of_kind_inner(game, ctx, target_id, kind, &mut receipts)?;
+            let mut published_outputs = Vec::new();
+            let original = counter_one_stack_object_of_kind_inner(
+                game,
+                ctx,
+                target_id,
+                kind,
+                &mut receipts,
+                &mut published_outputs,
+            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                     EffectOutcome::count(0),
                 ));
             }
+            let mut original = crate::effects::CompletedEffectOutputs::aggregate_only(original);
+            original.retain_published_references(published_outputs);
             crate::effects::zones::finish_zone_change_receipts_with_outputs(
                 game, ctx, original, receipts,
             )
@@ -58,6 +67,7 @@ fn counter_one_stack_object_of_kind_inner(
         ObjectId,
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
     )>,
+    published_outputs: &mut Vec<crate::effects::PublishedEffectOutputs>,
 ) -> Result<EffectOutcome, ExecutionError> {
     use crate::filter::StackObjectKind;
 
@@ -153,7 +163,7 @@ fn counter_one_stack_object_of_kind_inner(
             });
             let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
             let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let receipt = apply_zone_change_with_context_and_additional_effects(
+            let committed = apply_zone_change_with_context_and_additional_effects_with_outputs(
                 game,
                 target_id,
                 Zone::Stack,
@@ -166,6 +176,11 @@ fn counter_one_stack_object_of_kind_inner(
                 return Ok(EffectOutcome::count(0));
             }
 
+            crate::effects::PublishedEffectOutputs::append_distinct(
+                published_outputs,
+                committed.published_outputs,
+            );
+            let receipt = committed.receipt;
             let outcome = receipt.original.clone();
             receipts.push((target_id, receipt));
             let mut countered_spell = false;
@@ -385,6 +400,7 @@ impl EffectExecutor for CounterEffect {
                 let kind = counter_target_stack_kind(&self.target);
                 let mut outcomes = Vec::new();
                 let mut receipts = Vec::new();
+                let mut published_outputs = Vec::new();
                 for target_id in target_ids {
                     outcomes.push(counter_one_stack_object_of_kind_inner(
                         game,
@@ -392,6 +408,7 @@ impl EffectExecutor for CounterEffect {
                         target_id,
                         kind,
                         &mut receipts,
+                        &mut published_outputs,
                     )?);
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -399,7 +416,10 @@ impl EffectExecutor for CounterEffect {
                         ));
                     }
                 }
-                let original = EffectOutcome::aggregate(outcomes);
+                let mut original = crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::aggregate(outcomes),
+                );
+                original.retain_published_references(published_outputs);
                 crate::effects::zones::finish_zone_change_receipts_with_outputs(
                     game, ctx, original, receipts,
                 )

@@ -835,6 +835,86 @@ struct ProgramOriginalObserver {
 }
 
 impl SimultaneousEffectCompletion for ProgramOriginalObserver {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            context,
+            scope,
+            inner,
+        } = *self;
+        let parent = ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = scope
+            .run(game, ctx, |game, ctx| {
+                inner.complete_original_phase_with_outputs(game, ctx, original)
+            })
+            .map(|mut receipt| {
+                receipt.completion = receipt.completion.map(|inner| {
+                    Box::new(Self {
+                        context: ExecutionContextCheckpoint::capture(ctx),
+                        scope,
+                        inner,
+                    }) as Box<dyn SimultaneousEffectCompletion>
+                });
+                receipt
+            });
+        // The participant owns successful prefix result/tag writes. Its caller
+        // captures them before another participant runs; failed attempts unwind.
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            parent.restore(ctx);
+        }
+        result
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            context,
+            scope,
+            inner,
+        } = *self;
+        let parent = ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = scope
+            .run(game, ctx, |game, ctx| {
+                inner.complete_original_phase_from_outputs(game, ctx, original)
+            })
+            .map(|mut receipt| {
+                receipt.completion = receipt.completion.map(|inner| {
+                    Box::new(Self {
+                        context: ExecutionContextCheckpoint::capture(ctx),
+                        scope,
+                        inner,
+                    }) as Box<dyn SimultaneousEffectCompletion>
+                });
+                receipt
+            });
+        // The participant owns successful prefix result/tag writes. Its caller
+        // captures them before another participant runs; failed attempts unwind.
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            parent.restore(ctx);
+        }
+        result
+    }
+
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
@@ -854,6 +934,44 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         let result = scope
             .run(game, ctx, |game, ctx| {
                 inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+            })
+            .map(|mut receipt| {
+                receipt.completion = receipt.completion.map(|inner| {
+                    Box::new(Self {
+                        context: ExecutionContextCheckpoint::capture(ctx),
+                        scope,
+                        inner,
+                    }) as Box<dyn SimultaneousEffectCompletion>
+                });
+                receipt
+            });
+        // The participant owns successful prefix result/tag writes. Its caller
+        // captures them before another participant runs; failed attempts unwind.
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            parent.restore(ctx);
+        }
+        result
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            context,
+            scope,
+            inner,
+        } = *self;
+        let parent = ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = scope
+            .run(game, ctx, |game, ctx| {
+                inner.prepare_draw_boundary_from_outputs(game, ctx, original)
             })
             .map(|mut receipt| {
                 receipt.completion = receipt.completion.map(|inner| {
@@ -903,6 +1021,16 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         original: EffectOutcome,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         self.inner.complete_with_outputs(game, ctx, original)
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        self.inner
+            .complete_from_original_outputs(game, ctx, original)
     }
 }
 
@@ -1336,13 +1464,15 @@ fn run_action_programs(
                 };
                 let participant = &mut participants[original.participant];
                 let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-                let aggregate = original.receipt.outcome.outcome.clone();
+                let prior = std::mem::replace(
+                    &mut original.receipt.outcome,
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+                );
                 let prepared = original.scope.run(game, &mut local, |game, ctx| {
-                    completion.prepare_draw_boundary_with_outputs(game, ctx, aggregate)
+                    completion.prepare_draw_boundary_from_outputs(game, ctx, prior)
                 })?;
                 participant.context = ExecutionContextCheckpoint::capture(&local);
-                let prior = std::mem::replace(&mut original.receipt, prepared);
-                original.receipt.outcome.retain_owned_child(prior.outcome);
+                original.receipt = prepared;
                 boundary = original.receipt.completion.is_some();
                 if local.decision_maker.awaiting_choice() {
                     return Ok(None);
@@ -1377,6 +1507,26 @@ fn run_action_programs(
                     },
                 }));
             }
+        }
+        if super::simultaneous::original_cohort_phase_status_with_participants(
+            &mut originals,
+            |original| &mut original.receipt,
+        ) != crate::effects::OriginalPhaseStatus::Combined
+        {
+            let Some(phased) =
+                super::simultaneous::complete_original_cohort_phase_with_participants(
+                    game,
+                    ctx,
+                    originals,
+                    |original| &mut original.receipt,
+                    |game, ctx, original| {
+                        phase_program_original(game, ctx, &mut participants, original)
+                    },
+                )?
+            else {
+                return Ok(None);
+            };
+            originals = phased;
         }
         let mut completed = Vec::with_capacity(originals.len());
         for original in originals {
@@ -1553,6 +1703,44 @@ fn commit_program_originals_inner(
         }
     }
     Ok(originals)
+}
+
+/// Advance the retained original in its actual participant frame. Capturing
+/// that frame here preserves writes from an original with no remaining child.
+fn phase_program_original(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    original: CompletedProgramOriginal,
+) -> Result<CompletedProgramOriginal, ExecutionError> {
+    let CompletedProgramOriginal {
+        participant: index,
+        scope,
+        receipt,
+        damage_bindings,
+    } = original;
+    let participant = &mut participants[index];
+    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+    let mut receipt = receipt;
+    if local.resolution_stopped() {
+        receipt.completion = None;
+    } else {
+        receipt = scope.run(game, &mut local, |game, ctx| {
+            super::simultaneous::complete_retained_original_phase_with_outputs(game, ctx, receipt)
+        })?;
+    }
+    participant.context = ExecutionContextCheckpoint::capture(&local);
+    let stopped = local.resolution_stopped();
+    drop(local);
+    if stopped {
+        ctx.stop_resolution();
+    }
+    Ok(CompletedProgramOriginal {
+        participant: index,
+        scope,
+        receipt,
+        damage_bindings,
+    })
 }
 
 fn complete_program_original(

@@ -716,76 +716,80 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 "self-exile cost has no completed public-successor receipt".into(),
             ));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
-        if prepared.is_none() {
-            let mut proposal = MoveZoneProposal {
-                effect: self.clone(),
-                runtime: crate::effect::Effect::new(self.clone()),
-                prepared: None,
-                skipped: None,
-                player: ctx.iteration.iterated_player,
-            };
-            crate::effects::SimultaneousEffectProposal::prepare_selection(
-                &mut proposal,
+        crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
+            if prepared.is_none() {
+                let mut proposal = MoveZoneProposal {
+                    effect: self.clone(),
+                    runtime: crate::effect::Effect::new(self.clone()),
+                    prepared: None,
+                    skipped: None,
+                    player: ctx.iteration.iterated_player,
+                };
+                crate::effects::SimultaneousEffectProposal::prepare_selection(
+                    &mut proposal,
+                    game,
+                    ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                        crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ),
+                    ));
+                }
+                if let Some(skipped) = proposal.skipped.take() {
+                    return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                        crate::effects::CompletedEffectOutputs::aggregate_only(skipped),
+                    ));
+                }
+                crate::effects::SimultaneousEffectProposal::prepare_original(
+                    &mut proposal,
+                    game,
+                    ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                        crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ),
+                    ));
+                }
+                prepared = proposal.prepared;
+            }
+            // CR 603.10a: objects this instruction moves together share one
+            // pre-event look-back, so a leaves-the-battlefield observer moved in
+            // the same event sees every other object leave.
+            let pinned_lookback = (self.zone != Zone::Battlefield
+                && (!self.target.is_single()
+                    || matches!(self.target.base(), ChooseSpec::Tagged(_))))
+                && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+            let mut draws = prepared
+                .as_mut()
+                .map(|prepared| std::mem::take(&mut prepared.draws))
+                .unwrap_or_default();
+            let mut receipts = Vec::new();
+            let mut counter_completion = None;
+            let outcome = self.execute_with_shared_lookback(
                 game,
                 ctx,
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
+                &mut draws,
+                &mut receipts,
+                &mut counter_completion,
+                prepared,
+                None,
+            );
+            crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
+            let pending = ctx.decision_maker.awaiting_choice();
+            // A captured decision cannot turn a genuine typed failure into success.
+            let original = outcome?;
+            if pending {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
                     crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
                 ));
             }
-            if let Some(skipped) = proposal.skipped.take() {
-                return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effects::CompletedEffectOutputs::aggregate_only(skipped),
-                ));
-            }
-            crate::effects::SimultaneousEffectProposal::prepare_original(&mut proposal, game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-                ));
-            }
-            prepared = proposal.prepared;
-        }
-        // CR 603.10a: objects this instruction moves together share one
-        // pre-event look-back, so a leaves-the-battlefield observer moved in
-        // the same event sees every other object leave.
-        let pinned_lookback = (self.zone != Zone::Battlefield
-            && (!self.target.is_single() || matches!(self.target.base(), ChooseSpec::Tagged(_))))
-            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-        let mut draws = prepared
-            .as_mut()
-            .map(|prepared| std::mem::take(&mut prepared.draws))
-            .unwrap_or_default();
-        let mut receipts = Vec::new();
-        let mut counter_completion = None;
-        let outcome = self.execute_with_shared_lookback(
-            game,
-            ctx,
-            &mut draws,
-            &mut receipts,
-            &mut counter_completion,
-            prepared,
-            None,
-        );
-        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || outcome.is_err() {
-            game.restore_execution_checkpoint(checkpoint, pending && outcome.is_ok());
-            context_checkpoint.restore(ctx);
-        }
-        // A captured decision cannot turn a genuine typed failure into success.
-        let original = outcome?;
-        if pending {
-            return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            ));
-        }
-        let movement = draws.finish(original, receipts, ctx).into_retained();
-        let mut committed = if let Some(counters) = counter_completion {
-            crate::effects::composition::compose_original_commits_with_fallible_projection_outputs(
+            let movement = draws.finish(original, receipts, ctx).into_retained();
+            let mut committed = if let Some(counters) = counter_completion {
+                crate::effects::composition::compose_original_commits_with_fallible_projection_outputs(
                 vec![counters, movement],
                 Box::new(|mut outcomes| {
                     let original = outcomes.pop().ok_or_else(|| {
@@ -796,24 +800,25 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     ))
                 }),
             )?
-        } else {
-            movement
-        };
-        if replacement_boundary {
-            if let Some(mut completion) = committed.completion.take() {
-                completion.freeze(game)?;
-                completion.observe_original(game, ctx, &mut committed.outcome.outcome)?;
-                committed.outcome.synchronize_observations();
-                let mut prepared = completion.prepare_draw_boundary_with_outputs(
-                    game,
-                    ctx,
-                    committed.outcome.outcome.clone(),
-                )?;
-                prepared.outcome.retain_owned_child(committed.outcome);
-                return Ok(prepared);
+            } else {
+                movement
+            };
+            if replacement_boundary {
+                if let Some(mut completion) = committed.completion.take() {
+                    completion.freeze(game)?;
+                    completion.observe_original(game, ctx, &mut committed.outcome.outcome)?;
+                    committed.outcome.synchronize_observations();
+                    let mut prepared = completion.prepare_draw_boundary_with_outputs(
+                        game,
+                        ctx,
+                        committed.outcome.outcome.clone(),
+                    )?;
+                    prepared.outcome.retain_owned_child(committed.outcome);
+                    return Ok(prepared);
+                }
             }
-        }
-        Ok(committed)
+            Ok(committed)
+        })
     }
 
     fn execute_with_shared_lookback(
@@ -1290,7 +1295,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     }
                     EventOutcome::Proceed(PreparedZoneProposal::Ready(prepared)) => {
                         let replacement_context = prepared.context.clone();
-                        let committed = super::commit_zone_change_proposal(
+                        let committed = super::commit_zone_change_proposal_with_outputs(
                             game,
                             object_id,
                             PreparedEventOutcome {
@@ -1302,6 +1307,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(());
                         }
+                        let committed = draws.retain_committed_zone_receipt(committed);
                         programs = committed.programs;
                         let mut result = match committed.original {
                             EventOutcome::Proceed(change) => change,

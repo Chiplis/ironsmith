@@ -8,8 +8,7 @@ use std::collections::HashSet;
 use crate::DecisionMaker;
 use crate::decisions::context::{DecisionContext, OrderContext, enrich_display_hints};
 use crate::events::processing::{
-    EventOutcome, PreparedEventOutcome, ReplacementEventContext, commit_prepared_zone_change,
-    prepare_zone_change_scoped,
+    EventOutcome, PreparedEventOutcome, ReplacementEventContext, prepare_zone_change_scoped,
 };
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -30,7 +29,8 @@ pub(crate) use prepared_move::{
     PreparedZoneMove, commit_zone_moves, commit_zone_moves_with_completion,
     complete_movement_batch, execute_battlefield_entries, execute_battlefield_entries_with_outputs,
     execute_zone_moves, execute_zone_moves_with_outputs, group_zone_move_observations,
-    observe_zone_move_originals, prepare_zone_moves, resolve_zone_move_objects,
+    observe_zone_move_originals, observe_zone_move_originals_with_cause, prepare_zone_moves,
+    resolve_zone_move_objects,
 };
 mod battlefield_entry;
 mod continuation;
@@ -518,6 +518,31 @@ pub(crate) fn apply_zone_change_with_context_and_additional_effects(
         None,
     )
 }
+/// Contextual compounds retain the actual entry packet with their movement.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_zone_change_with_context_and_additional_effects_with_outputs(
+    game: &mut GameState,
+    object_id: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    ctx: &mut crate::effects::ExecutionContext,
+    additional_effects: &[ReplacementEffect],
+) -> Result<
+    crate::events::processing::CommittedZoneChange<AppliedZoneChange>,
+    crate::effects::ExecutionError,
+> {
+    apply_zone_change_with_context_and_additional_effects_and_snapshot_with_outputs(
+        game,
+        object_id,
+        from,
+        to,
+        cause,
+        ctx,
+        additional_effects,
+        None,
+    )
+}
 
 /// Native movement owners can retain event-created draws while keeping the
 /// exact normal zone preparation/commit and additional-program receipts.
@@ -548,7 +573,9 @@ pub(crate) fn apply_zone_change_with_context_and_draws(
         prepared.original = EventOutcome::NotApplicable;
     }
     draws.commit_pending_replacement(game, object, &mut *ctx.decision_maker)?;
-    commit_zone_change_proposal(game, object, prepared, &mut *ctx.decision_maker)
+    let committed =
+        commit_zone_change_proposal_with_outputs(game, object, prepared, &mut *ctx.decision_maker)?;
+    Ok(draws.retain_committed_zone_receipt(committed))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -613,7 +640,34 @@ pub(crate) fn apply_zone_change_with_context_and_additional_effects_and_snapshot
     additional_effects: &[ReplacementEffect],
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
 ) -> Result<PreparedEventOutcome<AppliedZoneChange>, crate::effects::ExecutionError> {
-    PreparedZoneMove::capture(game, object_id, from, to, cause, snapshot).commit(
+    apply_zone_change_with_context_and_additional_effects_and_snapshot_with_outputs(
+        game,
+        object_id,
+        from,
+        to,
+        cause,
+        ctx,
+        additional_effects,
+        snapshot,
+    )
+    .map(|committed| committed.receipt)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_zone_change_with_context_and_additional_effects_and_snapshot_with_outputs(
+    game: &mut GameState,
+    object_id: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    ctx: &mut crate::effects::ExecutionContext,
+    additional_effects: &[ReplacementEffect],
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> Result<
+    crate::events::processing::CommittedZoneChange<AppliedZoneChange>,
+    crate::effects::ExecutionError,
+> {
+    PreparedZoneMove::capture(game, object_id, from, to, cause, snapshot).commit_with_outputs(
         game,
         ctx,
         additional_effects,
@@ -639,43 +693,37 @@ fn apply_zone_change_owned(
     }
     // Preparation, entry commit, and split-card ordering share one owner.
     // This is earlier than any replacement consumption or provisional entry.
-    let checkpoint = game.clone();
-    let result = (|| {
-        let prepared = prepare_zone_change_scoped(
-            game,
-            object_id,
-            from,
-            to,
-            cause,
-            decision_maker,
-            additional_effects,
-            scope
-                .and_then(|context| {
-                    crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
-                        context.event.inner(),
-                    )
-                })
-                .filter(|event| event.objects.as_slice() == [object_id] && event.from == from)
-                .and_then(|event| event.snapshot.clone()),
-            scope,
-            Vec::new(),
-            None,
-        )?;
-        commit_zone_change_proposal(game, object_id, prepared, decision_maker)
-    })();
-    if result.is_err() || decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && decision_maker.awaiting_choice(),
-        );
-    }
-    if decision_maker.awaiting_choice() {
-        return result.map(|_| PreparedEventOutcome {
+    crate::effects::composition::execute_decision_transaction(
+        game,
+        decision_maker,
+        || PreparedEventOutcome {
             original: EventOutcome::Prevented,
             programs: Vec::new(),
-        });
-    }
-    result
+        },
+        |game, decision_maker| {
+            let prepared = prepare_zone_change_scoped(
+                game,
+                object_id,
+                from,
+                to,
+                cause,
+                decision_maker,
+                additional_effects,
+                scope
+                    .and_then(|context| {
+                        crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
+                            context.event.inner(),
+                        )
+                    })
+                    .filter(|event| event.objects.as_slice() == [object_id] && event.from == from)
+                    .and_then(|event| event.snapshot.clone()),
+                scope,
+                Vec::new(),
+                None,
+            )?;
+            commit_zone_change_proposal(game, object_id, prepared, decision_maker)
+        },
+    )
 }
 
 /// Commit the exact retained zone proposal. Keep the returned receipt until
@@ -688,109 +736,135 @@ pub fn commit_zone_change_proposal(
     prepared: PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<PreparedEventOutcome<AppliedZoneChange>, crate::effects::ExecutionError> {
+    commit_zone_change_proposal_with_outputs(game, object, prepared, dm)
+        .map(|committed| committed.receipt)
+}
+
+/// Preserve the native entry producer's references through receipt promotion.
+pub(crate) fn commit_zone_change_proposal_with_outputs(
+    game: &mut GameState,
+    object: ObjectId,
+    prepared: PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
+    dm: &mut dyn DecisionMaker,
+) -> Result<
+    crate::events::processing::CommittedZoneChange<AppliedZoneChange>,
+    crate::effects::ExecutionError,
+> {
     if dm.awaiting_choice() {
-        return Ok(PreparedEventOutcome {
-            original: EventOutcome::Prevented,
-            programs: Vec::new(),
-        });
-    }
-    let checkpoint = game.clone();
-    let result = (|| {
-        let PreparedEventOutcome {
-            original,
-            mut programs,
-        } = prepared;
-        let mut committed = match original {
-            EventOutcome::Proceed(proposal) => {
-                if !proposal.original_is_current(game, object)? {
-                    return Ok(PreparedEventOutcome {
-                        original: EventOutcome::NotApplicable,
-                        programs,
-                    });
-                }
-                let zone = proposal
-                    .context
-                    .zone_change_context
-                    .as_ref()
-                    .or_else(|| {
-                        crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
-                            proposal.context.event.inner(),
-                        )
-                    })
-                    .ok_or_else(|| {
-                        crate::effects::ExecutionError::InternalError(
-                            "zone proposal has no original context".into(),
-                        )
-                    })?;
-                let from = zone.from;
-                let cause = zone.cause.clone();
-                let provenance = proposal.context.event.provenance();
-                let lookback = proposal.pre_event_lookback.clone();
-                let receipt = commit_prepared_zone_change(game, object, proposal, dm)?;
-                if dm.awaiting_choice() {
-                    return Ok(PreparedEventOutcome {
-                        original: EventOutcome::Prevented,
-                        programs: Vec::new(),
-                    });
-                }
-                let mut promoted = promote_committed_zone_change_receipt(game, object, receipt)?;
-                if let EventOutcome::Proceed(change) = &mut promoted.original {
-                    if from == Zone::Battlefield
-                        && matches!(change.final_zone, Zone::Graveyard | Zone::Exile)
-                    {
-                        maybe_prompt_for_split_result_order(
-                            game,
-                            dm,
-                            change.final_zone,
-                            &cause,
-                            change,
-                        );
-                        if dm.awaiting_choice() {
-                            return Ok(PreparedEventOutcome {
-                                original: EventOutcome::Prevented,
-                                programs: Vec::new(),
-                            });
-                        }
-                        game.record_zone_change_results(object, change.new_object_ids.clone());
-                    }
-                    if change.final_zone == Zone::Battlefield {
-                        for id in &change.new_object_ids {
-                            let enters_tapped = game.is_tapped(*id);
-                            let event = battlefield_entry_observation(
-                                game,
-                                *id,
-                                from,
-                                enters_tapped,
-                                provenance,
-                                lookback.clone(),
-                            )?;
-                            game.queue_trigger_event(provenance, event);
-                        }
-                    }
-                }
-                promoted
-            }
-            EventOutcome::Prevented => PreparedEventOutcome {
+        return Ok(
+            crate::events::processing::CommittedZoneChange::from_receipt(PreparedEventOutcome {
                 original: EventOutcome::Prevented,
                 programs: Vec::new(),
-            },
-            EventOutcome::Replaced => PreparedEventOutcome {
-                original: EventOutcome::Replaced,
-                programs: Vec::new(),
-            },
-            EventOutcome::NotApplicable => PreparedEventOutcome {
-                original: EventOutcome::NotApplicable,
-                programs: Vec::new(),
-            },
-        };
-        programs.append(&mut committed.programs);
-        committed.programs = programs;
-        Ok(committed)
-    })();
-    if result.is_err() || dm.awaiting_choice() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
+            }),
+        );
     }
-    result
+    let mut published_outputs = Vec::new();
+    let result =
+        crate::effects::composition::execute_result_decision_transaction(game, dm, |game, dm| {
+            let PreparedEventOutcome {
+                original,
+                mut programs,
+            } = prepared;
+            let mut committed = match original {
+                EventOutcome::Proceed(proposal) => {
+                    if !proposal.original_is_current(game, object)? {
+                        return Ok(PreparedEventOutcome {
+                            original: EventOutcome::NotApplicable,
+                            programs,
+                        });
+                    }
+                    let zone = proposal
+                        .context
+                        .zone_change_context
+                        .as_ref()
+                        .or_else(|| {
+                            crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
+                                proposal.context.event.inner(),
+                            )
+                        })
+                        .ok_or_else(|| {
+                            crate::effects::ExecutionError::InternalError(
+                                "zone proposal has no original context".into(),
+                            )
+                        })?;
+                    let from = zone.from;
+                    let cause = zone.cause.clone();
+                    let provenance = proposal.context.event.provenance();
+                    let lookback = proposal.pre_event_lookback.clone();
+                    let committed =
+                        crate::events::processing::commit_prepared_zone_change_with_outputs(
+                            game, object, proposal, dm,
+                        )?;
+                    published_outputs.extend(committed.published_outputs);
+                    let receipt = committed.receipt;
+                    if dm.awaiting_choice() {
+                        return Ok(PreparedEventOutcome {
+                            original: EventOutcome::Prevented,
+                            programs: Vec::new(),
+                        });
+                    }
+                    let mut promoted =
+                        promote_committed_zone_change_receipt(game, object, receipt)?;
+                    if let EventOutcome::Proceed(change) = &mut promoted.original {
+                        if from == Zone::Battlefield
+                            && matches!(change.final_zone, Zone::Graveyard | Zone::Exile)
+                        {
+                            maybe_prompt_for_split_result_order(
+                                game,
+                                dm,
+                                change.final_zone,
+                                &cause,
+                                change,
+                            );
+                            if dm.awaiting_choice() {
+                                return Ok(PreparedEventOutcome {
+                                    original: EventOutcome::Prevented,
+                                    programs: Vec::new(),
+                                });
+                            }
+                            game.record_zone_change_results(object, change.new_object_ids.clone());
+                        }
+                        if change.final_zone == Zone::Battlefield {
+                            for id in &change.new_object_ids {
+                                let enters_tapped = game.is_tapped(*id);
+                                let event = battlefield_entry_observation(
+                                    game,
+                                    *id,
+                                    from,
+                                    enters_tapped,
+                                    provenance,
+                                    lookback.clone(),
+                                )?;
+                                game.queue_trigger_event(provenance, event);
+                            }
+                        }
+                    }
+                    promoted
+                }
+                EventOutcome::Prevented => PreparedEventOutcome {
+                    original: EventOutcome::Prevented,
+                    programs: Vec::new(),
+                },
+                EventOutcome::Replaced => PreparedEventOutcome {
+                    original: EventOutcome::Replaced,
+                    programs: Vec::new(),
+                },
+                EventOutcome::NotApplicable => PreparedEventOutcome {
+                    original: EventOutcome::NotApplicable,
+                    programs: Vec::new(),
+                },
+            };
+            programs.append(&mut committed.programs);
+            committed.programs = programs;
+            Ok(committed)
+        });
+    if dm.awaiting_choice() {
+        published_outputs.clear();
+    }
+    result.map(|receipt| crate::events::processing::CommittedZoneChange {
+        receipt,
+        published_outputs,
+    })
 }
 
 /// Promote an exact commit receipt without rerunning replacement processing.
@@ -990,55 +1064,61 @@ pub(crate) fn finish_zone_change_receipts_frozen_with_outputs<
     let primary = outputs.outcome.value.clone();
     let prepared = frozen.0?;
     for (object, ids, snapshots, programs) in prepared {
-        let completed =
-            crate::effects::replacement::complete_deferred_replacement_programs_with_bindings(
-                game,
-                ctx,
-                outputs.outcome.clone(),
-                programs,
-                |_, context, _| {
-                    let zone = context.zone_change_context.as_ref().or_else(|| {
-                        crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
-                            context.event.inner(),
-                        )
-                    });
-                    let matches = zone.is_some_and(|zone| zone.objects.as_slice() == [object])
-                        || crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
-                            context.event.inner(),
-                        )
-                        .is_some_and(|entry| entry.object == object);
-                    if !matches {
-                        return Err(ExecutionError::InternalError(
-                            "zone addition lost its original object context".into(),
-                        ));
-                    }
-                    let captured = if snapshots.is_empty() {
-                        zone.and_then(|zone| zone.snapshot.clone())
-                            .into_iter()
-                            .collect::<Vec<_>>()
-                    } else {
-                        snapshots.clone()
-                    };
-                    Ok(crate::effects::replacement::ReplacementProgramBindings {
-                        targets: Some(
-                            ids.iter()
-                                .copied()
-                                .map(crate::effects::ResolvedTarget::Object)
-                                .collect(),
-                        ),
-                        object_tags: vec![
-                            ("it".to_owned(), captured.clone()),
-                            ("__it__".to_owned(), captured),
-                        ],
-                    })
-                },
-            )?;
+        outputs = crate::effects::replacement::complete_replacement_programs_with_original_outputs(
+            game,
+            ctx,
+            outputs,
+            |game, ctx, original| {
+                crate::effects::replacement::complete_deferred_replacement_programs_with_bindings(
+                    game,
+                    ctx,
+                    original,
+                    programs,
+                    |_, context, _| {
+                        let zone = context.zone_change_context.as_ref().or_else(|| {
+                            crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
+                                context.event.inner(),
+                            )
+                        });
+                        let matches =
+                            zone.is_some_and(|zone| zone.objects.as_slice() == [object])
+                                || crate::events::downcast_event::<
+                                    crate::events::EnterBattlefieldEvent,
+                                >(context.event.inner())
+                                .is_some_and(|entry| entry.object == object);
+                        if !matches {
+                            return Err(ExecutionError::InternalError(
+                                "zone addition lost its original object context".into(),
+                            ));
+                        }
+                        let captured = if snapshots.is_empty() {
+                            zone.and_then(|zone| zone.snapshot.clone())
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                        } else {
+                            snapshots.clone()
+                        };
+                        Ok(crate::effects::replacement::ReplacementProgramBindings {
+                            targets: Some(
+                                ids.iter()
+                                    .copied()
+                                    .map(crate::effects::ResolvedTarget::Object)
+                                    .collect(),
+                            ),
+                            object_tags: vec![
+                                ("it".to_owned(), captured.clone()),
+                                ("__it__".to_owned(), captured),
+                            ],
+                        })
+                    },
+                )
+            },
+        )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 crate::effect::EffectOutcome::count(0),
             ));
         }
-        outputs = outputs.append_batch_program_outputs(completed);
     }
     outputs.outcome.value = primary;
     Ok(outputs)

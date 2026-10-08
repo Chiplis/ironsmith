@@ -250,12 +250,17 @@ impl ShuffleObjectsIntoLibraryProposal {
                     programs: proposal.programs,
                 }
             } else {
-                super::commit_zone_change_proposal(
+                let committed = super::commit_zone_change_proposal_with_outputs(
                     game,
                     object_id,
                     proposal,
                     &mut *ctx.decision_maker,
-                )?
+                )?;
+                crate::effects::PublishedEffectOutputs::append_distinct(
+                    &mut self.draws.1,
+                    committed.published_outputs,
+                );
+                committed.receipt
             };
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));

@@ -820,7 +820,7 @@ impl PreparedDamageBatch {
                 game,
                 parent,
                 false,
-                |game, parent| Ok(vec![self.commit_original(game, parent)?]),
+                |game, parent| Ok(vec![self.commit_original_with_outputs(game, parent)?]),
                 |_, _, _| {
                     Ok(crate::effects::composition::OriginalTriggerObservation::OwnerPublished)
                 },
@@ -835,11 +835,17 @@ impl PreparedDamageBatch {
         })
     }
 
-    pub(super) fn commit_original(
+    /// Commit the original occurrence once and transfer its actual child packets.
+    /// Assignment/contribution binding stays at final damage completion; these
+    /// prefix views retain ownership without asserting final routing coverage.
+    pub(super) fn commit_original_with_outputs(
         self,
         game: &mut GameState,
         parent: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let Self {
             assignment_follow_ups,
             follow_ups,
@@ -897,7 +903,7 @@ impl PreparedDamageBatch {
         })?;
         if parent.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                EffectOutcome::count(0),
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             ));
         }
         let primary = projection.project(game, &(0..assignment_count).collect::<Vec<_>>())?;
@@ -906,31 +912,24 @@ impl PreparedDamageBatch {
             .iter()
             .map(|assignments| projection.project(game, assignments))
             .collect::<Result<Vec<_>, _>>()?;
-        let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            primary.clone(),
-            payloads
-                .iter()
-                .map(|payload| payload.outputs.outcome.clone())
-                .chain(
-                    receipts
-                        .iter()
-                        .map(|owned| owned.receipt.outcome.outcome.clone()),
-                ),
-        );
+        let completion = DamageBatchCompletion {
+            assignment_count,
+            participants,
+            participant_primaries,
+            primary,
+            receipts,
+            payloads,
+            programs,
+            follow_ups,
+            assignment_follow_ups,
+            staged_tail: Vec::new(),
+        };
+        let original =
+            crate::effects::CompletedEffectOutputs::aggregate_only(completion.primary.clone());
+        let outputs = completion.retained_prefix_outputs(original);
         Ok(crate::effects::SimultaneousEffectCommit {
-            outcome,
-            completion: Some(Box::new(DamageBatchCompletion {
-                assignment_count,
-                participants,
-                participant_primaries,
-                primary,
-                receipts,
-                payloads,
-                programs,
-                follow_ups,
-                assignment_follow_ups,
-                staged_tail: Vec::new(),
-            })),
+            outcome: outputs,
+            completion: Some(Box::new(completion)),
         })
     }
 }
@@ -973,8 +972,14 @@ struct DamageBatchCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        mut self: Box<Self>,
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::composition::original_cohort_phase_status_from_receipts(
+            self.receipts.iter().map(|owned| &owned.receipt),
+        )
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
@@ -982,14 +987,68 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
+        self.complete_original_phase_from_outputs(
+            game,
+            ctx,
+            crate::effects::CompletedEffectOutputs::aggregate_only(original),
+        )
+    }
+
+    fn complete_original_phase_from_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if !self.finish_original_consequences(game, ctx, &original.outcome)? {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        self.inherit_prefix_observations(&original.outcome.events);
+        let outputs = self.retained_prefix_outputs(original);
+        Ok(crate::effects::SimultaneousEffectCommit {
+            outcome: outputs,
+            completion: Some(self),
+        })
+    }
+
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.prepare_draw_boundary_from_outputs(
+            game,
+            ctx,
+            crate::effects::CompletedEffectOutputs::aggregate_only(original),
+        )
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         // Damage originals are already committed and observed. Advance each
         // consequence only to its own actual draw, retaining contribution IDs.
-        self.inherit_prefix_observations(&original.events);
+        self.inherit_prefix_observations(&original.outcome.events);
         let mut consequence_draw = false;
         for owned in &mut self.receipts {
             crate::effects::composition::inherit_original_observations(
                 &mut owned.receipt.outcome.outcome,
-                &original.events,
+                &original.outcome.events,
             );
             if let Some(completion) = owned.receipt.completion.take() {
                 let prefix = std::mem::replace(
@@ -998,12 +1057,7 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
                         EffectOutcome::resolved(),
                     ),
                 );
-                let mut receipt = completion.prepare_draw_boundary_with_outputs(
-                    game,
-                    ctx,
-                    prefix.outcome.clone(),
-                )?;
-                receipt.outcome.retain_owned_child(prefix);
+                let receipt = completion.prepare_draw_boundary_from_outputs(game, ctx, prefix)?;
                 owned.receipt = receipt;
             }
             if ctx.decision_maker.awaiting_choice() {
@@ -1017,7 +1071,7 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
             }
         }
         if consequence_draw {
-            return Ok(self.retained_draw_boundary(&original));
+            return Ok(self.retained_draw_boundary(original));
         }
         self.capture_tail_steps()?;
         let mut remaining = std::mem::take(&mut self.staged_tail).into_iter();
@@ -1030,7 +1084,7 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
                     program,
                 } => {
                     let mut participant = context.reborrow(&mut *ctx.decision_maker);
-                    let mut before = self.current_prefix(&original);
+                    let mut before = self.current_prefix(&original.outcome);
                     crate::effects::capture_triggers_before_added_program(
                         game,
                         &participant,
@@ -1079,10 +1133,10 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
             }
             if at_draw {
                 self.staged_tail.extend(remaining);
-                return Ok(self.retained_draw_boundary(&original));
+                return Ok(self.retained_draw_boundary(original));
             }
         }
-        self.complete_with_outputs(game, ctx, original)
+        self.complete_from_original_outputs(game, ctx, original)
             .map(crate::effects::SimultaneousEffectCommit::finished)
     }
 
@@ -1206,6 +1260,30 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
             )),
         }
     }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        // The aggregate supplies native observation annotations; the actual
+        // packet stays intact until the final participant/contribution owner.
+        let completed = (*self).complete_owned(game, ctx, original.outcome.clone())?;
+        // Preserve the compatibility gateway's defensive suspension boundary.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        match completed {
+            Some(completed) => completed.into_effect_outputs_from_original(original),
+            None => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            )
+            .append_owned_child(original)),
+        }
+    }
 }
 
 /// Shared outputs are published once, with their contribution ownership.
@@ -1246,6 +1324,22 @@ struct CompletedDamageBatch {
 }
 impl CompletedDamageBatch {
     fn into_effect_outputs(self) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.project_effect_outputs(None)
+    }
+
+    fn into_effect_outputs_from_original(
+        self,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.project_effect_outputs(Some(original))
+    }
+
+    /// One final owner binds participants/contributions and retains the actual
+    /// incoming packet as metadata, never another chronological action history.
+    fn project_effect_outputs(
+        self,
+        original: Option<crate::effects::CompletedEffectOutputs>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let Self {
             outcome,
             participants,
@@ -1303,12 +1397,18 @@ impl CompletedDamageBatch {
                 }
             })
             .collect::<Result<Vec<_>, ExecutionError>>()?;
-        Ok(crate::effects::CompletedEffectOutputs {
+        let mut outputs = crate::effects::CompletedEffectOutputs {
             projections_complete: true,
             outcome,
             participants,
             shared,
-        })
+        };
+        if let Some(original) = original {
+            // Coverage and annotation propagation follow the existing owned
+            // child contract; prefix views do not manufacture final bindings.
+            outputs.retain_owned_child(original);
+        }
+        Ok(outputs)
     }
 }
 
@@ -1362,13 +1462,43 @@ impl DamageBatchCompletion {
         )
     }
 
+    /// Retain the native partial history and real routing packets once. Final
+    /// assignment/contribution projection belongs to CompletedDamageBatch.
+    fn retained_prefix_outputs(
+        &self,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> crate::effects::CompletedEffectOutputs {
+        let aggregate = self.current_prefix(&original.outcome);
+        let mut outputs = original.project_aggregate(aggregate);
+        // Assignment/contributor result binding belongs to final native projection.
+        // These are alternative views of retained originals, never extra actions.
+        outputs.projections_complete = false;
+        outputs.retain_batch_children(
+            self.payloads
+                .iter()
+                .map(|payload| payload.outputs.clone_projection())
+                .chain(
+                    self.receipts
+                        .iter()
+                        .map(|owned| owned.receipt.outcome.clone_projection()),
+                )
+                .chain(self.staged_tail.iter().filter_map(|step| match step {
+                    DamageTailStep::Prepared { receipt, .. } => {
+                        Some(receipt.outcome.clone_projection())
+                    }
+                    _ => None,
+                })),
+        );
+        outputs
+    }
+
     fn retained_draw_boundary(
         self: Box<Self>,
-        original: &EffectOutcome,
+        original: crate::effects::CompletedEffectOutputs,
     ) -> crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs> {
-        let prefix = self.current_prefix(original);
+        let outputs = self.retained_prefix_outputs(original);
         crate::effects::SimultaneousEffectCommit {
-            outcome: crate::effects::CompletedEffectOutputs::aggregate_only(prefix),
+            outcome: outputs,
             completion: Some(self),
         }
     }
@@ -1413,12 +1543,58 @@ impl DamageBatchCompletion {
         Ok(())
     }
 
+    /// One native original-phase owner; callers preflight the complete cohort.
+    /// Consequence origins and captured execution wrappers move with their receipt.
+    fn finish_original_consequences(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: &EffectOutcome,
+    ) -> Result<bool, ExecutionError> {
+        for owned in &mut self.receipts {
+            crate::effects::composition::inherit_original_observations(
+                &mut owned.receipt.outcome.outcome,
+                &original.events,
+            );
+        }
+        let Some(receipts) =
+            crate::effects::composition::complete_original_cohort_phase_with_participants(
+                game,
+                ctx,
+                std::mem::take(&mut self.receipts),
+                |owned| &mut owned.receipt,
+                |game, ctx, mut owned| {
+                    owned.receipt =
+                        crate::effects::composition::complete_retained_original_phase_with_outputs(
+                            game,
+                            ctx,
+                            owned.receipt,
+                        )?;
+                    Ok(owned)
+                },
+            )?
+        else {
+            return Ok(false);
+        };
+        self.receipts = receipts;
+        Ok(true)
+    }
+
     fn complete_owned(
-        self,
+        mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<Option<CompletedDamageBatch>, ExecutionError> {
+        if crate::effects::composition::original_cohort_phase_status_with_participants(
+            &mut self.receipts,
+            |owned| &mut owned.receipt,
+        ) != crate::effects::OriginalPhaseStatus::Combined
+        {
+            if !self.finish_original_consequences(game, ctx, &original)? {
+                return Ok(None);
+            }
+        }
         let Self {
             assignment_count,
             participants,

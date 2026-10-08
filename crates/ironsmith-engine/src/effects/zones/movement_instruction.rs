@@ -283,9 +283,7 @@ pub(crate) fn prepare_movement_draw_continuation(
         completion.freeze(game)?;
         completion.observe_original(game, ctx, &mut original.outcome)?;
         original.synchronize_observations();
-        let mut prepared =
-            completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
-        prepared.outcome.retain_owned_child(original);
+        let prepared = completion.prepare_draw_boundary_from_outputs(game, ctx, original)?;
         Ok(prepared)
     } else {
         Ok(committed)

@@ -2360,6 +2360,13 @@ export function GameProvider({ children }) {
     resolveAllRef.current = null;
     setPhasePassing(false);
   }, []);
+  const pausePassing = useCallback(() => {
+    stopResolveAll();
+    // A phase pause ends automation, including the independent stack resolver.
+    // Consuming the stop with a manual action must not restart either path.
+    setAutoPassEnabled(false);
+    setAutoResolveEnabled(false);
+  }, [stopResolveAll]);
   const startResolveAll = useCallback(() => {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
@@ -2385,7 +2392,9 @@ export function GameProvider({ children }) {
       return;
     }
     const current = stateRef.current;
-    if (!current || current.game_over) return;
+    if (!current || current.game_over
+      || !samePlayerId(current.active_player, current.perspective)
+      || current.decision?.kind === "mana_payment") return;
     // Explicitly resume automation, but leave phase/step stops intact.
     priorityStops.resume(current);
     setAutoPassEnabled(true);
@@ -2433,12 +2442,13 @@ export function GameProvider({ children }) {
     )) {
       // A combat stop also opts out of declaring no attackers automatically:
       // otherwise that declaration would remove the later blocking window.
-      stopResolveAll();
+      pausePassing();
       return;
     }
     if (run?.dispatchedFrom === state) return;
-    if (priorityStops.stopReason(state) || holdRule === "always") {
-      if (run?.phases) stopResolveAll();
+    const stopReason = priorityStops.stopReason(state);
+    if (stopReason || holdRule === "always") {
+      if (run?.phases || stopReason?.startsWith("stop at ")) pausePassing();
       return;
     }
     if (run?.phases && state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return;
@@ -2481,7 +2491,7 @@ export function GameProvider({ children }) {
     }, 25);
     return () => clearTimeout(timer);
   }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
-    resolveAllTick, phasePassing, state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule]);
+    resolveAllTick, phasePassing, state, stateRef, stopResolveAll, pausePassing, priorityStops, priorityStopsState, holdRule]);
 
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.

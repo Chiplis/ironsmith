@@ -250,32 +250,35 @@ pub(crate) struct FoundCardsExileReceipt {
     )>,
 }
 
-pub(crate) fn move_found_card_for_opposition_agent(
+pub(crate) fn move_found_card_for_opposition_agent_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card_id: ObjectId,
     search: OppositionAgentSearch,
 ) -> Result<
-    crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    crate::events::processing::CommittedZoneChange<crate::effects::zones::AppliedZoneChange>,
     ExecutionError,
 > {
     use crate::events::processing::{EventOutcome, PreparedEventOutcome};
     let Some(from) = game.object(card_id).map(|card| card.zone) else {
-        return Ok(PreparedEventOutcome {
-            original: EventOutcome::NotApplicable,
-            programs: Vec::new(),
-        });
+        return Ok(
+            crate::events::processing::CommittedZoneChange::from_receipt(PreparedEventOutcome {
+                original: EventOutcome::NotApplicable,
+                programs: Vec::new(),
+            }),
+        );
     };
     let additional = ctx.additional_replacement_effects_snapshot();
-    let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
-        game,
-        card_id,
-        from,
-        Zone::Exile,
-        ctx.cause.clone(),
-        ctx,
-        &additional,
-    )?;
+    let receipt =
+        crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs(
+            game,
+            card_id,
+            from,
+            Zone::Exile,
+            ctx.cause.clone(),
+            ctx,
+            &additional,
+        )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(receipt);
     }
@@ -283,7 +286,7 @@ pub(crate) fn move_found_card_for_opposition_agent(
         controller: search.controller,
         source: search.source,
     };
-    let ids = crate::effects::zones::movement_arrivals(game, card_id, &receipt);
+    let ids = crate::effects::zones::movement_arrivals(game, card_id, &receipt.receipt);
     for id in ids {
         if game.object(id).is_some_and(|card| card.zone == Zone::Exile) {
             game.add_exiled_with_source_link(search.source, id);
@@ -293,18 +296,39 @@ pub(crate) fn move_found_card_for_opposition_agent(
     Ok(receipt)
 }
 
+#[allow(dead_code)]
 pub(crate) fn exile_found_cards_for_opposition_agent(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     cards: &[ObjectId],
     searching_player: PlayerId,
 ) -> Result<FoundCardsExileReceipt, ExecutionError> {
+    exile_found_cards_for_opposition_agent_with_outputs(game, ctx, cards, searching_player)
+        .map(|(receipt, _)| receipt)
+}
+
+pub(crate) fn exile_found_cards_for_opposition_agent_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    cards: &[ObjectId],
+    searching_player: PlayerId,
+) -> Result<
+    (
+        FoundCardsExileReceipt,
+        Vec<crate::effects::PublishedEffectOutputs>,
+    ),
+    ExecutionError,
+> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(FoundCardsExileReceipt {
-            moved_ids: Vec::new(),
-            receipts: Vec::new(),
-        });
+        return Ok((
+            FoundCardsExileReceipt {
+                moved_ids: Vec::new(),
+                receipts: Vec::new(),
+            },
+            Vec::new(),
+        ));
     }
+    let mut published_outputs = Vec::new();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| -> Result<FoundCardsExileReceipt, ExecutionError> {
@@ -390,13 +414,23 @@ pub(crate) fn exile_found_cards_for_opposition_agent(
             let mut moved_ids = Vec::new();
             let mut receipts = Vec::new();
             for (card, replacement) in selected {
-                let receipt = move_found_card_for_opposition_agent(game, ctx, card, replacement)?;
+                let committed = move_found_card_for_opposition_agent_with_outputs(
+                    game,
+                    ctx,
+                    card,
+                    replacement,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(FoundCardsExileReceipt {
                         moved_ids: Vec::new(),
                         receipts: Vec::new(),
                     });
                 }
+                crate::effects::PublishedEffectOutputs::append_distinct(
+                    &mut published_outputs,
+                    committed.published_outputs,
+                );
+                let receipt = committed.receipt;
                 moved_ids.extend(crate::effects::zones::movement_arrivals(
                     game, card, &receipt,
                 ));
@@ -415,12 +449,17 @@ pub(crate) fn exile_found_cards_for_opposition_agent(
         context_checkpoint.restore(ctx);
     }
     if ctx.decision_maker.awaiting_choice() {
-        return result.map(|_| FoundCardsExileReceipt {
-            moved_ids: Vec::new(),
-            receipts: Vec::new(),
+        return result.map(|_| {
+            (
+                FoundCardsExileReceipt {
+                    moved_ids: Vec::new(),
+                    receipts: Vec::new(),
+                },
+                Vec::new(),
+            )
         });
     }
-    result
+    result.map(|receipt| (receipt, published_outputs))
 }
 
 pub(crate) fn offer_library_search_casts(

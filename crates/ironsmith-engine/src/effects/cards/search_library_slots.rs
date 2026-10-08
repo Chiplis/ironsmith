@@ -1,7 +1,8 @@
 //! Search a library for multiple differently-constrained cards as one search.
 
 use crate::effects::zones::{
-    apply_zone_change_with_context_and_additional_effects, finish_zone_change_receipts_with_outputs,
+    apply_zone_change_with_context_and_additional_effects_with_outputs,
+    finish_zone_change_receipts_with_outputs,
 };
 use crate::events::processing::EventOutcome;
 use crate::filter::ObjectFilterExt as _;
@@ -12,7 +13,8 @@ use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::cards::search_overrides::{
-    LibrarySearchRequest, execute_library_search_scope, exile_found_cards_for_opposition_agent,
+    LibrarySearchRequest, execute_library_search_scope,
+    exile_found_cards_for_opposition_agent_with_outputs,
 };
 use crate::effects::context::ObjectSelectionProgress;
 use crate::effects::helpers::view_hidden_candidate_objects;
@@ -263,12 +265,17 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         .map(|snapshot| snapshot.object_id)
                         .collect::<Vec<_>>();
                     if search_override.is_some() {
-                        let found = exile_found_cards_for_opposition_agent(
-                            game,
-                            ctx,
-                            &chosen_ids,
-                            chooser_id,
-                        )?;
+                        let (found, published) =
+                            exile_found_cards_for_opposition_agent_with_outputs(
+                                game,
+                                ctx,
+                                &chosen_ids,
+                                chooser_id,
+                            )?;
+                        crate::effects::PublishedEffectOutputs::append_distinct(
+                            &mut published_entry_outputs,
+                            published,
+                        );
                         moved_ids = found.moved_ids;
                         receipts = found.receipts;
                         if ctx.decision_maker.awaiting_choice() {
@@ -325,8 +332,8 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                     continue;
                                 }
                                 let additional = ctx.additional_replacement_effects_snapshot();
-                                let receipt =
-                                    apply_zone_change_with_context_and_additional_effects(
+                                let committed =
+                                    apply_zone_change_with_context_and_additional_effects_with_outputs(
                                         game,
                                         *id,
                                         from,
@@ -338,6 +345,11 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                 if ctx.decision_maker.awaiting_choice() {
                                     return Ok(());
                                 }
+                                crate::effects::PublishedEffectOutputs::append_distinct(
+                                    &mut published_entry_outputs,
+                                    committed.published_outputs,
+                                );
+                                let receipt = committed.receipt;
                                 match &receipt.original {
                                     EventOutcome::Proceed(change) => {
                                         moved_ids.extend(change.new_object_ids.iter().copied())
@@ -373,6 +385,10 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         original,
                         retained_children.iter().map(|child| child.outcome.clone()),
                     );
+                    let mut original =
+                        crate::effects::CompletedEffectOutputs::aggregate_only(original);
+                    original
+                        .retain_published_references(std::mem::take(&mut published_entry_outputs));
                     let zone_outputs =
                         finish_zone_change_receipts_with_outputs(game, ctx, original, receipts)?;
                     let outcome = zone_outputs.outcome.clone();

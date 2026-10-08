@@ -5,7 +5,7 @@ use crate::decisions::context::BooleanContext;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::effects::{ExecutionContext, ExecutionContextCheckpoint, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 #[cfg(test)]
 use crate::events::CardRevealedEvent;
 use crate::events::processing::{
@@ -473,20 +473,12 @@ impl EffectExecutor for DrawCardsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let game_checkpoint = game.clone();
-        let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
-        let result = execute_draw_instruction(self, game, ctx);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                game_checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-            if result.is_ok() && ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        result
+        crate::effects::composition::execute_transaction_from_body(
+            game,
+            ctx,
+            || EffectOutcome::count(0),
+            |game, ctx| execute_draw_instruction(self, game, ctx),
+        )
     }
 }
 

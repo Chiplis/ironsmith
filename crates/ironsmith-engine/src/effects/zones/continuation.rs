@@ -31,6 +31,19 @@ impl ZoneInstructionDraws {
         crate::effects::PublishedEffectOutputs::append_distinct(&mut self.draws.1, published);
         movement
     }
+    /// Project the committed movement while retaining the actual entry packets
+    /// for this instruction's original and full-completion gateways.
+    pub(crate) fn retain_committed_zone_receipt(
+        &mut self,
+        committed: crate::events::processing::CommittedZoneChange<super::AppliedZoneChange>,
+    ) -> crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange> {
+        crate::effects::PublishedEffectOutputs::append_distinct(
+            &mut self.draws.1,
+            committed.published_outputs,
+        );
+        committed.receipt
+    }
+
     pub fn record(&mut self, object: ObjectId, start: usize) {
         let end = self.draws.0.len();
         if start < end {
@@ -81,11 +94,14 @@ impl ZoneInstructionDraws {
         &mut self,
         mut other: Self,
     ) -> Result<(), ExecutionError> {
-        if other.draws.has_pending_originals() || !other.prepared.is_empty() {
+        if !other.prepared.is_empty() {
             return Err(ExecutionError::InternalError(
                 "zone cohort transfer contains an uncommitted original".into(),
             ));
         }
+        other
+            .draws
+            .require_committed_originals("zone cohort transfer contains an uncommitted original")?;
         let offset = self.draws.0.len();
         self.draws.0.append(&mut other.draws.0);
         crate::effects::PublishedEffectOutputs::append_distinct(&mut self.draws.1, other.draws.1);
@@ -244,6 +260,46 @@ pub(crate) struct ZoneInstructionCompletion {
     iterated_player: Option<crate::ids::PlayerId>,
 }
 impl SimultaneousEffectCompletion for ZoneInstructionCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        if self.draws.has_pending_originals() {
+            crate::effects::OriginalPhaseStatus::Combined
+        } else {
+            crate::effects::OriginalPhaseStatus::Retained
+        }
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let completed = self.complete_original_with_outputs(game, ctx, original)?;
+        Ok(SimultaneousEffectCommit {
+            outcome: completed.outputs,
+            completion: Some(Box::new(ZoneAddedProgramsCompletion {
+                frozen: completed.frozen,
+                iterated_player: completed.iterated_player,
+            })),
+        })
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let completed = self.complete_original_with_outputs(game, ctx, original)?;
+        Ok(SimultaneousEffectCommit {
+            outcome: completed.outputs,
+            completion: Some(Box::new(ZoneAddedProgramsCompletion {
+                frozen: completed.frozen,
+                iterated_player: completed.iterated_player,
+            })),
+        })
+    }
+
     fn prepare_draw_boundary(
         self: Box<Self>,
         game: &mut GameState,
@@ -257,16 +313,32 @@ impl SimultaneousEffectCompletion for ZoneInstructionCompletion {
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-        mut original: EffectOutcome,
+        original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.prepare_draw_boundary_from_outputs(
+            game,
+            ctx,
+            CompletedEffectOutputs::aggregate_only(original),
+        )
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        mut original: CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.draws.require_committed_originals(
+            "zone completion received an uncommitted replacement original",
+        )?;
         if self.draws.0.iter().any(|draw| draw.completion.is_some()) {
             return Ok(SimultaneousEffectCommit {
-                outcome: CompletedEffectOutputs::aggregate_only(original),
+                outcome: original,
                 completion: Some(self),
             });
         }
-        original.events.drain(..self.prefix_events);
-        original.execution_facts.drain(..self.prefix_facts);
+        original.outcome.events.drain(..self.prefix_events);
+        original.outcome.execution_facts.drain(..self.prefix_facts);
         let outputs = retain_completed_zone_original_outputs(
             original,
             self.draws.0.into_iter().map(|draw| draw.outcome).collect(),
@@ -281,15 +353,13 @@ impl SimultaneousEffectCompletion for ZoneInstructionCompletion {
             })?;
             programs.extend(super::bind_frozen_zone_programs(frozen)?);
         }
-        let mut prepared = crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
+        crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
             game,
             ctx,
-            outputs.outcome.clone(),
+            outputs,
             programs,
             &[],
-        )?;
-        prepared.outcome.retain_batch_children([outputs]);
-        Ok(prepared)
+        )
     }
     fn observe_original(
         &mut self,
@@ -308,11 +378,9 @@ impl SimultaneousEffectCompletion for ZoneInstructionCompletion {
         Ok(())
     }
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        if self.draws.has_pending_originals() {
-            return Err(ExecutionError::InternalError(
-                "zone completion received an uncommitted replacement original".into(),
-            ));
-        }
+        self.draws.require_committed_originals(
+            "zone completion received an uncommitted replacement original",
+        )?;
         let Some(receipts) = self.receipts.take() else {
             // A containing program can freeze the same retained frame again;
             // already frozen arrival bindings must never be reconstructed.
@@ -372,30 +440,58 @@ impl SimultaneousEffectCompletion for ZoneInstructionCompletion {
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        self.complete_original_with_outputs(game, ctx, original)?
-            .complete_added_programs_with_outputs(game, ctx)
+        let original = crate::effects::composition::complete_retained_original_phase_with_outputs(
+            game,
+            ctx,
+            SimultaneousEffectCommit {
+                outcome: CompletedEffectOutputs::aggregate_only(original),
+                completion: Some(self),
+            },
+        )?;
+        crate::effects::composition::complete_committed_original_with_outputs(game, ctx, original)
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let original = crate::effects::composition::complete_retained_original_phase_with_outputs(
+            game,
+            ctx,
+            SimultaneousEffectCommit {
+                outcome: original,
+                completion: Some(self),
+            },
+        )?;
+        crate::effects::composition::complete_committed_original_with_outputs(game, ctx, original)
     }
 }
 
 impl ZoneInstructionCompletion {
-    pub(crate) fn complete_original_with_outputs(
+    pub(crate) fn complete_original_with_outputs<O: crate::effects::OriginalEffectOutput>(
         mut self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-        mut original: EffectOutcome,
+        original: O,
     ) -> Result<CompletedZoneOriginals, ExecutionError> {
+        self.draws.require_committed_originals(
+            "zone completion received an uncommitted replacement original",
+        )?;
+        let mut original = original.into_outputs();
         let iterated_player = self.iterated_player;
         ctx.with_temp_iterated_player(iterated_player, |ctx| {
             crate::effects::runtime::capture_triggers_before_added_program(
                 game,
                 ctx,
                 None,
-                original.events.iter_mut(),
+                original.outcome.events.iter_mut(),
             )?;
             // Resumed subtree receipts include their prefixes exactly once. The
             // original batch exposed those prefixes for event-time matching only.
-            original.events.drain(..self.prefix_events);
-            original.execution_facts.drain(..self.prefix_facts);
+            original.outcome.events.drain(..self.prefix_events);
+            original.outcome.execution_facts.drain(..self.prefix_facts);
             let Some(completed) =
                 crate::effects::composition::complete_retained_originals_with_outputs(
                     game,
@@ -436,16 +532,18 @@ impl ZoneInstructionCompletion {
     }
 }
 
-fn retain_completed_zone_original_outputs(
-    original: EffectOutcome,
+fn retain_completed_zone_original_outputs<O: crate::effects::OriginalEffectOutput>(
+    original: O,
     completed: Vec<CompletedEffectOutputs>,
     published: Vec<crate::effects::PublishedEffectOutputs>,
 ) -> CompletedEffectOutputs {
+    let mut outputs = original.into_outputs();
     let aggregate = EffectOutcome::aggregate_replacement_outcomes(
-        original,
+        outputs.outcome.clone(),
         completed.iter().map(|child| child.outcome.clone()),
     );
-    let mut outputs = CompletedEffectOutputs::aggregate_only(aggregate);
+    outputs = outputs.project_aggregate(aggregate);
+    outputs.projections_complete = false;
     outputs.retain_batch_children(completed);
     outputs.retain_published_references(published);
     outputs
@@ -458,6 +556,56 @@ pub(crate) struct CompletedZoneOriginals {
     frozen: Vec<Option<super::FrozenZoneChangeReceipts>>,
     iterated_player: Option<crate::ids::PlayerId>,
 }
+/// The generic phase handoff retains bindings without executing additions.
+struct ZoneAddedProgramsCompletion {
+    frozen: Vec<Option<super::FrozenZoneChangeReceipts>>,
+    iterated_player: Option<crate::ids::PlayerId>,
+}
+impl SimultaneousEffectCompletion for ZoneAddedProgramsCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> {
+        Ok(())
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        CompletedZoneOriginals {
+            outputs: CompletedEffectOutputs::aggregate_only(original),
+            frozen: self.frozen,
+            iterated_player: self.iterated_player,
+        }
+        .complete_added_programs_with_outputs(game, ctx)
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        CompletedZoneOriginals {
+            outputs: original,
+            frozen: self.frozen,
+            iterated_player: self.iterated_player,
+        }
+        .complete_added_programs_with_outputs(game, ctx)
+    }
+}
+
 impl CompletedZoneOriginals {
     pub(crate) fn complete_added_programs_with_outputs(
         self,
@@ -471,6 +619,7 @@ impl CompletedZoneOriginals {
         }
         let iterated_player = self.iterated_player;
         let mut outputs = self.outputs;
+        outputs.projections_complete = false;
         ctx.with_temp_iterated_player(iterated_player, |ctx| {
             for frozen in self.frozen {
                 let frozen = frozen.ok_or_else(|| {
@@ -478,13 +627,9 @@ impl CompletedZoneOriginals {
                         "zone instruction completion has an unfinished original receipt".into(),
                     )
                 })?;
-                let mut completed = super::finish_zone_change_receipts_frozen_with_outputs(
-                    game,
-                    ctx,
-                    outputs.outcome.clone(),
-                    frozen,
+                let completed = super::finish_zone_change_receipts_frozen_with_outputs(
+                    game, ctx, outputs, frozen,
                 )?;
-                completed.retain_batch_children([outputs]);
                 outputs = completed;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CompletedEffectOutputs::aggregate_only(

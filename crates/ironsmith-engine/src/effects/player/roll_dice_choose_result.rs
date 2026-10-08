@@ -46,76 +46,81 @@ impl EffectExecutor for RollDiceChooseResultEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let player = resolve_player_filter(game, &self.player, ctx)?;
-            if self.count == 0 || self.sides == 0 {
-                return Ok(EffectOutcome::count(0));
-            }
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-            let Some(transaction) =
-                roll_dice_with_modifiers(game, ctx, player, self.count, self.sides)?
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction_from_body(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player = resolve_player_filter(game, &self.player, ctx)?;
+                if self.count == 0 || self.sides == 0 {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-            let rolls = &transaction.rolls;
-            let options = rolls
-                .iter()
-                .enumerate()
-                .map(|(idx, roll)| SelectableOption::new(idx, roll.result.to_string()))
-                .collect::<Vec<_>>();
-            let choice_ctx = SelectOptionsContext::new(
-                player,
-                Some(ctx.source),
-                "Choose one result",
-                options,
-                1,
-                1,
-            );
-            let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let chosen_idx = selected
-                .into_iter()
-                .next()
-                .filter(|idx| *idx < rolls.len())
-                .unwrap_or(0);
-            let chosen = rolls[chosen_idx];
-            let other = rolls
-                .iter()
-                .enumerate()
-                .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
-                .unwrap_or(chosen.result);
+                let Some(transaction) =
+                    roll_dice_with_modifiers(game, ctx, player, self.count, self.sides)?
+                else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
 
-            // Every retained die completes even though only one result is used.
-            let completion = super::die_roll_transaction::complete_die_rolls(
-                game,
-                ctx,
-                player,
-                self.sides,
-                rolls,
-                chosen.result,
-                super::die_roll_transaction::DieRollCompletion::Simultaneous,
-            )?;
-            Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(i64::from(chosen.result))
-                    .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
-                    .with_execution_fact(ExecutionFact::OtherNumber(other)),
-                transaction.payments.into_iter().chain([completion]),
-            ))
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
-            context_checkpoint.restore(ctx);
-        }
-        if pending && result.is_ok() {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+                let rolls = &transaction.rolls;
+                let options = rolls
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, roll)| SelectableOption::new(idx, roll.result.to_string()))
+                    .collect::<Vec<_>>();
+                let choice_ctx = SelectOptionsContext::new(
+                    player,
+                    Some(ctx.source),
+                    "Choose one result",
+                    options,
+                    1,
+                    1,
+                );
+                let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let chosen_idx = selected
+                    .into_iter()
+                    .next()
+                    .filter(|idx| *idx < rolls.len())
+                    .unwrap_or(0);
+                let chosen = rolls[chosen_idx];
+                let other = rolls
+                    .iter()
+                    .enumerate()
+                    .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
+                    .unwrap_or(chosen.result);
+
+                // Every retained die completes even though only one result is used.
+                transaction.complete_with_outputs(
+                    game,
+                    ctx,
+                    player,
+                    self.sides,
+                    chosen.result,
+                    super::die_roll_transaction::DieRollCompletion::Simultaneous,
+                    EffectOutcome::count(i64::from(chosen.result))
+                        .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
+                        .with_execution_fact(ExecutionFact::OtherNumber(other)),
+                )
+            },
+        )
     }
 }
 

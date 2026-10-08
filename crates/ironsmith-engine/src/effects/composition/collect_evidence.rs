@@ -7,7 +7,7 @@ use crate::effect::{
 use crate::effects::helpers::resolve_value;
 use crate::effects::{
     ChooseObjectsEffect, CostExecutableEffect, CostValidationError, EffectExecutor,
-    ExecutionContext, ExecutionContextCheckpoint, ExecutionError, ExileEffect,
+    ExecutionContext, ExecutionError, ExileEffect,
 };
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -61,115 +61,131 @@ impl EffectExecutor for CollectEvidenceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let tagged_before = ctx.tagged_objects.clone();
-        let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let available = evidence_capacity(game, ctx.controller, None);
-            if matches!(self.amount.unhinted(), Value::X) && ctx.x_value.is_none() {
-                let selected = make_decision(
-                    game,
-                    ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    XValueSpec::new(ctx.source, available),
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let tagged_before = ctx.tagged_objects.clone();
+                let available = evidence_capacity(game, ctx.controller, None);
+                if matches!(self.amount.unhinted(), Value::X) && ctx.x_value.is_none() {
+                    let selected = make_decision(
+                        game,
+                        ctx.decision_maker,
+                        ctx.controller,
+                        Some(ctx.source),
+                        XValueSpec::new(ctx.source, available),
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    if selected > available {
+                        return Err(ExecutionError::InvalidTarget);
+                    }
+                    // This is an announcement made by the action, not the total
+                    // value overpaid. Reflexive follow-ups retain this chosen X.
+                    ctx.x_value = Some(selected);
                 }
-                if selected > available {
+                let required = evidence_requirement(self, game, ctx)?;
+                if available < required {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::declined(),
+                    ));
+                }
+                let filter = ObjectFilter::default()
+                    .nontoken()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You);
+                let choose = ChooseObjectsEffect::new(
+                    filter,
+                    ChoiceCount::any_number(),
+                    PlayerFilter::You,
+                    CHOSEN_EVIDENCE,
+                )
+                .with_aggregate_constraint(
+                    ChoiceAggregateConstraint::total_mana_value_at_least(required as i32),
+                );
+                ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
+                let choice = choose.execute_child_with_outputs(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let chosen = ctx
+                    .tagged_objects
+                    .get(CHOSEN_EVIDENCE)
+                    .cloned()
+                    .unwrap_or_default();
+                let ids: Vec<_> = chosen.iter().map(|snapshot| snapshot.object_id).collect();
+                let identities_valid = ids.iter().all(|id| {
+                    game.object(*id).is_some_and(|object| {
+                        object.kind == ObjectKind::Card
+                            && object.zone == Zone::Graveyard
+                            && object.owner == ctx.controller
+                    })
+                });
+                let total = crate::targeting::aggregate_object_set_value(
+                    game,
+                    ids.iter().copied(),
+                    ChoiceAggregateMetric::ManaValue,
+                )
+                .max(0) as u32;
+                if !identities_valid || total < required {
                     return Err(ExecutionError::InvalidTarget);
                 }
-                // This is an announcement made by the action, not the total
-                // value overpaid. Reflexive follow-ups retain this chosen X.
-                ctx.x_value = Some(selected);
-            }
-            let required = evidence_requirement(self, game, ctx)?;
-            if available < required {
-                return Ok(EffectOutcome::declined());
-            }
-            let filter = ObjectFilter::default()
-                .nontoken()
-                .in_zone(Zone::Graveyard)
-                .owned_by(PlayerFilter::You);
-            let choose = ChooseObjectsEffect::new(
-                filter,
-                ChoiceCount::any_number(),
-                PlayerFilter::You,
-                CHOSEN_EVIDENCE,
-            )
-            .with_aggregate_constraint(
-                ChoiceAggregateConstraint::total_mana_value_at_least(required as i32),
-            );
-            ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
-            let choice = choose.execute_child(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let chosen = ctx
-                .tagged_objects
-                .get(CHOSEN_EVIDENCE)
-                .cloned()
-                .unwrap_or_default();
-            let ids: Vec<_> = chosen.iter().map(|snapshot| snapshot.object_id).collect();
-            let identities_valid = ids.iter().all(|id| {
-                game.object(*id).is_some_and(|object| {
-                    object.kind == ObjectKind::Card
-                        && object.zone == Zone::Graveyard
-                        && object.owner == ctx.controller
-                })
-            });
-            let total = crate::targeting::aggregate_object_set_value(
-                game,
-                ids.iter().copied(),
-                ChoiceAggregateMetric::ManaValue,
-            )
-            .max(0) as u32;
-            if !identities_valid || total < required {
-                return Err(ExecutionError::InvalidTarget);
-            }
-            let mut outcomes = vec![choice];
-            // The normal zone-change pipeline owns replacements and source
-            // linkage. There is no substitute direct object move here.
-            if !ids.is_empty() {
-                outcomes.push(
-                    ExileEffect::with_spec(ChooseSpec::Tagged(CHOSEN_EVIDENCE.into()))
-                        .execute_child(game, ctx)?,
+                let mut outcomes = vec![choice];
+                // The normal zone-change pipeline owns replacements and source
+                // linkage. There is no substitute direct object move here.
+                if !ids.is_empty() {
+                    outcomes.push(
+                        ExileEffect::with_spec(ChooseSpec::Tagged(CHOSEN_EVIDENCE.into()))
+                            .execute_child_with_outputs(game, ctx)?,
+                    );
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                ctx.tagged_objects = tagged_before;
+                let mut outputs = crate::effects::CompletedEffectOutputs::from_children(
+                    outcomes,
+                    EffectOutcome::aggregate,
                 );
-            }
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            ctx.tagged_objects = tagged_before;
-            let mut outcome = EffectOutcome::aggregate(outcomes)
-                .with_execution_fact(ExecutionFact::ChosenObjects(ids));
-            // Collecting zero (including choosing no cards) is one completed
-            // action and triggers “whenever you collect evidence”.
-            outcome.set_value(OutcomeValue::Count(1));
-            outcome.set_status(crate::effect::OutcomeStatus::Succeeded);
-            super::complete_keyword_action_with_result(
-                game,
-                ctx,
-                outcome,
-                KeywordActionEvent::new(
-                    KeywordActionKind::CollectEvidence,
-                    ctx.controller,
-                    ctx.source,
-                    required,
-                ),
-            )
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-        }
-        result
+                outputs.outcome = outputs
+                    .outcome
+                    .with_execution_fact(ExecutionFact::ChosenObjects(ids));
+                // Collecting zero (including choosing no cards) is one completed
+                // action and triggers “whenever you collect evidence”.
+                outputs.outcome.set_value(OutcomeValue::Count(1));
+                outputs
+                    .outcome
+                    .set_status(crate::effect::OutcomeStatus::Succeeded);
+                super::complete_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    outputs,
+                    KeywordActionEvent::new(
+                        KeywordActionKind::CollectEvidence,
+                        ctx.controller,
+                        ctx.source,
+                        required,
+                    ),
+                )
+            },
+        )
     }
 
     fn references_cost_x(&self) -> bool {

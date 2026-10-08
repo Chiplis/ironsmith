@@ -321,6 +321,10 @@ struct FaceUpInstructionCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for FaceUpInstructionCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         if self.frozen {
             return Err(ExecutionError::InternalError(

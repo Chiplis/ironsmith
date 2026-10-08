@@ -139,34 +139,29 @@ pub(crate) fn process_destroy_with_regeneration(
             game, object_id, source, ctx, None,
         );
     }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let suspended = game
-        .effect_store
-        .replacement_effects
-        .suspend_regeneration_shields_from_source(object_id);
-    let shield_count = game.regeneration_shield_count(object_id);
-    game.clear_regeneration_shields(object_id);
-    let result =
-        crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(ctx);
-        return result;
-    }
-    if game
-        .object(object_id)
-        .is_some_and(|object| object.zone == Zone::Battlefield)
-    {
-        game.effect_store
+    crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
+        let suspended = game
+            .effect_store
             .replacement_effects
-            .restore_suspended_effects(suspended);
-        game.add_regeneration_shield(object_id, shield_count);
-    }
-    result
+            .suspend_regeneration_shields_from_source(object_id);
+        let shield_count = game.regeneration_shield_count(object_id);
+        game.clear_regeneration_shields(object_id);
+        let result =
+            crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            return result;
+        }
+        if game
+            .object(object_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            game.effect_store
+                .replacement_effects
+                .restore_suspended_effects(suspended);
+            game.add_regeneration_shield(object_id, shield_count);
+        }
+        result
+    })
 }
 
 /// "Destroy target permanent" (optionally "It can't be regenerated").
@@ -196,56 +191,46 @@ pub(crate) fn execute_single_target_destroy_with_outputs(
         ));
     }
     game.clear_pending_decision_controllers();
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let mut receipts = Vec::new();
-    let result = (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let mut destroyed_memory = None;
-        let outcome =
-            apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
-                let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
-                let status = DestroyEffect::destroy_object(
-                    game,
-                    ctx,
-                    object_id,
-                    can_be_regenerated,
-                    &mut receipts,
-                )?;
-                if status.is_none() {
-                    destroyed_memory = receipts
-                        .last()
-                        .and_then(|receipt| receipt.snapshot.as_ref())
-                        .map(Clone::clone)
-                        .or(pre_memory);
-                }
-                Ok(status)
-            })?;
-        let original = match destroyed_memory {
-            Some(memory) => outcome.with_affected_object_memory(vec![memory]),
-            None => outcome,
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        crate::events::processing::finish_destroy_receipts_with_outputs(
-            game, ctx, original, receipts,
-        )
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(ctx);
-    }
-    if result.is_ok() && ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-    result
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let mut destroyed_memory = None;
+            let outcome =
+                apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
+                    let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
+                    let status = DestroyEffect::destroy_object(
+                        game,
+                        ctx,
+                        object_id,
+                        can_be_regenerated,
+                        &mut receipts,
+                    )?;
+                    if status.is_none() {
+                        destroyed_memory = receipts
+                            .last()
+                            .and_then(|receipt| receipt.snapshot.as_ref())
+                            .map(Clone::clone)
+                            .or(pre_memory);
+                    }
+                    Ok(status)
+                })?;
+            let original = match destroyed_memory {
+                Some(memory) => outcome.with_affected_object_memory(vec![memory]),
+                None => outcome,
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            crate::events::processing::finish_destroy_receipts_with_outputs(
+                game, ctx, original, receipts,
+            )
+        },
+    )
 }
 
 /// Destroy every selected permanent as one simultaneous event (CR 701.8a,

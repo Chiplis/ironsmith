@@ -142,17 +142,17 @@ fn commit_tap_cost_objects(
             "Tap cost set is no longer payable".into(),
         ));
     }
-    let checkpoint = game.clone();
-    let mut action = TapAction::new(game, ctx.controller, ctx.provenance);
-    for id in objects {
-        if !action.tap(game, *id) {
-            *game = checkpoint;
-            return Err(ExecutionError::Impossible(
-                "Tap cost was not completed".into(),
-            ));
+    crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
+        let mut action = TapAction::new(game, ctx.controller, ctx.provenance);
+        for id in objects {
+            if !action.tap(game, *id) {
+                return Err(ExecutionError::Impossible(
+                    "Tap cost was not completed".into(),
+                ));
+            }
         }
-    }
-    Ok(action.finish(game))
+        Ok(action.finish(game))
+    })
 }
 
 /// Effect that taps permanents.

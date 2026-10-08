@@ -59,6 +59,40 @@ struct ObservedOriginalCompletion {
 }
 
 impl SimultaneousEffectCompletion for ObservedOriginalCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let observations = self.observations.clone();
+        let mut receipt = with_original_observations(game, observations.clone(), |game| {
+            self.inner
+                .complete_original_phase_with_outputs(game, ctx, original)
+        })?;
+        retain_completion_observations(&mut receipt, observations);
+        Ok(receipt)
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let observations = self.observations.clone();
+        let mut receipt = with_original_observations(game, observations.clone(), |game| {
+            self.inner
+                .complete_original_phase_from_outputs(game, ctx, original)
+        })?;
+        retain_completion_observations(&mut receipt, observations);
+        Ok(receipt)
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         with_original_observations(game, self.observations.clone(), |game| {
             self.inner.freeze(game)
@@ -93,6 +127,18 @@ impl SimultaneousEffectCompletion for ObservedOriginalCompletion {
             self.inner.complete_with_outputs(game, ctx, original)
         })
     }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        with_original_observations(game, self.observations.clone(), |game| {
+            self.inner
+                .complete_from_original_outputs(game, ctx, original)
+        })
+    }
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
@@ -103,6 +149,21 @@ impl SimultaneousEffectCompletion for ObservedOriginalCompletion {
         let mut receipt = with_original_observations(game, observations.clone(), |game| {
             self.inner
                 .prepare_draw_boundary_with_outputs(game, ctx, original)
+        })?;
+        retain_completion_observations(&mut receipt, observations);
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let observations = self.observations.clone();
+        let mut receipt = with_original_observations(game, observations.clone(), |game| {
+            self.inner
+                .prepare_draw_boundary_from_outputs(game, ctx, original)
         })?;
         retain_completion_observations(&mut receipt, observations);
         Ok(receipt)

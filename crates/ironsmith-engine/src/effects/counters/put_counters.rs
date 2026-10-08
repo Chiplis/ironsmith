@@ -35,11 +35,18 @@ pub use ironsmith_core::PutCountersEffect;
 /// );
 /// ```
 impl EffectExecutor for PutCountersEffect {
-    fn supports_replacement_draw_continuation(&self) -> bool { true }
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        true
+    }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 
@@ -108,11 +115,21 @@ impl EffectExecutor for PutCountersEffect {
                 // Freeze every original before deferred additions. Grouping
                 // notifications alone does not make sequential mutations simultaneous.
                 let outcomes = if requests.len() > 1 {
-                    super::placement::execute_counter_batch_with_limit_outputs(game, ctx, requests, self.maximum_total)?
+                    super::placement::execute_counter_batch_with_limit_outputs(
+                        game,
+                        ctx,
+                        requests,
+                        self.maximum_total,
+                    )?
                 } else if let Some(event) = requests.pop() {
-                    vec![super::placement::execute_counter_placement_with_limit_outputs(
-                        game, ctx, event, self.maximum_total,
-                    )?]
+                    vec![
+                        super::placement::execute_counter_placement_with_limit_outputs(
+                            game,
+                            ctx,
+                            event,
+                            self.maximum_total,
+                        )?,
+                    ]
                 } else {
                     Vec::new()
                 };
@@ -378,7 +395,8 @@ fn resolve_counter_inputs(
         // replacement intended for a later eligible recipient. Modifiers are
         // still checked against this same recipient's ceiling at commitment.
         let assigned_count = effect.maximum_total.map_or(assigned_count, |maximum| {
-            assigned_count.min(maximum.saturating_sub(game.counter_count(target_id, effect.counter_type)))
+            assigned_count
+                .min(maximum.saturating_sub(game.counter_count(target_id, effect.counter_type)))
         });
         if assigned_count == 0 {
             continue;
@@ -417,11 +435,99 @@ struct CounterInstructionCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner
+            .as_ref()
+            .map_or(crate::effects::OriginalPhaseStatus::Complete, |inner| {
+                inner.original_phase_status()
+            })
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-        let Self { effect, count, batch, inner } = *self;
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self {
+            effect,
+            count,
+            batch,
+            inner,
+        } = *self;
+        let mut receipt = if let Some(inner) = inner {
+            inner.complete_original_phase_with_outputs(game, ctx, original)?
+        } else {
+            crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(original),
+            )
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(receipt);
+        }
+        // The instruction completion notification follows all inner additions.
+        // Retain that owner even when the original phase has no further child.
+        receipt.completion = Some(Box::new(Self {
+            effect,
+            count,
+            batch,
+            inner: receipt.completion,
+        }));
+        Ok(receipt)
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self {
+            effect,
+            count,
+            batch,
+            inner,
+        } = *self;
+        let mut receipt = if let Some(inner) = inner {
+            inner.complete_original_phase_from_outputs(game, ctx, original)?
+        } else {
+            crate::effects::SimultaneousEffectCommit::finished(original)
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(receipt);
+        }
+        // The instruction completion notification follows all inner additions.
+        // Retain that owner even when the original phase has no further child.
+        receipt.completion = Some(Box::new(Self {
+            effect,
+            count,
+            batch,
+            inner: receipt.completion,
+        }));
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self {
+            effect,
+            count,
+            batch,
+            inner,
+        } = *self;
         let mut receipt = if let Some(inner) = inner {
             inner.prepare_draw_boundary_with_outputs(game, ctx, original)?
         } else {
@@ -429,13 +535,69 @@ impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompleti
                 crate::effects::CompletedEffectOutputs::aggregate_only(original),
             )
         };
-        if ctx.decision_maker.awaiting_choice() { return Ok(receipt); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(receipt);
+        }
         if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self { effect, count, batch, inner: Some(inner) }));
+            receipt.completion = Some(Box::new(Self {
+                effect,
+                count,
+                batch,
+                inner: Some(inner),
+            }));
             return Ok(receipt);
         }
         let outputs = counter_action_completed_outputs_in_group(
-            &effect, game, ctx, receipt.outcome, count, batch,
+            &effect,
+            game,
+            ctx,
+            receipt.outcome,
+            count,
+            batch,
+        )?;
+        Ok(crate::effects::SimultaneousEffectCommit::finished(outputs))
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self {
+            effect,
+            count,
+            batch,
+            inner,
+        } = *self;
+        let mut receipt = if let Some(inner) = inner {
+            inner.prepare_draw_boundary_from_outputs(game, ctx, original)?
+        } else {
+            crate::effects::SimultaneousEffectCommit::finished(original)
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(receipt);
+        }
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self {
+                effect,
+                count,
+                batch,
+                inner: Some(inner),
+            }));
+            return Ok(receipt);
+        }
+        receipt.outcome.projections_complete = false;
+        let outputs = counter_action_completed_outputs_in_group(
+            &effect,
+            game,
+            ctx,
+            receipt.outcome,
+            count,
+            batch,
         )?;
         Ok(crate::effects::SimultaneousEffectCommit::finished(outputs))
     }
@@ -492,6 +654,36 @@ impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompleti
             self.batch,
         )
     }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let mut outputs = if let Some(inner) = self.inner {
+            inner.complete_from_original_outputs(game, ctx, original)?
+        } else {
+            original
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        // This instruction has not declared complete authored projections for
+        // its original plus final notification. Retain the actual child data
+        // while keeping the enclosing projection coverage conservative.
+        outputs.projections_complete = false;
+        counter_action_completed_outputs_in_group(
+            &self.effect,
+            game,
+            ctx,
+            outputs,
+            self.count,
+            self.batch,
+        )
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
@@ -519,12 +711,14 @@ impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
                     .as_ref()
                     .is_some_and(|original| !original.requires_replacement_input())
                 {
-                    *prepared = Some(super::prepared_placement::prepare_counter_placement_with_limit(
-                        game,
-                        ctx,
-                        request.clone(),
-                        self.effect.maximum_total,
-                    )?);
+                    *prepared = Some(
+                        super::prepared_placement::prepare_counter_placement_with_limit(
+                            game,
+                            ctx,
+                            request.clone(),
+                            self.effect.maximum_total,
+                        )?,
+                    );
                 }
                 if ctx.decision_maker.awaiting_choice() {
                     break;

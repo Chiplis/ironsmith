@@ -215,11 +215,90 @@ struct BranchCompletion {
 }
 
 impl SimultaneousEffectCompletion for BranchCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
-        let Self { scope, bindings, inner } = *self;
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let before = ChoiceState::capture(ctx);
+        let mut receipt = scope.run(ctx, |ctx| {
+            bindings.apply(ctx);
+            inner.complete_original_phase_with_outputs(game, ctx, original)
+        })?;
+        let bindings = bindings.completion_bindings(&before, ctx);
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self {
+                scope,
+                bindings,
+                inner,
+            }));
+        } else if !ctx.decision_maker.awaiting_choice() {
+            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
+            receipt.outcome.synchronize_observations();
+        }
+        Ok(receipt)
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let before = ChoiceState::capture(ctx);
+        let mut receipt = scope.run(ctx, |ctx| {
+            bindings.apply(ctx);
+            inner.complete_original_phase_from_outputs(game, ctx, original)
+        })?;
+        let bindings = bindings.completion_bindings(&before, ctx);
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self {
+                scope,
+                bindings,
+                inner,
+            }));
+        } else if !ctx.decision_maker.awaiting_choice() {
+            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
+            receipt.outcome.synchronize_observations();
+        }
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
         let before = ChoiceState::capture(ctx);
         let mut receipt = scope.run(ctx, |ctx| {
             bindings.apply(ctx);
@@ -227,7 +306,44 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         })?;
         let bindings = bindings.completion_bindings(&before, ctx);
         if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self { scope, bindings, inner }));
+            receipt.completion = Some(Box::new(Self {
+                scope,
+                bindings,
+                inner,
+            }));
+        } else if !ctx.decision_maker.awaiting_choice() {
+            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
+            receipt.outcome.synchronize_observations();
+        }
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let before = ChoiceState::capture(ctx);
+        let mut receipt = scope.run(ctx, |ctx| {
+            bindings.apply(ctx);
+            inner.prepare_draw_boundary_from_outputs(game, ctx, original)
+        })?;
+        let bindings = bindings.completion_bindings(&before, ctx);
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self {
+                scope,
+                bindings,
+                inner,
+            }));
         } else if !ctx.decision_maker.awaiting_choice() {
             receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
             receipt.outcome.synchronize_observations();
@@ -277,6 +393,31 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         let mut outputs = scope.clone().run(ctx, |ctx| {
             bindings.apply(ctx);
             inner.complete_with_outputs(game, ctx, original)
+        })?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        outputs.outcome = scope.clone().project(outputs.outcome, ctx);
+        outputs.synchronize_observations();
+        Ok(outputs)
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let mut outputs = scope.clone().run(ctx, |ctx| {
+            bindings.apply(ctx);
+            inner.complete_from_original_outputs(game, ctx, original)
         })?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -406,7 +547,9 @@ impl SimultaneousEffectProposal for PreparedBranch {
                 self.bindings = self.bindings.completion_bindings(&before, ctx);
                 self.bindings.retain_selection_outputs(&self.selection, ctx);
             }
-            if !self.selection.is_empty() { before.restore(ctx); }
+            if !self.selection.is_empty() {
+                before.restore(ctx);
+            }
             return result;
         }
         let before = ChoiceState::capture(ctx);
@@ -450,14 +593,19 @@ impl SimultaneousEffectProposal for PreparedBranch {
     }
 
     fn prepare_original(
-        &mut self, game: &mut GameState, ctx: &mut ExecutionContext,
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<(), ExecutionError> {
         if self.inner.is_none() {
             self.prepare_selection(game, ctx)?;
         }
-        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
-        let inner = self.inner.as_mut().ok_or_else(|| ExecutionError::InternalError(
-            "selected branch has no prepared original".into()))?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let inner = self.inner.as_mut().ok_or_else(|| {
+            ExecutionError::InternalError("selected branch has no prepared original".into())
+        })?;
         let before = ChoiceState::capture(ctx);
         let result = self.scope.run(ctx, |ctx| {
             self.bindings.apply(ctx);
@@ -466,7 +614,9 @@ impl SimultaneousEffectProposal for PreparedBranch {
         if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
             self.bindings = self.bindings.completion_bindings(&before, ctx);
         }
-        if !self.selection.is_empty() { before.restore(ctx); }
+        if !self.selection.is_empty() {
+            before.restore(ctx);
+        }
         result
     }
 
@@ -489,7 +639,9 @@ impl SimultaneousEffectProposal for PreparedBranch {
         if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
             self.bindings = self.bindings.completion_bindings(&before, ctx);
         }
-        if !self.selection.is_empty() { before.restore(ctx); }
+        if !self.selection.is_empty() {
+            before.restore(ctx);
+        }
         result
     }
 

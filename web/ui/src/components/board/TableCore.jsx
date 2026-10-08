@@ -349,7 +349,7 @@ export default function TableCore({
     && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
     <div className="battlefield-human-quick-controls decision-quick-controls">
-      <button
+      {isActivePlayer && decision?.kind !== "mana_payment" && <button
         type="button"
         className="decision-phase-pass"
         aria-pressed={Boolean(phasePassing)}
@@ -357,7 +357,7 @@ export default function TableCore({
         title={ui("Pass through phases until a pause or the next turn")}
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
-      >{ui("Pass")}</button>
+      >{ui("Pass")}</button>}
       <button
         type="button"
         className="battlefield-auto-pass-toggle"

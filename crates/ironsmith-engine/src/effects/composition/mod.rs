@@ -106,7 +106,14 @@ pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use collect_evidence::CollectEvidenceEffect;
 pub use collect_mana_payments::CollectManaPaymentsEffect;
-pub(crate) use compound::{execute_compound, execute_transaction};
+pub(crate) use compound::{
+    execute_checkpoint_transaction, execute_compound, execute_decision_transaction,
+    execute_error_transaction_if, execute_optional_world_transaction,
+    execute_original_view_transaction, execute_result_checkpoint_transaction,
+    execute_result_decision_transaction, execute_result_transaction, execute_transaction,
+    execute_transaction_from_body, execute_world_checkpoint_transaction,
+    execute_world_result_transaction,
+};
 pub use conditional::ConditionalEffect;
 pub use cumulative_upkeep::CumulativeUpkeepEffect;
 pub use emit_gift_given::EmitGiftGivenEffect;
@@ -154,7 +161,7 @@ pub(crate) use sequence::execute_observed_replacement_children_with_outputs;
 pub(crate) use simultaneous::{
     OriginalTriggerObservation, complete_prepared_original_with_outputs,
     execute_simultaneous_originals, execute_simultaneous_originals_with_default_outputs,
-    execute_simultaneous_originals_with_outputs, finish_simultaneous_originals_with_participants,
+    execute_simultaneous_originals_with_outputs,
 };
 pub use tag_attached_to_source::TagAttachedToSourceEffect;
 pub use tag_matching_objects::TagMatchingObjectsEffect;
@@ -196,9 +203,13 @@ pub(crate) use keyword_action::{
 mod keyword_programs;
 
 pub(crate) use simultaneous::{
-    complete_committed_original_with_outputs, complete_retained_originals_with_outputs,
+    complete_authored_original_subtree_with_outputs, complete_committed_original_with_outputs,
+    complete_original_cohort_phase_with_participants,
+    complete_retained_original_phase_with_outputs, complete_retained_originals_with_outputs,
     complete_standalone_original_with_outputs, observe_original_completion,
+    original_cohort_phase_status_from_receipts, original_cohort_phase_status_with_participants,
     prepare_simultaneous_originals_with_participants, prepare_standalone_completion_with_outputs,
+    prepare_standalone_original_completion,
 };
 
 #[cfg(test)]

@@ -1,10 +1,7 @@
 //! Commit player counters from the complete replacement event and retain its outcomes.
 
 use crate::effect::{EffectOutcome, OutcomeValue};
-use crate::effects::{
-    CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint, ExecutionError,
-    ResolvedTarget,
-};
+use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, MarkersChangedEvent, PutCountersEvent, downcast_event};
 use crate::game_state::{GameState, Target};
@@ -68,38 +65,28 @@ pub(crate) fn execute_player_counter_placement_with_outputs(
         ));
     }
     game.clear_pending_decision_controllers();
-    let checkpoint = game.clone();
-    let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        if let Some(outcome) = player_counter_request_outcome(game, &event)? {
-            return Ok(CompletedEffectOutputs::aggregate_only(outcome));
-        }
-        let processed = process_trait_event_with_execution_context(game, event, ctx)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        commit_player_counter_placement_with_outputs(game, ctx, processed, &checkpoint)
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-    }
-    result
+    crate::effects::composition::execute_original_view_transaction(
+        game,
+        ctx,
+        || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx, pre_event_game| {
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            if let Some(outcome) = player_counter_request_outcome(game, &event)? {
+                return Ok(CompletedEffectOutputs::aggregate_only(outcome));
+            }
+            let processed = process_trait_event_with_execution_context(game, event, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            commit_player_counter_placement_with_outputs(game, ctx, processed, pre_event_game)
+        },
+    )
 }
 
 pub(super) fn commit_player_counter_placement_with_outputs(
@@ -223,22 +210,22 @@ pub(super) fn commit_player_counter_placement_with_outputs(
                     "player counter replacement lost its player recipient".into(),
                 ));
             };
-            let payload = crate::effects::replacement::execute_replacement_payload_with_outputs(
+            let mut original = EffectOutcome::replaced();
+            original.set_value(OutcomeValue::Count(0));
+            crate::effects::replacement::execute_replacement_original_payload_with_outputs(
                 game,
                 ctx,
                 &effects,
                 source,
                 controller,
                 &context,
-                Some(vec![ResolvedTarget::Player(player)]),
+                crate::effects::replacement::ReplacementProgramBindings {
+                    targets: Some(vec![ResolvedTarget::Player(player)]),
+                    object_tags: Vec::new(),
+                },
                 None,
-                Vec::new(),
-            )?;
-            let mut original = EffectOutcome::replaced();
-            original.set_value(OutcomeValue::Count(0));
-            let outcome =
-                EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
-            Ok(payload.project_aggregate(outcome))
+                original,
+            )
         }
         TraitEventResult::Prevented => Ok(CompletedEffectOutputs::aggregate_only(prevented())),
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {

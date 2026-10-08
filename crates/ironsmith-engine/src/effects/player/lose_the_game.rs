@@ -59,30 +59,27 @@ impl EffectExecutor for LoseTheGameEffect {
                 EffectOutcome::count(0),
             ));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        crate::effects::composition::execute_result_checkpoint_transaction(
+            game,
+            ctx,
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-            let Some((_, outcome)) =
-                crate::events::processing::process_player_loss_with_context_and_outputs(
-                    game,
-                    player_id,
-                    ctx,
-                    &std::collections::HashMap::new(),
-                )?
-            else {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            };
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        result
+                let Some((_, outcome)) =
+                    crate::events::processing::process_player_loss_with_context_and_outputs(
+                        game,
+                        player_id,
+                        ctx,
+                        &std::collections::HashMap::new(),
+                    )?
+                else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                Ok(outcome)
+            },
+        )
     }
 }
 

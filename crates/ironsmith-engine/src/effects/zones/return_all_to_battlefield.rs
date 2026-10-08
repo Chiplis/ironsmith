@@ -93,82 +93,78 @@ fn commit_return_all(
             crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let instruction = (|| -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-        let mut entries = Vec::new();
-        for object_id in objects {
-            let options = match effect.battlefield_controller {
-                BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(effect.tapped),
-                BattlefieldController::Owner => BattlefieldEntryOptions::owner(effect.tapped),
-                BattlefieldController::You => {
-                    BattlefieldEntryOptions::specific(ctx.controller, effect.tapped)
-                }
-            };
-            let Some(object) = game.object(object_id) else {
-                continue;
-            };
-            let memory = Clone::clone(&ObjectSnapshot::from_object(object, game));
-            if effect.face_down
-                && let Some(card) = game.object_mut(object_id)
-            {
-                card.apply_face_down_cast_overlay();
-            }
-            entries.push((object_id, options, memory));
-        }
-
-        let requests = entries
-            .iter()
-            .map(|(id, options, _)| (*id, options.clone()))
-            .collect();
-        super::execute_battlefield_entries_with_outputs(
-            game,
-            ctx,
-            requests,
-            defer_additions,
-            |game, _, receipts| {
-                let mut returned_ids = Vec::new();
-                let mut affected_memory = Vec::new();
-                for ((object_id, _, memory), receipt) in entries.into_iter().zip(receipts) {
-                    match &receipt.outcome {
-                        BattlefieldEntryOutcome::Moved(id) => {
-                            returned_ids.push(*id);
-                            affected_memory.push(memory);
-                        }
-                        BattlefieldEntryOutcome::Redirected(change) => {
-                            returned_ids.extend(change.new_object_ids.iter().copied());
-                            affected_memory.push(memory);
-                        }
-                        BattlefieldEntryOutcome::Prevented => {
-                            if effect.face_down
-                                && let Some(card) = game.object_mut(object_id)
-                            {
-                                card.end_face_down_cast_overlay();
-                            }
-                        }
-                    }
-                }
-                Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(returned_ids.len() as i64)
-                        .with_result_objects(returned_ids)
-                        .with_affected_object_memory(affected_memory),
-                ))
-            },
-        )
-    })();
-    let pending = ctx.decision_maker.awaiting_choice();
-    if pending || instruction.is_err() {
-        game.restore_execution_checkpoint(checkpoint, pending && instruction.is_ok());
-        context_checkpoint.restore(ctx);
-    }
-    if pending {
-        return instruction.map(|_| {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || {
             SimultaneousEffectCommit::finished(
                 crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             )
-        });
-    }
-    instruction
+        },
+        |game, ctx| {
+            let mut entries = Vec::new();
+            for object_id in objects {
+                let options = match effect.battlefield_controller {
+                    BattlefieldController::Preserve => {
+                        BattlefieldEntryOptions::preserve(effect.tapped)
+                    }
+                    BattlefieldController::Owner => BattlefieldEntryOptions::owner(effect.tapped),
+                    BattlefieldController::You => {
+                        BattlefieldEntryOptions::specific(ctx.controller, effect.tapped)
+                    }
+                };
+                let Some(object) = game.object(object_id) else {
+                    continue;
+                };
+                let memory = Clone::clone(&ObjectSnapshot::from_object(object, game));
+                if effect.face_down
+                    && let Some(card) = game.object_mut(object_id)
+                {
+                    card.apply_face_down_cast_overlay();
+                }
+                entries.push((object_id, options, memory));
+            }
+
+            let requests = entries
+                .iter()
+                .map(|(id, options, _)| (*id, options.clone()))
+                .collect();
+            super::execute_battlefield_entries_with_outputs(
+                game,
+                ctx,
+                requests,
+                defer_additions,
+                |game, _, receipts| {
+                    let mut returned_ids = Vec::new();
+                    let mut affected_memory = Vec::new();
+                    for ((object_id, _, memory), receipt) in entries.into_iter().zip(receipts) {
+                        match &receipt.outcome {
+                            BattlefieldEntryOutcome::Moved(id) => {
+                                returned_ids.push(*id);
+                                affected_memory.push(memory);
+                            }
+                            BattlefieldEntryOutcome::Redirected(change) => {
+                                returned_ids.extend(change.new_object_ids.iter().copied());
+                                affected_memory.push(memory);
+                            }
+                            BattlefieldEntryOutcome::Prevented => {
+                                if effect.face_down
+                                    && let Some(card) = game.object_mut(object_id)
+                                {
+                                    card.end_face_down_cast_overlay();
+                                }
+                            }
+                        }
+                    }
+                    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(returned_ids.len() as i64)
+                            .with_result_objects(returned_ids)
+                            .with_affected_object_memory(affected_memory),
+                    ))
+                },
+            )
+        },
+    )
 }
 
 #[cfg(test)]

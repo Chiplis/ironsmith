@@ -171,16 +171,15 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
         return game.token_resource_failure().map_or(Ok(false), Err);
     }
     let (root, meter) = game.begin_token_resource_scope();
-    let checkpoint = game.clone();
-    let mut result = Ok(match_triggers_at_instruction_boundary_inner(
-        game, ctx, next, reported,
-    ));
-    if let Some(error) = game.token_resource_failure() {
-        result = Err(error);
-    }
-    if result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, false);
-    }
+    let result = crate::effects::composition::execute_world_result_transaction(game, |game| {
+        let mut result = Ok(match_triggers_at_instruction_boundary_inner(
+            game, ctx, next, reported,
+        ));
+        if let Some(error) = game.token_resource_failure() {
+            result = Err(error);
+        }
+        result
+    });
     game.end_token_resource_scope(root, &meter);
     result
 }
@@ -220,21 +219,22 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     let mut reported: Vec<_> = reported.into_iter().collect();
     let event_checkpoint: Vec<_> = reported.iter().map(|event| (**event).clone()).collect();
     let (root, meter) = game.begin_token_resource_scope();
-    let checkpoint = game.clone();
-    let mut result = capture_triggers_before_added_program_inner(
-        game,
-        ctx,
-        next,
-        reported.iter_mut().map(|event| &mut **event),
-    );
-    if let Err(error) = &result {
-        game.record_token_resource_failure(error);
-    }
-    if let Some(error) = game.token_resource_failure() {
-        result = Err(error);
-    }
+    let result = crate::effects::composition::execute_world_result_transaction(game, |game| {
+        let mut result = capture_triggers_before_added_program_inner(
+            game,
+            ctx,
+            next,
+            reported.iter_mut().map(|event| &mut **event),
+        );
+        if let Err(error) = &result {
+            game.record_token_resource_failure(error);
+        }
+        if let Some(error) = game.token_resource_failure() {
+            result = Err(error);
+        }
+        result
+    });
     if result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, false);
         for (event, previous) in reported.iter_mut().zip(event_checkpoint) {
             **event = previous;
         }
@@ -593,59 +593,55 @@ fn execute_effect_with_outputs_for_purpose(
     origin: &Effect,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let (root, meter) = game.begin_token_resource_scope();
-    let checkpoint = root.then(|| game.clone());
-    let context_checkpoint =
-        root.then(|| crate::effects::context::ExecutionContextCheckpoint::capture(ctx));
-    game.effect_store
-        .instruction_result_records
-        .push(Vec::new());
-    let mut result = match game.token_resource_failure() {
-        Some(error) => Err(error),
-        None => execute_effect_with_resource_scope(game, effect, ctx, purpose, origin),
-    };
-    let recorded = game
-        .effect_store
-        .instruction_result_records
-        .pop()
-        .unwrap_or_default();
-    if let Ok(outputs) = &mut result {
-        let outcome = &mut outputs.outcome;
-        if !ctx.decision_maker.awaiting_choice() {
-            crate::effects::outcome_recording::complete_outcome(
-                game,
-                effect.0.result_action(),
-                Some(ctx.controller),
-                outcome,
-                recorded,
-            );
-            outputs.synchronize_observations();
-        }
-    }
-    if matches!(purpose, EffectExecutionPurpose::Payment) && !ctx.decision_maker.awaiting_choice() {
-        if let Ok(outputs) = &result {
-            if let Err(error) = finish_effect_payment(game, effect, ctx, outputs) {
+    let result = crate::effects::composition::execute_error_transaction_if(
+        game,
+        ctx,
+        root,
+        ExecutionError::is_incomplete_execution,
+        |game, ctx| {
+            game.effect_store
+                .instruction_result_records
+                .push(Vec::new());
+            let mut result = match game.token_resource_failure() {
+                Some(error) => Err(error),
+                None => execute_effect_with_resource_scope(game, effect, ctx, purpose, origin),
+            };
+            let recorded = game
+                .effect_store
+                .instruction_result_records
+                .pop()
+                .unwrap_or_default();
+            if let Ok(outputs) = &mut result {
+                let outcome = &mut outputs.outcome;
+                if !ctx.decision_maker.awaiting_choice() {
+                    crate::effects::outcome_recording::complete_outcome(
+                        game,
+                        effect.0.result_action(),
+                        Some(ctx.controller),
+                        outcome,
+                        recorded,
+                    );
+                    outputs.synchronize_observations();
+                }
+            }
+            if matches!(purpose, EffectExecutionPurpose::Payment)
+                && !ctx.decision_maker.awaiting_choice()
+            {
+                if let Ok(outputs) = &result {
+                    if let Err(error) = finish_effect_payment(game, effect, ctx, outputs) {
+                        result = Err(error);
+                    }
+                }
+            }
+            if let Err(error) = &result {
+                game.record_token_resource_failure(error);
+            }
+            if let Some(error) = game.token_resource_failure() {
                 result = Err(error);
             }
-        }
-    }
-    if let Err(error) = &result {
-        game.record_token_resource_failure(error);
-    }
-    if let Some(error) = game.token_resource_failure() {
-        result = Err(error);
-    }
-    if result
-        .as_ref()
-        .err()
-        .is_some_and(ExecutionError::is_incomplete_execution)
-    {
-        if let Some(checkpoint) = checkpoint {
-            game.restore_execution_checkpoint(checkpoint, false);
-        }
-        if let Some(checkpoint) = context_checkpoint {
-            checkpoint.restore(ctx);
-        }
-    }
+            result
+        },
+    );
     game.end_token_resource_scope(root, &meter);
     result
 }

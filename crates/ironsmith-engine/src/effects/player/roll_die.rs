@@ -43,42 +43,52 @@ impl EffectExecutor for RollDieEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let player = resolve_player_filter(game, &self.player, ctx)?;
-            if self.sides == 0 {
-                return Ok(EffectOutcome::count(0));
-            }
-            let Some(transaction) = roll_dice_with_authored_modifier(game, ctx, player, 1, self.sides, self.result_modifier.as_ref())?
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
-            let roll = transaction.rolls[0];
-            let completion = super::die_roll_transaction::complete_die_rolls(
-                game,
-                ctx,
-                player,
-                self.sides,
-                &transaction.rolls,
-                roll.result,
-                super::die_roll_transaction::DieRollCompletion::Single,
-            )?;
-            Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(i64::from(roll.result))
-                    .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)),
-                transaction.payments.into_iter().chain([completion]),
-            ))
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
-            context_checkpoint.restore(ctx);
-        }
-        if pending && result.is_ok() {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction_from_body(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player = resolve_player_filter(game, &self.player, ctx)?;
+                if self.sides == 0 {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let Some(transaction) = roll_dice_with_authored_modifier(
+                    game,
+                    ctx,
+                    player,
+                    1,
+                    self.sides,
+                    self.result_modifier.as_ref(),
+                )?
+                else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                let roll = transaction.rolls[0];
+                transaction.complete_with_outputs(
+                    game,
+                    ctx,
+                    player,
+                    self.sides,
+                    roll.result,
+                    super::die_roll_transaction::DieRollCompletion::Single,
+                    EffectOutcome::count(i64::from(roll.result))
+                        .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)),
+                )
+            },
+        )
     }
 }
 

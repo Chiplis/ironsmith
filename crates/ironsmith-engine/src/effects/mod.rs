@@ -98,7 +98,7 @@ pub use executor_trait::{
     CompletedEffectOutputs, CostChoiceBindings, CostExecutableEffect, CostValidationError,
     DamageActionBinding, DeferredPlayerActionProposal, EffectExecutionCategory, EffectExecutor,
     EffectOutcomeContribution, EffectOutcomeScope, ModalEffectSpec, ModalSpec,
-    OriginalEffectOutput, PreparedSelectionBinding, PublishedEffectOutputs,
+    OriginalEffectOutput, OriginalPhaseStatus, PreparedSelectionBinding, PublishedEffectOutputs,
     ResolutionPreludeBinding, ScopedEffectOutcome, SharedEffectOutcome, SharedEffectOutputView,
     SharedOutcomeOwnership, SimultaneousEffectCommit, SimultaneousEffectCompletion,
     SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,

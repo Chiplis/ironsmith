@@ -108,9 +108,7 @@ impl crate::effects::SimultaneousEffectProposal for SealedDamageAction {
         ExecutionError,
     > {
         match self.prepared {
-            Some(prepared) => prepared
-                .commit_original(game, ctx)
-                .map(crate::effects::SimultaneousEffectCommit::into_retained),
+            Some(prepared) => prepared.commit_original_with_outputs(game, ctx),
             None => Ok(crate::effects::SimultaneousEffectCommit::finished(
                 crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             )),
@@ -135,7 +133,9 @@ pub(crate) fn complete_prepared_damage_action(
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     proposal.prepare_selection(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
     proposal.prepare_original(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() {

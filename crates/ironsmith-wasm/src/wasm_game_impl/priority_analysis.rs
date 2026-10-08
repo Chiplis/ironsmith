@@ -308,7 +308,7 @@ mod priority_analysis_tests {
     }
     fn fixture() -> (WasmGame, Restore) {
         let restore = Restore(ironsmith::game_loop::priority_analysis_deferred());
-        let mut wasm = WasmGame::new();
+        let mut wasm = WasmGame::new_with_registry(CardRegistry::new());
         wasm.set_deferred_priority_analysis(true);
         let alice = PlayerId::from_index(0);
         wasm.game.turn.priority_player = Some(alice);
@@ -360,10 +360,16 @@ mod priority_analysis_tests {
                 ));
                 let view = DecisionView::from_context(&wasm.game, wasm.pending_decision.as_ref().unwrap(), alice, None, None);
                 let DecisionView::Priority { actions, .. } = view else { panic!() };
-                assert_eq!(actions.iter().filter(|action| action.object_id == Some(spell.0)).count(), 2,
-                    "both prices are offered before any analysis slice");
+                assert!(!actions.iter().any(|action| action.object_id == Some(spell.0)),
+                    "rendering must not enumerate undiscovered prices");
                 assert!(wasm.begin_priority_analysis("early-method".into()));
                 assert_eq!(wasm.advance_priority_analysis("early-method", 1).unwrap(), Some(false));
+                let view = DecisionView::from_context(&wasm.game, wasm.pending_decision.as_ref().unwrap(), alice, None, None);
+                let DecisionView::Priority { actions, .. } = view else { panic!() };
+                let prices: Vec<_> = actions.iter().filter(|action| action.object_id == Some(spell.0)).collect();
+                assert_eq!(prices.len(), 2, "both prices are offered after their source is analyzed");
+                assert!(prices.iter().any(|action| action.payment_proven == Some(true)));
+                assert!(prices.iter().any(|action| action.payment_proven == Some(false)));
                 let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
                 let proven = ctx.payment_proven_actions.as_ref().unwrap();
                 assert!(proven.iter().any(|action| matches!(action, LegalAction::CastSpell {

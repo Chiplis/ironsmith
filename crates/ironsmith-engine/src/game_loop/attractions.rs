@@ -71,23 +71,24 @@ fn roll_to_visit_attractions_inner(
         return Ok(None);
     };
     let roll = transaction.rolls[0];
-    let completion = crate::effects::player::die_roll_transaction::complete_die_rolls(
+    let completed = transaction
+        .complete_with_outputs(
+            game,
+            &mut context,
+            player,
+            6,
+            roll.result,
+            crate::effects::player::die_roll_transaction::DieRollCompletion::AttractionVisit,
+            crate::effect::EffectOutcome::resolved(),
+        )
+        .map_err(GameLoopError::ExecutionFailed)?;
+    // The root trigger-queue handoff consumes its native reported events.
+    try_queue_triggers_from_reported_events(
         game,
-        &mut context,
-        player,
-        6,
-        &transaction.rolls,
-        roll.result,
-        crate::effects::player::die_roll_transaction::DieRollCompletion::AttractionVisit,
-    )
-    .map_err(GameLoopError::ExecutionFailed)?;
-    let events = transaction
-        .payments
-        .into_iter()
-        .chain([completion])
-        .flat_map(|outcome| outcome.events)
-        .collect();
-    try_queue_triggers_from_reported_events(game, trigger_queue, events, true)?;
+        trigger_queue,
+        completed.into_outcome().events,
+        true,
+    )?;
     let provenance = crate::provenance::ProvNodeId::default();
 
     let visits = game.attraction_visit_profiles(player, roll.result);

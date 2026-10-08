@@ -123,14 +123,87 @@ struct SourceOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for SourceOriginalCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
         let Self { binding, inner } = *self;
-        let mut receipt = with_source_binding(ctx, &binding, |ctx| inner.prepare_draw_boundary_with_outputs(game, ctx, original))?;
-        receipt.completion = receipt.completion.map(|inner| Box::new(Self { binding, inner })
-            as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        let mut receipt = with_source_binding(ctx, &binding, |ctx| {
+            inner.complete_original_phase_with_outputs(game, ctx, original)
+        })?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self { binding, inner })
+                as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self { binding, inner } = *self;
+        let mut receipt = with_source_binding(ctx, &binding, |ctx| {
+            inner.complete_original_phase_from_outputs(game, ctx, original)
+        })?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self { binding, inner })
+                as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self { binding, inner } = *self;
+        let mut receipt = with_source_binding(ctx, &binding, |ctx| {
+            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+        })?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self { binding, inner })
+                as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self { binding, inner } = *self;
+        let mut receipt = with_source_binding(ctx, &binding, |ctx| {
+            inner.prepare_draw_boundary_from_outputs(game, ctx, original)
+        })?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self { binding, inner })
+                as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
         Ok(receipt)
     }
 
@@ -168,6 +241,18 @@ impl crate::effects::SimultaneousEffectCompletion for SourceOriginalCompletion {
         let Self { binding, inner } = *self;
         with_source_binding(ctx, &binding, |ctx| {
             inner.complete_with_outputs(game, ctx, original)
+        })
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Self { binding, inner } = *self;
+        with_source_binding(ctx, &binding, |ctx| {
+            inner.complete_from_original_outputs(game, ctx, original)
         })
     }
 }
@@ -364,8 +449,13 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         crate::effects::replacement::replacement_effect_supported(&self.effect)
     }
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let cursor = self.select_prepared_action_program(game, ctx)?;
         super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
     }

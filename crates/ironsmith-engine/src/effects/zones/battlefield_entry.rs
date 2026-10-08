@@ -69,10 +69,12 @@ pub(crate) fn finish_battlefield_entry_receipts(
         .map(crate::effects::CompletedEffectOutputs::into_outcome)
 }
 
-pub(crate) fn finish_battlefield_entry_receipts_with_outputs(
+pub(crate) fn finish_battlefield_entry_receipts_with_outputs<
+    O: crate::effects::OriginalEffectOutput,
+>(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    original: crate::effect::EffectOutcome,
+    original: O,
     receipts: Vec<BattlefieldEntryReceipt>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let mut published = Vec::new();
@@ -82,12 +84,9 @@ pub(crate) fn finish_battlefield_entry_receipts_with_outputs(
         zone_receipts.push(movement);
         crate::effects::PublishedEffectOutputs::append_distinct(&mut published, packets);
     }
-    let mut outputs =
-        super::finish_zone_change_receipts_with_outputs(game, ctx, original, zone_receipts)?;
-    if !ctx.decision_maker.awaiting_choice() {
-        outputs.retain_published_references(published);
-    }
-    Ok(outputs)
+    let mut original = original.into_outputs();
+    original.retain_published_references(published);
+    super::finish_zone_change_receipts_with_outputs(game, ctx, original, zone_receipts)
 }
 
 /// Config for moving an object to the battlefield through ETB processing.
@@ -560,27 +559,22 @@ pub(crate) fn prepare_battlefield_entry_batch(
     >,
     mut draws: Option<&mut super::ZoneInstructionDraws>,
 ) -> Result<Option<PreparedBattlefieldEntryBatch>, ExecutionError> {
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     // The caller owns this collector independently of the Game/context
     // checkpoint. Retain its existing futures; only new preparation outputs
     // and immutable range metadata belong to this attempt.
     let draw_checkpoint = draws
         .as_ref()
         .map(|draws| (draws.draws.checkpoint(), draws.ranges.clone()));
-    let result = prepare_battlefield_entry_batch_inner(
-        game,
-        ctx,
-        requests,
-        zone_proposals,
-        draws.as_deref_mut(),
-    );
+    let result = crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
+        prepare_battlefield_entry_batch_inner(
+            game,
+            ctx,
+            requests,
+            zone_proposals,
+            draws.as_deref_mut(),
+        )
+    });
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            ctx.decision_maker.awaiting_choice() && result.is_ok(),
-        );
-        context_checkpoint.restore(ctx);
         if let (Some(draws), Some((outputs, ranges))) = (draws, draw_checkpoint) {
             draws.draws.restore_checkpoint(outputs);
             draws.ranges = ranges;
@@ -968,19 +962,10 @@ impl PreparedBattlefieldEntryBatch {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self
-            .commit_with_companions(game, ctx, |_, _| Ok(()))
-            .map(|value| value.map(|(receipts, ())| receipts).unwrap_or_default());
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                ctx.decision_maker.awaiting_choice() && result.is_ok(),
-            );
-            context_checkpoint.restore(ctx);
-        }
-        result
+        crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
+            self.commit_with_companions(game, ctx, |_, _| Ok(()))
+                .map(|value| value.map(|(receipts, ())| receipts).unwrap_or_default())
+        })
     }
     pub(crate) fn commit_with_companions<'a, T>(
         self,

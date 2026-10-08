@@ -221,6 +221,12 @@ struct PreventionDrawCompletion {
 }
 
 impl SimultaneousEffectCompletion for PreventionDrawCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        // This continuation is constructed only from added programs/follow-ups.
+        // Their internal pending draws are additions to the enclosing action.
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         _game: &mut GameState,
@@ -229,6 +235,18 @@ impl SimultaneousEffectCompletion for PreventionDrawCompletion {
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
         Ok(SimultaneousEffectCommit {
             outcome: CompletedEffectOutputs::aggregate_only(original),
+            completion: Some(self),
+        })
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        Ok(SimultaneousEffectCommit {
+            outcome: original,
             completion: Some(self),
         })
     }

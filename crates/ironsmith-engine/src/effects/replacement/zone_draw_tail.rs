@@ -19,16 +19,19 @@ struct ZoneTail {
 }
 
 fn append(before: CompletedEffectOutputs, child: CompletedEffectOutputs) -> CompletedEffectOutputs {
-    let aggregate = EffectOutcome::aggregate_replacement_outcomes(
-        before.outcome.clone(),
-        [child.outcome.clone()],
-    );
-    let mut outputs = before.project_aggregate(aggregate);
-    outputs.retain_owned_child(child);
+    let child_coverage = child.projections_complete;
+    let mut outputs = before.append_replacement_outputs([child]);
+    outputs.projections_complete &= child_coverage;
     outputs
 }
 
 impl SimultaneousEffectCompletion for ZoneTail {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        // This continuation is constructed only from added programs/follow-ups.
+        // Their internal pending draws are additions to the enclosing action.
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         game.freeze_completed_entry_events(
             self.before
@@ -76,6 +79,18 @@ impl SimultaneousEffectCompletion for ZoneTail {
             completion: Some(self),
         })
     }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        Ok(SimultaneousEffectCommit {
+            outcome: original,
+            completion: Some(self),
+        })
+    }
     fn complete(
         self: Box<Self>,
         game: &mut GameState,
@@ -111,22 +126,21 @@ impl SimultaneousEffectCompletion for ZoneTail {
                     EffectOutcome::count(0),
                 ));
             }
-            let completed = super::complete_bound_replacement_programs_with_outputs(
+            let programs = self.programs;
+            outputs = super::complete_replacement_programs_with_original_outputs(
                 game,
                 ctx,
-                outputs.outcome.clone(),
-                self.programs,
+                outputs,
+                |game, ctx, original| {
+                    super::complete_bound_replacement_programs_with_outputs(
+                        game, ctx, original, programs,
+                    )
+                },
             )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(CompletedEffectOutputs::aggregate_only(
                     EffectOutcome::count(0),
                 ));
-            }
-            let (observed_original, added_programs) = completed.into_outputs();
-            outputs.outcome = observed_original;
-            for added in added_programs {
-                // This continuation retains its established owned-child projection.
-                outputs = append(outputs, added);
             }
             for effect in self.followups {
                 if ctx.resolution_stopped() {
@@ -167,14 +181,18 @@ pub(crate) fn prepare_zone_draw_tail(
 
 /// Every program binding is frozen by the action owner before this boundary.
 /// A paused draw owns its suffix; later programs cannot overtake it.
-pub(crate) fn prepare_zone_draw_tail_with_outputs(
+pub(crate) fn prepare_zone_draw_tail_with_outputs<O: crate::effects::OriginalEffectOutput>(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    before: EffectOutcome,
+    before: O,
     programs: Vec<BoundProgram>,
     followups: &[Effect],
 ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-    let mut before = CompletedEffectOutputs::aggregate_only(before);
+    let mut before = before.into_outputs();
+    if !programs.is_empty() || !followups.is_empty() {
+        // Added instructions have not declared complete enclosing projections.
+        before.projections_complete = false;
+    }
     let mut programs = programs.into_iter();
     while let Some((program, bindings)) = programs.next() {
         crate::effects::capture_triggers_before_added_program(
@@ -211,7 +229,11 @@ pub(crate) fn prepare_zone_draw_tail_with_outputs(
                 [first.outcome.outcome.clone()],
             );
             return Ok(SimultaneousEffectCommit {
-                outcome: CompletedEffectOutputs::aggregate_only(prefix),
+                // This routing view preserves identities and contains no continuation.
+                outcome: before
+                    .clone_projection()
+                    .project_aggregate(prefix)
+                    .append_owned_child(first.outcome.clone_projection()),
                 completion: Some(Box::new(ZoneTail {
                     before,
                     first,
@@ -237,7 +259,11 @@ pub(crate) fn prepare_zone_draw_tail_with_outputs(
                 [first.outcome.outcome.clone()],
             );
             return Ok(SimultaneousEffectCommit {
-                outcome: CompletedEffectOutputs::aggregate_only(prefix),
+                // This routing view preserves identities and contains no continuation.
+                outcome: before
+                    .clone_projection()
+                    .project_aggregate(prefix)
+                    .append_owned_child(first.outcome.clone_projection()),
                 completion: Some(Box::new(ZoneTail {
                     before,
                     first,

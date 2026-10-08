@@ -240,19 +240,12 @@ pub(crate) fn discard_hand_cards_with_outputs(
     player: PlayerId,
     cards: Vec<ObjectId>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = discard_hand_cards_inner(game, ctx, player, cards);
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-    }
-    result
+    crate::effects::composition::execute_checkpoint_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| discard_hand_cards_inner(game, ctx, player, cards),
+    )
 }
 
 fn discard_hand_cards_inner(

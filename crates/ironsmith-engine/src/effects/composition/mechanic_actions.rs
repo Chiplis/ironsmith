@@ -14,7 +14,7 @@ use crate::effects::permanents::face_down_entry::{
 };
 use crate::effects::player::CastTaggedEffect;
 use crate::effects::zones::apply_zone_change;
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
     move_to_battlefield_with_options,
@@ -1182,9 +1182,9 @@ impl EffectExecutor for ManifestDreadEffect {
                     {
                         continue;
                     }
-                    let receipt = {
+                    let committed = {
                         let zone_additional_effects = ctx.additional_replacement_effects_snapshot();
-                        apply_zone_change_with_context_and_additional_effects(
+                        apply_zone_change_with_context_and_additional_effects_with_outputs(
                             game,
                             card_id,
                             Zone::Library,
@@ -1199,6 +1199,11 @@ impl EffectExecutor for ManifestDreadEffect {
                             EffectOutcome::count(0),
                         ));
                     }
+                    crate::effects::PublishedEffectOutputs::append_distinct(
+                        &mut entry_outputs,
+                        committed.published_outputs,
+                    );
+                    let receipt = committed.receipt;
                     if let EventOutcome::Proceed(result) = &receipt.original
                         && result.final_zone == Zone::Graveyard
                     {
@@ -1224,8 +1229,9 @@ impl EffectExecutor for ManifestDreadEffect {
                     TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
                     graveyard_snapshots,
                 )]);
-                let body_outputs =
+                let mut body_outputs =
                     crate::effects::CompletedEffectOutputs::from_children([observed], |_| outcome);
+                body_outputs.retain_published_references(entry_outputs);
                 let body_outputs = super::complete_keyword_action_with_outputs(
                     game,
                     ctx,
@@ -1239,7 +1245,7 @@ impl EffectExecutor for ManifestDreadEffect {
                     .with_object_tags(object_tags),
                 )?;
 
-                let mut outputs = crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                let outputs = crate::effects::zones::finish_zone_change_receipts_with_outputs(
                     game,
                     ctx,
                     body_outputs,
@@ -1250,7 +1256,6 @@ impl EffectExecutor for ManifestDreadEffect {
                         EffectOutcome::count(0),
                     ));
                 }
-                outputs.retain_published_references(entry_outputs);
                 Ok(outputs)
             },
         )
@@ -1774,7 +1779,7 @@ impl EffectExecutor for CipherEffect {
 
                 let original_source = ctx.source;
                 let additional = ctx.additional_replacement_effects_snapshot();
-                let receipt = apply_zone_change_with_context_and_additional_effects(
+                let committed = apply_zone_change_with_context_and_additional_effects_with_outputs(
                     game,
                     original_source,
                     source_obj.zone,
@@ -1788,7 +1793,8 @@ impl EffectExecutor for CipherEffect {
                         EffectOutcome::count(0),
                     ));
                 }
-                let original =
+                let receipt = committed.receipt;
+                let mut original =
                     (|| -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
                         let exiled_id = match &receipt.original {
                             EventOutcome::Proceed(change) => {
@@ -1889,6 +1895,7 @@ impl EffectExecutor for CipherEffect {
                         EffectOutcome::count(0),
                     ));
                 }
+                original.retain_published_references(committed.published_outputs);
                 crate::effects::zones::finish_zone_change_receipts_with_outputs(
                     game,
                     ctx,

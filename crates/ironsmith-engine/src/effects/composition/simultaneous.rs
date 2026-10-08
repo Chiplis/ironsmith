@@ -97,14 +97,7 @@ pub(crate) fn execute_simultaneous_originals_with_outputs<'a, O: OriginalEffectO
         if let Some(opened) = opened.take() {
             game.close_simultaneous_action(opened);
         }
-        finish_simultaneous_originals_with_participants(
-            game,
-            ctx,
-            receipts,
-            |receipt| receipt,
-            observe,
-            complete_committed_original_with_outputs,
-        )
+        finish_simultaneous_originals_with_outputs(game, ctx, receipts, observe)
     })();
     // A suspended/failed original still closes the grouping scope. Its caller
     // restores the compound checkpoint without leaking a simultaneous frame.
@@ -114,38 +107,174 @@ pub(crate) fn execute_simultaneous_originals_with_outputs<'a, O: OriginalEffectO
     result
 }
 
-/// Finalize originals whose owner has already closed its grouping and lookback
-/// scopes. Participant metadata stays alongside each receipt; only this owner
-/// freezes the whole group, observes originals and orders deferred completions.
-/// The completion callback retains domain-specific participant context and
-/// collects its mutations without introducing a second batching implementation.
-pub(crate) fn finish_simultaneous_originals_with_participants<'a, P, R, O: OriginalEffectOutput>(
+/// Finalize originals after their owner closes grouping and lookback scopes.
+/// The observer sees the original receipt representation; retain rich packets
+/// once afterward so completed originals never pass through a scalar projection.
+fn finish_simultaneous_originals_with_outputs<'a, O: OriginalEffectOutput>(
     game: &mut GameState,
     ctx: &mut ExecutionContext<'a>,
-    mut participants: Vec<P>,
-    receipt: fn(&mut P) -> &mut SimultaneousEffectCommit<O>,
+    receipts: Vec<SimultaneousEffectCommit<O>>,
     observe: impl FnOnce(
         &mut GameState,
         &mut ExecutionContext<'a>,
-        &mut [P],
+        &mut [SimultaneousEffectCommit<O>],
     ) -> Result<OriginalTriggerObservation, ExecutionError>,
-    mut complete: impl FnMut(&mut GameState, &mut ExecutionContext<'a>, P) -> Result<R, ExecutionError>,
-) -> Result<Vec<R>, ExecutionError> {
-    let participants = prepare_simultaneous_originals_with_participants(
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let receipts = prepare_simultaneous_originals_with_participants(
         game,
         ctx,
-        participants,
-        receipt,
+        receipts,
+        |receipt| receipt,
         observe,
     )?;
-    let mut outcomes = Vec::with_capacity(participants.len());
-    for participant in participants {
-        outcomes.push(complete(game, ctx, participant)?);
+    let receipts = receipts
+        .into_iter()
+        .map(|receipt| SimultaneousEffectCommit {
+            outcome: receipt.outcome.into_outputs(),
+            completion: receipt.completion,
+        })
+        .collect::<Vec<_>>();
+    let receipts = if original_cohort_phase_status(&receipts)
+        != crate::effects::OriginalPhaseStatus::Combined
+    {
+        let Some(receipts) = complete_original_cohort_phase_with_outputs(game, ctx, receipts)?
+        else {
+            return Ok(Vec::new());
+        };
+        receipts
+    } else {
+        // Combined owners remain on their existing route until migrated.
+        // Their presence prevents claiming this cohort's originals are ready.
+        receipts
+    };
+    let mut outcomes = Vec::with_capacity(receipts.len());
+    for receipt in receipts {
+        outcomes.push(complete_committed_original_with_outputs(
+            game, ctx, receipt,
+        )?);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
     }
     Ok(outcomes)
+}
+
+/// Capability belongs to every original in the cohort, never its first child.
+fn original_cohort_phase_status(
+    receipts: &[SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>],
+) -> crate::effects::OriginalPhaseStatus {
+    original_cohort_phase_status_from_receipts(receipts)
+}
+
+pub(crate) fn original_cohort_phase_status_from_receipts<'a>(
+    receipts: impl IntoIterator<
+        Item = &'a SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    >,
+) -> crate::effects::OriginalPhaseStatus {
+    let mut status = crate::effects::OriginalPhaseStatus::Complete;
+    for receipt in receipts {
+        if let Some(completion) = &receipt.completion {
+            match completion.original_phase_status() {
+                crate::effects::OriginalPhaseStatus::Combined => {
+                    return crate::effects::OriginalPhaseStatus::Combined;
+                }
+                crate::effects::OriginalPhaseStatus::Retained => {
+                    status = crate::effects::OriginalPhaseStatus::Retained;
+                }
+                crate::effects::OriginalPhaseStatus::Complete => {}
+            }
+        }
+    }
+    status
+}
+
+/// Participant metadata is retained; the accessor only selects its receipt.
+pub(crate) fn original_cohort_phase_status_with_participants<P>(
+    participants: &mut [P],
+    receipt: fn(&mut P) -> &mut SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+) -> crate::effects::OriginalPhaseStatus {
+    original_cohort_phase_status_from_receipts(
+        participants
+            .iter_mut()
+            .map(|participant| &*receipt(participant)),
+    )
+}
+
+/// Finish one separated cohort with its owner's participant context callback.
+/// The callback advances only a Retained original and captures its resulting
+/// context even when no continuation remains. It must retain the same participant.
+pub(crate) fn complete_original_cohort_phase_with_participants<P>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut participants: Vec<P>,
+    receipt: fn(&mut P) -> &mut SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    mut advance: impl FnMut(&mut GameState, &mut ExecutionContext, P) -> Result<P, ExecutionError>,
+) -> Result<Option<Vec<P>>, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+    if original_cohort_phase_status_with_participants(&mut participants, receipt)
+        == crate::effects::OriginalPhaseStatus::Combined
+    {
+        return Err(ExecutionError::InternalError(
+            "original cohort contains an unseparated child".into(),
+        ));
+    }
+    let mut retained = Vec::with_capacity(participants.len());
+    for mut participant in participants {
+        if ctx.resolution_stopped() {
+            receipt(&mut participant).completion = None;
+        } else if receipt(&mut participant)
+            .completion
+            .as_ref()
+            .is_some_and(|completion| {
+                completion.original_phase_status() == crate::effects::OriginalPhaseStatus::Retained
+            })
+        {
+            participant = advance(game, ctx, participant)?;
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if !ctx.resolution_stopped()
+            && receipt(&mut participant)
+                .completion
+                .as_ref()
+                .is_some_and(|completion| {
+                    completion.original_phase_status()
+                        != crate::effects::OriginalPhaseStatus::Complete
+                })
+        {
+            return Err(ExecutionError::InternalError(
+                "original cohort left an unresolved child original".into(),
+            ));
+        }
+        retained.push(participant);
+    }
+    if ctx.resolution_stopped() {
+        for participant in &mut retained {
+            receipt(participant).completion = None;
+        }
+    }
+    Ok(Some(retained))
+}
+
+/// Ordinary receipts use the same cohort owner without another context policy.
+fn complete_original_cohort_phase_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipts: Vec<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>>,
+) -> Result<
+    Option<Vec<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>>>,
+    ExecutionError,
+> {
+    complete_original_cohort_phase_with_participants(
+        game,
+        ctx,
+        receipts,
+        |receipt| receipt,
+        complete_retained_original_phase_with_outputs,
+    )
 }
 
 /// Freeze and observe a complete original group without running a completion.
@@ -267,19 +396,74 @@ pub(crate) fn prepare_standalone_completion_with_outputs<O: OriginalEffectOutput
         return Ok(None);
     }
     if let Some(completion) = &mut receipt.completion {
-        game.freeze_completed_entry_events(receipt.outcome.aggregate_mut().events.iter_mut())?;
-        completion.freeze(game)?;
-        observe_original_completion(
+        prepare_standalone_original_completion(
             game,
             ctx,
-            completion.as_mut(),
             receipt.outcome.aggregate_mut(),
+            completion.as_mut(),
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
     }
     Ok(Some(receipt))
+}
+
+/// Borrowed original receipts use the same standalone freeze/observation owner.
+/// Whole-cohort preparation retains its separate all-originals timing boundary.
+pub(crate) fn prepare_standalone_original_completion(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: &mut EffectOutcome,
+    completion: &mut dyn crate::effects::SimultaneousEffectCompletion,
+) -> Result<(), ExecutionError> {
+    game.freeze_completed_entry_events(original.events.iter_mut())?;
+    completion.freeze(game)?;
+    observe_original_completion(game, ctx, completion, original)
+}
+
+/// Finish only an explicitly separated original phase. Combined owners stay
+/// on their existing route; Complete owners retain their unexecuted additions.
+/// This does not prove a whole cohort is ready while any owner is Combined.
+pub(crate) fn complete_retained_original_phase_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut receipt: SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let Some(completion) = receipt.completion.take() else {
+        return Ok(receipt);
+    };
+    if completion.original_phase_status() != crate::effects::OriginalPhaseStatus::Retained {
+        receipt.completion = Some(completion);
+        return Ok(receipt);
+    }
+    let original = receipt.outcome;
+    let completed = completion.complete_original_phase_from_outputs(game, ctx, original)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(SimultaneousEffectCommit::finished(
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
+    }
+    Ok(completed)
+}
+
+/// A retained authored instruction is one original unit of its enclosing
+/// replacement program. Its cursor owns internal action/cost ordering; this
+/// boundary applies only to owners with no enclosing added-program queue.
+/// It must not be used to reclassify arbitrary compound completions.
+pub(crate) fn complete_authored_original_subtree_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    completion: Box<dyn crate::effects::SimultaneousEffectCompletion>,
+    original: crate::effects::CompletedEffectOutputs,
+) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let outputs = completion.complete_from_original_outputs(game, ctx, original)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(SimultaneousEffectCommit::finished(
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
+    }
+    Ok(SimultaneousEffectCommit::finished(outputs))
 }
 
 /// Dispatch an already frozen/observed receipt. Finished outputs need no
@@ -296,14 +480,12 @@ pub(crate) fn complete_committed_original_with_outputs<O: OriginalEffectOutput>(
     }
     match receipt.completion {
         Some(completion) => {
-            let mut outputs =
-                completion.complete_with_outputs(game, ctx, original.outcome.clone())?;
+            let outputs = completion.complete_from_original_outputs(game, ctx, original)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                     EffectOutcome::count(0),
                 ));
             }
-            outputs.retain_owned_child(original);
             Ok(outputs)
         }
         None => Ok(original),
@@ -379,6 +561,52 @@ struct AdaptedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for AdaptedOriginalCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let result = self
+            .inner
+            .complete_original_phase_with_outputs(game, ctx, original);
+        match result {
+            Ok(receipt) => adapt_original_outcome_with_outputs(receipt, self.adapter, game, ctx),
+            Err(error) => self
+                .adapter
+                .finish_with_outputs(game, ctx, Err(error))
+                .map(crate::effects::SimultaneousEffectCommit::finished),
+        }
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let result = self
+            .inner
+            .complete_original_phase_from_outputs(game, ctx, original);
+        match result {
+            Ok(receipt) => adapt_original_outcome_with_outputs(receipt, self.adapter, game, ctx),
+            Err(error) => self
+                .adapter
+                .finish_with_outputs(game, ctx, Err(error))
+                .map(crate::effects::SimultaneousEffectCommit::finished),
+        }
+    }
+
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
@@ -391,6 +619,27 @@ impl crate::effects::SimultaneousEffectCompletion for AdaptedOriginalCompletion 
         let result = self
             .inner
             .prepare_draw_boundary_with_outputs(game, ctx, original);
+        match result {
+            Ok(receipt) => adapt_original_outcome_with_outputs(receipt, self.adapter, game, ctx),
+            Err(error) => self
+                .adapter
+                .finish_with_outputs(game, ctx, Err(error))
+                .map(crate::effects::SimultaneousEffectCommit::finished),
+        }
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let result = self
+            .inner
+            .prepare_draw_boundary_from_outputs(game, ctx, original);
         match result {
             Ok(receipt) => adapt_original_outcome_with_outputs(receipt, self.adapter, game, ctx),
             Err(error) => self
@@ -432,6 +681,18 @@ impl crate::effects::SimultaneousEffectCompletion for AdaptedOriginalCompletion 
         let result = self.inner.complete_with_outputs(game, ctx, original);
         self.adapter.finish_with_outputs(game, ctx, result)
     }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let result = self
+            .inner
+            .complete_from_original_outputs(game, ctx, original);
+        self.adapter.finish_with_outputs(game, ctx, result)
+    }
 }
 
 /// Preserve the child's prepared original and deferred programs. Decorations
@@ -467,6 +728,56 @@ struct ScopedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
+        let result = self
+            .inner
+            .complete_original_phase_with_outputs(game, ctx, original)
+            .map(|receipt| with_original_execution_context(receipt, ctx));
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else {
+            parent.restore(ctx);
+        }
+        result
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
+        let result = self
+            .inner
+            .complete_original_phase_from_outputs(game, ctx, original)
+            .map(|receipt| with_original_execution_context(receipt, ctx));
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else {
+            parent.restore(ctx);
+        }
+        result
+    }
+
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
@@ -481,6 +792,29 @@ impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
         let result = self
             .inner
             .prepare_draw_boundary_with_outputs(game, ctx, original)
+            .map(|receipt| with_original_execution_context(receipt, ctx));
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else {
+            parent.restore(ctx);
+        }
+        result
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
+        let result = self
+            .inner
+            .prepare_draw_boundary_from_outputs(game, ctx, original)
             .map(|receipt| with_original_execution_context(receipt, ctx));
         if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
             parent.restore_preserving_resolution_control(ctx);
@@ -533,6 +867,25 @@ impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
         }
         result
     }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
+        let result = self
+            .inner
+            .complete_from_original_outputs(game, ctx, original);
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else {
+            parent.restore(ctx);
+        }
+        result
+    }
 }
 
 pub(crate) fn with_original_execution_context<Output>(
@@ -570,6 +923,34 @@ struct GroupedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for GroupedOriginalCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        original_cohort_phase_status(&self.receipts)
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        let Self { receipts, project } = *self;
+        let receipts = receipts
+            .into_iter()
+            .map(|mut receipt| {
+                inherit_original_observations(&mut receipt.outcome.outcome, &original.events);
+                receipt
+            })
+            .collect();
+        let Some(retained) = complete_original_cohort_phase_with_outputs(game, ctx, receipts)?
+        else {
+            return Ok(SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        };
+        compose_original_commits_with_fallible_projection_outputs(retained, project)
+    }
+
     fn prepare_draw_boundary_with_outputs(
         self: Box<Self>,
         game: &mut GameState,
@@ -587,12 +968,7 @@ impl crate::effects::SimultaneousEffectCompletion for GroupedOriginalCompletion 
             if !paused && !ctx.resolution_stopped() {
                 if let Some(completion) = receipt.completion.take() {
                     let original = receipt.outcome;
-                    receipt = completion.prepare_draw_boundary_with_outputs(
-                        game,
-                        ctx,
-                        original.outcome.clone(),
-                    )?;
-                    receipt.outcome.retain_owned_child(original);
+                    receipt = completion.prepare_draw_boundary_from_outputs(game, ctx, original)?;
                 }
                 paused = receipt.completion.is_some();
             }
@@ -661,6 +1037,11 @@ impl crate::effects::SimultaneousEffectCompletion for GroupedOriginalCompletion 
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if self.original_phase_status() == crate::effects::OriginalPhaseStatus::Retained {
+            let receipt = self.complete_original_phase_with_outputs(game, ctx, original)?;
+            return complete_committed_original_with_outputs(game, ctx, receipt);
+        }
+
         let receipts = self.receipts.into_iter().map(|mut receipt| {
             inherit_original_observations(&mut receipt.outcome.outcome, &original.events);
             receipt

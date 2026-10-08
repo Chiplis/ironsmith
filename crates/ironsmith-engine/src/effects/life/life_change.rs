@@ -331,95 +331,6 @@ pub(crate) fn commit_prepared_life_changes_with_outputs(
     Ok(committed)
 }
 
-/// Deferred appended programs for one committed life-change proposal. Life
-/// notifications already contain their actual scalar result and participant;
-/// unlike zone receipts, they need no post-batch identity reconstruction.
-struct LifeChangeCompletion {
-    original_continuation: Option<Box<dyn crate::effects::SimultaneousEffectCompletion>>,
-    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
-}
-impl crate::effects::SimultaneousEffectCompletion for LifeChangeCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-        if self.original_continuation.is_some() {
-            return Ok(crate::effects::SimultaneousEffectCommit {
-                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(original),
-                completion: Some(self),
-            });
-        }
-        let programs = self.programs.into_iter().map(|program| (
-            program,
-            crate::effects::replacement::ReplacementProgramBindings {
-                targets: None, object_tags: Vec::new(),
-            },
-        )).collect();
-        crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
-            game, ctx, original, programs, &[],
-        )
-    }
-
-    fn observe_original(
-        &mut self,
-        game: &mut GameState,
-        ctx: &mut crate::effects::ExecutionContext,
-        original: &mut EffectOutcome,
-    ) -> Result<(), crate::effects::ExecutionError> {
-        if let Some(inner) = &mut self.original_continuation {
-            inner.observe_original(game, ctx, original)?;
-        }
-        Ok(())
-    }
-
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        if let Some(original) = &mut self.original_continuation {
-            original.freeze(game)?;
-        }
-        Ok(())
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let outputs = if let Some(inner) = self.original_continuation {
-            inner.complete_with_outputs(game, ctx, original)?
-        } else {
-            crate::effects::CompletedEffectOutputs::aggregate_only(original)
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let completed = crate::effects::replacement::complete_deferred_replacement_programs(
-            game,
-            ctx,
-            outputs.outcome.clone(),
-            self.programs,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        Ok(outputs.append_batch_program_outputs(completed))
-    }
-}
-
 pub(crate) fn commit_prepared_life_original_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -453,17 +364,21 @@ pub(crate) fn commit_prepared_life_original_with_outputs(
     } else {
         (commit_life_change_with_outputs(game, ctx, original)?, None)
     };
-    Ok(crate::effects::SimultaneousEffectCommit {
-        outcome,
-        completion: if programs.is_empty() && original_continuation.is_none() {
-            None
-        } else {
-            Some(Box::new(LifeChangeCompletion {
-                original_continuation,
-                programs,
-            }))
-        },
-    })
+    Ok(
+        crate::effects::replacement::defer_replacement_programs_with_outputs(
+            crate::effects::SimultaneousEffectCommit {
+                outcome,
+                completion: original_continuation,
+            },
+            programs,
+            |_| {
+                Ok(crate::effects::replacement::ReplacementProgramBindings {
+                    targets: None,
+                    object_tags: Vec::new(),
+                })
+            },
+        ),
+    )
 }
 
 pub(crate) fn prepare_life_change(
@@ -553,23 +468,23 @@ fn commit_life_change_with_outputs(
             context,
             ..
         } => {
-            let payload = crate::effects::replacement::execute_replacement_payload_with_outputs(
+            // Preserve the original life acknowledgement while retaining the payload's owners.
+            let mut original = EffectOutcome::replaced();
+            original.set_value(OutcomeValue::Count(0));
+            crate::effects::replacement::execute_replacement_original_payload_with_outputs(
                 game,
                 ctx,
                 &effects,
                 source,
                 controller,
                 &context,
+                crate::effects::replacement::ReplacementProgramBindings {
+                    targets: None,
+                    object_tags: Vec::new(),
+                },
                 None,
-                None,
-                Vec::new(),
-            )?;
-            // Preserve the original life acknowledgement while retaining the payload's owners.
-            let mut original = EffectOutcome::replaced();
-            original.set_value(OutcomeValue::Count(0));
-            let aggregate =
-                EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
-            Ok(payload.project_aggregate(aggregate))
+                original,
+            )
         }
         TraitEventResult::Prevented => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
             prevented_life_change(),

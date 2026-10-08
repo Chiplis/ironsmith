@@ -48,7 +48,9 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
         if zone.to == Zone::Hand {
             let mut players = std::collections::BTreeMap::<PlayerId, Vec<ObjectSnapshot>>::new();
             for snapshot in &zone.destination_snapshots {
-                if snapshot.kind != crate::object::ObjectKind::Card { continue; }
+                if snapshot.kind != crate::object::ObjectKind::Card {
+                    continue;
+                }
                 players
                     .entry(snapshot.owner)
                     .or_default()
@@ -59,7 +61,8 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
             if zone.destination_snapshots.is_empty() {
                 for id in &zone.result_objects {
                     if let Some(snapshot) = ObjectSnapshot::from_object_id(game, *id)
-                        && snapshot.kind == crate::object::ObjectKind::Card {
+                        && snapshot.kind == crate::object::ObjectKind::Card
+                    {
                         players.entry(snapshot.owner).or_default().push(snapshot);
                     }
                 }
@@ -565,16 +568,129 @@ struct RecordedCompletion {
     actor: PlayerId,
 }
 impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
-    fn prepare_draw_boundary_with_outputs(
-        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        self.inner.original_phase_status()
+    }
+
+    fn complete_original_phase_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
         let mut original = original;
-        complete_outcome(game, self.action, Some(self.actor), &mut original, Vec::new());
-        let mut receipt = self.inner.prepare_draw_boundary_with_outputs(game, ctx, original)?;
-        receipt.completion = receipt.completion.map(|inner| Box::new(Self {
-            inner, action: self.action, actor: self.actor,
-        }) as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        complete_outcome(
+            game,
+            self.action,
+            Some(self.actor),
+            &mut original,
+            Vec::new(),
+        );
+        let mut receipt = self
+            .inner
+            .complete_original_phase_with_outputs(game, ctx, original)?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self {
+                inner,
+                action: self.action,
+                actor: self.actor,
+            }) as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let mut original = original;
+        complete_outcome(
+            game,
+            self.action,
+            Some(self.actor),
+            &mut original.outcome,
+            Vec::new(),
+        );
+        original.synchronize_observations();
+        let mut receipt = self
+            .inner
+            .complete_original_phase_from_outputs(game, ctx, original)?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self {
+                inner,
+                action: self.action,
+                actor: self.actor,
+            }) as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let mut original = original;
+        complete_outcome(
+            game,
+            self.action,
+            Some(self.actor),
+            &mut original,
+            Vec::new(),
+        );
+        let mut receipt = self
+            .inner
+            .prepare_draw_boundary_with_outputs(game, ctx, original)?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self {
+                inner,
+                action: self.action,
+                actor: self.actor,
+            }) as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn prepare_draw_boundary_from_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let mut original = original;
+        complete_outcome(
+            game,
+            self.action,
+            Some(self.actor),
+            &mut original.outcome,
+            Vec::new(),
+        );
+        original.synchronize_observations();
+        let mut receipt = self
+            .inner
+            .prepare_draw_boundary_from_outputs(game, ctx, original)?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(Self {
+                inner,
+                action: self.action,
+                actor: self.actor,
+            }) as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
         Ok(receipt)
     }
 
@@ -615,6 +731,25 @@ impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
             Vec::new(),
         );
         self.inner.complete_with_outputs(game, ctx, original)
+    }
+
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
+        let mut original = original;
+        complete_outcome(
+            game,
+            self.action,
+            Some(self.actor),
+            &mut original.outcome,
+            Vec::new(),
+        );
+        original.synchronize_observations();
+        self.inner
+            .complete_from_original_outputs(game, ctx, original)
     }
 }
 

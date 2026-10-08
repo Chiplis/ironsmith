@@ -795,6 +795,14 @@ struct SimultaneousActionScope {
     opened_by_lookback: bool,
 }
 
+/// Immutable native grouping/look-back for a retained physical original.
+/// Added programs use their own scope after this frame has been released.
+#[derive(Debug, Clone)]
+pub(crate) struct CapturedSimultaneousOriginalFrame {
+    scope: Option<SimultaneousActionScope>,
+    lookback: Option<Vec<ObjectSnapshot>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingSectorDesignationState {
     pub source: ObjectId,
@@ -4593,6 +4601,45 @@ impl GameState {
             scope.batch = Some(batch);
         }
         Some(batch)
+    }
+
+    /// Retain an existing original scope across a native draw pause. Reserve
+    /// its lazy group identity once so resumed originals and earlier siblings
+    /// cannot acquire different batches after the enclosing scope closes.
+    pub(crate) fn capture_simultaneous_original_frame(
+        &mut self,
+    ) -> CapturedSimultaneousOriginalFrame {
+        if self.has_open_simultaneous_action() {
+            let _ = self.simultaneous_action_batch();
+        }
+        CapturedSimultaneousOriginalFrame {
+            scope: self.auxiliary_tracking.simultaneous_action_scope,
+            lookback: self.auxiliary_tracking.simultaneous_event_lookback.clone(),
+        }
+    }
+
+    /// Resume only physical original work in its captured scope. Restore the
+    /// caller's exact grouping/look-back on success, suspension and failure;
+    /// do not restore the world or run an added program inside this frame.
+    pub(crate) fn with_simultaneous_original_frame<T, E>(
+        &mut self,
+        frame: &CapturedSimultaneousOriginalFrame,
+        body: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let tracking = self.auxiliary_tracking_mut();
+        let parent_scope = std::mem::replace(&mut tracking.simultaneous_action_scope, frame.scope);
+        let parent_lookback = std::mem::replace(
+            &mut tracking.simultaneous_event_lookback,
+            frame.lookback.clone(),
+        );
+        let result = body(self);
+        if frame.scope.is_some() && frame.scope != parent_scope {
+            self.finalize_milling_event_snapshots();
+        }
+        let tracking = self.auxiliary_tracking_mut();
+        tracking.simultaneous_action_scope = parent_scope;
+        tracking.simultaneous_event_lookback = parent_lookback;
+        result
     }
 
     pub(crate) fn simultaneous_event_lookback(&self) -> Option<&[ObjectSnapshot]> {

@@ -362,6 +362,10 @@ struct ManaLossCompletion {
     programs: Vec<PreparedReplacementProgram>,
 }
 impl SimultaneousEffectCompletion for ManaLossCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> {
         Ok(())
     }
@@ -380,24 +384,20 @@ impl SimultaneousEffectCompletion for ManaLossCompletion {
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
         let outputs = crate::effects::CompletedEffectOutputs::aggregate_only(original);
-        let completed = crate::effects::replacement::complete_deferred_replacement_programs(
+        crate::effects::replacement::complete_replacement_programs_with_original_outputs(
             game,
             ctx,
-            outputs.outcome.clone(),
-            self.programs,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        Ok(outputs.append_batch_program_outputs(completed))
+            outputs,
+            |game, ctx, original| {
+                crate::effects::replacement::complete_deferred_replacement_programs(
+                    game,
+                    ctx,
+                    original,
+                    self.programs,
+                )
+            },
+        )
     }
 }
 fn complete_loss(

@@ -103,6 +103,46 @@ pub(crate) fn execute_replacement_payload_with_outputs(
     )
 }
 
+/// Execute one selected replacement original with its authored primary result.
+/// Callers own proposal selection, trigger boundaries and suspension; this owner
+/// preserves the payload's actual packet while projecting the replaced action.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_replacement_original_payload_with_outputs(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    effects: &[Effect],
+    source: ObjectId,
+    controller: PlayerId,
+    context: &ReplacementEventContext,
+    bindings: ReplacementProgramBindings,
+    captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    original: EffectOutcome,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let payload = execute_replacement_payload_with_outputs(
+        game,
+        parent,
+        effects,
+        source,
+        controller,
+        context,
+        bindings.targets,
+        captured_source_snapshot,
+        bindings.object_tags,
+    )?;
+    Ok(project_replacement_original_outputs(original, payload))
+}
+
+/// Project a replaced action over its actual completed subtree. Fresh execution
+/// and retained resumption share this owner; neither appends a prefix again.
+pub(crate) fn project_replacement_original_outputs(
+    original: EffectOutcome,
+    payload: crate::effects::CompletedEffectOutputs,
+) -> crate::effects::CompletedEffectOutputs {
+    let aggregate =
+        EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
+    payload.project_aggregate(aggregate)
+}
+
 /// Freeze the existing live/LKI/parent precedence before sibling originals.
 pub(crate) fn capture_replacement_source_snapshot(
     game: &GameState,
@@ -299,20 +339,17 @@ fn execute_replacement_original_program_with_outputs(
     bindings: ReplacementProgramBindings,
     original: EffectOutcome,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    let outputs = execute_replacement_payload_with_outputs(
+    execute_replacement_original_payload_with_outputs(
         game,
         ctx,
         &program.effects,
         program.source,
         program.controller,
         &program.context,
-        bindings.targets,
+        bindings,
         program.source_snapshot,
-        bindings.object_tags,
-    )?;
-    let aggregate =
-        EffectOutcome::aggregate_replacement_outcomes(original, [outputs.outcome.clone()]);
-    Ok(outputs.project_aggregate(aggregate))
+        original,
+    )
 }
 
 /// Commit a retained original replacement program in its captured event scope.
@@ -463,38 +500,24 @@ where
         &EffectOutcome,
     ) -> Result<ReplacementProgramBindings, ExecutionError>,
 {
-    let game_checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
     let (original, programs) = result.into_expansion();
-    let result = (|| {
+    crate::effects::composition::execute_result_transaction(game, parent, |game, parent| {
         let original_outcome = commit_original(game, parent, original)?;
-        if parent.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let completed = complete_deferred_replacement_programs_with_bindings(
+        crate::effects::replacement::complete_replacement_programs_with_original_outputs(
             game,
             parent,
-            original_outcome.outcome.clone(),
-            programs,
-            bindings_for_program,
-        )?;
-        if parent.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        Ok(original_outcome.append_batch_program_outputs(completed))
-    })();
-    if result.is_err() || parent.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            game_checkpoint,
-            result.is_ok() && parent.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(parent);
-    }
-    result
+            original_outcome,
+            |game, parent, original| {
+                complete_deferred_replacement_programs_with_bindings(
+                    game,
+                    parent,
+                    original,
+                    programs,
+                    bindings_for_program,
+                )
+            },
+        )
+    })
 }
 
 /// Append captured programs after an already completed original operation.
@@ -633,6 +656,33 @@ where
     )
 }
 
+/// Complete appended replacement programs against the actual original packet.
+/// The caller supplies its existing bound or lazy-binding executor; this owner
+/// retains the packet, handles suspension and appends its actual child outputs.
+pub(crate) fn complete_replacement_programs_with_original_outputs(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    outputs: crate::effects::CompletedEffectOutputs,
+    complete_programs: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext,
+        EffectOutcome,
+    ) -> Result<CompletedReplacementPrograms, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if parent.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let completed = complete_programs(game, parent, outputs.outcome.clone())?;
+    if parent.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    Ok(outputs.append_batch_program_outputs(completed))
+}
+
 /// Execute captured bindings through the same replacement-program transaction.
 pub(crate) fn complete_bound_replacement_programs_with_outputs(
     game: &mut GameState,
@@ -676,9 +726,7 @@ where
         &EffectOutcome,
     ) -> Result<ReplacementProgramBindings, ExecutionError>,
 {
-    let game_checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
-    let result = (|| {
+    crate::effects::composition::execute_result_transaction(game, parent, |game, parent| {
         if parent.decision_maker.awaiting_choice() {
             return Ok(CompletedReplacementPrograms {
                 original: EffectOutcome::count(0),
@@ -730,13 +778,5 @@ where
             original: original_outcome,
             outcomes,
         })
-    })();
-    if result.is_err() || parent.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            game_checkpoint,
-            result.is_ok() && parent.decision_maker.awaiting_choice(),
-        );
-        context_checkpoint.restore(parent);
-    }
-    result
+    })
 }

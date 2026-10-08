@@ -5860,7 +5860,7 @@ mod crypto_preview_output_tests {
     use super::*;
 
     fn fixture() -> WasmGame {
-        let mut wasm = WasmGame::new();
+        let mut wasm = WasmGame::new_with_registry(CardRegistry::new());
         wasm.initialize_empty_match(vec!["A".into(), "B".into()], 20, 1);
         wasm.game.turn.priority_player = Some(PlayerId(0));
         wasm.pending_decision = Some(DecisionContext::Priority(

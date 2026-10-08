@@ -58,6 +58,19 @@ pub(crate) fn observe_zone_move_originals(
     snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
     pending_start: usize,
 ) -> Result<Vec<(ObjectId, AppliedZoneChange, ObjectSnapshot)>, ExecutionError> {
+    let cause = ctx.cause.clone();
+    observe_zone_move_originals_with_cause(game, ctx, receipts, snapshots, pending_start, cause)
+}
+
+/// Preserve an instruction cause that differs from its enclosing resolution.
+pub(crate) fn observe_zone_move_originals_with_cause(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipts: &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
+    snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
+    pending_start: usize,
+    cause: EventCause,
+) -> Result<Vec<(ObjectId, AppliedZoneChange, ObjectSnapshot)>, ExecutionError> {
     let mut originals = Vec::new();
     let mut routes = Vec::new();
     for (id, receipt) in receipts {
@@ -81,7 +94,16 @@ pub(crate) fn observe_zone_move_originals(
         originals.push((*id, change.clone(), snapshot));
     }
     for (from, to) in routes {
-        group_zone_move_observations(game, ctx, pending_start, receipts, snapshots, from, to);
+        group_zone_move_observations_with_cause(
+            game,
+            ctx,
+            pending_start,
+            receipts,
+            snapshots,
+            from,
+            to,
+            cause.clone(),
+        );
     }
     Ok(originals)
 }
@@ -176,22 +198,30 @@ impl PreparedZoneMove {
         Ok((self.object, prepared))
     }
 
-    pub(crate) fn commit(
+    pub(crate) fn commit_with_outputs(
         self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         additional: &[ReplacementEffect],
-    ) -> Result<PreparedEventOutcome<AppliedZoneChange>, ExecutionError> {
+    ) -> Result<crate::events::processing::CommittedZoneChange<AppliedZoneChange>, ExecutionError>
+    {
         crate::effects::composition::execute_transaction(
             game,
             ctx,
-            || PreparedEventOutcome {
-                original: EventOutcome::Prevented,
-                programs: Vec::new(),
+            || {
+                crate::events::processing::CommittedZoneChange::from_receipt(PreparedEventOutcome {
+                    original: EventOutcome::Prevented,
+                    programs: Vec::new(),
+                })
             },
             |game, ctx| {
                 let (object, prepared) = self.prepare(game, ctx, additional, None)?;
-                super::commit_zone_change_proposal(game, object, prepared, &mut *ctx.decision_maker)
+                super::commit_zone_change_proposal_with_outputs(
+                    game,
+                    object,
+                    prepared,
+                    &mut *ctx.decision_maker,
+                )
             },
         )
     }
@@ -243,9 +273,13 @@ pub(super) fn commit_prepared_zone_moves(
             return Ok(Vec::new());
         }
         draws.commit_pending_replacement(game, object, &mut *ctx.decision_maker)?;
-        let receipt =
-            super::commit_zone_change_proposal(game, object, proposal, &mut *ctx.decision_maker)?;
-        receipts.push((object, receipt));
+        let committed = super::commit_zone_change_proposal_with_outputs(
+            game,
+            object,
+            proposal,
+            &mut *ctx.decision_maker,
+        )?;
+        receipts.push((object, draws.retain_committed_zone_receipt(committed)));
     }
     Ok(receipts)
 }
@@ -385,6 +419,29 @@ pub(crate) fn group_zone_move_observations(
     from: Zone,
     to: Zone,
 ) {
+    group_zone_move_observations_with_cause(
+        game,
+        ctx,
+        pending_start,
+        receipts,
+        snapshots,
+        from,
+        to,
+        ctx.cause.clone(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn group_zone_move_observations_with_cause(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    pending_start: usize,
+    receipts: &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
+    snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
+    from: Zone,
+    to: Zone,
+    cause: EventCause,
+) {
     let changes = receipts
         .iter()
         .filter_map(|(id, receipt)| match &receipt.original {
@@ -428,7 +485,7 @@ pub(crate) fn group_zone_move_observations(
         objects,
         from,
         to,
-        ctx.cause.clone(),
+        cause,
         changes
             .iter()
             .map(|(_, _, snapshot)| (*snapshot).clone())
@@ -453,6 +510,10 @@ struct MovementCompletion {
     frozen: Option<super::FrozenZoneChangeReceipts>,
 }
 impl crate::effects::SimultaneousEffectCompletion for MovementCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Complete
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
         let receipts = self.receipts.take().ok_or_else(|| {
             ExecutionError::InternalError("movement receipts already frozen".into())
@@ -587,9 +648,7 @@ pub(crate) fn execute_battlefield_entries_with_outputs<'a>(
     crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
     ExecutionError,
 > {
-    let checkpoint = game.clone();
-    let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
+    crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
         let expected = requests.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         let receipts = super::move_to_battlefield_batch_with_options(game, ctx, requests)?;
         if ctx.decision_maker.awaiting_choice() {
@@ -628,13 +687,5 @@ pub(crate) fn execute_battlefield_entries_with_outputs<'a>(
             })
             .collect::<Result<Vec<_>, ExecutionError>>()?;
         complete_movement_batch_with_outputs(game, ctx, outcome, receipts, deferred, published)
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context.restore(ctx);
-    }
-    result
+    })
 }
