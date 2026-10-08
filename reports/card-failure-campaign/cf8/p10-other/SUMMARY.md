@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger: 28 `source-proposed`, 129 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
+Ledger (after round 4): 32 `source-proposed`, 125 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -100,3 +100,66 @@ libraries" drops the target; "Put target creature and target land …" collapses
   Suffocation, Angelic Arbiter, Peace Talks; draw-from-bottom (River Song); face-down look grant
   (Spy Network); treasure per card put into graveyard this way (Dihada).
 None of these were implemented this round.
+
+## Round 4: p10-owned mechanisms built (source-only, UNRUN)
+1. **General attack taxes** (CR 508.1g-h, 611.2a) — commit 83474bef6.
+   Static `AttackCost` gains serde-default `planeswalkers_only` (Onakke Oathkeeper). New appended
+   `Restriction::AttackTax(AttackTaxRule { attackers, defenders: AttackTaxDefenders
+   {Controller, ControllerOrPlaneswalkers, ControllerPlaneswalkers, Anyone}, mana_per_attacker: Value,
+   life_per_attacker })` installed by resolving effects ("this turn" War Tax, "until your next turn"
+   Sivitri); {X} is fixed at resolution in `normalize_restriction_for_resolution`. The engine folds
+   active restriction-store taxes into `imposed_attack_costs_for_target`, so legality preview, cost
+   locking and payment (mana and life) reuse the existing atomic attack-cost payer. Grammar:
+   `parse_general_attack_tax_tokens` (cant_shapes/attack_tax.rs), wired into the cant-effect clause
+   and the static negated-restriction reader. Cards: War Tax, Sivitri, Onakke (ledger source-proposed).
+   Test: `tests/general_attack_taxes.rs` (structure + gameplay).
+2. **Own-turn casting/activation + counted spell cap** — commit 444cf24de.
+   City of Solitude: three statics over non-active players (cast prohibition, non-mana activation
+   prohibition, all abilities of permanents they control incl. mana abilities). Fires of Invention:
+   `cast_spells(Excluding{You, Active})` + appended `Restriction::CastMoreThanNSpellsEachTurn
+   {player, spells, maximum}` with a counted cast-limit tracker enforced in `violates_any_cast_limit`.
+   Test: `tests/own_turn_cast_restrictions.rs`. (Cards owned by p03.)
+3. **Library procedures**
+   - Looked cast-from-among with a trailing dynamic mana-value cap ("from among them with mana value
+     less than or equal to the greatest power among attacking creatures you control") and the
+     "cards revealed this way" collection alias — commit 5567be313. Cosmic Cube, Sunbird's Invocation
+     (p04). Test: `tests/looked_cast_dynamic_cap.rs`.
+   - Per-opponent exile-until with the perfect-tense cumulative stop ("until they have exiled cards
+     with total mana value N or greater [this way]") wrapped in ForEachOpponent — commit aac0a364a.
+     Tasha's Hideous Laughter; Dream Harvest's first sentence (its "cast cards exiled this way"
+     permission sentence is not verified). Test: `tests/each_opponent_exile_until_total.rs`. (p02.)
+   - Draw from the bottom (River Song) — commit 7d0522adb: appended `Restriction::DrawFromBottom`,
+     tracker set consulted by `GameState::next_draw_card` (both draw primitives). Static rule
+     `parse_you_draw_cards_from_bottom_line`. Test: `tests/draw_from_bottom_rule.rs`. (p07; its
+     "Spoilers" trigger line not verified, and routing past the statement probe is unverified.)
+   - Put onto the battlefield attacking a named player (CR 508.4) — commit 0cfd17627: appended
+     `MoveToZoneAttackTargetMode::Player`, AST `battlefield_attack_player_only`, destination shape
+     `attack_target` ("attacking that opponent" player-only; "that player or a planeswalker they
+     control" the existing mode). Kaalia (source-proposed). Test: `tests/enter_attacking_named_player.rs`.
+
+### Still blocked (p10-owned), precise gaps
+- Void Stalker / Vortex Elemental: deduplicated "those players shuffle" over moved objects' owners.
+- Gonti: look/exile/permission held by a non-you player (the damaging creature's controller).
+- Aetherplasm: `MoveToZoneEffect` lacks `enters_blocking`.
+- Jace, Multiverse Architect: attack prohibition against a planeswalker subtype set.
+- Invasion of Alara, Plargg and Nassari: exile-until-two-matches / per-player exile-until with an
+  opponent's choice, "one of those two" cast + hand split; Talent of the Telepath: spell-mastery
+  "up to two ... instead of one" count replacement across the reveal procedure; Fevered Suspicion:
+  "from among those nonland cards" (per-opponent match tag) free-cast collection.
+- Mana Maze (most-recent-spell color), Moonhold (mana-spent-gated pair), Rock Jockey (cast/land
+  cross history), Haakon (cast only from graveyard), Null Chamber (two-player name choice), Ward of
+  Bones (per-type comparative player restrictions), Suffocation (damage-by-red-spell history),
+  Angelic Arbiter (per-opponent history-conditioned restrictions), Peace Talks ("this turn and next
+  turn" duration + player/permanent untargetability), Spy Network, Dihada: not built this round.
+
+### Risks (round 4)
+- Schema appends (no FORMAT_VERSION bump): `Restriction::{AttackTax, CastMoreThanNSpellsEachTurn,
+  DrawFromBottom}`, `AttackTaxRule`/`AttackTaxDefenders` (core value_model), `StaticAbilityPayload::
+  AttackCost.planeswalkers_only` (serde default), `MoveToZoneAttackTargetMode::Player`, AST
+  `ZoneMoveActionAst::MoveToZone.battlefield_attack_player_only`.
+- New `CantEffectTracker` fields `cant_cast_more_than`, `draws_from_bottom` (merge/clear updated).
+- Own-turn restrictions rely on the tracker being recomputed when the active player changes (same
+  assumption as the existing Dosan rule).
+- City of Solitude leaves a gap: mana abilities activated from a hand (Elvish Spirit Guide) by a
+  non-active player are not prohibited (the object prohibition covers permanents only).
+- Debug-substring assertions in the new tests may need tightening after the first run.
