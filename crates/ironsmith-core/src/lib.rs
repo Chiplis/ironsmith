@@ -29,6 +29,10 @@ pub mod event_model;
 pub mod filter_model;
 pub mod functional_zones;
 pub mod grant_model;
+pub mod granted_spell_keyword_model;
+pub use granted_spell_keyword_model::{
+    GrantedSpellKeyword, GrantedSpellKeywordKind, GrantedSpellKeywordPrice,
+};
 pub mod ids;
 pub mod interned;
 pub mod mana;

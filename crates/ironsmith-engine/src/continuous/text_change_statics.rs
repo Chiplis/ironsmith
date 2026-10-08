@@ -147,7 +147,8 @@ pub(crate) fn rewrite_static_model_words(
         | P::DiscardOrRedirectReplacement { filter, .. }
         | P::SacrificeOrRedirectReplacement { filter, .. }
         | P::RevealCardOrEnterTapped { filter, .. } | P::RedirectWouldEnter { filter, .. }
-        | P::CanBlockAdditionalForEach { filter, .. } => {
+        | P::CanBlockAdditionalForEach { filter, .. }
+        | P::GrantSpellKeyword { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
         P::LegendRuleDoesntApplyToController { filter } => {

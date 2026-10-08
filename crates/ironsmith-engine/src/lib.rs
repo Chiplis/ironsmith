@@ -73,6 +73,7 @@ pub mod game_loop;
 pub mod game_state;
 pub mod grant;
 pub mod grant_registry;
+pub(crate) mod granted_spell_keywords;
 pub mod ids;
 pub mod incremental;
 pub mod mana;

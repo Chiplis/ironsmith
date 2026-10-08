@@ -2847,8 +2847,15 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
         alice,
         grant_source_id,
         ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
-        Ability::static_ability(StaticAbility::keyword_marker("Conspire"))
-            .in_zones(vec![Zone::Stack]),
+        Ability::static_ability(StaticAbility::grant_spell_keyword(
+            ObjectFilter::source(),
+            ironsmith_core::GrantedSpellKeyword::intrinsic(
+                ironsmith_core::GrantedSpellKeywordKind::Conspire,
+            ),
+            None,
+            "Conspire",
+        ))
+        .in_zones(vec![Zone::Stack]),
         1,
     );
 
@@ -2894,8 +2901,7 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
                 &ability.kind,
                 AbilityKind::Static(static_ability)
                     if static_ability.id()
-                        == crate::static_abilities::StaticAbilityId::KeywordMarker
-                        && static_ability.display() == "Conspire"
+                        == crate::static_abilities::StaticAbilityId::GrantSpellKeyword
             )),
         "the grant should be attached to the stack object during 601.2a"
     );
@@ -2923,8 +2929,7 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
                 &ability.kind,
                 AbilityKind::Static(static_ability)
                     if static_ability.id()
-                        == crate::static_abilities::StaticAbilityId::KeywordMarker
-                        && static_ability.display() == "Conspire"
+                        == crate::static_abilities::StaticAbilityId::GrantSpellKeyword
             )),
         "CR 601.6 rollback must remove proposal-only cost and ability state"
     );

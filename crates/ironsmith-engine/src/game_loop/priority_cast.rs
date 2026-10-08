@@ -46,141 +46,23 @@ pub(super) fn x_defined_mode_count_range(
     needs_x.then_some((min_x as usize, (max_x as usize).max(min_x as usize)))
 }
 
-fn static_ability_is_granted_conspire_marker(
-    ability: &crate::static_abilities::StaticAbility,
+/// Keywords granted to the spell being cast by typed `GrantSpellKeyword`
+/// statics (replicate, offspring, conspire) are announced as its optional
+/// costs (CR 601.2b) and paid with its other costs (CR 601.2f-h).
+fn ensure_granted_spell_keyword_optional_costs(
+    game: &mut GameState,
+    pending: &mut PendingCast,
 ) -> bool {
-    ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-        && ability.display().eq_ignore_ascii_case("Conspire")
-}
-
-fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId) -> usize {
-    let Some(object) = game.object(spell_id) else {
-        return 0;
-    };
-    let attached_count = object
-        .abilities
-        .iter()
-        .filter(|ability| ability.functions_in(&Zone::Stack))
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability)
-                if static_ability_is_granted_conspire_marker(static_ability) =>
-            {
-                Some(())
-            }
-            _ => None,
-        })
-        .count();
-    let mut object_for_filter = object.clone();
-    if let Some(chars) = game.current_characteristics(spell_id) {
-        object_for_filter.name = chars.name;
-        object_for_filter.card_types = chars.card_types;
-        object_for_filter.subtypes = chars.subtypes;
-        object_for_filter.supertypes = chars.supertypes;
-        object_for_filter.color_override = Some(chars.colors);
-    }
-
-    let effect_count = game
-        .all_continuous_effects()
-        .into_iter()
-        .filter(|effect| match &effect.modification {
-            crate::continuous::Modification::AddAbility(ability) => {
-                static_ability_is_granted_conspire_marker(ability)
-            }
-            // A conspire marker granted through the generic representation is
-            // the same marker one level in.
-            crate::continuous::Modification::AddAbilityGeneric(granted) => {
-                matches!(&granted.kind, crate::ability::AbilityKind::Static(ability)
-                    if static_ability_is_granted_conspire_marker(ability))
-            }
-            _ => false,
-        })
-        .filter(|effect| match &effect.applies_to {
-            crate::continuous::EffectTarget::Specific(id) => *id == spell_id,
-            crate::continuous::EffectTarget::Source => effect.source == spell_id,
-            crate::continuous::EffectTarget::Filter(filter) => {
-                let filter_ctx = game
-                    .filter_context_for(effect.controller, Some(effect.source))
-                    .with_caster(Some(caster));
-                filter.matches_non_recursive(&object_for_filter, &filter_ctx, game)
-            }
-            crate::continuous::EffectTarget::AllPermanents
-            | crate::continuous::EffectTarget::AllCreatures
-            | crate::continuous::EffectTarget::AttachedTo(_) => false,
-        })
-        .count();
-    if attached_count + effect_count > 0 {
-        return attached_count + effect_count;
-    }
-
-    if object.zone != Zone::Stack
-        || game.controller_of(object) != caster
-        || !(game.object_has_card_type(spell_id, crate::types::CardType::Instant)
-            || game.object_has_card_type(spell_id, crate::types::CardType::Sorcery))
-    {
-        return 0;
-    }
-
-    let spell_colors = object_for_filter.colors();
-    let is_red_or_green = spell_colors.contains(crate::color::Color::Red)
-        || spell_colors.contains(crate::color::Color::Green);
-    if !is_red_or_green {
-        return 0;
-    }
-
-    game.battlefield
-        .iter()
-        .filter_map(|id| game.object(*id))
-        .filter(|permanent| game.controller_of(permanent) == caster)
-        .flat_map(|permanent| permanent.abilities.iter())
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability)
-                if ability.functions_in(&Zone::Battlefield) =>
-            {
-                Some(static_ability.display())
-            }
-            _ => None,
-        })
-        .filter(|display| {
-            let normalized = display.to_ascii_lowercase();
-            normalized.contains("instant")
-                && normalized.contains("sorcery")
-                && normalized.contains("you cast")
-                && normalized.contains("have conspire")
-        })
-        .count()
-}
-
-fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut PendingCast) -> bool {
-    let conspire_count = granted_conspire_count(game, pending.spell_id, pending.caster);
-    if conspire_count == 0 {
+    if !crate::granted_spell_keywords::ensure_granted_spell_keyword_optional_costs(
+        game,
+        pending.spell_id,
+        pending.caster,
+    ) {
         return false;
     }
-
-    let existing_count = game
-        .object(pending.spell_id)
-        .map(|spell| {
-            spell
-                .optional_costs
-                .iter()
-                .filter(|cost| cost.source_label == "Granted Conspire")
-                .count()
-        })
-        .unwrap_or(0);
-    let missing_count = conspire_count.saturating_sub(existing_count);
-    if missing_count == 0 {
-        return false;
-    }
-    let Some(spell) = game.object_mut(pending.spell_id) else {
+    let Some(spell) = game.object(pending.spell_id) else {
         return false;
     };
-    for _ in 0..missing_count {
-        spell.optional_costs.push(crate::cost::OptionalCost::custom(
-            "Granted Conspire",
-            crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
-                crate::effects::ConspireCostEffect::new(),
-            )),
-        ));
-    }
     pending
         .optional_costs_paid
         .reset_costs(&spell.optional_costs);
@@ -2678,9 +2560,9 @@ pub(super) fn check_optional_costs_or_continue(
     // state so its first characteristics query uses the batched game cache.
     game.refresh_continuous_state()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    if ensure_granted_conspire_optional_costs(game, &mut pending) {
-        // Conspire discovery mutates the stack object; optional-life discovery
-        // immediately performs another derived-characteristics query.
+    if ensure_granted_spell_keyword_optional_costs(game, &mut pending) {
+        // Granted-keyword discovery mutates the stack object; optional-life
+        // discovery immediately performs another derived-characteristics query.
         game.refresh_continuous_state()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }

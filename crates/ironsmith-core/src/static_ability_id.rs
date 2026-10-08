@@ -400,6 +400,9 @@ pub enum StaticAbilityId {
     LookAtSourceExiledCards,
     /// Generic "<event> instead" replacement; appended for wire compatibility.
     EventReplacementWithEffects,
+    /// A keyword granted to matching spells as they are cast (CR 601.2b);
+    /// appended for wire compatibility.
+    GrantSpellKeyword,
 }
 
 impl StaticAbilityId {
@@ -769,7 +772,8 @@ impl StaticAbilityId {
             | Toxic
             | TrampleOverPlaneswalkers
             | ForetellSpecialActionModifier
-            | NativeAlternativeCastFromZone => {}
+            | NativeAlternativeCastFromZone
+            | GrantSpellKeyword => {}
         }
     }
 

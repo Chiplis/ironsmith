@@ -3424,6 +3424,45 @@ fn check_triggers_with_view_and_registry(
         }
     }
 
+    // CR 702.144a-b: each demonstrate instance granted to a spell by a typed
+    // `GrantSpellKeyword` static triggers separately when the spell is cast.
+    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
+        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
+        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+        && let Some(obj) = game.object(cast.spell)
+    {
+        for instance in crate::granted_spell_keywords::granted_spell_keywords(
+            game,
+            cast.spell,
+            cast.caster,
+            false,
+        ) {
+            if instance.keyword.kind != ironsmith_core::GrantedSpellKeywordKind::Demonstrate {
+                continue;
+            }
+            let ability = crate::granted_spell_keywords::demonstrate_triggered_ability();
+            let mut identity = DefaultHasher::new();
+            compute_trigger_identity(&ability).hash(&mut identity);
+            instance.identity.hash(&mut identity);
+            triggered.push(TriggeredAbilityEntry {
+                linked_exile_owner: None,
+                source_number_owner: None,
+                source: cast.spell,
+                controller: cast.caster,
+                x_value: entry.x_value,
+                event_value_amount: None,
+                ability,
+                triggering_event: trigger_event.clone(),
+                source_stable_id: obj.stable_id,
+                source_name: obj.name.to_string(),
+                source_snapshot: None,
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                source_kind: TriggeredAbilitySourceKind::Object,
+                trigger_identity: TriggerIdentity(identity.finish()),
+            });
+        }
+    }
+
     add_intrinsic_siege_defeat_trigger(game, trigger_event, view, &mut triggered);
     add_ward_triggers(game, trigger_event, &mut triggered);
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
