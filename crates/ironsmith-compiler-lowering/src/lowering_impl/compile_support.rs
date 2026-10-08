@@ -3097,6 +3097,9 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::CursedRole => {
             crate::cards::tokens::cursed_role_token_definition()
         }
+        token_grammar::BuiltinTokenShape::VirtuousRole => {
+            crate::cards::tokens::virtuous_role_token_definition()
+        }
         token_grammar::BuiltinTokenShape::Blood => crate::cards::tokens::blood_token_definition(),
         token_grammar::BuiltinTokenShape::Powerstone => {
             crate::cards::tokens::powerstone_token_definition()
