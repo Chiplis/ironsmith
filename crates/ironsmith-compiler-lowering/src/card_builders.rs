@@ -1037,10 +1037,24 @@ impl CardDefinitionBuilder {
     }
 
     pub fn encore(self, cost: ManaCost) -> Self {
-        let cost = TotalCost::from_costs(vec![
-            crate::costs::Cost::mana(cost),
-            crate::costs::Cost::exile_self(),
-        ]);
+        self.encore_with_mana_payment(crate::costs::Cost::mana(cost))
+    }
+
+    /// A granted encore whose cost comes from the card that has it: its mana
+    /// cost, or generic mana equal to its mana value (CR 702.141).
+    pub fn encore_from_source_cost(self, mana_value_generic: bool) -> Self {
+        let dynamic = if mana_value_generic {
+            ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::ManaValueOf(
+                Box::new(crate::target::ChooseSpec::Source),
+            ))
+        } else {
+            ironsmith_core::DynamicManaCost::from_source_mana_cost()
+        };
+        self.encore_with_mana_payment(crate::costs::Cost::dynamic_mana(dynamic))
+    }
+
+    fn encore_with_mana_payment(self, payment: crate::costs::Cost) -> Self {
+        let cost = TotalCost::from_costs(vec![payment, crate::costs::Cost::exile_self()]);
         let mut copy = crate::effects::CreateTokenCopyEffect::new(
             crate::target::ChooseSpec::Source,
             1,

@@ -74,6 +74,9 @@ pub fn apply_keyword_action(
         KeywordAction::Bloodthirst(amount) => builder.bloodthirst(amount),
         KeywordAction::Ninjutsu(cost) => builder.ninjutsu(cost),
         KeywordAction::CommanderNinjutsu(cost) => builder.commander_ninjutsu(cost),
+        KeywordAction::EncoreFromSourceCost { mana_value_generic } => {
+            builder.encore_from_source_cost(mana_value_generic)
+        }
         KeywordAction::Backup(amount) => builder.backup(amount),
         KeywordAction::Dash(cost) => builder.dash(cost),
         KeywordAction::Blitz(cost) => builder.blitz(cost),

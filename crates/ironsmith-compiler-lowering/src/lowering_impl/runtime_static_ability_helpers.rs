@@ -56,6 +56,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Outlast(_)
             | KeywordAction::Unearth(_)
             | KeywordAction::Encore(_)
+            | KeywordAction::EncoreFromSourceCost { .. }
             | KeywordAction::Eternalize(_)
             | KeywordAction::Ninjutsu(_)
             | KeywordAction::Extort

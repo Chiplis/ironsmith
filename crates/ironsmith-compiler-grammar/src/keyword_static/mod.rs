@@ -32,6 +32,8 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod granted_encore;
+pub use granted_encore::parse_granted_encore_line;
 mod commander_ninjutsu;
 pub use commander_ninjutsu::parse_commander_ninjutsu_line;
 mod base_toughness_line;
@@ -1847,6 +1849,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_devour_quality_line),
+        single_static_ability_ast_rule!(parse_granted_encore_line),
         single_static_ability_ast_rule!(parse_commander_ninjutsu_line),
         single_static_ability_ast_rule!(parse_each_player_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
