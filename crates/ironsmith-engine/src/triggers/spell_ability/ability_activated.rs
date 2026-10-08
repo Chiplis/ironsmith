@@ -212,7 +212,11 @@ fn activated_ability_has_marker(ability: &crate::ability::Ability, marker: &str)
         let label = normalize_ability_marker(label);
         label == marker || label.split_whitespace().next() == Some(marker.as_str())
     });
-    has_presentation_marker || (marker == "ninjutsu" && is_structural_ninjutsu_ability(ability))
+    has_presentation_marker
+        || (marker == "ninjutsu" && is_structural_ninjutsu_ability(ability))
+        // CR 702.177a: an exhaust ability is identified by its once-only
+        // activation restriction even when no presentation label survives.
+        || (marker == "exhaust" && activated.is_exhaust_ability())
 }
 
 fn named_ability_phrase(marker: &str) -> String {

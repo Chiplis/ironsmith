@@ -453,7 +453,9 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
 /// Adept): a one-shot delayed trigger on your next qualifying non-mana
 /// activation. The mana requirement qualifies the activation event itself,
 /// so an activation paid with less mana neither fires nor uses up the
-/// trigger.
+/// trigger. "When you next activate an exhaust ability that isn't a mana
+/// ability this turn, <effects>" (Pit Automaton) shares the shape with an
+/// ability-keyword marker in place of the mana requirement.
 pub fn parse_next_activation_with_mana_spent_delayed_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -467,20 +469,37 @@ pub fn parse_next_activation_with_mana_spent_delayed_sentence(
         .map(|word| word.replace('\'', "").replace('’', ""))
         .collect::<Vec<_>>();
     let words = words.iter().map(String::as_str).collect::<Vec<_>>();
-    const HEAD: &[&str] = &[
-        "when", "you", "next", "activate", "an", "ability", "that", "isnt", "a", "mana",
-        "ability", "this", "turn", "by", "spending",
-    ];
-    const TAIL: &[&str] = &["or", "more", "mana", "to", "activate", "it"];
-    if words.len() != HEAD.len() + 1 + TAIL.len()
-        || words[..HEAD.len()] != *HEAD
-        || words[HEAD.len() + 1..] != *TAIL
-    {
-        return Ok(None);
-    }
-    let Some(amount) = crate::util::parse_number_word_u32(words[HEAD.len()]) else {
+    const LEAD: &[&str] = &["when", "you", "next", "activate", "an"];
+    const BODY: &[&str] = &["ability", "that", "isnt", "a", "mana", "ability", "this", "turn"];
+    const SPEND_HEAD: &[&str] = &["by", "spending"];
+    const SPEND_TAIL: &[&str] = &["or", "more", "mana", "to", "activate", "it"];
+    let Some(rest) = words.strip_prefix(LEAD) else {
         return Ok(None);
     };
+    // "an exhaust ability" (Pit Automaton): CR 702.177a names the ability
+    // by its keyword; the marker qualifies the activation event itself.
+    let (marker, rest) = match rest.split_first() {
+        Some((&"exhaust", rest)) => (Some("exhaust"), rest),
+        _ => (None, rest),
+    };
+    let Some(rest) = rest.strip_prefix(BODY) else {
+        return Ok(None);
+    };
+    let mana_spent = match rest {
+        [] => None,
+        [by, spending, amount, tail @ ..]
+            if [*by, *spending] == *SPEND_HEAD && tail == SPEND_TAIL =>
+        {
+            let Some(value) = crate::util::parse_number_word_u32(*amount) else {
+                return Ok(None);
+            };
+            Some((value, *amount))
+        }
+        _ => return Ok(None),
+    };
+    if marker.is_none() && mana_spent.is_none() {
+        return Ok(None);
+    }
     let effect_tokens = trim_edge_punctuation(&trimmed[comma + 1..]);
     if effect_tokens.is_empty() {
         return Ok(None);
@@ -489,22 +508,31 @@ pub fn parse_next_activation_with_mana_spent_delayed_sentence(
     if delayed_effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
-        trigger: TriggerSpec::ConditionQualified {
-            trigger: Box::new(TriggerSpec::AbilityActivated {
-                activator: PlayerFilter::You,
-                filter: ObjectFilter::default(),
-                non_mana_only: true,
-                loyalty_only: false,
-                activation_cost_has_tap: None,
-            }),
+    let filter = match marker {
+        Some(marker) => ObjectFilter::default().with_ability_marker(marker),
+        None => ObjectFilter::default(),
+    };
+    let activated = TriggerSpec::AbilityActivated {
+        activator: PlayerFilter::You,
+        filter,
+        non_mana_only: true,
+        loyalty_only: false,
+        activation_cost_has_tap: None,
+    };
+    let trigger = match mana_spent {
+        Some((amount, amount_word)) => TriggerSpec::ConditionQualified {
+            trigger: Box::new(activated),
             condition: PredicateAst::Triggering(
                 crate::cards::builders::TriggeringPredicateAst::TriggeringAbilityManaSpentToActivateAtLeast(
                     amount,
                 ),
             ),
-            surface: format!("by spending {} or more mana to activate it", words[HEAD.len()]),
+            surface: format!("by spending {amount_word} or more mana to activate it"),
         },
+        None => activated,
+    };
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger,
         effects: delayed_effects,
         one_shot: true,
         until_end_of_combat: false,
