@@ -2,7 +2,7 @@
 
 Package: 151 cards failing with "could not find verb in effect clause". Branch cf8/p04-noverb-a, based on origin/main 84ea8b41c. Nothing was built or run (campaign policy). The prebuilt hint binary vanished mid-run; the fallback `.agents/target-score/release` binary is from June, so its results are weak evidence.
 
-Status: 32 source-proposed, 118 blocked, 1 untriaged.
+Status: 45 source-proposed, 106 blocked, 0 untriaged.
 
 ## Fixed clusters (source-proposed)
 - **elided-damage-recipients** (Tropical Storm, Hail Storm, Neonate's Rush, The Fall of Kroog, Wildfire Howl)
@@ -73,3 +73,41 @@ The ledger's gameplay_gap field has the exact gap for each card.
   - untyped "them" pools in ChooseObjects
   - Celestial Mantle's "its"
 - **Grim Reaper and Tidebinder Mage** need re-measurement on a current build.
+
+## Round 2 (after coordinator review)
+- **collection-cast ownership.** No two registry readers can claim the same clause any more:
+  - the primitive head is narrowed to the imperative `cast`;
+  - "you may cast ..." is reached only through cast-or-play-tagged-clause's final fallback;
+  - the reader no longer calls back into cast-or-play.
+- **color-disjunction-targets** (Tidebinder Mage). Root cause, read from source: the coordination recognizer treated the `or` in "red or green creature" as an effect boundary. Fix: Or between two color words is never coordination.
+- **serial-object-qualifiers** (Blech, Tawnos's Tinkering, Brigid). The coordination recognizer kept these together as one operand:
+  - a serial creature-type list after each/all;
+  - a card-type list of a put-counters operand;
+  - attacking-or-blocking.
+- **behold-creature-noun** (Hulk's Thunderclap). The behold cost segment now accepts the trailing "creature" after a creature type; the existing optional behold reader then takes the line.
+- **cloak-from-hand** (Vannifar). New keyword shape: ChooseObjects in your hand, then the existing cloak put-onto-battlefield (CR 701.58a).
+- **outside-game-casts** (Spawnsire of Ulamog). The collection-cast reader now accepts "from among cards you own outside the game", using Zone::OutsideGame — the same sideboard zone p11 uses.
+- **loyalty-activation-allowances** (Jace's Machinations, Kaito, The Chain Veil, Urza Assembles the Titans).
+  - New core/engine effect GrantLoyaltyActivationAllowanceEffect:
+    - scope: Source, EachControlledPlaneswalkerNow, or ControlledPlaneswalkers{subtype};
+    - allowance: ExtraActivation or InstantSpeed;
+    - stored in named turn counters.
+  - The legal-action loyalty rule (CR 606.3) now allows 1 + allowances, plus instant-speed timing.
+  - Plumbing: decoder registry, interpreter, materializer, renderer, AST variant and lowering, plus a chain-entry grammar module.
+- **defending-player-choices** (Crashing Boars, Drana). New object-choice actor: "defending player" → PlayerAst::Defending.
+- **for-as-long-as-counter** (carry prefix only). A leading "For as long as that <noun> has a <kind> counter on it, ..." is carried as Until::ForAsLongAs(affected_object_has_counter), the same predicate as p05's suffix. Liege, Minas Morgul and Ultima remain blocked on p05's copula/suffix readers (and Ultima on land-type loss).
+- **Ownership updates.**
+  - Divided prevention: Angel of Salvation and Serra's Hymn → p03.
+  - Two-pile separation: Brilliant Ultimatum, Jace AoT and Celestial Toymaker → p01.
+- **Blocked with precise design notes (mine):**
+  - conditional attack requirements: needs a joint requirement-maximization search over the declared set;
+  - count-then-reference;
+  - returned-set copula with keywords;
+  - graveyard self-casts;
+  - Crabomination's three-part exile tag;
+  - retarget with a single-target condition;
+  - Pain's Reward;
+  - Blight X;
+  - Stromgald Spy;
+  - The Seventh Doctor.
+- **Risk:** the binary is gone, so nothing in round 2 was even hint-checked; every proposal is from source reading only.
