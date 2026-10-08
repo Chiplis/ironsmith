@@ -5607,6 +5607,40 @@ pub(crate) fn lower_compiler_static_ability_core(
                     },
             })
         }
+        crate::model::CompilerStaticAbilityPayloadCore::EventReplacementWithEffects {
+            event,
+            replacement_effects,
+            display,
+        } => {
+            // One resolution program runs in place of the replaced event: the
+            // event supplies "that much"/"that many", and the instead-payload
+            // owner binds the affected player as "that player".
+            let mut replacement_effects = replacement_effects;
+            crate::effect_ast_normalization::normalize_effects_ast_in_place(
+                &mut replacement_effects,
+            );
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.allow_life_event_value = true;
+            ctx.iterated_player = true;
+            ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+            let (replacement_effects, choices) =
+                crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation(
+                    "event replacement cannot announce targets".into(),
+                ));
+            }
+            Ok(StaticAbility {
+                id,
+                label,
+                payload:
+                    crate::static_abilities::StaticAbilityPayload::EventReplacementWithEffects {
+                        event,
+                        replacement_effects,
+                        display,
+                    },
+            })
+        }
         crate::model::CompilerStaticAbilityPayloadCore::ExileWouldDieInstead {
             filter,
             damaged_by,

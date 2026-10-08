@@ -58,6 +58,8 @@ use crate::zone::Zone;
 use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
 pub(crate) mod replacements_and_rules;
+pub(crate) mod event_replacement_with_effects;
+pub use event_replacement_with_effects::{EventReplacementWithEffects, ReplacedEventMatcher};
 pub use replacements_and_rules::*;
 pub(crate) use replacements_and_rules::DamageAmountReplacementMatcher;
 

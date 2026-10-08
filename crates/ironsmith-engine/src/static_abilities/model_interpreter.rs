@@ -1882,6 +1882,15 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) => {
                 StaticAbility::prevent_matching_damage_with_follow_up(spec.clone())
             }
+            ironsmith_core::StaticAbilityPayload::EventReplacementWithEffects {
+                event,
+                replacement_effects,
+                display,
+            } => StaticAbility::new(super::EventReplacementWithEffects::new(
+                event.clone(),
+                replacement_effects.clone(),
+                display.clone(),
+            )),
             ironsmith_core::StaticAbilityPayload::RedirectMatchingDamage(spec) => {
                 StaticAbility::redirect_matching_damage(spec.clone())
             }

@@ -21,6 +21,8 @@ mod damage_redirection;
 pub use damage_redirection::parse_scoped_damage_redirection_line;
 pub(crate) use damage_redirection::redirection_recipient_filters;
 mod life_change_replacements;
+mod event_instead_replacements;
+pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
 mod prevention_follow_ups;
 pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
@@ -1509,6 +1511,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
         single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
         single_static_ability_ast_rule!(parse_if_you_would_gain_life_replacement_line),
+        single_static_ability_ast_rule!(parse_if_event_would_happen_instead_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
