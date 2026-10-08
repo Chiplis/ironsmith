@@ -89,7 +89,11 @@ pub(crate) fn rewrite_landwalk_words(kind: LandwalkKind, change: TextChange) -> 
             change.replace_subtype_word(&mut subtype);
             LandwalkKind::Subtype { subtype, snow }
         }
-        LandwalkKind::AnyLand | LandwalkKind::NonbasicLand | LandwalkKind::ArtifactLand => kind,
+        LandwalkKind::AnyLand
+        | LandwalkKind::NonbasicLand
+        | LandwalkKind::ArtifactLand
+        | LandwalkKind::LegendaryLand
+        | LandwalkKind::SnowLand => kind,
     }
 }
 
@@ -104,7 +108,9 @@ pub(crate) fn rewrite_core_landwalk_words(
         }
         ironsmith_core::LandwalkKind::AnyLand
         | ironsmith_core::LandwalkKind::NonbasicLand
-        | ironsmith_core::LandwalkKind::ArtifactLand => kind,
+        | ironsmith_core::LandwalkKind::ArtifactLand
+        | ironsmith_core::LandwalkKind::LegendaryLand
+        | ironsmith_core::LandwalkKind::SnowLand => kind,
     }
 }
 

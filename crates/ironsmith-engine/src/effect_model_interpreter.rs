@@ -823,6 +823,7 @@ where
         prevent.source_of_your_choice = payload.source_of_your_choice;
         prevent.protect_you_and_permanents_you_control =
             payload.protect_you_and_permanents_you_control;
+        prevent.divided = payload.divided;
         return Ok(Effect::new(prevent));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {
@@ -1409,7 +1410,7 @@ where
                 "redirect next damage to target without an amount".to_string(),
             ));
         };
-        let effect = match payload.destination {
+        let mut effect = match payload.destination {
             ironsmith_core::RedirectNextDamageDestination::Controller => {
                 let Some(protected_target) = payload.protected_target.clone() else {
                     return Err(hooks.unsupported_effect(
@@ -1435,6 +1436,8 @@ where
                 effect
             }
         };
+        effect.source_of_your_choice = payload.source_of_your_choice;
+        effect.protect_you_and_permanents = payload.protect_you_and_permanents.clone();
         return Ok(Effect::new(effect));
     }
     if let Some(payload) =

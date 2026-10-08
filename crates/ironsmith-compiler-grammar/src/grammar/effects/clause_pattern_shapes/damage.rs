@@ -89,6 +89,8 @@ pub enum RedirectNextDamageShape<'a> {
         amount_tokens: &'a [OwnedLexToken],
         protected_tokens: Option<&'a [OwnedLexToken]>,
         destination: RedirectDamageDestinationShape<'a>,
+        /// "that a source of your choice would deal to ..." (Harm's Way).
+        source_of_your_choice: bool,
     },
 }
 fn tokens_before<'a, P>(input: &mut LexStream<'a>, parser: P) -> WResult<&'a [OwnedLexToken]>
@@ -425,12 +427,47 @@ fn parse_prevent_next_damage_lexed<'a>(
     })
 }
 
+/// "Prevent the next N damage that a source of your choice would deal to
+/// <recipient> this turn." (Refraction Trap): the active-voice spelling of
+/// the chosen-source finite shield (CR 615.7, 609.7a).
+fn parse_prevent_next_damage_by_chosen_source_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventNextDamageShape<'a>> {
+    primitives::kw("prevent").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("next").parse_next(input)?;
+    let amount_tokens = any.void().take().parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::phrase(&["damage", "that"]).parse_next(input)?;
+    source_of_your_choice.parse_next(input)?;
+    primitives::phrase(&["would", "deal", "to"]).parse_next(input)?;
+    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    let protects_you_and_permanents_you_control = primitives::parse_all(
+        target_tokens,
+        (you_and_permanents, winnow::combinator::eof).map(|(_, _)| ()),
+        "prevent-next combined target",
+    )
+    .is_ok();
+    Ok(PreventNextDamageShape {
+        amount_tokens,
+        target_tokens,
+        source_of_your_choice: true,
+        protects_you_and_permanents_you_control,
+        combat_only,
+    })
+}
+
 pub fn parse_prevent_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextDamageShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
-        parse_prevent_next_damage_lexed,
+        alt((
+            parse_prevent_next_damage_lexed,
+            parse_prevent_next_damage_by_chosen_source_lexed,
+        )),
         "prevent next damage",
     )
 }
@@ -616,7 +653,9 @@ use combat_programs::parse_redirect_next_damage_lexed;
 pub use combat_programs::parse_redirect_next_damage_tokens;
 #[path = "damage/core.rs"]
 mod core_programs;
-use core_programs::{next_time_tail, parse_next_amount, parse_next_time};
+use core_programs::{
+    next_time_tail, parse_next_amount, parse_next_amount_by_chosen_source, parse_next_time,
+};
 #[path = "damage/condition.rs"]
 mod condition_programs;
 use condition_programs::{classify_next_amount_destination, classify_next_time_destination};

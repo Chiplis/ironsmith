@@ -48,6 +48,9 @@ pub struct PreventDamageEffect {
     pub source_of_your_choice: bool,
     /// Protect the controller and permanents they control with one shared shield.
     pub protect_you_and_permanents_you_control: bool,
+    /// Divide `amount` among the targets as announced (CR 601.2d); each
+    /// target gets its own shield of its share (CR 615.7).
+    pub divided: bool,
 }
 
 impl PreventDamageEffect {
@@ -61,6 +64,7 @@ impl PreventDamageEffect {
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
+            divided: false,
         }
     }
 
@@ -105,6 +109,9 @@ impl EffectExecutor for PreventDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.divided {
+            return self.execute_divided(game, ctx);
+        }
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let mut damage_filter = self.damage_filter.clone();
 
@@ -143,8 +150,99 @@ impl EffectExecutor for PreventDamageEffect {
         Some(&self.target)
     }
 
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        self.divided.then(|| self.target.count())
+    }
+
+    fn get_target_distribution_value(&self) -> Option<&Value> {
+        self.divided.then_some(&self.amount)
+    }
+
+    fn target_reuse_policy(&self) -> crate::effects::TargetReusePolicy {
+        if self.divided {
+            crate::effects::TargetReusePolicy::AlwaysDeclareNew
+        } else {
+            crate::effects::TargetReusePolicy::ReuseCompatiblePrevious
+        }
+    }
+
     fn target_description(&self) -> &'static str {
-        "target to protect"
+        if self.divided {
+            "targets for divided damage prevention"
+        } else {
+            "target to protect"
+        }
+    }
+}
+
+impl PreventDamageEffect {
+    /// CR 601.2d / 615.7: one shield per target for its announced share. A
+    /// resolution without an announced division (a copy) asks for one now.
+    fn execute_divided(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
+        use crate::game_state::Target;
+        let announced = ctx.take_target_distribution(&self.target);
+        let allocations = if let Some(announced) = announced {
+            announced.allocations
+        } else {
+            let total = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+            let mut targets = Vec::new();
+            for player in resolve_players_from_spec(game, &self.target, ctx).unwrap_or_default() {
+                targets.push(Target::Player(player));
+            }
+            for object in resolve_objects_from_spec(game, &self.target, ctx).unwrap_or_default() {
+                targets.push(Target::Object(object));
+            }
+            if total == 0 || targets.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let allocations = crate::decisions::make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                crate::decisions::DistributeSpec::new(ctx.source, total, targets, 1),
+                crate::decision::FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            allocations
+        };
+        let mut shields = 0;
+        for (target, amount) in allocations {
+            if amount == 0 {
+                continue;
+            }
+            // CR 608.2b: a target that became illegal gets no shield.
+            let protected = match target {
+                Target::Player(player) => crate::prevention::PreventionTarget::Player(player),
+                Target::Object(object) => {
+                    if game.object(object).is_none() {
+                        continue;
+                    }
+                    crate::prevention::PreventionTarget::Permanent(object)
+                }
+            };
+            let shield_id = register_prevention_shield(
+                game,
+                ctx,
+                protected,
+                Some(amount),
+                self.duration.clone(),
+                self.damage_filter.clone(),
+                self.follow_up_effects.clone(),
+                ctx.targets.clone(),
+                ctx.target_assignments.clone(),
+            );
+            ctx.last_prevention_shield = Some(shield_id);
+            shields += 1;
+        }
+        Ok(EffectOutcome::count(shields))
     }
 }
 

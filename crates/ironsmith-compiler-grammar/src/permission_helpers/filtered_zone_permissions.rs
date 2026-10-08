@@ -91,6 +91,40 @@ pub(super) fn parse_shared_hand_top_free_cast(tokens: &[OwnedLexToken]) -> Resul
     Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
 }
 
+/// "Once during each of your turns, you may cast <spells> from your hand
+/// without paying its mana cost." (Zaffai and the Tempests, Vision): one
+/// free cast of a matching hand card per turn (CR 118.9). The usage budget
+/// belongs to the permission, so the grant carries it.
+pub(super) fn parse_once_per_turn_hand_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some((usage, subject)) = primitives::probe_all(tokens, (
+        alt((
+            primitives::phrase(&["once", "each", "turn"]).value(crate::grant::GrantUsageLimit::OnceEachTurn),
+            primitives::phrase(&["once", "during", "each", "of", "your", "turns"]).value(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns),
+        )),
+        primitives::comma(),
+        primitives::phrase(&["you", "may", "cast"]),
+        subject_before_from,
+        primitives::phrase(&["from", "your", "hand", "without", "paying", "its", "mana", "cost"]),
+        primitives::sentence_end(),
+    ).map(|(usage, _, _, subject, _, _)| (usage, subject)), "once-per-turn-hand-free-cast") else { return Ok(None); };
+    // "the first ..." / "this card" subjects have their own grammars.
+    if !crate::lexer::parser_token_word_refs(subject).iter().any(|word| matches!(*word, "spell" | "spells")) {
+        return Ok(None);
+    }
+    let Some(mut filter) = card_filter(subject)? else { return Ok(None); };
+    exclude_lands_from_spell_filter(&mut filter);
+    filter.owner = Some(PlayerFilter::You);
+    let method = ironsmith_core::AlternativeCastingMethod::<EffectAst, crate::model::CompilerCost, ironsmith_core::ThisSpellCostCondition>::cast_from_zone_with_total_cost(
+        "Cast without paying mana cost", Zone::Hand, ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(), None, false);
+    let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::AlternativeCast(method), filter, Zone::Hand);
+    spec.usage_limit = Some(usage);
+    let surface = crate::lexer::render_token_slice(tokens);
+    let surface = surface.trim().trim_end_matches('.');
+    let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
+}
+
 /// Bounded, target-free reflexive follow-up to using one static permission.
 /// The trigger is retained on that permission; it is never an immediate effect
 /// or a trigger for every otherwise matching play.

@@ -230,6 +230,10 @@ pub enum AttackEachCombatFact<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetraceGrantFact {
     pub card_types: Vec<CardType>,
+    /// "Merfolk and Druid cards in your graveyard have retrace" (Deeproot
+    /// Historian): cards with any of these subtypes. Never mixed with
+    /// `card_types`.
+    pub subtypes: Vec<crate::types::Subtype>,
     /// "nonland permanent cards in your graveyard have retrace" (Six).
     pub nonland_permanents: bool,
     /// "During your turn, ..." scopes the grant to the controller's turn.
@@ -532,11 +536,12 @@ fn parse_retrace_grant_lexed(input: &mut LexStream<'_>) -> WResult<RetraceGrantF
         semantic_phrase(&["in", "your", "graveyard", "have", "retrace"]).parse_next(input)?;
         return Ok(RetraceGrantFact {
             card_types: Vec::new(),
+            subtypes: Vec::new(),
             nonland_permanents: true,
             during_your_turn,
         });
     }
-    let (atoms, ()) = repeat_till::<_, _, Vec<Option<CardType>>, _, _, _, _>(
+    let (atoms, ()) = repeat_till::<_, _, Vec<RetraceSubjectAtom>, _, _, _, _>(
         1..,
         parse_retrace_subject_atom,
         peek(semantic_phrase(&["in", "your", "graveyard"])),
@@ -545,37 +550,68 @@ fn parse_retrace_grant_lexed(input: &mut LexStream<'_>) -> WResult<RetraceGrantF
     semantic_phrase(&["in", "your", "graveyard", "have", "retrace"]).parse_next(input)?;
 
     let mut card_types = Vec::new();
-    for card_type in atoms.into_iter().flatten() {
-        if card_types.iter().all(|existing| *existing != card_type) {
-            card_types.push(card_type);
+    let mut subtypes = Vec::new();
+    for atom in atoms {
+        match atom {
+            RetraceSubjectAtom::CardType(card_type) => {
+                if card_types.iter().all(|existing| *existing != card_type) {
+                    card_types.push(card_type);
+                }
+            }
+            RetraceSubjectAtom::Subtype(subtype) => {
+                if subtypes.iter().all(|existing| *existing != subtype) {
+                    subtypes.push(subtype);
+                }
+            }
+            RetraceSubjectAtom::Connective => {}
         }
     }
-    if card_types.is_empty() {
+    // A card-type list and a subtype list each name a union; a mixed list
+    // would need a type-or-subtype union this fact does not model.
+    if card_types.is_empty() == subtypes.is_empty() {
         return Err(primitives::backtrack_err(
             "retrace grant subject",
-            "instant or sorcery card type",
+            "card types or subtypes",
         ));
     }
     Ok(RetraceGrantFact {
         card_types,
+        subtypes,
         nonland_permanents: false,
         during_your_turn,
     })
 }
 
-fn parse_retrace_subject_atom(input: &mut LexStream<'_>) -> WResult<Option<CardType>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RetraceSubjectAtom {
+    CardType(CardType),
+    Subtype(crate::types::Subtype),
+    Connective,
+}
+
+fn parse_retrace_subject_atom(input: &mut LexStream<'_>) -> WResult<RetraceSubjectAtom> {
     alt((
-        alt((semantic_kw("instant"), semantic_kw("instants"))).value(Some(CardType::Instant)),
-        alt((semantic_kw("sorcery"), semantic_kw("sorceries"))).value(Some(CardType::Sorcery)),
+        alt((semantic_kw("instant"), semantic_kw("instants")))
+            .value(RetraceSubjectAtom::CardType(CardType::Instant)),
+        alt((semantic_kw("sorcery"), semantic_kw("sorceries")))
+            .value(RetraceSubjectAtom::CardType(CardType::Sorcery)),
         alt((
             semantic_kw("and"),
             semantic_kw("or"),
             semantic_kw("card"),
             semantic_kw("cards"),
         ))
-        .value(None),
+        .value(RetraceSubjectAtom::Connective),
+        parse_retrace_subject_subtype,
     ))
     .parse_next(input)
+}
+
+fn parse_retrace_subject_subtype(input: &mut LexStream<'_>) -> WResult<RetraceSubjectAtom> {
+    let word = primitives::word_parser_text.parse_next(input)?;
+    leaf::parse_leaf_subtype_flexible_complete(word)
+        .map(RetraceSubjectAtom::Subtype)
+        .map_err(|_| primitives::backtrack_err("retrace subject", "known subtype"))
 }
 
 pub fn parse_draw_replacement_exile_top_and_play_count(tokens: &[OwnedLexToken]) -> Option<u32> {

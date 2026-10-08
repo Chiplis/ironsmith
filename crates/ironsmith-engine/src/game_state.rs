@@ -2476,6 +2476,14 @@ impl CantEffectTracker {
                         | (
                             ironsmith_core::LandwalkKind::ArtifactLand,
                             crate::static_abilities::LandwalkKind::ArtifactLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::LegendaryLand,
+                            crate::static_abilities::LandwalkKind::LegendaryLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::SnowLand,
+                            crate::static_abilities::LandwalkKind::SnowLand,
                         ) => true,
                         _ => false,
                     })

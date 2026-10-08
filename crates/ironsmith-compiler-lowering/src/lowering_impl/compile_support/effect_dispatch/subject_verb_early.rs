@@ -2885,6 +2885,7 @@ pub(super) fn compile_subject_verb_early(
             source_of_your_choice,
             protect_you_and_permanents_you_control,
             follow_up_effects,
+            divided,
         }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let damage_filter = if *combat_only {
@@ -2902,6 +2903,25 @@ pub(super) fn compile_subject_verb_early(
                 ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
                 compiled
             };
+            // CR 601.2d / 615.7: the amount is divided among the announced
+            // targets, one shield per target.
+            if *divided {
+                if *source_of_your_choice || *protect_you_and_permanents_you_control {
+                    return Err(CardTextError::ParseError(
+                        "divided prevention cannot also choose a source or protect a set".into(),
+                    ));
+                }
+                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
+                    let mut prevent =
+                        crate::effects::PreventDamageEffect::new(amount.clone(), spec, duration.clone())
+                            .with_filter(damage_filter.clone())
+                            .with_follow_up_effects(follow_up_effects.clone());
+                    prevent.divided = true;
+                    Effect::new(prevent)
+                })?;
+                choices.extend(follow_up_choices);
+                return Ok(Some((effects, choices)));
+            }
             if *protect_you_and_permanents_you_control {
                 let mut prevent = crate::effects::PreventDamageEffect::new(
                     amount,
@@ -3058,6 +3078,24 @@ pub(super) fn compile_subject_verb_early(
                 } else {
                     effect.with_source_of_your_choice()
                 };
+                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+            }
+            // "Prevent all damage a source of your choice would deal this
+            // turn." protects every recipient from the one chosen source.
+            if *source_of_your_choice
+                && let TargetAst::ObjectOrPlayer(filter, crate::target::PlayerFilter::Any, None) =
+                    target
+                && *filter == crate::target::ObjectFilter::default()
+            {
+                let mut effect = crate::effects::PreventAllDamageEffect::new(
+                    ironsmith_core::PreventionTarget::All,
+                    damage_filter.clone(),
+                    duration.clone(),
+                )
+                .with_source_of_your_choice();
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
+                }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
             if let TargetAst::ObjectOrPlayer(
@@ -3269,10 +3307,53 @@ pub(super) fn compile_subject_verb_early(
                 protected_target,
                 destination,
                 destination_target,
+                source_of_your_choice,
             },
         ) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let refs = current_reference_env(ctx);
+            // "The next N damage that a source of your choice would deal to
+            // you and/or permanents you control this turn is dealt to any
+            // target instead." (CR 609.7a, 614.9): the protected set is not a
+            // target, and only the chosen source's damage is redirected.
+            if *source_of_your_choice {
+                if *destination
+                    != crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject
+                {
+                    return Err(CardTextError::ParseError(
+                        "chosen-source redirection supports only a target destination".to_string(),
+                    ));
+                }
+                let destination_target = destination_target.as_ref().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "missing redirected-next damage destination target".to_string(),
+                    )
+                })?;
+                let (destination_spec, mut choices) =
+                    resolve_target_spec_with_choices(destination_target, &refs)?;
+                let mut effect =
+                    crate::effects::RedirectNextDamageToTargetEffect::new(amount, destination_spec);
+                effect.source_of_your_choice = true;
+                match protected_target {
+                    Some(TargetAst::ObjectOrPlayer(
+                        filter,
+                        crate::target::PlayerFilter::You,
+                        None,
+                    )) => {
+                        effect.protect_you_and_permanents = Some(resolve_it_tag(filter, &refs)?);
+                    }
+                    Some(protected) => {
+                        let (spec, protected_choices) =
+                            resolve_target_spec_with_choices(protected, &refs)?;
+                        for choice in protected_choices {
+                            push_choice(&mut choices, choice);
+                        }
+                        effect.protected_target = Some(spec);
+                    }
+                    None => {}
+                }
+                return Ok(Some((vec![Effect::new(effect)], choices)));
+            }
             let (protected_spec, mut choices) = if let Some(protected_target) = protected_target {
                 let (spec, choices) = resolve_target_spec_with_choices(protected_target, &refs)?;
                 (Some(spec), choices)

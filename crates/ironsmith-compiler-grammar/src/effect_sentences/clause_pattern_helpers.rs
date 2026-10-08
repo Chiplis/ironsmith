@@ -62,7 +62,24 @@ pub fn parse_prevent_next_damage_clause(
             clause_text
         )));
     }
-    let target = if shape.protects_you_and_permanents_you_control {
+    // "... to any number of targets, divided as you choose" (Embolden): the
+    // amount is divided among the announced targets (CR 601.2d).
+    let divided_targets = crate::grammar::primitives::parse_all(
+        trim_lexed_commas(shape.target_tokens),
+        (
+            crate::grammar::primitives::phrase(&["any", "number", "of", "targets"]),
+            winnow::combinator::opt(crate::grammar::primitives::comma()),
+            crate::grammar::primitives::phrase(&["divided", "as", "you", "choose"]),
+        ),
+        "divided prevention targets",
+    )
+    .is_ok();
+    let target = if divided_targets {
+        TargetAst::WithCount(
+            Box::new(TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))),
+            ChoiceCount::any_number(),
+        )
+    } else if shape.protects_you_and_permanents_you_control {
         TargetAst::Player(PlayerFilter::You, span_from_tokens(shape.target_tokens))
     } else {
         parse_target_phrase(shape.target_tokens)?
@@ -78,10 +95,13 @@ pub fn parse_prevent_next_damage_clause(
     );
     if let EffectAst::SubjectVerb(subject) = &mut effect
         && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
-            combat_only, ..
+            combat_only,
+            divided,
+            ..
         }) = &mut subject.action
     {
         *combat_only = shape.combat_only;
+        *divided = divided_targets;
     }
     Ok(Some(effect))
 }
@@ -1428,6 +1448,26 @@ pub fn parse_prevent_all_damage_clause(
             } else {
                 source_tokens
             };
+            // "Prevent all damage a source of your choice would deal [to you]
+            // this turn." (Pay No Heed, Auriok Replica): the source is chosen
+            // on resolution (CR 609.7a); without a recipient every recipient
+            // is protected.
+            if clause_shapes::is_exact_source_of_your_choice_tokens(source_tokens) {
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
+                };
+                return Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_with_source_choice(
+                        target,
+                        Until::EndOfTurn,
+                        true,
+                    )
+                    .with_prevention_source_would_deal_surface(),
+                ));
+            }
             if source_tokens
                 .windows(2)
                 .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
@@ -1864,6 +1904,7 @@ pub fn parse_redirect_next_damage_sentence(
             amount_tokens,
             protected_tokens,
             destination,
+            source_of_your_choice,
         } => {
             let Some((amount, amount_used)) = parse_value(amount_tokens) else {
                 return Err(CardTextError::ParseError(format!(
@@ -1877,7 +1918,28 @@ pub fn parse_redirect_next_damage_sentence(
                     clause_text
                 )));
             }
-            let protected_target = protected_tokens.map(parse_target_phrase).transpose()?;
+            // "you and/or permanents you control" names the controller plus
+            // every matching permanent; it declares no target.
+            let protected_target = match protected_tokens {
+                Some(tokens) if source_of_your_choice => {
+                    match clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
+                        Some(filter) => {
+                            Some(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None))
+                        }
+                        None => Some(parse_target_phrase(tokens)?),
+                    }
+                }
+                Some(tokens) => Some(parse_target_phrase(tokens)?),
+                None => None,
+            };
+            if source_of_your_choice
+                && !matches!(destination, clause_shapes::RedirectDamageDestinationShape::Target(_))
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "chosen-source redirection supports only a target destination (clause: '{}')",
+                    clause_text
+                )));
+            }
             match destination {
                 clause_shapes::RedirectDamageDestinationShape::Controller => {
                     let protected_target = protected_target.ok_or_else(|| {
@@ -1901,11 +1963,13 @@ pub fn parse_redirect_next_damage_sentence(
                         && let SubjectVerbActionAst::DamagePrevention(
                             DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                                 protected_target: effect_protected_target,
+                                source_of_your_choice: effect_source_choice,
                                 ..
                             },
                         ) = &mut subject_verb.action
                     {
                         *effect_protected_target = protected_target;
+                        *effect_source_choice = source_of_your_choice;
                     }
                     effect
                 }
@@ -1915,6 +1979,7 @@ pub fn parse_redirect_next_damage_sentence(
                             amount, protected_target,
                             destination: RedirectNextTimeDamageDestinationAst::SourceObject,
                             destination_target: None,
+                            source_of_your_choice: false,
                         }))
                 }
                 clause_shapes::RedirectDamageDestinationShape::SourceController
@@ -2557,14 +2622,29 @@ pub fn parse_keyword_mechanic_clause(
                 }),
             }
         }
-        clause_shapes::KeywordMechanicShape::ManifestTop { player } => {
+        clause_shapes::KeywordMechanicShape::ManifestTop { player, count } => {
             let player = match player {
                 clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
                 clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
                     PlayerAst::ThatPlayerOrTargetController
                 }
             };
-            EffectAst::subject_verb_manifest_top_card(player)
+            let manifest = EffectAst::subject_verb_manifest_top_card(player);
+            // CR 701.40c: manifesting several cards manifests them one at a time.
+            if count > 1 {
+                EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                    count: Value::Fixed(count as i32),
+                    effects: vec![manifest],
+                })
+            } else {
+                manifest
+            }
+        }
+        clause_shapes::KeywordMechanicShape::OpenAttractions { count } => {
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: Value::Fixed(count as i32),
+                effects: vec![EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, false)],
+            })
         }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {
             let player = match player {

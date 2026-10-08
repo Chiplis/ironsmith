@@ -293,6 +293,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::IncreaseMaximumHandSize { player, .. }
         | P::MaximumHandSizeSevenMinusYourGraveyardCardTypes { player, .. }
         | P::PlayersSkipUpkeep { player } | P::PlayerSkipsDrawStep { player }
+        | P::PlayersSkipUntapStep { player }
         | P::PlayersSkipExtraTurns { player } | P::ChoosePlayerAsEnters { filter: player, .. }
         | P::ExileToCounteredExileInsteadOfGraveyard { player, .. }
         | P::PlayerCounterPerTurnLimitReplacement { player_filter: player, .. }

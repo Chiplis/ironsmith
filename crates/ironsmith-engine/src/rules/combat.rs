@@ -347,6 +347,10 @@ pub(crate) fn can_block_with_view(
                     LandwalkKind::ArtifactLand => {
                         view.object_has_card_type(obj.id, CardType::Artifact)
                     }
+                    // CR 702.14c: legendary/snow landwalk look at the land's
+                    // current supertypes.
+                    LandwalkKind::LegendaryLand => supertypes().contains(&Supertype::Legendary),
+                    LandwalkKind::SnowLand => supertypes().contains(&Supertype::Snow),
                 }
             });
         if defending_has_required_land {

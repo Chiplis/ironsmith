@@ -1159,6 +1159,10 @@ pub enum LandwalkKind {
     AnyLand,
     NonbasicLand,
     ArtifactLand,
+    /// CR 702.14c legendary landwalk.
+    LegendaryLand,
+    /// CR 702.14c snow landwalk (any snow land).
+    SnowLand,
 }
 
 impl LandwalkKind {
@@ -1175,6 +1179,8 @@ impl LandwalkKind {
             Self::AnyLand => "Landwalk".to_string(),
             Self::NonbasicLand => "Nonbasic landwalk".to_string(),
             Self::ArtifactLand => "Artifact landwalk".to_string(),
+            Self::LegendaryLand => "Legendary landwalk".to_string(),
+            Self::SnowLand => "Snow landwalk".to_string(),
         }
     }
 }

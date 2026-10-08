@@ -4803,6 +4803,44 @@ impl StaticAbilityKind for PlayerSkipsDrawStep {
     }
 }
 
+/// CR 502: the matching player skips each of their untap steps while this
+/// ability is active (Stasis).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayersSkipUntapStep {
+    pub player: PlayerFilter,
+}
+
+impl PlayersSkipUntapStep {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+impl StaticAbilityKind for PlayersSkipUntapStep {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayersSkipUntapStep
+    }
+
+    fn display(&self) -> String {
+        match self.player {
+            PlayerFilter::You => "Skip your untap step".to_string(),
+            PlayerFilter::Any => "Players skip their untap steps".to_string(),
+            _ => "Matching players skip their untap steps".to_string(),
+        }
+    }
+
+    fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.player
+            .matches_player(player, &game.filter_context_for(controller, Some(source)))
+    }
+}
+
 /// The matching player skips extra turns they would begin while this source
 /// remains active on the battlefield.
 #[derive(Debug, Clone, PartialEq)]

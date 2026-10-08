@@ -223,6 +223,11 @@ fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
             "Cast this spell only if a creature is attacking you.",
         ),
         (
+            &["if", "a", "creature", "died", "this", "turn"],
+            Restriction::if_creature_died_this_turn,
+            "Cast this spell only if a creature died this turn.",
+        ),
+        (
             &["after", "combat"],
             Restriction::after_combat,
             "Cast this spell only after combat.",

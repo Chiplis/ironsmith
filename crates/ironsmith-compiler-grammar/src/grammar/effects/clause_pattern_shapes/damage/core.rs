@@ -64,5 +64,30 @@ pub(super) fn parse_next_amount<'a>(input: &mut LexStream<'a>) -> WResult<Redire
     Ok(RedirectNextDamageShape::NextAmount {
         amount_tokens, protected_tokens,
         destination: classify_next_amount_destination(destination_tokens),
+        source_of_your_choice: false,
+    })
+}
+
+/// "The next N damage that a source of your choice would deal to <recipient>
+/// this turn is dealt to <destination> instead." (Harm's Way, Shining Shoal):
+/// CR 614.9 redirection restricted to one source chosen on resolution.
+pub(super) fn parse_next_amount_by_chosen_source<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RedirectNextDamageShape<'a>> {
+    primitives::phrase(&["the", "next"]).parse_next(input)?;
+    let amount_tokens = any.void().take().parse_next(input)?;
+    primitives::phrase(&["damage", "that"]).parse_next(input)?;
+    source_of_your_choice.parse_next(input)?;
+    primitives::phrase(&["would", "deal", "to"]).parse_next(input)?;
+    let protected_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+    primitives::phrase(&["this", "turn", "is", "dealt", "to"]).parse_next(input)?;
+    let destination_tokens = one_or_more_tokens_before(input, primitives::kw("instead").void())?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(RedirectNextDamageShape::NextAmount {
+        amount_tokens,
+        protected_tokens: Some(protected_tokens),
+        destination: classify_next_amount_destination(destination_tokens),
+        source_of_your_choice: true,
     })
 }

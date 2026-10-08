@@ -468,6 +468,10 @@ impl ThisSpellCastRestrictionKind {
         Self::named("if creature is attacking you")
     }
 
+    pub fn if_creature_died_this_turn() -> Self {
+        Self::named("if creature died this turn")
+    }
+
     pub fn after_combat() -> Self {
         Self::named("after combat")
     }
@@ -1002,6 +1006,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         player: PlayerFilter,
     },
     PlayerSkipsDrawStep {
+        player: PlayerFilter,
+    },
+    /// CR 502 / 614.1b: matching players skip their untap steps (Stasis).
+    PlayersSkipUntapStep {
         player: PlayerFilter,
     },
     PlayersSkipExtraTurns {
@@ -1939,6 +1947,9 @@ where
             }
             StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbilityPayload::PlayerSkipsDrawStep { player }
+            }
+            StaticAbilityPayload::PlayersSkipUntapStep { player } => {
+                StaticAbilityPayload::PlayersSkipUntapStep { player }
             }
             StaticAbilityPayload::LookAtSourceExiledCards { pair, source } => {
                 StaticAbilityPayload::LookAtSourceExiledCards { pair, source }
@@ -3869,6 +3880,8 @@ impl<
             "landwalk" => Self::any_landwalk(),
             "nonbasic landwalk" => Self::nonbasic_landwalk(),
             "artifact landwalk" => Self::artifact_landwalk(),
+            "legendary landwalk" => Self::legendary_landwalk(),
+            "snow landwalk" => Self::snow_any_landwalk(),
             "protection from white" => Self::protection(ProtectionFrom::Color(ColorSet::WHITE)),
             "protection from blue" => Self::protection(ProtectionFrom::Color(ColorSet::BLUE)),
             "protection from black" => Self::protection(ProtectionFrom::Color(ColorSet::BLACK)),
@@ -4377,6 +4390,14 @@ impl<
 
     pub fn artifact_landwalk() -> Self {
         Self::new(LandwalkKind::ArtifactLand)
+    }
+
+    pub fn legendary_landwalk() -> Self {
+        Self::new(LandwalkKind::LegendaryLand)
+    }
+
+    pub fn snow_any_landwalk() -> Self {
+        Self::new(LandwalkKind::SnowLand)
     }
 
     pub fn landwalk(kind: Subtype) -> Self {
@@ -6250,6 +6271,13 @@ impl<
             id: Some(StaticAbilityId::PlayerSkipsDrawStep),
             label: "skip your draw step".into(),
             payload: StaticAbilityPayload::PlayerSkipsDrawStep { player },
+        }
+    }
+    pub fn players_skip_untap_steps(player: PlayerFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PlayersSkipUntapStep),
+            label: "players skip their untap steps".into(),
+            payload: StaticAbilityPayload::PlayersSkipUntapStep { player },
         }
     }
     pub fn players_skip_extra_turns(player: PlayerFilter) -> Self {

@@ -211,6 +211,12 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
             crate::static_abilities::LandwalkKind::ArtifactLand => {
                 CompilerStaticAbility::artifact_landwalk()
             }
+            crate::static_abilities::LandwalkKind::LegendaryLand => {
+                CompilerStaticAbility::legendary_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::SnowLand => {
+                CompilerStaticAbility::snow_any_landwalk()
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(CompilerStaticAbility::bloodthirst(amount)),
         KeywordAction::Tribute(amount) => Some(CompilerStaticAbility::tribute(amount)),

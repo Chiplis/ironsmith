@@ -26,6 +26,12 @@ pub struct RedirectNextDamageToTargetEffect {
     pub protected_target: Option<ChooseSpec>,
     pub destination: RedirectNextDamageDestination,
     pub destination_target: Option<ChooseSpec>,
+    /// Only damage from a source chosen as this resolves is redirected
+    /// (CR 609.7a).
+    pub source_of_your_choice: bool,
+    /// Damage to the controller or to a permanent matching this filter
+    /// ("you and/or permanents you control") is redirected.
+    pub protect_you_and_permanents: Option<crate::target::ObjectFilter>,
 }
 
 impl RedirectNextDamageToTargetEffect {
@@ -35,6 +41,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: None,
             destination: RedirectNextDamageDestination::TargetObject,
             destination_target: Some(target),
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 
@@ -44,6 +52,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: Some(protected_target),
             destination: RedirectNextDamageDestination::Controller,
             destination_target: None,
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 }
@@ -77,6 +87,56 @@ impl ReplacementMatcher for DamageToSpecificTargetMatcher {
     }
 }
 
+/// Damage from one chosen source to the protected recipients: the replacement
+/// controller and/or permanents matching a filter, or one specific recipient.
+#[derive(Debug, Clone)]
+struct DamageFromChosenSourceMatcher {
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    permanents: Option<crate::target::ObjectFilter>,
+    specific: Option<DamageTarget>,
+}
+
+impl ReplacementMatcher for DamageFromChosenSourceMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::Damage
+    }
+
+    fn matches_prepared_event(
+        &self,
+        event: &dyn GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
+        use crate::filter::ObjectFilterExt as _;
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
+        else {
+            return false;
+        };
+        if damage.source != self.source {
+            return false;
+        }
+        if let Some(specific) = &self.specific {
+            return damage.target == *specific;
+        }
+        match &damage.target {
+            DamageTarget::Player(player) => *player == self.controller,
+            DamageTarget::Object(object) => self.permanents.as_ref().is_some_and(|filter| {
+                ctx.game.object(*object).is_some_and(|object| {
+                    object.zone == crate::zone::Zone::Battlefield
+                        && filter.matches(object, &ctx.filter_ctx, ctx.game)
+                })
+            }),
+        }
+    }
+
+    fn display(&self) -> String {
+        "When the chosen source would deal damage to a protected recipient".to_string()
+    }
+}
+
 impl EffectExecutor for RedirectNextDamageToTargetEffect {
     fn execute(
         &self,
@@ -105,8 +165,32 @@ impl EffectExecutor for RedirectNextDamageToTargetEffect {
             }
         };
 
-        let matcher: Box<dyn ReplacementMatcher> =
-            if let Some(protected_target) = &self.protected_target {
+        let matcher: Box<dyn ReplacementMatcher> = if self.source_of_your_choice {
+            let source = match crate::effects::combat::prevention_helpers::choose_source_of_your_choice(game, ctx) {
+                crate::effects::combat::prevention_helpers::SourceChoiceSelection::Chosen(source) => source,
+                crate::effects::combat::prevention_helpers::SourceChoiceSelection::NoAvailableSource => {
+                    return Ok(EffectOutcome::resolved());
+                }
+                crate::effects::combat::prevention_helpers::SourceChoiceSelection::NoChoiceMade => {
+                    return Ok(EffectOutcome::count(0));
+                }
+            };
+            let specific = match &self.protected_target {
+                Some(protected_target) => {
+                    Some(resolve_damage_target_for_effect(game, ctx, protected_target)?)
+                }
+                None if self.protect_you_and_permanents.is_none() => {
+                    Some(DamageTarget::Object(ctx.source))
+                }
+                None => None,
+            };
+            Box::new(DamageFromChosenSourceMatcher {
+                source,
+                controller: ctx.controller,
+                permanents: self.protect_you_and_permanents.clone(),
+                specific,
+            })
+        } else if let Some(protected_target) = &self.protected_target {
                 Box::new(DamageToSpecificTargetMatcher::new(
                     resolve_damage_target_for_effect(game, ctx, protected_target)?,
                 ))

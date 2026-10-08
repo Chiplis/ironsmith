@@ -188,6 +188,7 @@ pub enum StaticAbilityId {
     PlayersCantCycle,
     PlayersSkipUpkeep,
     PlayerSkipsDrawStep,
+    PlayersSkipUntapStep,
     PlayersSkipExtraTurns,
     DamageNotRemovedDuringCleanup,
     BlackManaMayBePaidWithLife,
@@ -583,6 +584,7 @@ impl StaticAbilityId {
             | PlayersCantCycle
             | PlayersSkipUpkeep
             | PlayerSkipsDrawStep
+            | PlayersSkipUntapStep
             | PlayersSkipExtraTurns
             | DamageNotRemovedDuringCleanup
             | BlackManaMayBePaidWithLife

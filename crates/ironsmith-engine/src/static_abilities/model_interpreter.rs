@@ -340,6 +340,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::LandwalkKind::ArtifactLand => {
                 crate::static_abilities::LandwalkKind::ArtifactLand
             }
+            ironsmith_core::LandwalkKind::LegendaryLand => {
+                crate::static_abilities::LandwalkKind::LegendaryLand
+            }
+            ironsmith_core::LandwalkKind::SnowLand => {
+                crate::static_abilities::LandwalkKind::SnowLand
+            }
         }
     }
 
@@ -950,6 +956,9 @@ impl StaticAbilityModelInterpreter {
             "if creature is attacking you" => {
                 super::ThisSpellCastRestrictionKind::if_creature_is_attacking_you()
             }
+            "if creature died this turn" => {
+                super::ThisSpellCastRestrictionKind::if_creature_died_this_turn()
+            }
             "after combat" => super::ThisSpellCastRestrictionKind::after_combat(),
             "if you control snow land" => {
                 super::ThisSpellCastRestrictionKind::if_you_control_snow_land()
@@ -1074,6 +1083,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbility::player_skips_draw_step(player.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::PlayersSkipUntapStep { player } => {
+                StaticAbility::players_skip_untap_steps(player.clone())
             }
             ironsmith_core::StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbility::players_skip_extra_turns(player.clone())
@@ -2178,6 +2190,8 @@ impl StaticAbilityModelInterpreter {
                 ironsmith_core::LandwalkKind::AnyLand => StaticAbility::any_landwalk(),
                 ironsmith_core::LandwalkKind::NonbasicLand => StaticAbility::nonbasic_landwalk(),
                 ironsmith_core::LandwalkKind::ArtifactLand => StaticAbility::artifact_landwalk(),
+                ironsmith_core::LandwalkKind::LegendaryLand => StaticAbility::legendary_landwalk(),
+                ironsmith_core::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
             },
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbility::bloodthirst(*amount)
@@ -2831,6 +2845,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> bool {
         self.leaf_static_ability().is_some_and(|ability| {
             ability.skips_draw_step_for_player(game, source, controller, player)
+        })
+    }
+
+    fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_untap_step_for_player(game, source, controller, player)
         })
     }
 

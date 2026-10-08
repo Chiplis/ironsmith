@@ -88,11 +88,16 @@ pub enum KeywordMechanicShape<'a> {
     },
     ManifestTop {
         player: ManifestPlayerShape,
+        /// CR 701.40c: multiple cards are manifested one at a time.
+        count: u32,
     },
     CloakTop {
         player: ManifestPlayerShape,
     },
     ManifestFromHand,
+    OpenAttractions {
+        count: u32,
+    },
     Populate {
         repeat: KeywordRepeatShape<'a>,
     },
@@ -379,13 +384,23 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
 }
 
 fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    alt((
-        primitives::phrase(&["open", "an", "attraction"]),
-        primitives::phrase(&["opens", "an", "attraction"]),
+    alt((primitives::kw("open"), primitives::kw("opens"))).parse_next(input)?;
+    // "Open two Attractions": each Attraction is opened in turn, which puts
+    // the top card of the Attraction deck onto the battlefield each time.
+    let count = alt((
+        primitives::phrase(&["an", "attraction"]).value(1u32),
+        (
+            leaf::parse_leaf_number_prefix_lexed.verify(|count: &u32| *count > 1),
+            primitives::kw("attractions"),
+        )
+            .map(|(count, _)| count),
     ))
     .parse_next(input)?;
     let trailing = tokens_before(input, 0, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
+    if count > 1 {
+        return Ok(KeywordMechanicShape::OpenAttractions { count });
+    }
     let reminder = crate::word_primitives::parse_sequence_complete(
         &crate::lexer::parser_token_word_refs(trailing),
         &[
@@ -477,11 +492,21 @@ fn parse_manifest_dread<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechani
 }
 
 fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    primitives::phrase(&["manifest", "the", "top", "card", "of", "your", "library"])
-        .parse_next(input)?;
+    primitives::phrase(&["manifest", "the", "top"]).parse_next(input)?;
+    let count = alt((
+        primitives::kw("card").value(1u32),
+        (
+            leaf::parse_leaf_number_prefix_lexed.verify(|count: &u32| *count > 1),
+            primitives::kw("cards"),
+        )
+            .map(|(count, _)| count),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["of", "your", "library"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
         player: ManifestPlayerShape::You,
+        count,
     })
 }
 
@@ -537,6 +562,7 @@ fn parse_manifest_top_that_player<'a>(
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
         player: ManifestPlayerShape::ThatPlayerOrTargetController,
+        count: 1,
     })
 }
 

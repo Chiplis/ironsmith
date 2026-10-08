@@ -1949,6 +1949,11 @@ fn parse_heterogeneous_granted_tail_remaining(
 }
 
 fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> bool {
+    // CR 702.28b: a creature with shadow can be blocked only by creatures
+    // with shadow. "As though they didn't have shadow" (the attackers) and
+    // "as though it had shadow" (the blocker) both grant exactly the
+    // permission to block shadow creatures; neither form lets the blocker
+    // lose the ability to block creatures without shadow.
     matches!(
         trim_edge_punctuation(tokens)
             .iter()
@@ -1967,6 +1972,8 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
             "didnt" | "didn't",
             "have",
             "shadow"
+        ] | [
+            "can", "block", "creatures", "with", "shadow", "as", "though", "it", "had", "shadow"
         ]
     )
 }
@@ -3044,6 +3051,42 @@ pub fn parse_attached_can_attack_as_though_no_defender_line(
             StaticAbility::can_attack_as_though_no_defender(),
         )),
         display: format!("{subject} can attack as though it didn't have defender"),
+        condition: None,
+    }))
+}
+
+/// "Enchanted creature can attack as though it had haste." (Instill Energy):
+/// the attached creature gets the CR 302.6 summoning-sickness exemption for
+/// attacking only, not haste itself (its {T} abilities stay restricted).
+pub fn parse_attached_can_attack_as_though_haste_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = trim_edge_punctuation(tokens);
+    let Some((subject, rest)) = primitives::parse_prefix(
+        &clean,
+        winnow::combinator::alt((
+            primitives::phrase(&["enchanted", "creature"]).value("enchanted creature"),
+            primitives::phrase(&["equipped", "creature"]).value("equipped creature"),
+        )),
+    ) else {
+        return Ok(None);
+    };
+    let Some(((), rest)) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["can", "attack", "as", "though", "it", "had", "haste"]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::can_attack_as_though_haste(),
+        )),
+        display: format!("{subject} can attack as though it had haste"),
         condition: None,
     }))
 }

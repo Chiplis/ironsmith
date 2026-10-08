@@ -1069,6 +1069,16 @@ impl TurnRunner {
                     );
                     return Ok(TurnAction::Continue);
                 }
+                // CR 614.10: a static "skip your untap step" (Stasis) passes the
+                // whole step, including its untapping and phasing.
+                if game.player_skips_untap_step(game.turn.active_player) {
+                    self.state = finish_step(
+                        game,
+                        Step::Untap,
+                        TurnScheduleDestination::Step(Step::Upkeep),
+                    );
+                    return Ok(TurnAction::Continue);
+                }
 
                 self.pending_untap_choices = None;
                 self.pending_untap_boundary = None;

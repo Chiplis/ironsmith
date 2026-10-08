@@ -1790,6 +1790,16 @@ pub fn parse_enters_tapped_for_filter_line(
         )));
     }
     let before_enter = entry_clause.filter_tokens;
+    // The rule is reachable from any subject head, so a bare pronoun
+    // ("It enters tapped", "They enter tapped") must stay with the source
+    // and resolution-sentence grammars instead of falling back to the
+    // source-ETB replacement below.
+    if matches!(
+        crate::lexer::token_word_refs(before_enter).as_slice(),
+        ["it"] | ["they"]
+    ) {
+        return Ok(None);
+    }
     let before_word_len = LexedClause::new(before_enter).word_len();
     let played_suffix = etb_grammar::parse_etb_played_by_opponent_suffix_tokens(before_enter);
     let controller_override = played_suffix.map(|_| PlayerFilter::Opponent);
@@ -1858,7 +1868,11 @@ pub fn parse_enters_untapped_for_filter_line(
     if before_enter.is_empty() {
         return Ok(None);
     }
-    let filter = parse_object_filter(before_enter, false)?;
+    // Reachable from any subject head: an unparseable subject is not this
+    // rule's line, so decline rather than report a filter error.
+    let Ok(filter) = parse_object_filter(before_enter, false) else {
+        return Ok(None);
+    };
     Ok(Some(StaticAbility::enters_untapped_for_filter(filter)))
 }
 

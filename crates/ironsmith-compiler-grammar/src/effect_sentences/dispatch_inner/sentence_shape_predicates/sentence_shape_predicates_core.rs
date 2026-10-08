@@ -108,9 +108,60 @@ fn parse_effect_sentence_lexed_uncached(
     parse_effect_sentence_lexed_uncached_inner(tokens)
 }
 
+/// "For each color, return up to one target card of that color from your
+/// graveyard to your hand." (All Suns' Dawn): one independent instance of the
+/// word "target" per color (CR 115.3, 105.1), so a multicolored card may be
+/// chosen for more than one color. Each color's instruction is read by the
+/// ordinary sentence grammar with that color in place of "of that color".
+fn parse_for_each_color_target_expansion(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let Some((_, body)) = primitives::parse_prefix(
+        tokens,
+        (primitives::phrase(&["for", "each", "color"]), primitives::comma()),
+    ) else {
+        return Ok(None);
+    };
+    let Some((that_idx, (), after)) =
+        primitives::find_prefix(body, || primitives::phrase(&["of", "that", "color"]))
+    else {
+        return Ok(None);
+    };
+    if primitives::find_prefix(after, || primitives::phrase(&["of", "that", "color"])).is_some() {
+        return Ok(None);
+    }
+    let target_positions = body
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("target"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [target_idx] = target_positions.as_slice() else {
+        return Ok(None);
+    };
+    let target_idx = *target_idx;
+    if target_idx >= that_idx {
+        return Ok(None);
+    }
+    let mut effects = Vec::new();
+    for color in ["white", "blue", "black", "red", "green"] {
+        let mut rewritten = Vec::with_capacity(body.len());
+        rewritten.extend_from_slice(&body[..=target_idx]);
+        rewritten.push(OwnedLexToken::synthetic_word(color));
+        rewritten.extend_from_slice(&body[target_idx + 1..that_idx]);
+        rewritten.extend_from_slice(after);
+        effects.extend(parse_effect_sentence_lexed(&rewritten)?);
+    }
+    Ok(Some(effects))
+}
+
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_for_each_color_target_expansion(tokens)? {
+        return Ok(effects);
+    }
     // "If you do, that creature gains first strike until end of turn and
     // must be blocked this turn if able" (Magitek Scythe): the requirement
     // conjunct shares the grant's subject; spell it out so the result-gated

@@ -670,6 +670,7 @@ impl EffectAst {
                 source_of_your_choice,
                 protect_you_and_permanents_you_control,
                 follow_up_effects,
+                divided: false,
             }),
         )
     }
@@ -3200,6 +3201,7 @@ impl EffectAst {
                     protected_target: None,
                     destination: RedirectNextTimeDamageDestinationAst::TargetObject,
                     destination_target: Some(target),
+                    source_of_your_choice: false,
                 },
             ),
         )
@@ -3218,6 +3220,7 @@ impl EffectAst {
                     protected_target: Some(protected_target),
                     destination: RedirectNextTimeDamageDestinationAst::Controller,
                     destination_target: None,
+                    source_of_your_choice: false,
                 },
             ),
         )

@@ -108,6 +108,8 @@ pub enum SpecialAbilityPhraseKind {
     AnyLandwalk,
     NonbasicLandwalk,
     ArtifactLandwalk,
+    LegendaryLandwalk,
+    SnowLandwalk,
 }
 
 pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
@@ -214,6 +216,16 @@ fn parse_exact_special_ability_phrase_words(
             primitives::word_slice_exact("landwalk"),
         )
             .value(SpecialAbilityPhraseKind::ArtifactLandwalk),
+        (
+            primitives::word_slice_exact("legendary"),
+            primitives::word_slice_exact("landwalk"),
+        )
+            .value(SpecialAbilityPhraseKind::LegendaryLandwalk),
+        (
+            primitives::word_slice_exact("snow"),
+            primitives::word_slice_exact("landwalk"),
+        )
+            .value(SpecialAbilityPhraseKind::SnowLandwalk),
     ))
     .parse_next(input)
 }

@@ -68,6 +68,8 @@ pub(super) fn filter_keyword_constraint_for_words(
             &["landwalk"],
             &["nonbasic", "landwalk"],
             &["artifact", "landwalk"],
+            &["legendary", "landwalk"],
+            &["snow", "landwalk"],
         ],
     ) {
         Some(StaticAbilityId::Landwalk)

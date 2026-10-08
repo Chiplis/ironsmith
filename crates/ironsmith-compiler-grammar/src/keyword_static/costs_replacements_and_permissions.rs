@@ -4830,7 +4830,10 @@ pub fn parse_you_may_static_grant_line(
             lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) => {
             let singular_spell = late_static_facts::contains_singular_cast_spell(tokens);
+            // A once-per-turn budget makes the singular wording a standing
+            // permission rather than a one-shot resolution.
             if singular_spell
+                && spec.usage_limit.is_none()
                 && spec.additional_zones.is_empty()
                 && spec.zone == Zone::Hand
                 && matches!(
@@ -5290,6 +5293,7 @@ fn graveyard_cards_have_retrace_ability(
     } else {
         ObjectFilter {
             card_types: fact.card_types,
+            subtypes: fact.subtypes,
             ..ObjectFilter::default()
         }
     };
@@ -6852,6 +6856,45 @@ pub fn copy_activated_display_source_noun(word: &str) -> bool {
         || parse_subtype_flexible(word).is_some()
 }
 
+/// CR 609.4b: the permission changes only how mana may be spent to cast the
+/// matching spells.
+fn mana_spend_any_color_to_cast_permission(
+    player: keyword_static_lines::ManaSpendPlayerKind,
+    filter_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<(crate::effect::ManaSpendPermission, String), CardTextError> {
+    let player = match player {
+        keyword_static_lines::ManaSpendPlayerKind::You => PlayerFilter::You,
+        keyword_static_lines::ManaSpendPlayerKind::Any => PlayerFilter::Any,
+    };
+    let mut filter = parse_object_filter(filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported mana spend cast filter (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.has_mana_cost = false;
+    Ok((
+        crate::effect::ManaSpendPermission::any_color_for_casting_matching(player, filter),
+        clause_words.join(" "),
+    ))
+}
+
+/// Only mana of `symbol` converts, and only for the source's own
+/// activation costs (CR 609.4b).
+fn mana_spend_symbol_for_source_activation_permission(
+    symbol: ManaSymbol,
+    clause_words: &[&str],
+) -> (crate::effect::ManaSpendPermission, String) {
+    let mut permission =
+        crate::effect::ManaSpendPermission::any_color_for_activation(PlayerFilter::You, ObjectFilter::source());
+    permission.mode = ironsmith_core::value_model::ManaSpendMode::Normal;
+    permission.any_color_mana_symbol = Some(symbol);
+    (permission, clause_words.join(" "))
+}
+
 pub fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -6903,6 +6946,13 @@ pub fn parse_spend_mana_as_any_color_line(
                 clause_words.join(" "),
             )
         }
+        keyword_static_lines::ManaSpendPermissionShape::AnyColorToCast {
+            player,
+            filter_tokens,
+        } => mana_spend_any_color_to_cast_permission(player, filter_tokens, &clause_words)?,
+        keyword_static_lines::ManaSpendPermissionShape::SymbolAsAnyColorForSourceActivation {
+            symbol,
+        } => mana_spend_symbol_for_source_activation_permission(symbol, &clause_words),
         keyword_static_lines::ManaSpendPermissionShape::AnyColor {
             player,
             activation_filter_tokens,

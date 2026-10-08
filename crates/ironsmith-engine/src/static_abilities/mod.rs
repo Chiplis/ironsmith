@@ -124,6 +124,8 @@ pub enum ThisSpellCastCondition {
     },
     /// "only if a creature is attacking you"
     CreatureIsAttackingYou,
+    /// "only if a creature died this turn" (CR 700.4)
+    CreatureDiedThisTurn,
     /// "only if no permanents named <name> are on the battlefield"
     NoPermanentsNamedOnBattlefield(String),
     /// "only if you control N or more matching permanents"
@@ -249,6 +251,10 @@ impl ThisSpellCastRestrictionKind {
 
     pub fn if_creature_is_attacking_you() -> Self {
         Self::condition(ThisSpellCastCondition::CreatureIsAttackingYou)
+    }
+
+    pub fn if_creature_died_this_turn() -> Self {
+        Self::condition(ThisSpellCastCondition::CreatureDiedThisTurn)
     }
 
     pub fn after_combat() -> Self {
@@ -479,6 +485,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     }
 
     fn skips_draw_step_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
+    fn skips_untap_step_for_player(
         &self,
         _game: &GameState,
         _source: ObjectId,
@@ -1909,6 +1925,17 @@ impl StaticAbility {
             .skips_draw_step_for_player(game, source, controller, player)
     }
 
+    pub fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_untap_step_for_player(game, source, controller, player)
+    }
+
     pub fn skips_extra_turn_for_player(
         &self,
         game: &GameState,
@@ -2937,6 +2964,14 @@ impl StaticAbility {
 
     pub fn artifact_landwalk() -> Self {
         Self::new(Landwalk::new(LandwalkKind::ArtifactLand))
+    }
+
+    pub fn legendary_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::LegendaryLand))
+    }
+
+    pub fn snow_any_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::SnowLand))
     }
 
     pub fn attached_chosen_landwalk_grant(display: String, snow: bool) -> Self {
@@ -4030,6 +4065,10 @@ impl StaticAbility {
 
     pub fn players_skip_extra_turns(player: crate::target::PlayerFilter) -> Self {
         Self::new(PlayersSkipExtraTurns::new(player))
+    }
+
+    pub fn players_skip_untap_steps(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayersSkipUntapStep::new(player))
     }
 
     pub fn starting_life_bonus(amount: i32) -> Self {
