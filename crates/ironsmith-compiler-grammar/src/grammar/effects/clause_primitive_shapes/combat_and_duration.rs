@@ -39,6 +39,8 @@ pub enum MustBlockShape<'a> {
 pub enum DurationTriggerPrefixShape {
     UntilEndOfTurn,
     UntilYourNextTurn,
+    /// "until (the) end of your next turn" (Season of the Bold).
+    UntilEndOfYourNextTurn,
     UntilYourNextUpkeep,
     UntilYourNextUntapStep,
     DuringYourNextUntapStep,
@@ -257,6 +259,10 @@ pub fn parse_duration_trigger_prefix_shape(
                 .value(DurationTriggerPrefixShape::UntilEndOfTurn),
             primitives::phrase(&["until", "your", "next", "turn"])
                 .value(DurationTriggerPrefixShape::UntilYourNextTurn),
+            primitives::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
+                .value(DurationTriggerPrefixShape::UntilEndOfYourNextTurn),
+            primitives::phrase(&["until", "end", "of", "your", "next", "turn"])
+                .value(DurationTriggerPrefixShape::UntilEndOfYourNextTurn),
             primitives::phrase(&["until", "your", "next", "upkeep"])
                 .value(DurationTriggerPrefixShape::UntilYourNextUpkeep),
             primitives::phrase(&["until", "your", "next", "untap", "step"])
