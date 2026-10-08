@@ -1,6 +1,8 @@
 # cf8 p05-noverb-b — "could not find verb in effect clause" (153 cards)
 
-Status: 18 source-proposed, 4 already-on-main, 131 blocked, 0 untriaged.
+Status (round 2): 42 source-proposed, 5 already-on-main, 106 blocked, 0 untriaged.
+(Round 1 was 18 / 4 / 131. The prebuilt probe binary was removed mid-session, so all round-2
+work is source-only reasoning.)
 Nothing was built or run. Every claim is from reading the source plus prebuilt-binary probes of
 equivalent texts (for example "It becomes ..." in place of "It's ...").
 
@@ -40,3 +42,27 @@ Spelljack is not on main: those PRs kept it as a HOLD, so it is listed as blocke
 - The counter-linked-land shape now also accepts the subject "it's" and the form without "in addition". The form without "in addition" is limited to basic land types and lowers to the fixed `BecomeBasicLandType` (SetSubtypes + RemoveLandRulesTextAbilities).
 - Two new `ActivationTiming` variants were added to ironsmith-core/src/ability_model.rs. The exhaustive matches are in text rendering, `activation_timing_allows` and condition_eval; the remaining matches use a catch-all. The artifact uses serde for this enum. Any merge that adds other `ActivationTiming` variants or touches `allows_any_player_to_activate` will conflict here.
 - The shared hot spots I edited are `clause_dispatch_core.rs` (one block before `find_verb`) and `top_level_readings.rs` (`read_copular_animation`). Both edits are small and additive.
+
+## Round 2 — blocked mechanics implemented as general features
+
+| Mechanic | Cards | Change |
+|---|---|---|
+| Play-from-exile permission variants (existing GrantPlayTagged / CastTagged machinery) | Raphael, Kayla's Music Box, Gix, Magus of the Mind, Howltooth Hollow, Extract Power, Elkin Bottle, Klaw (8) | Permission tail: free price + exile lifetime in either order. Target "lands and cast spells from among cards exiled this way" (= play those cards, CR 305.1/601.1). "a card exiled with <source>" (source pool, `max_plays` 1) + preprocess short-name replacement after "exiled with". "cards you own exiled with <source>" (owner-narrowed pool). Lifetime "until the beginning of your next upkeep" == until next turn start (no priority in untap step, CR 502.4). Singular any-type rider. Conditional tagged free play takes a general predicate; new fallback predicate "each player has no cards in hand". |
+| Attack requirement toward a specific player | Ruhan, Raving Dead, Ursine Monstrosity, Nahiri (4) | New `Restriction::MustAttackPlayer { attackers, player }` (appended variant). Restriction tracker fills `CantEffectTracker::must_attack_players`; `required_attack_players_this_turn` chains it, so attack scoring/preview honour it (CR 508.1d). Duration EndOfCombat/EndOfTurn/leading duration; the named player is bound at resolution. |
+| Reselect what an attacking creature attacks | Misleading Signpost, Portal Mage, Windshaper Planetar (3) | New core `ReselectAttackTargetEffect` + engine executor (inside `execute_result_transaction`), AST `PermanentStateActionAst::ReselectAttackTarget`, lowering, decoder/materializer/interpreter registration, text. The effect's controller chooses among the players/planeswalkers/battles the creature could attack. |
+| Serial subtype object list + "you control" | Vaan, Oakhollow Village, Mirkwood (3) | `is_subtype_object_list_boundary` in coordination and and-split preservation: the controller relative clause is part of the filter. |
+| Turn a chosen permanent face up | Ugin's Mastery, Zimone (2) | Turn-face-up shape accepts "a/an/all/each <filter>". |
+| Manifest N from the top | Omarthis (1) | "manifest the top N cards" / "a number of cards ... equal to X" -> repeated single manifest (CR 701.40c). |
+| Misc coordination/value | Sphinx of Forgotten Lore, Willowdusk, Lightwielder Paladin (3) | Flashback cost "that card's mana cost". "A or B, whichever is greater" is one amount. An adjacent color list ("black or red permanent") is one qualifier. |
+| "Starting with you, each player ..." (infrastructure only) | — | A sentence led by "starting with you" whose body reads as a for-each-player loop is wrapped in `SourceSentence { starting_with_controller }`, making the loop sequential and controller-first. No card is claimed yet: each of the 7 cards still needs its specific choice-pool grammar. |
+| Spelljack | already on main | Covered by the merged exact counter/exile permission PR. |
+
+Still blocked after round 2 (see ledger): Abstruse Appropriation (needs a colorless-as-any-color ManaSpendMode), Curse of Hospitality (a permission for a player other than "you" plus a "they may spend" rider), Ignite the Future / Memory Vessel / Ziatora's Envoy / Brazen Cannonade (end-of-combat-next-turn lifetime) / Grinning Totem (upkeep cleanup) / Shelldock Isle (needs a min-library value).
+Also still blocked: Sizzling Soloist / Maddening Imp / Arcum's Whistle / Ekundu Cyclops / Territorial Hellkite (further attack-requirement forms), Capricopian (needs an attacked-player activator), Portal Manipulator (forced reassignment), the prevention shapes, repeat-process loops, the other manifest variants (Write into Being needs a manifest flag on PutOntoBattlefield; there are 18 pattern sites), Grimoire Thief and Etrata.
+
+### Round-2 risk notes
+- New enum variants change the artifact model: `ActivationTiming::{AnyTimeByOpponents, SorcerySpeedByOpponents}`, `Restriction::MustAttackPlayer` and the new effect type `ReselectAttackTargetEffect`. The orchestrator must bump the artifact schema descriptor and regenerate caches.
+- The `PermanentStateActionAst::ReselectAttackTarget` variant was added next to every `RemoveFromCombat` or-pattern (13 sites). Exhaustive Debug/lowering arms were added by hand. A merge that adds other PermanentState variants will conflict there.
+- `required_attack_players_this_turn` now also yields restriction-based requirements. `create_token_copy` and the attack preview consume it unchanged.
+- The coordination recognizer has three new non-boundary rules (whichever-is-greater, adjacent colors, subtype object lists). They are narrow, but other packages that edit `classify_boundary` will conflict textually.
+- `parse_effect_sentence_lexed_uncached_inner` gains a leading "starting with you" reader that falls through on failure.
