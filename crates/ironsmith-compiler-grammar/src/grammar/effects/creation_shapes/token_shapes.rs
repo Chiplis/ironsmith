@@ -573,7 +573,19 @@ fn parse_named_token_clause(input: &mut LexStream<'_>) -> WResult<NamedTokenClau
 
 pub fn parse_named_token_clause_tokens(tokens: &[OwnedLexToken]) -> Option<NamedTokenClauseShape> {
     let mut input = LexStream::new(tokens);
-    crate::grammar::primitives::take_leaf(&mut input, parse_named_token_clause)
+    let shape = crate::grammar::primitives::take_leaf(&mut input, parse_named_token_clause)?;
+    // "a copy of target token you control not named Dutiful Replicator":
+    // a negated name restricts the copied object, it never names the token.
+    if shape
+        .clause
+        .start
+        .checked_sub(1)
+        .and_then(|idx| tokens.get(idx))
+        .is_some_and(|token| token.is_word("not"))
+    {
+        return None;
+    }
+    Some(shape)
 }
 
 pub fn parse_attachment_clause_tokens(tokens: &[OwnedLexToken]) -> Option<AttachmentClause<'_>> {

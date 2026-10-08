@@ -2818,7 +2818,14 @@ pub(in super::super) fn parse_object_filter_inner(
         // introduce a supported qualifier or another selector; an arbitrary
         // noun cannot be silently discarded by the domain fallback.
         for (index, words) in all_words.windows(2).enumerate() {
+            // "target token you control not named Dutiful Replicator": a
+            // trailing negated name is admitted only once the excluded name
+            // was actually captured on the filter.
+            let negated_name_tail = all_words.get(index + 2) == Some(&"not")
+                && all_words.get(index + 3) == Some(&"named")
+                && filter.excluded_name.is_some();
             if words == ["you", "control"]
+                && !negated_name_tail
                 && let Some(next) = all_words.get(index + 2)
                 && !matches!(
                     *next,
