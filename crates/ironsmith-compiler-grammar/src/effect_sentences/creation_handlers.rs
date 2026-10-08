@@ -1904,7 +1904,22 @@ pub fn parse_create(
         ));
     }
     if let Some(with_idx) = tail_surface.location(CreateWord::With) {
-        let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
+        // "an X/X blue Orb creature token with flying, where X is ..."
+        // (Phantasmal Sphere): an unquoted where-X binding ends the keyword
+        // list; it is bound to the dynamic power/toughness below and is not
+        // part of the token's rules text.
+        let where_x_idx = tail_surface
+            .location(CreateWord::Where)
+            .filter(|&where_idx| {
+                where_idx > with_idx
+                    && tail_words.get(where_idx + 1) == Some(&"x")
+                    && double_quoted_rule_bodies(tokens).is_empty()
+            });
+        let with_tail_end = [for_each_idx, where_x_idx]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
             let with_surface = creation_grammar::CreationWords::new(with_words);
