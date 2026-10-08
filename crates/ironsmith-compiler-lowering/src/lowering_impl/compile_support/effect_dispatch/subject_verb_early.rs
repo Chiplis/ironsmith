@@ -3060,6 +3060,24 @@ pub(super) fn compile_subject_verb_early(
                 };
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
+            // "Prevent all damage a source of your choice would deal this
+            // turn." protects every recipient from the one chosen source.
+            if *source_of_your_choice
+                && let TargetAst::ObjectOrPlayer(filter, crate::target::PlayerFilter::Any, None) =
+                    target
+                && *filter == crate::target::ObjectFilter::default()
+            {
+                let mut effect = crate::effects::PreventAllDamageEffect::new(
+                    ironsmith_core::PreventionTarget::All,
+                    damage_filter.clone(),
+                    duration.clone(),
+                )
+                .with_source_of_your_choice();
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
+                }
+                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+            }
             if let TargetAst::ObjectOrPlayer(
                 filter,
                 crate::target::PlayerFilter::You,

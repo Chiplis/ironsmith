@@ -1428,6 +1428,26 @@ pub fn parse_prevent_all_damage_clause(
             } else {
                 source_tokens
             };
+            // "Prevent all damage a source of your choice would deal [to you]
+            // this turn." (Pay No Heed, Auriok Replica): the source is chosen
+            // on resolution (CR 609.7a); without a recipient every recipient
+            // is protected.
+            if clause_shapes::is_exact_source_of_your_choice_tokens(source_tokens) {
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
+                };
+                return Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_with_source_choice(
+                        target,
+                        Until::EndOfTurn,
+                        true,
+                    )
+                    .with_prevention_source_would_deal_surface(),
+                ));
+            }
             if source_tokens
                 .windows(2)
                 .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
