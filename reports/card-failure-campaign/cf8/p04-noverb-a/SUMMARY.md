@@ -2,7 +2,7 @@
 
 Package: 151 cards failing with "could not find verb in effect clause". Branch cf8/p04-noverb-a, based on origin/main 84ea8b41c. Nothing was built or run (campaign policy). The prebuilt hint binary vanished mid-run; the fallback `.agents/target-score/release` binary is from June, so its results are weak evidence.
 
-Status: 45 source-proposed, 106 blocked, 0 untriaged.
+Status (after round 3): 59 source-proposed, 92 blocked, 0 untriaged.
 
 ## Fixed clusters (source-proposed)
 - **elided-damage-recipients** (Tropical Storm, Hail Storm, Neonate's Rush, The Fall of Kroog, Wildfire Howl)
@@ -111,3 +111,29 @@ The ledger's gameplay_gap field has the exact gap for each card.
   - Stromgald Spy;
   - The Seventh Doctor.
 - **Risk:** the binary is gone, so nothing in round 2 was even hint-checked; every proposal is from source reading only.
+
+## Round 3 (on cf8/integration)
+Everything below is source-only (no build, no tests run).
+- **counter-linked animations** (Liege of the Tangle, Minas Morgul, Ultima).
+  - The copular animation shape accepts a trailing counter-linked duration (p05's suffix reader) without "in addition to"; p05's become branch owns the duration. "Those lands"/"those artifacts" are tagged become subjects.
+  - Minas Morgul: my carried prefix plus p05's contracted copula.
+  - Ultima: new "loses all <family> types and abilities" reader = the ordinary remove-all-abilities instruction plus RemoveAllSubtypesOfFamily on the same target (CR 205.3, 613.1d/f); the carried ForAsLongAs duration applies to both and to the "has {T}: Add {C}" grant.
+- **attacked-turn permission reconciled with p05** (one implementation). The engine was already one shared GrantPlayTaggedEffect (p05 added no competing grant). The grammar now reads the permission body through the shared `parse_permission_clause_spec`, and the retag sites that rebuild GrantPlayTaggedForAsLongAsExiled (exile-top bundle, ordered control flow, tax rebuild, looked partitions) keep or refuse the turn scope instead of silently dropping it.
+- **conditional attack requirements** (Viashino Bey, War's Toll, Magnetic Web; CR 508.1d).
+  - New static payload/id `ConditionalAttackRequirement{trigger, required}` (appended for wire stability) and a static line reader "If <creature> attacks, all <creatures> attack if able".
+  - Design: the proposed declaration fixes which conditional requirements exist (a matching creature attacks in it). Every alternative declaration is measured against that same fixed set, so the conditional terms are simply added to the existing independent per-attacker scores; the search and the unconditional scoring are unchanged. Bey never has to attack, but once it does the rest must; declaring nobody stays legal.
+- **implied-creature keyword animation** (Storm of Souls): "a 1/1 Spirit with flying in addition to its other types".
+- **single-target retarget** (Meddle, Quicksilver Dragon): TargetOnly(any spell) + Conditional(target has exactly one target matching X) + retarget with require_change and a new-target restriction. The AST RetargetStackObject gained `new_target_restriction`, lowered to the engine's existing NewTargetRestriction::Object.
+- **graveyard resolution casts** (Sproutback Trudge, Syrix, Oskar): "you may cast this card/creature/it from your graveyard"; the SourceObject tag lowers to CastSourceEffect, and "cast this card from your graveyard" makes the trigger function from the graveyard (CR 113.6k).
+- **Blight X** (Soul Immolation): "blight X" in both cost grammars, PutCounters(Value::X) with the Blight completion action reporting `references_cost_x` so the cast flow announces X, plus a generic "X can't be greater than <aggregate>" reader → ThisSpellXMaximum.
+- **defending-player guess** (The Seventh Doctor): a four-sentence procedure → ChooseObjects(hand card) + ChooseOneOf by the defending player, each answer checking ManaValueOf(card) > N; wrong guess → may cast free, else investigate.
+- **Still blocked (re-triaged with exact sites):**
+  - Stromgald Spy: a player-scoped public hand is a privacy/mental-poker protocol change (the reveal statics are UI-layer id checks), not a parser gap.
+  - Chaos Moon, Rumbling Ruin: need a value frozen at resolution and substituted into a stored restriction filter (CR 608.2h).
+  - Crabomination: the ExiledThisWay alias keeps only the last exile producer's tag.
+
+### Round 3 risks
+- New enum variants: StaticAbilityId/StaticAbilityPayload::ConditionalAttackRequirement (appended), the ActivationCostSegmentCst/CompilerCost/MaterializationCost `Blight{count, x}` field, the AST RetargetStackObject `new_target_restriction` field, and KeywordMechanicShape::Blight `amount: Option<u32>`. Sibling arms were added where exhaustive (core map, interpreter, text-change statics, combat text renderer, Debug).
+- Combat: the conditional set is computed only when requirements are enforced, so AI proposals that attack with Bey alone are now rejected; check the AI declaration fallback.
+- Unverified bindings: Oskar's "it" relies on reference resolution binding It to the discarded (triggering) card; Liege's "each of those lands" → It; whether Soul Immolation's trailing X-bound sentence reaches the early static reader; IfResult(DidNot) after May inside a ChooseOneOf mode.
+- Magnetic Web's block line and War's Toll's mana line were not re-verified.
