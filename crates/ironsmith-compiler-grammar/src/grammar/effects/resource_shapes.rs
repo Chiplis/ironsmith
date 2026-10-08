@@ -342,15 +342,17 @@ fn hand_owner<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
         // "look at defending player's hand" (Port Inspector) and "look at
         // its controller's hand" (Lay Bare).
         alt((
-            semantic_phrase(&["defending", "player's"]),
-            semantic_phrase(&["defending", "players"]),
-        ))
-        .value(PlayerAst::Defending),
-        alt((
-            semantic_phrase(&["its", "controller's"]),
-            semantic_phrase(&["its", "controllers"]),
-        ))
-        .value(PlayerAst::ItsController),
+            alt((
+                semantic_phrase(&["defending", "player's"]),
+                semantic_phrase(&["defending", "players"]),
+            ))
+            .value(PlayerAst::Defending),
+            alt((
+                semantic_phrase(&["its", "controller's"]),
+                semantic_phrase(&["its", "controllers"]),
+            ))
+            .value(PlayerAst::ItsController),
+        )),
     ))
     .parse_next(input)?;
     hand_noun.parse_next(input)?;

@@ -605,41 +605,43 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionTargetSurface::Other,
                 Some(1),
             )),
-            // "You may play up to two of those cards until the end of your
-            // next turn." (March of Reckless Joy): the collection keeps a
-            // shared use budget; no card is selected when the grant is made.
-            (
-                primitives::phrase(&["up", "to"]),
-                primitives::number_token,
-                primitives::kw("of"),
-                alt((
-                    primitives::phrase(&["those", "cards"]).void(),
-                    primitives::kw("them").void(),
+            alt((
+                // "You may play up to two of those cards until the end of your
+                // next turn." (March of Reckless Joy): the collection keeps a
+                // shared use budget; no card is selected when the grant is made.
+                (
+                    primitives::phrase(&["up", "to"]),
+                    primitives::number_token,
+                    primitives::kw("of"),
+                    alt((
+                        primitives::phrase(&["those", "cards"]).void(),
+                        primitives::kw("them").void(),
+                    )),
+                )
+                    .map(|(_, count, _, ())| {
+                        (
+                            TaggedPermissionReference::LastTagged,
+                            false,
+                            TaggedPermissionTargetSurface::Other,
+                            Some(count),
+                        )
+                    }),
+                primitives::any_phrase(&[
+                    &["spells", "from", "among", "them"],
+                    &["them"],
+                    &["the", "exiled", "cards"],
+                    &["exiled", "cards"],
+                    &["those", "spells"],
+                    &["that", "exiled", "card"],
+                    &["the", "card"],
+                    &["the", "cards"],
+                ])
+                .value((
+                    TaggedPermissionReference::LastTagged,
+                    false,
+                    TaggedPermissionTargetSurface::Other,
+                    None,
                 )),
-            )
-                .map(|(_, count, _, ())| {
-                    (
-                        TaggedPermissionReference::LastTagged,
-                        false,
-                        TaggedPermissionTargetSurface::Other,
-                        Some(count),
-                    )
-                }),
-            primitives::any_phrase(&[
-                &["spells", "from", "among", "them"],
-                &["them"],
-                &["the", "exiled", "cards"],
-                &["exiled", "cards"],
-                &["those", "spells"],
-                &["that", "exiled", "card"],
-                &["the", "card"],
-                &["the", "cards"],
-            ])
-            .value((
-                TaggedPermissionReference::LastTagged,
-                false,
-                TaggedPermissionTargetSurface::Other,
-                None,
             )),
         )),
         alt((

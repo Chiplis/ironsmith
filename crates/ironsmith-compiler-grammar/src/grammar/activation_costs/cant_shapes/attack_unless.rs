@@ -197,8 +197,10 @@ fn parse_requirement_lexed(
             parse_attacking_group_requirement,
             parse_opponent_damaged,
             parse_attack_cost_requirement,
-            parse_controller_control_requirement,
-            parse_general_condition_requirement,
+            alt((
+                parse_controller_control_requirement,
+                parse_general_condition_requirement,
+            )),
         ))
         .parse_next(input),
         AttackUnlessScope::AttackOrBlock

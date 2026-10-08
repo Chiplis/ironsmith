@@ -268,14 +268,16 @@ fn parse_source_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<Direc
             .value(DirectCantFact::SourceCantBlockAlone),
         (parse_source_subject, parse_cant, primitives::kw("attack"))
             .value(DirectCantFact::SourceCantAttack),
-        (parse_source_subject, parse_cant, primitives::kw("block"))
-            .value(DirectCantFact::SourceCantBlock),
-        (
-            parse_source_or_bare_subject,
-            parse_cant,
-            primitives::phrase(&["be", "blocked"]),
-        )
-            .value(DirectCantFact::SourceCantBeBlocked),
+        alt((
+            (parse_source_subject, parse_cant, primitives::kw("block"))
+                .value(DirectCantFact::SourceCantBlock),
+            (
+                parse_source_or_bare_subject,
+                parse_cant,
+                primitives::phrase(&["be", "blocked"]),
+            )
+                .value(DirectCantFact::SourceCantBeBlocked),
+        )),
     ))
     .parse_next(input)
 }

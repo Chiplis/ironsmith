@@ -1376,8 +1376,7 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
             primitives::kw("wasnt"),
             primitives::kw("wasn't"),
         )),
-        primitives::kw("blocked"),
-        primitives::sentence_end(),
+        (primitives::kw("blocked"), primitives::sentence_end()),
     )
         .void()
         .parse_next(input)

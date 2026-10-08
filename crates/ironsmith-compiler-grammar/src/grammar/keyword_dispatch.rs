@@ -199,8 +199,8 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
             primitives::kw("harmonize").value(KeywordDispatchHint::Harmonize),
             primitives::kw("multikicker").value(KeywordDispatchHint::Multikicker),
             primitives::kw("replicate").value(KeywordDispatchHint::Replicate),
-            primitives::kw("entwine").value(KeywordDispatchHint::Entwine),
             alt((
+                primitives::kw("entwine").value(KeywordDispatchHint::Entwine),
                 primitives::kw("offspring").value(KeywordDispatchHint::Offspring),
                 primitives::kw("splice").value(KeywordDispatchHint::Splice),
             )),
