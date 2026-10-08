@@ -659,6 +659,12 @@ pub struct PreventDamageEffect<E> {
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
     pub protect_you_and_permanents_you_control: bool,
+    /// "Prevent the next N damage ... to any number of targets, divided as
+    /// you choose": the amount is divided among the targets as the spell is
+    /// cast (CR 601.2d) and each target gets its own shield of its share
+    /// (CR 615.7).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub divided: bool,
 }
 
 impl<E> PreventDamageEffect<E> {
@@ -671,6 +677,7 @@ impl<E> PreventDamageEffect<E> {
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
+            divided: false,
         }
     }
 

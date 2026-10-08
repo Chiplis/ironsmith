@@ -670,6 +670,7 @@ impl EffectAst {
                 source_of_your_choice,
                 protect_you_and_permanents_you_control,
                 follow_up_effects,
+                divided: false,
             }),
         )
     }

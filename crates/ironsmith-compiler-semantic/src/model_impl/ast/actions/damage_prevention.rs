@@ -73,6 +73,8 @@ pub enum DamagePreventionActionAst {
         source_of_your_choice: bool,
         protect_you_and_permanents_you_control: bool,
         follow_up_effects: Vec<EffectAst>,
+        /// "... to any number of targets, divided as you choose" (CR 601.2d).
+        divided: bool,
     },
     PreventAllDamageToTarget {
         target: TargetAst,

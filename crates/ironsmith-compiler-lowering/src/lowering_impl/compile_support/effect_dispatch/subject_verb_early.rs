@@ -2885,6 +2885,7 @@ pub(super) fn compile_subject_verb_early(
             source_of_your_choice,
             protect_you_and_permanents_you_control,
             follow_up_effects,
+            divided,
         }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let damage_filter = if *combat_only {
@@ -2902,6 +2903,25 @@ pub(super) fn compile_subject_verb_early(
                 ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
                 compiled
             };
+            // CR 601.2d / 615.7: the amount is divided among the announced
+            // targets, one shield per target.
+            if *divided {
+                if *source_of_your_choice || *protect_you_and_permanents_you_control {
+                    return Err(CardTextError::ParseError(
+                        "divided prevention cannot also choose a source or protect a set".into(),
+                    ));
+                }
+                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
+                    let mut prevent =
+                        crate::effects::PreventDamageEffect::new(amount.clone(), spec, duration.clone())
+                            .with_filter(damage_filter.clone())
+                            .with_follow_up_effects(follow_up_effects.clone());
+                    prevent.divided = true;
+                    Effect::new(prevent)
+                })?;
+                choices.extend(follow_up_choices);
+                return Ok(Some((effects, choices)));
+            }
             if *protect_you_and_permanents_you_control {
                 let mut prevent = crate::effects::PreventDamageEffect::new(
                     amount,

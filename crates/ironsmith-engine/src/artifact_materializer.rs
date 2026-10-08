@@ -1632,6 +1632,7 @@ pub fn encode_runtime_effect(
             until: payload.duration.clone(), damage_filter: payload.damage_filter.clone(),
             source_of_your_choice: payload.source_of_your_choice,
             protect_you_and_permanents_you_control: payload.protect_you_and_permanents_you_control,
+            divided: payload.divided,
             follow_up_effects: payload.follow_up_effects.iter().cloned()
                 .map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
         };

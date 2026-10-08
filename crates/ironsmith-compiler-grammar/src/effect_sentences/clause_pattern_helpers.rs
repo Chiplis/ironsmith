@@ -62,7 +62,24 @@ pub fn parse_prevent_next_damage_clause(
             clause_text
         )));
     }
-    let target = if shape.protects_you_and_permanents_you_control {
+    // "... to any number of targets, divided as you choose" (Embolden): the
+    // amount is divided among the announced targets (CR 601.2d).
+    let divided_targets = crate::grammar::primitives::parse_all(
+        trim_lexed_commas(shape.target_tokens),
+        (
+            crate::grammar::primitives::phrase(&["any", "number", "of", "targets"]),
+            winnow::combinator::opt(crate::grammar::primitives::comma()),
+            crate::grammar::primitives::phrase(&["divided", "as", "you", "choose"]),
+        ),
+        "divided prevention targets",
+    )
+    .is_ok();
+    let target = if divided_targets {
+        TargetAst::WithCount(
+            Box::new(TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))),
+            ChoiceCount::any_number(),
+        )
+    } else if shape.protects_you_and_permanents_you_control {
         TargetAst::Player(PlayerFilter::You, span_from_tokens(shape.target_tokens))
     } else {
         parse_target_phrase(shape.target_tokens)?
@@ -78,10 +95,13 @@ pub fn parse_prevent_next_damage_clause(
     );
     if let EffectAst::SubjectVerb(subject) = &mut effect
         && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
-            combat_only, ..
+            combat_only,
+            divided,
+            ..
         }) = &mut subject.action
     {
         *combat_only = shape.combat_only;
+        *divided = divided_targets;
     }
     Ok(Some(effect))
 }
