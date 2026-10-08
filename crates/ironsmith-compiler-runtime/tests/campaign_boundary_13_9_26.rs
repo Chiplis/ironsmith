@@ -44,7 +44,7 @@ fn complete_candidate_sources_require_current_envelopes_on_every_materialization
         (include_str!("../../../fixtures/residual_static_condition_cohort.json.fixture"),
             &["Deepway Navigator", "Essence Leak", "The Ur-Dragon"]),
     ];
-    assert_eq!(FORMAT_VERSION, 14);
+    assert_eq!(FORMAT_VERSION, 15);
     for &(fixture, names) in cohorts {
         for &name in names {
             let text = source(fixture, name);
@@ -55,7 +55,7 @@ fn complete_candidate_sources_require_current_envelopes_on_every_materialization
             let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, &text, false));
             let (artifact, _) = result.unwrap_or_else(|error| panic!("artifact {name}: {error}"));
             assert!(!loss.is_lossy(), "artifact {name}: {}", loss.reasons_text());
-            assert_eq!(artifact.format_version, 14);
+            assert_eq!(artifact.format_version, 15);
             assert_eq!(artifact.engine_schema_hash, ENGINE_SCHEMA_HASH);
             artifact.validate().unwrap();
             let bytes = artifact.to_json().unwrap();
@@ -73,7 +73,7 @@ fn complete_candidate_sources_require_current_envelopes_on_every_materialization
                 old.format_version = version;
                 old.refresh_checksum();
                 assert!(matches!(old.validate(), Err(ArtifactValidationError::UnsupportedFormat {
-                    found, expected: 14,
+                    found, expected: 15,
                 }) if found == version));
                 assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
                 assert!(materialize_artifact(&old).is_err());

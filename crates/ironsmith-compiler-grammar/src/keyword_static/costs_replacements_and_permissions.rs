@@ -2230,13 +2230,15 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         // The authored family wins over recipient types. A land or land/creature
         // union may receive the chosen creature type without choosing a land type.
         let explicit_creature_type = fact.descriptor_tokens.iter().any(|token| token.is_word("creature"));
-        for card_type in &filter.card_types {
-            if !explicit_creature_type && *card_type == CardType::Land {
-                return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
-                    filter,
-                    render_token_slice(tokens),
-                )]));
-            }
+        fn includes_land(filter: &ObjectFilter) -> bool {
+            filter.card_types.contains(&CardType::Land)
+                || filter.any_of.iter().any(includes_land)
+        }
+        if !explicit_creature_type && includes_land(&filter) {
+            return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
+                filter,
+                render_token_slice(tokens),
+            )]));
         }
         return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
             filter,
@@ -2298,13 +2300,82 @@ pub fn complete_characteristic_subject(
     let tokens = if tokens.first().is_some_and(|token| token.is_any_word(&["all", "each"])) {
         &tokens[1..]
     } else { tokens };
-    let Some(mut filter) = crate::grammar::filters::parse_simple_object_filter_lexed(tokens, false) else {
+    let mut filter = if let Some(filter) =
+        crate::grammar::filters::parse_simple_object_filter_lexed(tokens, false)
+    {
+        filter
+    } else if let Some(filter) = complete_characteristic_extended_subject(tokens)? {
+        filter
+    } else {
         return Ok(None);
     };
-    if filter.zone.is_none() && !filter.has_explicit_card_noun() && filter.stack_kind.is_none() {
+    if filter.zone.is_none() && filter.any_of.is_empty()
+        && !filter.has_explicit_card_noun() && filter.stack_kind.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
     Ok(Some(filter))
+}
+
+/// Two compositional extensions of a complete simple nominal: a terminal
+/// nonbattlefield card domain, or independently scoped nominal set arms.
+/// A bare type list is still owned by the simple reader (not split into sets).
+fn complete_characteristic_extended_subject(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    for split in 1..tokens.len() {
+        let tail = parser_token_word_refs(&tokens[split..]);
+        if matches!(tail.as_slice(),
+            ["that", "aren't" | "arent" | "isn't" | "isnt", "on", "the", "battlefield"]
+            | ["that", "are" | "is", "not", "on", "the", "battlefield"])
+        {
+            if let Some(base) = crate::grammar::filters::parse_simple_object_filter_lexed(
+                &tokens[..split], false,
+            ) {
+                // The simple reader infers Battlefield from a permanent card
+                // type even with a card noun. That default is not an authored
+                // zone and must yield to the explicit nonbattlefield suffix.
+                let explicit_zone = tokens[..split].iter()
+                    .any(|token| token.is_any_word(&["in", "on", "from"]));
+                if base.has_explicit_card_noun() && !explicit_zone
+                    && matches!(base.zone, None | Some(Zone::Battlefield))
+                    && base.stack_kind.is_none() && base.any_of.is_empty()
+                {
+                    // Only this fully validated single nominal uses the existing
+                    // seven-zone expansion. No independently scoped arms are
+                    // reparsed through the broad union reader.
+                    return parse_object_filter_lexed(tokens, false).map(Some);
+                }
+            }
+            return Ok(None);
+        }
+        if !tokens[split].is_any_word(&["and", "or", "and/or"]) {
+            continue;
+        }
+        // Requiring a scoped complete left arm keeps an internal type list
+        // (e.g. artifact and enchantment creatures) out of this production.
+        let Some(left) = complete_characteristic_subject(&tokens[..split])? else {
+            continue;
+        };
+        if left.source || (left.controller.is_none() && left.owner.is_none()
+            && left.any_of.is_empty()) {
+            continue;
+        }
+        let Some(right) = complete_characteristic_subject(&tokens[split + 1..])? else {
+            continue;
+        };
+        if !right.source && (right.controller.is_some() || right.owner.is_some()
+            || !right.any_of.is_empty()) {
+            let mut union = ObjectFilter::default();
+            union.any_of = vec![left, right];
+            if tokens[split].is_word("and") {
+                union.set_conjunctive_set_surface(true);
+            } else if tokens[split].is_word("and/or") {
+                union.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+            }
+            return Ok(Some(union));
+        }
+    }
+    Ok(None)
 }
 
 /// Unconditional additive subtype assertions use the existing source-zone and
@@ -2698,7 +2769,15 @@ pub fn parse_static_base_power_toughness_value_tail(
 pub fn parse_conditional_copular_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if parse_filter_is_pt_creature_in_addition_line(tokens)?.is_some() {
+    // This is an ownership probe, never a committed parse: even a match is
+    // deferred to the established sized-addition owner below. Its speculative
+    // subject recovery must not taint a later, unrelated successful reading.
+    // Nested capture preserves the caller's diagnostics and error behavior;
+    // the eventual committed owner remains responsible for its own losses.
+    let (sized_addition, _) = crate::parse_loss::capture(|| {
+        parse_filter_is_pt_creature_in_addition_line(tokens)
+    });
+    if sized_addition?.is_some() {
         // The established complete sized-addition bundle owns its ordering,
         // condition representation and canonical rendering.
         return Ok(None);
@@ -8557,3 +8636,7 @@ mod static_color_subject_tests {
 #[cfg(test)]
 #[path = "copular_characteristic_tests.rs"]
 mod copular_characteristic_tests;
+
+#[cfg(test)]
+#[path = "copular_probe_loss_tests.rs"]
+mod copular_probe_loss_tests;

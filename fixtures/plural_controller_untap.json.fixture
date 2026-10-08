@@ -52,5 +52,21 @@
     "type_line": "Instant",
     "oracle_text": "Target creature gets -4/-0 until end of turn.\nDraw a card.\nAddendum — If you cast this spell during your main phase, tap that creature and it doesn't untap during its controller's next untap step.",
     "text": "Mana cost: {2}{U}\nType: Instant\nTarget creature gets -4/-0 until end of turn.\nDraw a card.\nAddendum — If you cast this spell during your main phase, tap that creature and it doesn't untap during its controller's next untap step."
+  },
+  {
+    "name": "Send to Sleep",
+    "oracle_id": "9e3fd1e9-7db6-40de-b1de-cd8cc9f60590",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Tap up to two target creatures.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, those creatures don't untap during their controllers' next untap steps.",
+    "text": "Mana cost: {1}{U}\nType: Instant\nTap up to two target creatures.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, those creatures don't untap during their controllers' next untap steps."
+  },
+  {
+    "name": "Icy Blast",
+    "oracle_id": "f49302c5-8510-4360-841c-a59f53f87e0b",
+    "mana_cost": "{X}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Tap X target creatures.\nFerocious — If you control a creature with power 4 or greater, those creatures don't untap during their controllers' next untap steps.",
+    "text": "Mana cost: {X}{U}\nType: Instant\nTap X target creatures.\nFerocious — If you control a creature with power 4 or greater, those creatures don't untap during their controllers' next untap steps."
   }
 ]

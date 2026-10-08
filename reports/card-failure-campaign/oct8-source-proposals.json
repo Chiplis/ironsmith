@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "measured_baseline_commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "measured_snapshot_sha256": "f7ab0ec3bd02283dcc0f723f1526fed3659f5a85ddb6d85e995fbbd0009314e1",
+  "repair_source_anchor": "a5a608328efe69e7dac045a3830f55fc01b7d579",
+  "status": "INDEPENDENTLY_SOURCE_REVIEWED_UNRUN",
+  "measurement_unchanged": {
+    "unique_compile_failures": 1824,
+    "unique_unresolved": 1925,
+    "original_measured_recoveries": 1445,
+    "original_measured_regressions": 137
+  },
+  "accounting": {
+    "newly_measured_recoveries": 0,
+    "original_frozen_failure_source_gate_delta": 0,
+    "historical_source_coverage_ledger": "UNCHANGED",
+    "source_reviewed_parse_regression_proposals": 6,
+    "diagnostic_candidates_without_whole_body_credit": 17,
+    "warning": "All six parse-regression IDs passed the original and Oct7 compile gate. They cannot increase original-failure source eligibility. The 17 diagnostic candidates are not admitted as whole-card source-complete and are not measured recoveries."
+  },
+  "parse_regression_proposals": [
+    {
+      "name": "Arcane Adaptation",
+      "oracle_id": "2188c03f-11b6-4651-914a-b4fdd59127e3",
+      "family": "chosen-type",
+      "independent_source_reviewed_author_head": "0e11a69886f93516d16b5204175ce2cd7d95df67",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Rukarumel, Biologist",
+      "oracle_id": "84391c32-5bb7-4c36-be50-bbb5f8732156",
+      "family": "chosen-type",
+      "independent_source_reviewed_author_head": "0e11a69886f93516d16b5204175ce2cd7d95df67",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Leyline of Transformation",
+      "oracle_id": "cfaa13d6-9992-4223-8bd7-c44046505555",
+      "family": "chosen-type",
+      "independent_source_reviewed_author_head": "0e11a69886f93516d16b5204175ce2cd7d95df67",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Send to Sleep",
+      "oracle_id": "9e3fd1e9-7db6-40de-b1de-cd8cc9f60590",
+      "family": "conditional-untap",
+      "independent_source_reviewed_author_head": "f476216129bfa193f2a5af1a7d8362a1df07d6e4",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Icy Blast",
+      "oracle_id": "f49302c5-8510-4360-841c-a59f53f87e0b",
+      "family": "conditional-untap",
+      "independent_source_reviewed_author_head": "f476216129bfa193f2a5af1a7d8362a1df07d6e4",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    },
+    {
+      "name": "Loathsome Troll",
+      "oracle_id": "d360ce89-d80d-4be6-be8c-7e7758cd5840",
+      "family": "activation-numeric-owner",
+      "independent_source_reviewed_author_head": "2e67a0c80e8b1c3d87b647ebc97fe4452cc0a835",
+      "baseline_status": "parse_failed",
+      "original_partition": "regressed",
+      "oct7_partition": "regressed",
+      "execution": "UNRUN"
+    }
+  ],
+  "diagnostic_ownership": {
+    "author_head": "39ad55d76d741a560d732de07536a11a74d5faa0",
+    "audited_strict_lossy_ids": 94,
+    "audit_families": 18,
+    "whole_card_source_credit": 0,
+    "opening_hand_candidates": [
+      {
+        "name": "Gemstone Caverns",
+        "oracle_id": "c0adbddc-b070-4c5f-afe0-0474c72a9251"
+      },
+      {
+        "name": "Leyline Axe",
+        "oracle_id": "4f597675-0f6d-438c-990c-337171927a5e"
+      },
+      {
+        "name": "Leyline of Abundance",
+        "oracle_id": "1197a595-3afc-4f18-b868-bbb096771922"
+      },
+      {
+        "name": "Leyline of Anticipation",
+        "oracle_id": "9dc65ffe-17fc-4280-b4bd-78073ac7e12b"
+      },
+      {
+        "name": "Leyline of Combustion",
+        "oracle_id": "49a5c149-5067-4840-8385-c2989d7e5a34"
+      },
+      {
+        "name": "Leyline of Hope",
+        "oracle_id": "c7ee79c3-a273-45b4-b3a4-548d9b2b883c"
+      },
+      {
+        "name": "Leyline of Lifeforce",
+        "oracle_id": "997478aa-b790-4269-a626-abf0cb30fea0"
+      },
+      {
+        "name": "Leyline of Lightning",
+        "oracle_id": "bb87ec08-bb1b-43d8-8809-92904cbba685"
+      },
+      {
+        "name": "Leyline of Punishment",
+        "oracle_id": "2608df54-dfbe-417d-aef5-49afbdfb03da"
+      },
+      {
+        "name": "Leyline of Resonance",
+        "oracle_id": "f69574dd-097f-4908-9cab-344b0eb39c62"
+      },
+      {
+        "name": "Leyline of Sanctity",
+        "oracle_id": "492e0e6c-8c27-4376-938b-f8a8b6205810"
+      },
+      {
+        "name": "Leyline of Singularity",
+        "oracle_id": "bc9f159b-984d-4b9f-8904-b38b5cb79636"
+      },
+      {
+        "name": "Leyline of Vitality",
+        "oracle_id": "cbf2b19e-32a3-489f-9979-ba2748c52845"
+      },
+      {
+        "name": "Leyline of the Guildpact",
+        "oracle_id": "6b2e6a51-b9e6-4848-b7d7-98f02f2b897f"
+      },
+      {
+        "name": "Leyline of the Meek",
+        "oracle_id": "971f7b30-0088-4e12-bc1a-262acc7f5f90"
+      },
+      {
+        "name": "Leyline of the Void",
+        "oracle_id": "f4e32fc1-1b8d-441e-8e76-71f19f98e925"
+      },
+      {
+        "name": "Quicksilver, Brash Blur",
+        "oracle_id": "b76ce131-e51a-445e-8216-00df5904ab93"
+      }
+    ],
+    "limits": "Scoped speculative-report ownership correction, not suppression of committed losses; no promise all 94 clear or that a clean parse means correct gameplay."
+  },
+  "holds": [
+    {
+      "name": "Sinister Concierge",
+      "oracle_id": "9b14c20f-c4ee-42ea-99cd-099b4eb25883",
+      "status": "HOLD strict rejection retained; full relative-clause, exile-receipt and owner-suspend semantics required"
+    }
+  ],
+  "validation": "No repair builds/tests/compiler probes/corpus/codegen. Baseline refresh outcomes remain immutable.",
+  "independent_reviews": {
+    "cumulative_repair_anchor": "38ccf931efd7a5ed9d20511c483747408fd41deb",
+    "combined_boundary_anchor": "a5a608328efe69e7dac045a3830f55fc01b7d579",
+    "reports": [
+      "oct8-cumulative-source-review.md",
+      "oct8-release-admission-independent-review.md"
+    ]
+  }
+}

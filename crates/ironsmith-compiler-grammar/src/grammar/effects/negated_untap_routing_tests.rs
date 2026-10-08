@@ -103,3 +103,34 @@ fn malformed_or_different_lifetimes_do_not_fall_through_to_affirmative_untap() {
     let characteristic = lex_line("Those creatures get +1/+1 during that player's next untap step.", 0).unwrap();
     assert!(parse_cant_effect_sentence(&characteristic).unwrap().is_none());
 }
+
+#[test]
+fn conditional_documents_keep_the_predicate_outside_the_untap_restriction() {
+    for predicate in [
+        "If you control a creature with power 4 or greater",
+        "If there are two or more instant and/or sorcery cards in your graveyard",
+    ] {
+        let text = format!("{predicate}, those creatures don't untap during their controllers' next untap steps.");
+        let tokens = lex_line(&text, 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let [EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+            if_true, if_false, ..
+        })] = effects.as_slice() else {
+            panic!("the document must retain its resolution-time condition: {effects:#?}");
+        };
+        assert!(if_false.is_empty());
+        assert_one_object_bound_untap(if_true);
+    }
+}
+
+#[test]
+fn conditional_restrictions_do_not_hide_invalid_predicates_or_durations() {
+    for text in [
+        "If the moon tastes blue, those creatures don't untap during their controllers' next untap steps.",
+        "If you control a creature with power 4 or greater, those creatures don't untap during their controllers' next two untap steps.",
+        "If you control a creature with power 4 or greater, those creatures don't untap during their controllers' next untap steps except on Tuesdays.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(crate::effect_sentences::parse_effect_sentences_lexed(&tokens).is_err(), "{text}");
+    }
+}

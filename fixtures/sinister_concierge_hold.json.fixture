@@ -1,0 +1,12 @@
+{
+  "card_name": "Sinister Concierge",
+  "oracle_id": "9b14c20f-c4ee-42ea-99cd-099b4eb25883",
+  "content_hash": "456f35c2c05e5f792826a766597ed5b023faa7371af917e2f099d4da3b95b8fe",
+  "raw_oracle_text": "When this creature dies, you may exile it and put three time counters on it. If you do, exile up to one target creature and put three time counters on it. Each card exiled this way that doesn't have suspend gains suspend. (For each card with suspend, its owner removes a time counter from it at the beginning of their upkeep. When the last is removed, they may cast it without paying its mana cost. Those creature spells have haste.)",
+  "normalized_oracle_text": "When this creature dies, you may exile it and put three time counters on it. If you do, exile up to one target creature and put three time counters on it. Each card exiled this way that doesn't have suspend gains suspend.",
+  "parse_error": "unsupported complete negated restriction clause (clause: 'each card exiled this way that doesnt have suspend gains suspend') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported complete negated restriction clause (clause: 'each card exiled this way that doesnt have suspend gains suspend') [rule-path=statement-line > triggered-line]",
+  "parse_status": "parse_failed",
+  "supported": false,
+  "baseline_commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "status": "HOLD; source-only; newly authored tests UNRUN"
+}

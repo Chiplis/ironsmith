@@ -1141,3 +1141,6 @@ fn two_local_rolls_under_one_program_parent_keep_two_distinct_staged_observation
         assert_eq!(committed, vec![(3, 5), (9, 8)]);
     }
 }
+
+#[path = "die_result_programs/numeric_owner.rs"]
+mod numeric_owner;
