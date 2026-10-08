@@ -3038,7 +3038,15 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     ) {
         return Some(PredicateAst::ThisSpellWasCastFromNonHand);
     }
-    let zone = spell_cast_origin_zone_clause(origin_clause)?;
+    // "If this spell was cast from your hand" (Apex of Power, Transpose):
+    // the spell's own owner-relative origin (CR 601.2a), read exactly as the
+    // pronoun spelling above.
+    let origin_words = origin_clause.word_refs();
+    let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
+        parse_zone_word(origin_words[1])?
+    } else {
+        spell_cast_origin_zone_clause(origin_clause)?
+    };
     Some(PredicateAst::ThisSpellWasCastFromZone(zone))
 }
 

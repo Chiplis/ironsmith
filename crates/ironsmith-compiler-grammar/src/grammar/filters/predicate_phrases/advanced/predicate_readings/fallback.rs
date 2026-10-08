@@ -23,6 +23,11 @@ fn read_words(words: &[&str]) -> Option<PredicateAst> {
             return Some(predicate);
         }
     }
+    // Negation scopes over the whole copula predicate ("it isn't A or B"),
+    // so it is read before the disjunction split below.
+    if let Some(predicate) = negated_copula(words) {
+        return Some(predicate);
+    }
     // "an oil counter was removed from a permanent you controlled this turn
     // or a permanent with an oil counter on it was put into a graveyard this
     // turn" (Churning Reservoir): two independent history queries.
@@ -53,6 +58,92 @@ fn read_side(words: &[&str]) -> Option<PredicateAst> {
     parse_predicate(&tokens).ok()
 }
 
+/// Negated copulas (and "doesn't have") and the positive verb each denies.
+const NEGATED_COPULAS: &[(&[&str], &str)] = &[
+    (&["isnt"], "is"),
+    (&["is", "not"], "is"),
+    (&["wasnt"], "was"),
+    (&["was", "not"], "was"),
+    (&["arent"], "are"),
+    (&["are", "not"], "are"),
+    (&["werent"], "were"),
+    (&["were", "not"], "were"),
+    (&["doesnt", "have"], "has"),
+    (&["does", "not", "have"], "has"),
+];
+
+/// Words that open a relative or prepositional qualifier: a subject holding
+/// one is a noun phrase whose negation may belong to the qualifier.
+const QUALIFIER_WORDS: &[&str] = &["that", "which", "who", "with", "without", "you", "of"];
+
+fn is_negation_or_copula(word: &str) -> bool {
+    NEGATED_COPULAS
+        .iter()
+        .any(|(negation, positive)| negation[0] == word || *positive == word)
+}
+
+/// Subject words a negated copula may follow: the pronoun "it", or a short
+/// demonstrative/definite/target/attachment reference ("this spell", "that
+/// creature", "the exiled card", "target player", "enchanted creature").
+fn negated_copula_subject_len(words: &[&str]) -> Option<usize> {
+    if words.first() == Some(&"it") {
+        return Some(1);
+    }
+    let ["this" | "that" | "the" | "target" | "enchanted" | "equipped", ..] = words else {
+        return None;
+    };
+    (2..=3).find(|len| {
+        words.len() > *len
+            && words[1..*len]
+                .iter()
+                .all(|word| !is_negation_or_copula(word) && !QUALIFIER_WORDS.contains(word))
+            && NEGATED_COPULAS
+                .iter()
+                .any(|(negation, _)| words[*len..].starts_with(negation))
+    })
+}
+
+/// "you're not the monarch" (Court of Vantress), "it wasn't kicked" (Sphinx
+/// of Lost Truths), "this spell wasn't cast from your hand" (Twinned Vision),
+/// "the exiled card doesn't have suspend" (Gandalf of the Secret Fire): a
+/// negated copula denies the positive predicate the shared grammar reads for
+/// the same subject and complement. Only a short simple subject is accepted,
+/// so the negation is the clause's main verb and never a qualifier inside a
+/// noun phrase ("a creature that isn't a Wolf").
+fn negated_copula(words: &[&str]) -> Option<PredicateAst> {
+    let positive: Vec<&str> = match words {
+        // Fused contractions keep their subject: "you're not", "they're not",
+        // "it's not".
+        [fused @ ("youre" | "theyre"), "not", rest @ ..] if !rest.is_empty() => {
+            std::iter::once(*fused).chain(rest.iter().copied()).collect()
+        }
+        ["its", "not", rest @ ..] if !rest.is_empty() => ["it", "is"]
+            .into_iter()
+            .chain(rest.iter().copied())
+            .collect(),
+        _ => {
+            let subject_len = negated_copula_subject_len(words)?;
+            let (subject, after) = words.split_at(subject_len);
+            let (negation, copula) = NEGATED_COPULAS
+                .iter()
+                .find(|(negation, _)| after.starts_with(negation))?;
+            let complement = &after[negation.len()..];
+            if complement.is_empty() {
+                return None;
+            }
+            subject
+                .iter()
+                .copied()
+                .chain(std::iter::once(*copula))
+                .chain(complement.iter().copied())
+                .collect()
+        }
+    };
+    let tokens = crate::lexer::synthetic_word_tokens(positive.iter().copied());
+    let predicate = parse_predicate(&tokens).ok()?;
+    Some(PredicateAst::Not(Box::new(predicate)))
+}
+
 type Shape = fn(&[&str]) -> Option<PredicateAst>;
 
 const SHAPES: &[Shape] = &[
@@ -75,6 +166,9 @@ const SHAPES: &[Shape] = &[
     controlled_source_continuously,
     exact_hand_sizes,
     permanent_types_among_graveyard,
+    graveyard_size_threshold,
+    mana_values_among_your_graveyard,
+    cards_exiled_with_source,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -579,4 +673,80 @@ fn permanent_types_among_graveyard(words: &[&str]) -> Option<PredicateAst> {
     .map(present)
     .reduce(|left, right| Value::Add(Box::new(left), Box::new(right)))?;
     Some(at_least(total, count))
+}
+
+/// "a graveyard has twenty or more cards in it" (Visions of Beyond, Jace, the
+/// Perfected Mind): some player's graveyard meets the size threshold.
+fn graveyard_size_threshold(words: &[&str]) -> Option<PredicateAst> {
+    let ["a", "graveyard", "has", minimum, "or", "more", "cards", "in", "it"] = words else {
+        return None;
+    };
+    let minimum = number(minimum)?;
+    Some(at_least(
+        Value::CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter::Any, minimum),
+        1,
+    ))
+}
+
+/// "there are five or more mana values among cards in your graveyard"
+/// (Sanguine Spy, Tainted Indulgence): distinct mana values (CR 202.3) of the
+/// cards you own in your graveyard.
+fn mana_values_among_your_graveyard(words: &[&str]) -> Option<PredicateAst> {
+    let [
+        "there",
+        "are",
+        count,
+        "or",
+        "more",
+        "mana",
+        "values",
+        "among",
+        "cards",
+        "in",
+        "your",
+        "graveyard",
+    ] = words
+    else {
+        return None;
+    };
+    let count = number(count)?;
+    let cards = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    Some(at_least(Value::DistinctManaValues(cards), count))
+}
+
+/// "there are four or more creature cards exiled with this artifact" (Negative
+/// Zone Portal, River Song's Diary, Profane Procession): cards in exile linked
+/// to the source by its own exile instructions (CR 607.2a).
+fn cards_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
+    let ["there", "are", count, "or", "more", rest @ ..] = words else {
+        return None;
+    };
+    let exiled = rest.windows(3).position(|window| window == ["exiled", "with", "this"])?;
+    let (descriptor, source) = (&rest[..exiled], &rest[exiled + 3..]);
+    match source {
+        [] => {}
+        [noun] if SOURCE_NOUNS.contains(noun) => {}
+        _ => return None,
+    }
+    let count = number(count)?;
+    let mut filter = match descriptor {
+        ["cards"] => ObjectFilter::default(),
+        [.., "cards"] => {
+            let mut filter = filter_from_words(descriptor)?;
+            if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
+                return None;
+            }
+            filter
+        }
+        _ => return None,
+    };
+    filter = filter
+        .match_tagged(
+            crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        )
+        .in_zone(Zone::Exile);
+    Some(at_least(Value::Count(filter), count))
 }
