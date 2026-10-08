@@ -63,4 +63,6 @@ pub enum SourcePredicateAst {
     /// "as long as this creature is monstrous"
     SourceIsMonstrous,
     SourceIsHarnessed,
+    /// "it has dealt damage" since it entered (negated by "hasn't ... yet").
+    SourceHasDealtDamageSinceEntered,
 }

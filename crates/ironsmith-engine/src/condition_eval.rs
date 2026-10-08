@@ -4903,6 +4903,12 @@ fn evaluate_condition_in_context(
             }
             Ok(game.is_monstrous(ctx.source))
         }
+        Condition::SourceHasDealtDamageSinceEntered => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.has_dealt_damage_since_entered(ctx.source))
+        }
         Condition::SourceIsFaceDown => {
             if ctx.is_cast_time() {
                 return Ok(false);

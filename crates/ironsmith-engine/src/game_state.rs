@@ -469,6 +469,9 @@ struct BattlefieldFlags {
     battle_protectors: HashMap<ObjectId, PlayerId>,
     /// Creatures that are monstrous (from monstrosity ability).
     monstrous: HashSet<ObjectId>,
+    /// Permanents that have dealt damage since they entered the battlefield
+    /// (Karakyk Guardian's "hasn't dealt damage yet").
+    dealt_damage_since_entered: HashSet<ObjectId>,
     /// Permanents that are suspected.
     suspected: HashSet<ObjectId>,
     /// Permanents that are prepared (CR: the Prepared designation).

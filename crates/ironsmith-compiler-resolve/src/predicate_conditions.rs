@@ -830,6 +830,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceIsAttacking) => Condition::SourceIsAttacking,
         PredicateAst::Source(SourcePredicateAst::SourceIsUntapped) => Condition::SourceIsUntapped,
         PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous) => Condition::SourceIsMonstrous,
+        PredicateAst::Source(SourcePredicateAst::SourceHasDealtDamageSinceEntered) => {
+            Condition::SourceHasDealtDamageSinceEntered
+        }
         PredicateAst::Source(SourcePredicateAst::SourceIsHarnessed) => Condition::SourceIsHarnessed,
         PredicateAst::EquippedCreatureAttacking => Condition::EquippedCreatureAttacking,
         PredicateAst::EquippedCreatureTapped => Condition::EquippedCreatureTapped,

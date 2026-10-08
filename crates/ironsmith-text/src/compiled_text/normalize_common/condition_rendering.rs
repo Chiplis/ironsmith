@@ -3855,6 +3855,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
+        Condition::SourceHasDealtDamageSinceEntered => "this permanent has dealt damage".to_string(),
         Condition::SourceIsHarnessed => "this permanent is harnessed".to_string(),
         Condition::SourceIsRenowned => "this creature is renowned".to_string(),
         Condition::EnchantedPermanentIsCreature => {

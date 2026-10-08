@@ -21,6 +21,9 @@ mod damage_history;
 #[path = "advanced/library_top.rs"]
 mod library_top;
 
+#[path = "advanced/source_damage_history.rs"]
+mod source_damage_history;
+
 #[path = "advanced/extrema.rs"]
 mod extrema;
 
@@ -5871,6 +5874,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         return Ok(predicate);
     }
     if let Some(predicate) = library_top::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = source_damage_history::parse(predicate_tokens) {
         return Ok(predicate);
     }
     if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {

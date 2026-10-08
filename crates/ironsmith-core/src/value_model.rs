@@ -2033,6 +2033,10 @@ pub enum Condition {
     },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
+    /// The source permanent has dealt damage since it last entered the
+    /// battlefield ("as long as it hasn't dealt damage yet", Karakyk
+    /// Guardian). A new object (CR 400.7) starts with no damage history.
+    SourceHasDealtDamageSinceEntered,
     SourceIsHarnessed,
     SourceIsRenowned,
     SourceIsFaceDown,
