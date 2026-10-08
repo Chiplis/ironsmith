@@ -4908,6 +4908,36 @@ pub struct RepeatProcessEffect<E> {
     pub effects: Vec<E>,
     pub condition: EffectId,
     pub predicate: EffectPredicate,
+    /// Choices whose earlier rounds the process accumulates ("repeat this
+    /// process except that opponent can't choose a card already chosen").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub choice_history: Vec<RepeatProcessChoiceHistory>,
+}
+
+/// One choice accumulated across the rounds of a repeated process.
+///
+/// Before each later round the process moves the objects tagged `chosen` by
+/// the round that just finished into `previously_chosen`, and clears
+/// `chosen`. A round's choice can then exclude `previously_chosen`, while
+/// `chosen` keeps naming only the latest round's choice ("the last chosen
+/// card").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct RepeatProcessChoiceHistory {
+    pub chosen: crate::tag::TagKey,
+    pub previously_chosen: crate::tag::TagKey,
+}
+
+impl RepeatProcessChoiceHistory {
+    pub fn new(
+        chosen: impl Into<crate::tag::TagKey>,
+        previously_chosen: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self {
+            chosen: chosen.into(),
+            previously_chosen: previously_chosen.into(),
+        }
+    }
 }
 
 /// "You may pay [cost] to end this effect." (Licids): offers the player a
@@ -4951,7 +4981,13 @@ impl<E> RepeatProcessEffect<E> {
             effects,
             condition,
             predicate,
+            choice_history: Vec::new(),
         }
+    }
+
+    pub fn with_choice_history(mut self, choice_history: Vec<RepeatProcessChoiceHistory>) -> Self {
+        self.choice_history = choice_history;
+        self
     }
 }
 

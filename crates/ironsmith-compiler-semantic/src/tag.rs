@@ -358,6 +358,8 @@ pub enum CompilerReferenceTag {
     ExiledByYou,
     /// The card on top of the source controller's library.
     TopOfYourLibrary,
+    /// Objects chosen in earlier rounds of the enclosing repeated process.
+    PriorProcessChoices,
     MillProbe,
     EachPlayerRevealedThisWay,
     EachGraveyardChosen,
@@ -517,6 +519,7 @@ impl CompilerReferenceTag {
             Self::ThoseCardsReference => "__those_cards__",
             Self::ExiledByYou => "__exiled_by_you__",
             Self::TopOfYourLibrary => ironsmith_core::tag::TOP_OF_YOUR_LIBRARY_TAG,
+            Self::PriorProcessChoices => ironsmith_core::tag::PRIOR_PROCESS_CHOICES_TAG,
             Self::MillProbe => "__mill_probe__",
             Self::EachPlayerRevealedThisWay => "__each_player_revealed_this_way",
             Self::EachGraveyardChosen => "__each_graveyard_chosen",

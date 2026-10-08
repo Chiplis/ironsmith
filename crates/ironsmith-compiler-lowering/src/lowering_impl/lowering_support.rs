@@ -2728,6 +2728,7 @@ fn source_sentence_boundary_continues_repeat_process(
         match effect {
             EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess
                 | ForEachEffectAst::RepeatThisProcessOnce
+                | ForEachEffectAst::RepeatThisProcessExcludingPriorChoices
                 | ForEachEffectAst::RepeatThisProcessAdditional { .. }
                 | ForEachEffectAst::RepeatThisProcessMay) => true,
             EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) =>

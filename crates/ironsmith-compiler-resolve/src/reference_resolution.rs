@@ -3562,6 +3562,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })
@@ -9419,7 +9420,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         ) => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
-        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => 0,
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices) => 0,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count }) =>
             bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {

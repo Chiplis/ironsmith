@@ -83,6 +83,9 @@ pub enum RepeatProcessShape {
     Once,
     May,
     Additional(Value),
+    /// "repeat this process except that <player> can't choose a card already
+    /// chosen for <this>".
+    ExcludingPriorChoices,
 }
 
 pub(super) fn trim_shape_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

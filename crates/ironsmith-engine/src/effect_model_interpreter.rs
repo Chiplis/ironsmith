@@ -1294,11 +1294,14 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RepeatProcessEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::RepeatProcessEffect::new(
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-            payload.condition,
-            payload.predicate.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::RepeatProcessEffect::new(
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+                payload.condition,
+                payload.predicate.clone(),
+            )
+            .with_choice_history(payload.choice_history.clone()),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<
         ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<M::Effect>,

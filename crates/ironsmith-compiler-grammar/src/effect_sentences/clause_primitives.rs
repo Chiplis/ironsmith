@@ -693,6 +693,9 @@ pub fn parse_repeat_this_process_clause(
             clause_shapes::RepeatProcessShape::Additional(count) => {
                 EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count })
             }
+            clause_shapes::RepeatProcessShape::ExcludingPriorChoices => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
+            }
         }),
     )
 }
