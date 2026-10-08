@@ -93,6 +93,7 @@ pub enum DamagePreventionActionAst {
         duration: Until,
         source_filter: ObjectFilter,
         source_would_deal_surface: bool,
+        of_chosen_color: bool,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,

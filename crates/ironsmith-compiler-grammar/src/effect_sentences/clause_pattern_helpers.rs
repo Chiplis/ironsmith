@@ -1285,31 +1285,24 @@ pub(crate) fn parse_prevention_target_phrase(
     parse_target_phrase(tokens)
 }
 
-/// "sources of the color of your choice" rides on the source filter's
-/// chosen color; lowering turns it into a color chosen as the shield resolves.
 fn filtered_prevention(
     target: TargetAst,
-    mut source_filter: ObjectFilter,
+    source_filter: ObjectFilter,
     of_chosen_color: bool,
-) -> Result<EffectAst, CardTextError> {
-    if of_chosen_color {
-        let live_recipient_set = match &target {
-            TargetAst::Player(PlayerFilter::You | PlayerFilter::Any, None)
-            | TargetAst::ObjectOrPlayer(_, PlayerFilter::You | PlayerFilter::Any, None) => true,
-            TargetAst::Object(filter, None, None) => filter.tagged_constraints.is_empty(),
-            _ => false,
-        };
-        if live_recipient_set {
-            return Err(CardTextError::ParseError(
-                "chosen-color prevention for a live recipient set requires a shared set decision"
-                    .into(),
-            ));
-        }
-        source_filter = source_filter.of_chosen_color();
-    }
-    Ok(EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+) -> EffectAst {
+    let mut effect = EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
         target, source_filter, Until::EndOfTurn,
-    ))
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                of_chosen_color: chosen, ..
+            },
+        ) = &mut subject.action
+    {
+        *chosen = of_chosen_color;
+    }
+    effect
 }
 
 /// "sources", "red sources", "black sources and red sources", "sources of
@@ -1482,10 +1475,7 @@ pub fn parse_prevent_all_damage_clause(
                 )),
                 Some(target_tokens) => {
                     let target = parse_prevention_target_phrase(target_tokens)?;
-                    Ok(Some(
-                        filtered_prevention(target, source_filter, of_chosen_color)?
-                            .with_prevention_source_would_deal_surface(),
-                    ))
+                    Ok(Some(filtered_prevention(target, source_filter, of_chosen_color).with_prevention_source_would_deal_surface()))
                 }
             }
         }
@@ -1553,7 +1543,7 @@ pub fn parse_prevent_all_damage_clause(
                     }
                     let (source_filter, of_chosen_color) =
                         parse_damage_sources_filter(source_tokens)?;
-                    Ok(Some(filtered_prevention(target, source_filter, of_chosen_color)?))
+                    Ok(Some(filtered_prevention(target, source_filter, of_chosen_color)))
                 }
             }
         }

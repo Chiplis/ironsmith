@@ -14,10 +14,10 @@ fn chosen_color_keeps_the_declared_recipient_and_fixed_source_qualities() {
         let EffectAst::SubjectVerb(subject) = ast else { panic!("typed subject") };
         let SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
-                target, duration, source_filter, ..
+                target, duration, of_chosen_color, ..
             },
         ) = subject.action else { panic!("filtered target shield") };
-        assert!(source_filter.chosen_color);
+        assert!(of_chosen_color);
         assert_eq!(duration, Until::EndOfTurn);
         assert!(!matches!(target, TargetAst::Source(_)));
     }
