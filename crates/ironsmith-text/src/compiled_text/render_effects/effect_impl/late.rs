@@ -1049,7 +1049,17 @@
         return append_copy_cleanup(text);
     }
     if let Some(earthbend) = effect.downcast_ref::<crate::effects::EarthbendEffect>() {
-        return format!("Earthbend {}", earthbend.counters);
+        let (amount, where_x) = if value_prefers_where_x(&earthbend.counters) {
+            (
+                "X".to_string(),
+                describe_where_x_basis(&earthbend.counters)
+                    .map(|basis| format!(", where X is {basis}"))
+                    .unwrap_or_default(),
+            )
+        } else {
+            (describe_value(&earthbend.counters), String::new())
+        };
+        return format!("Earthbend {amount}{where_x}");
     }
     if let Some(explore) = effect.downcast_ref::<crate::effects::ExploreEffect>() {
         if let Some(surface) = explore.target.source_reference_surface() {

@@ -11,6 +11,11 @@ pub fn parse_earthbend_sentence(
         return Ok(None);
     }
 
+    // "earthbend X" takes its amount from a following where-X binding or
+    // the ability's announced X; the sentence reader binds it.
+    if crate::lexer::token_slice_at_is(tokens, 1, "x") {
+        return Ok(Some(EffectAst::subject_verb_earthbend(crate::effect::Value::X)));
+    }
     let count = parse_number(tokens.get(1..).unwrap_or_default())
         .map(|(value, _)| value)
         .or_else(|| words.get(1).and_then(|word| parse_number_word_u32(word)))

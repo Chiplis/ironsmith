@@ -4682,7 +4682,9 @@ impl ClashEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct EarthbendEffect {
     pub target: ChooseSpec,
-    pub counters: u32,
+    /// Number of +1/+1 counters. Dynamic amounts ("earthbend X, where X is
+    /// ...") are computed once as the instruction resolves (CR 107.3a).
+    pub counters: Value,
     /// Awaken's land animation (CR 702.113a): the land also becomes an
     /// Elemental, and neither earthbend's return trigger nor its keyword
     /// action applies.
@@ -4691,20 +4693,20 @@ pub struct EarthbendEffect {
 }
 
 impl EarthbendEffect {
-    pub fn new(target: ChooseSpec, counters: u32) -> Self {
+    pub fn new(target: ChooseSpec, counters: impl Into<Value>) -> Self {
         Self {
             target,
-            counters,
+            counters: counters.into(),
             awaken: false,
         }
     }
 
     /// Awaken N: put N +1/+1 counters on target land you control, which
     /// becomes a 0/0 Elemental creature with haste (CR 702.113a).
-    pub fn awaken(target: ChooseSpec, counters: u32) -> Self {
+    pub fn awaken(target: ChooseSpec, counters: impl Into<Value>) -> Self {
         Self {
             target,
-            counters,
+            counters: counters.into(),
             awaken: true,
         }
     }

@@ -31,7 +31,8 @@ pub fn card_text(row: &serde_json::Value) -> String {
 /// Compile the complete frozen body strictly on the direct route and through
 /// the serialized artifact, failing on any recorded parse loss.
 pub fn definitions(row: &serde_json::Value) -> [CardDefinition; 2] {
-    let name = row["name"].as_str().unwrap();
+    // A transforming card's frozen body is its front face.
+    let name = row["name"].as_str().unwrap().split(" // ").next().unwrap();
     let text = card_text(row);
     let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| {
         compile_to_runtime_definition(name, &text, false)

@@ -532,6 +532,9 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
+                counters: amount,
+            })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
                 count: amount,
                 ..
@@ -705,7 +708,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })

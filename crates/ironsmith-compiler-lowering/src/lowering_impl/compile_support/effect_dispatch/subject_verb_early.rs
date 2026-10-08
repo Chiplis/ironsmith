@@ -1110,11 +1110,14 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters }) => {
+            // "earthbend X, where X is that creature's power" binds the
+            // trigger's object reference exactly as other keyword amounts do.
+            let counters = resolve_value_it_tag(counters, &current_reference_env(ctx))?;
             let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
             let effect = tag_object_target_effect(
                 Effect::new(crate::effects::EarthbendEffect::new(
                     spec.clone(),
-                    *counters,
+                    counters,
                 )),
                 &spec,
                 ctx,
