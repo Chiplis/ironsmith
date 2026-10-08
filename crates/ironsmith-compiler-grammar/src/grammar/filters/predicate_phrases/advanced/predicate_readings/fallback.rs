@@ -225,6 +225,7 @@ const SHAPES: &[Shape] = &[
     you_played_land_this_turn,
     you_activated_loyalty_ability_this_turn,
     you_gained_and_lost_life_this_turn,
+    you_controlled_referenced_object,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -919,4 +920,22 @@ fn definite_referent_had(words: &[&str]) -> Option<PredicateAst> {
         .chain(rest.iter().copied())
         .collect();
     parse_predicate(&crate::lexer::synthetic_word_tokens(rewritten)).ok()
+}
+
+/// "If you controlled it" (Hotshot Investigators, Unyielding Gatekeeper), "If
+/// you controlled that artifact" (Gleeful Demolition): the referenced object's
+/// last-known controller (CR 608.2h) was you.
+fn you_controlled_referenced_object(words: &[&str]) -> Option<PredicateAst> {
+    match words {
+        ["you", "controlled", "it"]
+        | [
+            "you",
+            "controlled",
+            "that",
+            "artifact" | "creature" | "permanent" | "enchantment" | "land" | "planeswalker",
+        ] => Some(PredicateAst::ItMatchedLastKnown(
+            ObjectFilter::default().controlled_by(PlayerFilter::You),
+        )),
+        _ => None,
+    }
 }
