@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Mwonvuli Beast Tracker",
+    "oracle_id": "b6265654-84c3-469b-9afa-f752fd64abe0",
+    "text": "Mana cost: {1}{G}{G}\nType: Creature — Human Scout\nPower/Toughness: 2/1\nWhen this creature enters, search your library for a creature card with deathtouch, hexproof, reach, or trample and reveal it. Shuffle and put that card on top."
+  }
+]
