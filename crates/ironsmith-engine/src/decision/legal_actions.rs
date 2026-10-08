@@ -499,6 +499,12 @@ fn append_granted_play_from_actions_for_card(
             });
         }
         for (offset, alternative) in face_alternatives.iter().enumerate() {
+            // Free exile prices have one face-local owner below, including
+            // when an independent ordinary PlayFrom permission also exists.
+            if matches!(&alternative.method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
+                zone: Zone::Exile, total_cost, .. } if total_cost.costs().is_empty()) {
+                continue;
+            }
             if !grant_usage_limit_allows(
                 game,
                 player,
@@ -635,7 +641,14 @@ fn append_zone_granted_alternative_cast_actions_for_card(
             _ => continue,
         };
 
-        if !can_cast_with_cost_with_view_for_casting_method(
+        // The zero-component exile price intentionally has no mana component.
+        // The complete cast calculation supplies an empty base, then adds
+        // mandatory mana costs and cost increases instead of skipping them.
+        let can_cast = if matches!(method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
+            zone: Zone::Exile, total_cost, .. } if total_cost.costs().is_empty()) {
+            can_cast_spell_with_view(game, player, card, &casting_method, view)
+        } else {
+            can_cast_with_cost_with_view_for_casting_method(
             game,
             player,
             card,
@@ -645,7 +658,9 @@ fn append_zone_granted_alternative_cast_actions_for_card(
             &requirements,
             &casting_method,
             view,
-        ) {
+            )
+        };
+        if !can_cast {
             continue;
         }
         if !can_pay_non_mana_cost_sequence_for_cast(game, player, card_id, method.non_mana_costs())
@@ -659,6 +674,65 @@ fn append_zone_granted_alternative_cast_actions_for_card(
             casting_method,
         });
     }
+}
+
+/// A free exile permission authorizes each eligible spell face directly;
+/// it need not (and must not) also grant an ordinary-price PlayFrom route.
+fn append_exile_granted_other_face_alternative_cast_actions_for_card(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+    view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let Some(face) = spell_view_for_split_other_half_cast(game, card) else {
+        return Ok(());
+    };
+    // Preserve discovery failures for the selected face before publishing any
+    // actions, including filters which perform object-ID characteristic reads.
+    let face_game = crate::grant_registry::proposed_card_face_query(game, &face)?;
+    let face_view = DerivedGameView::new(&face_game);
+    let face_card = face_game.object(card_id)
+        .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+    let grants = face_view.granted_alternative_casts_for_card(card_id, Zone::Exile, player);
+    let base_alt_idx = card.alternative_casts.len()
+        + view.granted_alternative_casts_for_card(card_id, Zone::Exile, player).len();
+    for (offset, grant) in grants.into_iter().enumerate() {
+        if !matches!(&grant.method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
+            zone: Zone::Exile, total_cost, .. } if total_cost.costs().is_empty())
+            || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
+        {
+            continue;
+        }
+        let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
+            source: grant.source_id,
+            zone: Zone::Exile,
+            use_alternative: Some(base_alt_idx + offset),
+        };
+        // Validation runs on the already selected face, so use its local
+        // alternative index. The published action retains the original
+        // card's combined front/other-face index expected by announcement.
+        let face_method = CastingMethod::PlayFrom {
+            source: grant.source_id,
+            zone: Zone::Exile,
+            use_alternative: Some(face_card.alternative_casts.len() + offset),
+        };
+        if !can_cast_spell_with_view(&face_game, player, face_card, &face_method, &face_view)
+            || !can_pay_non_mana_cost_sequence_for_cast(&face_game, player, face_card.id, grant.method.non_mana_costs())
+        {
+            continue;
+        }
+        let action = LegalAction::CastSpell {
+            spell_id: card_id,
+            from_zone: Zone::Exile,
+            casting_method,
+        };
+        if !actions.contains(&action) {
+            actions.push(action);
+        }
+    }
+    Ok(())
 }
 
 fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
@@ -830,6 +904,11 @@ fn append_cast_actions_from_zone_for_card(
         append_granted_play_from_actions_for_card(
             game, actions, player, card_id, card, from_zone, view,
         )?;
+        if from_zone == Zone::Exile {
+            append_exile_granted_other_face_alternative_cast_actions_for_card(
+                game, actions, player, card_id, card, view,
+            )?;
+        }
     }
     Ok(())
 }

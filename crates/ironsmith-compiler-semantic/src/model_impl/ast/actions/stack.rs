@@ -77,6 +77,9 @@ pub enum StackActionAst {
     },
     Counter {
         target: TargetAst,
+        /// Counter destination and its durable, exact-exile-object free price
+        /// have one owner; neither is a separately rebound tagged follow-up.
+        exile_permission: Option<ironsmith_core::CounterExilePermission>,
     },
     CounterUnlessPays {
         target: TargetAst,

@@ -2575,3 +2575,49 @@ fn catalog_manifest_dread_preserves_old_artifacts_and_the_named_player() {
     let decoded: ManifestDreadEffect = serde_json::from_str(&json).unwrap();
     assert_eq!(decoded.player, effect.player);
 }
+
+#[test]
+fn conditional_untap_bodies_reach_strict_baker_without_parse_loss() {
+    // Source-authored, unrun regression evidence; this is not a validated
+    // corpus snapshot and must not promote source or catalogue admission.
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/plural_controller_untap.json.fixture"
+    )).unwrap();
+    for id in ["9e3fd1e9-7db6-40de-b1de-cd8cc9f60590", "f49302c5-8510-4360-841c-a59f53f87e0b"] {
+        let row=rows.iter().find(|row|row["oracle_id"]==id).unwrap();
+        let name=row["name"].as_str().unwrap();
+        let (result,loss)=ironsmith_compiler::parse_loss::capture(|| compile_artifact(CompileInput {
+            name, text:row["text"].as_str().unwrap(), score:None, local_id:1,
+            other_face_id:None,other_face_name:None,layout:LinkedFaceLayout::None,transforming_dfc:false,
+        }));
+        let artifact=result.unwrap_or_else(|error|panic!("{name} ({id}): {error}"));
+        assert!(!loss.is_lossy(),"{name}: {}",loss.reasons_text());
+        artifact.validate().unwrap();
+        assert!(artifact.semantic_score.is_none(),"unmeasured bodies must not acquire a score");
+        let definition=engine::artifact_materializer::materialize_artifact(&artifact).unwrap();
+        assert!(!engine::cards::generated_definition_has_unimplemented_content(&definition));
+    }
+}
+
+#[test]
+fn temporary_additional_land_caps_reach_strict_baker_without_parse_loss() {
+    // Authored gate only. Does not promote either ID or alter catalogue admission.
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/temporary_additional_land_caps.json.fixture"
+    )).unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        let name = row["name"].as_str().unwrap();
+        let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_artifact(CompileInput {
+            name, text: row["text"].as_str().unwrap(), score: None, local_id: 1,
+            other_face_id: None, other_face_name: None,
+            layout: LinkedFaceLayout::None, transforming_dfc: false,
+        }));
+        let artifact = result.unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+        artifact.validate().unwrap();
+        assert!(artifact.semantic_score.is_none());
+        let definition = engine::artifact_materializer::materialize_artifact(&artifact).unwrap();
+        assert!(!engine::cards::generated_definition_has_unimplemented_content(&definition));
+    }
+}

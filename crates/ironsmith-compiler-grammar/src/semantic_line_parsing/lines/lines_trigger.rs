@@ -391,7 +391,8 @@ pub(super) fn hoist_delayed_copy_retargeting_in_line(parsed: &mut LineAst) {
 /// so expose one exact predicate for the CST layer to claim them before those
 /// probes run.
 pub fn is_exact_correlated_trigger_effect_bundle(effect_parse_tokens: &[OwnedLexToken]) -> bool {
-    exact_dynamic_exile_permission_bundle(effect_parse_tokens).is_some()
+    crate::effect_sentences::counter_exile_permission::is_candidate(effect_parse_tokens)
+        || exact_dynamic_exile_permission_bundle(effect_parse_tokens).is_some()
         || exact_atomic_return_as_aura_bundle(effect_parse_tokens).is_some()
         || exact_looked_hand_optional_cast_bundle(effect_parse_tokens).is_some()
 }
@@ -947,13 +948,24 @@ pub(super) fn parse_triggered_ability_line_impl(
     let authored_tail = semantic_grammar::parse_comma_split_tokens(authored_raw_tokens)
         .or_else(|| semantic_grammar::parse_comma_split_tokens(source_text_tokens))
         .map(|split| split.after);
+    let counter_exile_effects = match crate::effect_sentences::counter_exile_permission::parse(effect_parse_tokens) {
+        Ok(Some(effects)) => Some(effects),
+        prepared => match authored_tail {
+            Some(tokens) => match crate::effect_sentences::counter_exile_permission::parse(tokens)? {
+                Some(effects) => Some(effects),
+                None => prepared?,
+            },
+            None => prepared?,
+        },
+    };
     let authored_correlated_effects = authored_tail
         .as_ref()
         .and_then(|tokens| exact_dynamic_exile_permission_bundle(tokens));
     let authored_looked_hand_cast = authored_tail
         .as_ref()
         .and_then(|tokens| exact_looked_hand_optional_cast_bundle(tokens));
-    if let Some(effects) = exact_dynamic_exile_permission_bundle(effect_parse_tokens)
+    if let Some(effects) = counter_exile_effects
+        .or_else(|| exact_dynamic_exile_permission_bundle(effect_parse_tokens))
         .or(authored_correlated_effects)
         .or_else(|| exact_atomic_return_as_aura_bundle(effect_parse_tokens))
         .or_else(|| {

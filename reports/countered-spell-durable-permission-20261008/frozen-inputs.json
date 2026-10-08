@@ -1,0 +1,558 @@
+{
+  "status": "HOLD",
+  "source_review_base": "d65bd6564569a38132ae107cbe209af81c87f4f6",
+  "retained_diagnostic_source": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "validation": "UNRUN; source inspection and retained JSON extraction only",
+  "measured_recoveries": 0,
+  "metadata_provenance": {
+    "download_uri": "https://data.scryfall.io/default-cards/default-cards-20261008090544.jsonl.gz",
+    "filtered_cards_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+    "id": "e2ef41e3-5778-4bc2-af3f-78eca4dd9c23",
+    "kept_cards": 32209,
+    "name": "Default Cards",
+    "schemaVersion": 1,
+    "total_entries": 118601,
+    "type": "default_cards",
+    "updated_at": "2026-10-08T09:05:44.946+00:00",
+    "uri": "https://api.scryfall.com/bulk-data/e2ef41e3-5778-4bc2-af3f-78eca4dd9c23"
+  },
+  "retained_results": [
+    {
+      "cohort": "P3_counter_exile_durable_free_cast",
+      "card_name": "Spelljack",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "6c48adbf0010b8597590ff91c14d433bdacb2c4b8099a32dba1461ca287a2112",
+      "diagnostic_signature": "parser_failure: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "has_unimplemented": 0,
+      "is_reversible_alias": false,
+      "layout": "normal",
+      "line_delta": 0,
+      "normalized_oracle_text": "Counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may play it without paying its mana cost for as long as it remains exiled.",
+      "oracle_coverage": 0.0,
+      "oracle_id": "7687b2a7-816d-4416-979b-675e35e235fc",
+      "oracle_text": "Counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may play it without paying its mana cost for as long as it remains exiled.",
+      "parse_error": "could not find verb in effect clause (clause: 'play it without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'play it without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: could not find verb in effect clause (clause: 'play it without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may play it without paying its mana cost for as long as it remains exiled. (If it has X in its mana cost, X is 0.)",
+      "route_diagnostics": [
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'play it without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'play it without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    {
+      "cohort": "P3_counter_exile_durable_free_cast",
+      "card_name": "Thranduil's Decree",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "a69048c015a5aeb88cbbd6b633289fb6e82b406088d909bcb6e619bfb1c7af28",
+      "diagnostic_signature": "parser_failure: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "has_unimplemented": 0,
+      "is_reversible_alias": false,
+      "layout": "normal",
+      "line_delta": 0,
+      "normalized_oracle_text": "Counter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "oracle_coverage": 0.0,
+      "oracle_id": "d7cba934-02ad-4677-bb4d-50808b01b4f9",
+      "oracle_text": "Counter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "parse_error": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Counter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    {
+      "cohort": "P3_counter_exile_durable_free_cast",
+      "card_name": "Kheru Spellsnatcher",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "5ab7f7457aa9dd51cfc68554e58c3b504537f94871336317294eeaee35d4e594",
+      "diagnostic_signature": "parser_failure: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: could not find verb in effect clause (clause: <text>; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "has_unimplemented": 0,
+      "is_reversible_alias": false,
+      "layout": "normal",
+      "line_delta": 0,
+      "normalized_oracle_text": "Morph {4}{U}{U}\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "oracle_coverage": 0.0,
+      "oracle_id": "c01411e0-77b2-4e65-a369-5dbe13745769",
+      "oracle_text": "Morph {4}{U}{U}\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "parse_error": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]",
+      "parse_loss_count": 449,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]\nsuffix_object_filter_recovery: parsed 'that card without paying' as suffix of 'cast that card without paying'",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Morph {4}{U}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "could not find verb in effect clause (clause: 'cast that card without paying its mana cost for as long as it remains exiled'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > triggered-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  ],
+  "actual_card_metadata": [
+    {
+      "object": "card",
+      "id": "610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8",
+      "oracle_id": "c01411e0-77b2-4e65-a369-5dbe13745769",
+      "multiverse_ids": [
+        675992
+      ],
+      "mtgo_id": 130861,
+      "tcgplayer_id": 577799,
+      "cardmarket_id": 788663,
+      "name": "Kheru Spellsnatcher",
+      "lang": "en",
+      "released_at": "2024-09-27",
+      "uri": "https://api.scryfall.com/cards/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8",
+      "scryfall_uri": "https://scryfall.com/card/dsc/119/kheru-spellsnatcher?utm_source=api",
+      "layout": "normal",
+      "highres_image": true,
+      "image_status": "highres_scan",
+      "image_updated_at": "2026-07-13T02:27:06Z",
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.jpg?1783909626",
+        "normal": "https://cards.scryfall.io/normal/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.jpg?1783909626",
+        "large": "https://cards.scryfall.io/large/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.jpg?1783909626",
+        "png": "https://cards.scryfall.io/png/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.png?1783909626",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.jpg?1783909626",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.jpg?1783909626",
+        "thumb": "https://cards.scryfall.io/thumb/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.webp?1783909626",
+        "grid": "https://cards.scryfall.io/grid/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.webp?1783909626",
+        "display": "https://cards.scryfall.io/display/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.webp?1783909626",
+        "art": "https://cards.scryfall.io/art/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.webp?1783909626",
+        "crop": "https://cards.scryfall.io/crop/front/6/1/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8.webp?1783909626"
+      },
+      "mana_cost": "{3}{U}",
+      "cmc": 4.0,
+      "type_line": "Creature — Snake Wizard",
+      "oracle_text": "Morph {4}{U}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "U"
+      ],
+      "color_identity": [
+        "U"
+      ],
+      "keywords": [
+        "Morph"
+      ],
+      "all_parts": [
+        {
+          "object": "related_card",
+          "id": "e9375cbe-93c0-41a5-a6e3-fb4416f54a69",
+          "component": "combo_piece",
+          "name": "Morph",
+          "type_line": "Creature",
+          "uri": "https://api.scryfall.com/cards/e9375cbe-93c0-41a5-a6e3-fb4416f54a69"
+        },
+        {
+          "object": "related_card",
+          "id": "610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8",
+          "component": "combo_piece",
+          "name": "Kheru Spellsnatcher",
+          "type_line": "Creature — Snake Wizard",
+          "uri": "https://api.scryfall.com/cards/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8"
+        }
+      ],
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "legal",
+        "modern": "legal",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "not_legal",
+        "tlr": "not_legal"
+      },
+      "games": [
+        "paper",
+        "mtgo"
+      ],
+      "reserved": false,
+      "game_changer": false,
+      "foil": false,
+      "nonfoil": true,
+      "finishes": [
+        "nonfoil"
+      ],
+      "oversized": false,
+      "promo": false,
+      "reprint": true,
+      "variation": false,
+      "set_id": "4c822528-83c3-42c7-8708-dd1d37166819",
+      "set": "dsc",
+      "set_name": "Duskmourn: House of Horror Commander",
+      "set_type": "commander",
+      "set_uri": "https://api.scryfall.com/sets/4c822528-83c3-42c7-8708-dd1d37166819",
+      "set_search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Adsc&unique=prints",
+      "scryfall_set_uri": "https://scryfall.com/sets/dsc?utm_source=api",
+      "rulings_uri": "https://api.scryfall.com/cards/610f4f2b-e5ed-463b-9d9b-0f7b3f3e99c8/rulings",
+      "prints_search_uri": "https://api.scryfall.com/cards/search?order=released&q=oracleid%3Ac01411e0-77b2-4e65-a369-5dbe13745769&unique=prints",
+      "collector_number": "119",
+      "digital": false,
+      "rarity": "rare",
+      "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
+      "artist": "Clint Cearley",
+      "artist_ids": [
+        "03b75350-d5a0-4e3a-b3b4-8d4a5554385b"
+      ],
+      "illustration_id": "7922875f-c6d5-43e7-8e3a-daf3c20031d0",
+      "border_color": "black",
+      "frame": "2015",
+      "security_stamp": "oval",
+      "full_art": false,
+      "textless": false,
+      "booster": false,
+      "story_spotlight": false,
+      "edhrec_rank": 7920,
+      "penny_rank": 10598,
+      "prices": {
+        "usd": "0.26",
+        "usd_foil": null,
+        "usd_etched": null,
+        "eur": "0.16",
+        "eur_foil": null,
+        "tix": "0.02"
+      },
+      "related_uris": {
+        "gatherer": "https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid=675992&printed=false",
+        "tcgplayer_infinite_articles": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Farticles&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Farticles%3FproductLineName%3Dmagic%26q%3DKheru%2BSpellsnatcher",
+        "tcgplayer_infinite_decks": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Fdecks&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Fdecks%3FproductLineName%3Dmagic%26q%3DKheru%2BSpellsnatcher",
+        "edhrec": "https://edhrec.com/route/?cc=Kheru+Spellsnatcher"
+      },
+      "purchase_uris": {
+        "tcgplayer": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&u=https%3A%2F%2Fwww.tcgplayer.com%2Fproduct%2F577799%3Fpage%3D1",
+        "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=788663&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
+        "cardhoarder": "https://www.cardhoarder.com/cards/130861?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
+      },
+      "first_printed_set_name": "Khans of Tarkir"
+    },
+    {
+      "object": "card",
+      "id": "3eda8c7b-ce35-482a-bece-52a30cc78a9a",
+      "oracle_id": "7687b2a7-816d-4416-979b-675e35e235fc",
+      "multiverse_ids": [
+        35169
+      ],
+      "mtgo_id": 17476,
+      "mtgo_foil_id": 17477,
+      "tcgplayer_id": 10211,
+      "cardmarket_id": 2177,
+      "name": "Spelljack",
+      "lang": "en",
+      "released_at": "2002-05-27",
+      "uri": "https://api.scryfall.com/cards/3eda8c7b-ce35-482a-bece-52a30cc78a9a",
+      "scryfall_uri": "https://scryfall.com/card/jud/51/spelljack?utm_source=api",
+      "layout": "normal",
+      "highres_image": true,
+      "image_status": "highres_scan",
+      "image_updated_at": "2026-07-13T12:18:46Z",
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.jpg?1783945126",
+        "normal": "https://cards.scryfall.io/normal/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.jpg?1783945126",
+        "large": "https://cards.scryfall.io/large/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.jpg?1783945126",
+        "png": "https://cards.scryfall.io/png/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.png?1783945126",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.jpg?1783945126",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.jpg?1783945126",
+        "thumb": "https://cards.scryfall.io/thumb/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.webp?1783945126",
+        "grid": "https://cards.scryfall.io/grid/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.webp?1783945126",
+        "display": "https://cards.scryfall.io/display/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.webp?1783945126",
+        "art": "https://cards.scryfall.io/art/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.webp?1783945126",
+        "crop": "https://cards.scryfall.io/crop/front/3/e/3eda8c7b-ce35-482a-bece-52a30cc78a9a.webp?1783945126"
+      },
+      "mana_cost": "{3}{U}{U}{U}",
+      "cmc": 6.0,
+      "type_line": "Instant",
+      "oracle_text": "Counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may play it without paying its mana cost for as long as it remains exiled. (If it has X in its mana cost, X is 0.)",
+      "colors": [
+        "U"
+      ],
+      "color_identity": [
+        "U"
+      ],
+      "keywords": [],
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "not_legal",
+        "timeless": "not_legal",
+        "gladiator": "not_legal",
+        "pioneer": "not_legal",
+        "modern": "not_legal",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "not_legal",
+        "competitivebrawl": "not_legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "legal",
+        "predh": "legal",
+        "tlr": "not_legal"
+      },
+      "games": [
+        "paper",
+        "mtgo"
+      ],
+      "reserved": false,
+      "game_changer": false,
+      "foil": true,
+      "nonfoil": true,
+      "finishes": [
+        "nonfoil",
+        "foil"
+      ],
+      "oversized": false,
+      "promo": false,
+      "reprint": false,
+      "variation": false,
+      "set_id": "cd82de1a-36fd-4618-bfe8-b45532a582d9",
+      "set": "jud",
+      "set_name": "Judgment",
+      "set_type": "expansion",
+      "set_uri": "https://api.scryfall.com/sets/cd82de1a-36fd-4618-bfe8-b45532a582d9",
+      "set_search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Ajud&unique=prints",
+      "scryfall_set_uri": "https://scryfall.com/sets/jud?utm_source=api",
+      "rulings_uri": "https://api.scryfall.com/cards/3eda8c7b-ce35-482a-bece-52a30cc78a9a/rulings",
+      "prints_search_uri": "https://api.scryfall.com/cards/search?order=released&q=oracleid%3A7687b2a7-816d-4416-979b-675e35e235fc&unique=prints",
+      "collector_number": "51",
+      "digital": false,
+      "rarity": "rare",
+      "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
+      "artist": "Pete Venters",
+      "artist_ids": [
+        "d54c4a1a-c0c5-4834-84db-125d341f3ad8"
+      ],
+      "illustration_id": "82fffc9c-876a-4327-aa66-debc56d20f34",
+      "border_color": "black",
+      "frame": "1997",
+      "full_art": false,
+      "textless": false,
+      "booster": true,
+      "story_spotlight": false,
+      "edhrec_rank": 17014,
+      "prices": {
+        "usd": "1.60",
+        "usd_foil": "12.40",
+        "usd_etched": null,
+        "eur": "1.04",
+        "eur_foil": "11.01",
+        "tix": "0.02"
+      },
+      "related_uris": {
+        "gatherer": "https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid=35169&printed=false",
+        "tcgplayer_infinite_articles": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Farticles&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Farticles%3FproductLineName%3Dmagic%26q%3DSpelljack",
+        "tcgplayer_infinite_decks": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Fdecks&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Fdecks%3FproductLineName%3Dmagic%26q%3DSpelljack",
+        "edhrec": "https://edhrec.com/route/?cc=Spelljack"
+      },
+      "purchase_uris": {
+        "tcgplayer": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&u=https%3A%2F%2Fwww.tcgplayer.com%2Fproduct%2F10211%3Fpage%3D1",
+        "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=2177&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
+        "cardhoarder": "https://www.cardhoarder.com/cards/17476?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
+      },
+      "first_printed_set_name": "Judgment"
+    },
+    {
+      "object": "card",
+      "id": "e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12",
+      "oracle_id": "d7cba934-02ad-4677-bb4d-50808b01b4f9",
+      "multiverse_ids": [],
+      "resource_id": "ADE8C367A899D70A20640DD84648FDEB5BB38CB7607CC9BA89BBB530EBEA2397",
+      "mtgo_id": 154038,
+      "arena_id": 103430,
+      "tcgplayer_id": 707489,
+      "cardmarket_id": 898942,
+      "name": "Thranduil's Decree",
+      "lang": "en",
+      "released_at": "2026-08-14",
+      "uri": "https://api.scryfall.com/cards/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12",
+      "scryfall_uri": "https://scryfall.com/card/hob/56/thranduils-decree?utm_source=api",
+      "layout": "normal",
+      "highres_image": true,
+      "image_status": "highres_scan",
+      "image_updated_at": "2026-07-22T22:43:01Z",
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.jpg?1784760181",
+        "normal": "https://cards.scryfall.io/normal/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.jpg?1784760181",
+        "large": "https://cards.scryfall.io/large/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.jpg?1784760181",
+        "png": "https://cards.scryfall.io/png/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.png?1784760181",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.jpg?1784760181",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.jpg?1784760181",
+        "thumb": "https://cards.scryfall.io/thumb/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.webp?1784760181",
+        "grid": "https://cards.scryfall.io/grid/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.webp?1784760181",
+        "display": "https://cards.scryfall.io/display/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.webp?1784760181",
+        "art": "https://cards.scryfall.io/art/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.webp?1784760181",
+        "crop": "https://cards.scryfall.io/crop/front/e/4/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12.webp?1784760181"
+      },
+      "mana_cost": "{4}{U}{U}",
+      "cmc": 6.0,
+      "type_line": "Instant",
+      "oracle_text": "Counter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+      "colors": [
+        "U"
+      ],
+      "color_identity": [
+        "U"
+      ],
+      "keywords": [],
+      "legalities": {
+        "standard": "legal",
+        "future": "legal",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "legal",
+        "modern": "legal",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "not_legal",
+        "tlr": "not_legal"
+      },
+      "games": [
+        "paper",
+        "mtgo",
+        "arena"
+      ],
+      "reserved": false,
+      "game_changer": false,
+      "foil": true,
+      "nonfoil": true,
+      "finishes": [
+        "nonfoil",
+        "foil"
+      ],
+      "oversized": false,
+      "promo": false,
+      "reprint": false,
+      "variation": false,
+      "set_id": "59218c23-cb7a-4fde-9cff-3f2f71af1308",
+      "set": "hob",
+      "set_name": "The Hobbit",
+      "set_type": "expansion",
+      "set_uri": "https://api.scryfall.com/sets/59218c23-cb7a-4fde-9cff-3f2f71af1308",
+      "set_search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Ahob&unique=prints",
+      "scryfall_set_uri": "https://scryfall.com/sets/hob?utm_source=api",
+      "rulings_uri": "https://api.scryfall.com/cards/e4ded4c1-0e3e-47c5-8fdc-e7c187f68b12/rulings",
+      "prints_search_uri": "https://api.scryfall.com/cards/search?order=released&q=oracleid%3Ad7cba934-02ad-4677-bb4d-50808b01b4f9&unique=prints",
+      "collector_number": "56",
+      "digital": false,
+      "rarity": "uncommon",
+      "flavor_text": "\"I have a right to know what brings you here, and if you will not tell me now, I will keep you all in prison until you have learned sense and manners!\"",
+      "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
+      "artist": "Javier Charro",
+      "artist_ids": [
+        "8fd2d5fa-3b94-4e48-9cec-9d148acc8180"
+      ],
+      "illustration_id": "bae1841f-0fc5-4ae0-a4b0-b1148bce75f6",
+      "border_color": "black",
+      "frame": "2015",
+      "full_art": false,
+      "textless": false,
+      "booster": false,
+      "story_spotlight": false,
+      "promo_types": [
+        "universesbeyond"
+      ],
+      "edhrec_rank": 16629,
+      "prices": {
+        "usd": "0.19",
+        "usd_foil": "0.25",
+        "usd_etched": null,
+        "eur": "0.08",
+        "eur_foil": "0.16",
+        "tix": "0.01"
+      },
+      "related_uris": {
+        "tcgplayer_infinite_articles": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Farticles&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Farticles%3FproductLineName%3Dmagic%26q%3DThranduil%2527s%2BDecree",
+        "tcgplayer_infinite_decks": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Fdecks&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Fdecks%3FproductLineName%3Dmagic%26q%3DThranduil%2527s%2BDecree",
+        "edhrec": "https://edhrec.com/route/?cc=Thranduil%27s+Decree"
+      },
+      "purchase_uris": {
+        "tcgplayer": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&u=https%3A%2F%2Fwww.tcgplayer.com%2Fproduct%2F707489%3Fpage%3D1",
+        "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=898942&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
+        "cardhoarder": "https://www.cardhoarder.com/cards/154038?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
+      },
+      "first_printed_set_name": "The Hobbit"
+    }
+  ]
+}

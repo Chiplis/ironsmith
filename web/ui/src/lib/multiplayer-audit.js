@@ -19,13 +19,12 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-// Native step-local declaration evidence changes the typed public digest to 10.
-// Artifact14 remains unchanged; audit28 gates current replay of the new owner.
+// Exact-permission boundary changes require audit31 and typed public digest11.
 // Genesis has no signed engine hash. Numeric protocol admission is a release
 // gate, not exact-build authentication; historical signatures keep their bytes.
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 28;
-export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 10;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, CURRENT_AUDIT_PROTOCOL_VERSION]);
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 31;
+export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 11;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, CURRENT_AUDIT_PROTOCOL_VERSION]);
 
 // The current rules engine must never reinterpret a historical signed record.
 // Signature-only verification keeps the original version and canonical payload.

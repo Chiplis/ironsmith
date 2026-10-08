@@ -289,7 +289,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target })
-            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
+            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {

@@ -183,3 +183,122 @@ fn explicit_chosen_creature_family_does_not_infer_a_basic_land_choice_from_recip
         "Lands you control are the chosen type in addition to their other types.")).unwrap().unwrap();
     assert!(matches!(&bare[0].payload, P::AddChosenBasicLandType { .. }));
 }
+
+#[test]
+fn chosen_type_complete_subject_preserves_nonbattlefield_and_repeated_scopes() {
+    let offboard = complete_characteristic_subject(&lex(
+        "creature cards you own that aren't on the battlefield")).unwrap().unwrap();
+    assert_eq!(offboard.zone, None, "do not clamp the outer union to battlefield");
+    assert_eq!(offboard.any_of.len(), 7);
+    for branch in &offboard.any_of {
+        assert_eq!(branch.owner, Some(PlayerFilter::You));
+        assert_eq!(branch.controller, None);
+        assert_eq!(branch.card_types, [CardType::Creature]);
+        assert!(!matches!(branch.zone, None | Some(Zone::Battlefield | Zone::OutsideGame)));
+    }
+    // Independently assert the outer set has no recipient restrictions and
+    // each complete nominal retains only its own qualifiers.
+    let tokens = lex("Slivers you control and nontoken creatures you control");
+    let union = complete_characteristic_subject(&tokens).unwrap().unwrap();
+    assert_eq!(union.any_of.len(), 2);
+    assert_eq!(union.zone, None);
+    assert_eq!(union.controller, None);
+    assert!(!union.nontoken);
+    assert!(!union.tapped);
+    assert!(union.has_conjunctive_set_surface());
+    for branch in &union.any_of {
+        assert_eq!(branch.controller, Some(PlayerFilter::You));
+        assert_eq!(branch.zone, Some(Zone::Battlefield));
+    }
+    assert!(union.any_of.iter().any(|branch| branch.subtypes.contains(&Subtype::Sliver)
+        && !branch.nontoken));
+    assert!(union.any_of.iter().any(|branch| branch.card_types.contains(&CardType::Creature)
+        && branch.nontoken));
+}
+
+#[test]
+fn chosen_type_extended_subjects_consume_all_qualifiers_or_decline() {
+    for text in [
+        "mystery creature cards you own that aren't on the battlefield",
+        "creature cards you own that aren't on the battlefield mystery",
+        "creature cards in your graveyard that aren't on the battlefield",
+        "Slivers you control and mystery nontoken creatures you control",
+        "Slivers you control and nontoken creatures you control until end of turn",
+        "Slivers you control and",
+        "\"Slivers\" you control and nontoken creatures you control",
+    ] {
+        assert!(complete_characteristic_subject(&lex(text)).unwrap().is_none(), "{text}");
+    }
+    for text in [
+        "Creature cards you own that aren't on the battlefield are the chosen type in addition to their other types and have flying.",
+        "Slivers you control and nontoken creatures you control are the chosen type in addition to their other creature types until end of turn.",
+    ] {
+        assert!(parse_subject_are_card_types_in_addition_to_their_other_types_line(&lex(text))
+            .unwrap().is_none(), "{text}");
+    }
+}
+
+#[test]
+fn nonbattlefield_domain_does_not_change_chosen_type_family() {
+    for (text, creature_family) in [
+        ("Land cards you own that aren't on the battlefield are the chosen type in addition to their other types.", false),
+        ("Land cards you own that aren't on the battlefield are the chosen creature type in addition to their other types.", true),
+    ] {
+        let abilities = parse_subject_are_card_types_in_addition_to_their_other_types_line(&lex(text))
+            .unwrap().unwrap();
+        assert_eq!(matches!(&abilities[0].payload, P::AddChosenCreatureType { .. }), creature_family);
+        assert_eq!(matches!(&abilities[0].payload, P::AddChosenBasicLandType { .. }), !creature_family);
+    }
+}
+
+#[test]
+fn repeated_nominal_arms_do_not_share_leading_qualifiers_in_either_order() {
+    for qualifier in ["nontoken", "tapped", "other"] {
+        let restricted = format!("{qualifier} creatures you control");
+        for text in [format!("{restricted} and Slivers you control"),
+            format!("Slivers you control and {restricted}")] {
+            let union = complete_characteristic_subject(&lex(&text)).unwrap().unwrap();
+            assert_eq!(union.any_of.len(), 2);
+            assert!(!union.nontoken && !union.tapped && !union.other);
+            let sliver = union.any_of.iter().find(|branch| branch.subtypes == [Subtype::Sliver]).unwrap();
+            assert!(!sliver.nontoken && !sliver.tapped && !sliver.other, "{text}: {union:?}");
+            let creature = union.any_of.iter().find(|branch| branch.card_types == [CardType::Creature]).unwrap();
+            assert_eq!(creature.nontoken, qualifier == "nontoken");
+            assert_eq!(creature.tapped, qualifier == "tapped");
+            assert_eq!(creature.other, qualifier == "other");
+        }
+    }
+    for text in [
+        "nontoken creatures you control and creature cards you own that aren't on the battlefield",
+        "creature cards you own that aren't on the battlefield and nontoken creatures you control",
+    ] {
+        let union = complete_characteristic_subject(&lex(text)).unwrap().unwrap();
+        assert_eq!(union.zone, None);
+        assert_eq!(union.owner, None);
+        assert_eq!(union.controller, None);
+        assert!(!union.nontoken);
+        let battlefield = union.any_of.iter().find(|branch| branch.zone == Some(Zone::Battlefield)).unwrap();
+        assert_eq!(battlefield.controller, Some(PlayerFilter::You));
+        assert_eq!(battlefield.owner, None);
+        assert!(battlefield.nontoken);
+        let cards = union.any_of.iter().find(|branch| branch.any_of.len() == 7).unwrap();
+        for branch in &cards.any_of {
+            assert_eq!(branch.owner, Some(PlayerFilter::You));
+            assert_eq!(branch.controller, None);
+            assert!(branch.has_explicit_card_noun());
+            assert!(!branch.nontoken);
+        }
+    }
+}
+
+#[test]
+fn both_nominal_arms_must_be_complete_and_unquoted() {
+    for bad in ["mystery creatures you control", "creatures you control mystery",
+        "creatures you control until end of turn", "creatures you control and",
+        "\"creatures\" you control", "creatures you control \"mystery\""] {
+        for text in [format!("{bad} and Slivers you control"),
+            format!("Slivers you control and {bad}")] {
+            assert!(complete_characteristic_subject(&lex(&text)).unwrap().is_none(), "{text}");
+        }
+    }
+}

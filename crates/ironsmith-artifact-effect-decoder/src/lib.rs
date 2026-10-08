@@ -17,6 +17,8 @@ mod player;
 mod resources;
 mod stack_event;
 mod zone_library;
+#[cfg(test)]
+mod counter_exile_permission_tests;
 
 pub type ErasedPayload = Box<dyn Any + Send + Sync>;
 

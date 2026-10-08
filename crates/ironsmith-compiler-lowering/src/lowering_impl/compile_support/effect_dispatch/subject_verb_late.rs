@@ -1659,7 +1659,7 @@ pub(super) fn compile_subject_verb_late(
             crate::reference_helpers::remember_looked_at_hand(&mut ctx.snapshot_tag_aliases);
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Stack(StackActionAst::Counter { target }) => {
+        SubjectVerbActionAst::Stack(StackActionAst::Counter { target, exile_permission }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let spec = if choices.is_empty() {
@@ -1670,6 +1670,25 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 spec
             };
+            if let Some(permission) = exile_permission {
+                if !matches!(subject_verb.subject.player, PlayerAst::You | PlayerAst::Implicit) {
+                    return Err(CardTextError::ParseError(
+                        "counter exile permission recipient must be the resolving controller".into(),
+                    ));
+                }
+                // The runtime counter owns both destination rewriting and the
+                // priced permission from its successful, committed receipt.
+                // A pre-move target tag cannot represent that exile object.
+                ctx.last_object_tag = None;
+                ctx.last_player_filter = None;
+                return Ok((
+                    vec![Effect::new(
+                        ironsmith_core::CounterEffect::new(spec)
+                            .with_exile_permission(permission.clone()),
+                    )],
+                    choices,
+                ));
+            }
             let effect =
                 tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
             if let Some(tag) = ctx.last_object_tag.clone() {

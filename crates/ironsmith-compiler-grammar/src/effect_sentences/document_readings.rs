@@ -550,6 +550,14 @@ fn read_complete_composable_fight(
 fn read_cant_effect(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = &document.sentences;
     if let [sentence] = sentences.as_slice()
+        // The outer conditional owns its predicate and consequence. A nested
+        // restriction's duration cannot commit this whole-document probe to
+        // parsing the predicate as a restriction subject. Keep the same
+        // ownership boundary as the statement registry; the low-level cant
+        // grammar still supports its specialized conditional restriction forms.
+        && !sentence
+            .first()
+            .is_some_and(|token| token.is_any_word(&["if", "unless"]))
         && !sentence.iter().any(|token| token.kind == TokenKind::Quote)
         && super::lex_chain_helpers::split_effect_chain_on_and_lexed(sentence).len() == 1
         && let Some(effects) = super::parse_cant_effect_sentence_lexed(sentence)?

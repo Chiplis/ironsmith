@@ -32,7 +32,7 @@ fn assert_metadata(row: &serde_json::Value, definition: &CardDefinition) {
         "Cone of Cold" => (CardType::Sorcery, vec![], false),
         "Dragon Turtle" => (CardType::Creature, vec![Subtype::Dragon, Subtype::Turtle], false),
         "Lorthos, the Tidemaker" => (CardType::Creature, vec![Subtype::Octopus], true),
-        "Sudden Storm" | "Code of Constraint" => (CardType::Instant, vec![], false),
+        "Sudden Storm" | "Code of Constraint" | "Send to Sleep" | "Icy Blast" => (CardType::Instant, vec![], false),
         _ => panic!("unexpected frozen body: {name}"),
     };
     assert_eq!(definition.card.card_types, vec![kind]);
@@ -112,8 +112,11 @@ fn object(g: &mut GameState,p:PlayerId,z:Zone,name:&str,text:&str)->ObjectId {
 }
 fn creature(g:&mut GameState,p:PlayerId)->ObjectId { object(g,p,Zone::Battlefield,"Witness","Type: Creature — Bear\nPower/Toughness: 2/6") }
 #[derive(Default)]
-struct Choices { targets:Vec<Target>, accept:bool, views:usize, target_contexts:Vec<TargetsContext> }
+struct Choices { x:u32, targets:Vec<Target>, accept:bool, views:usize, target_contexts:Vec<TargetsContext> }
 impl DecisionMaker for Choices {
+    fn decide_number(&mut self, g:&GameState, c:&ironsmith::decisions::context::NumberContext)->u32 {
+        if c.is_x_value { self.x } else { SelectFirstDecisionMaker.decide_number(g,c) }
+    }
     fn decide_targets(&mut self,_:&GameState,context:&TargetsContext)->Vec<Target>{self.target_contexts.push(context.clone());self.targets.clone()}
     fn decide_boolean(&mut self,_:&GameState,_:&BooleanContext)->bool{self.accept}
     fn decide_mana_payment(&mut self,_:&GameState,c:&ManaPaymentContext)->ironsmith::mana_payment::ManaPaymentResponse {
@@ -366,5 +369,230 @@ fn a_skipped_untap_does_not_consume_the_object_bound_next_occurrence(){
         assert!(g.is_tapped(target));
         assert!(g.effect_store.restriction_effects.iter().any(|effect|effect.untap_step_object==Some(target)&&!effect.consumed_next_untap));
         untap(&mut g,B);assert!(g.is_tapped(target));untap(&mut g,B);assert!(!g.is_tapped(target));
+    }
+}
+
+// Fresh measured regressions, distinct from the original five-card cohort.
+const CONDITIONAL_CANDIDATES: [(&str, &str); 2] = [
+    ("Send to Sleep", "9e3fd1e9-7db6-40de-b1de-cd8cc9f60590"),
+    ("Icy Blast", "f49302c5-8510-4360-841c-a59f53f87e0b"),
+];
+
+fn set_condition(g: &mut GameState, name: &str, enabled: bool) -> Vec<ObjectId> {
+    if !enabled { return vec![]; }
+    if name == "Icy Blast" {
+        vec![object(g,A,Zone::Battlefield,"Ferocious witness","Type: Creature — Bear\nPower/Toughness: 4/4")]
+    } else {
+        vec![
+            object(g,A,Zone::Graveyard,"Instant witness","Type: Instant\nDraw a card."),
+            object(g,A,Zone::Graveyard,"Sorcery witness","Type: Sorcery\nDraw a card."),
+        ]
+    }
+}
+
+#[test]
+fn conditional_whole_bodies_preserve_metadata_and_both_transport_routes() {
+    let rows = fixtures();
+    for (name,id) in CONDITIONAL_CANDIDATES {
+        let row=rows.iter().find(|row|row["oracle_id"]==id).unwrap();
+        assert_eq!(row["name"],name);
+        assert_eq!(row["text"],format!("Mana cost: {}\nType: Instant\n{}",row["mana_cost"].as_str().unwrap(),row["oracle_text"].as_str().unwrap()));
+        // Independent direct compilation, artifact JSON validation and
+        // materialization, with loss and unimplemented checks in definitions.
+        for definition in definitions(name) {
+            fn inspect(effect:&ironsmith::Effect, conditional:bool, counts:&mut (usize,usize)) {
+                let is_condition=effect.downcast_ref::<ironsmith::effects::ConditionalEffect>().is_some();
+                if is_condition {counts.0+=1;}
+                if let Some(cant)=effect.downcast_ref::<CantEffect>() {
+                    assert!(conditional,"the freeze must not escape the condition");
+                    assert!(matches!(&cant.restriction,Restriction::Untap(filter) if !filter.tagged_constraints.is_empty()));
+                    assert_eq!(cant.duration,Until::ControllersNextUntapStep);
+                    counts.1+=1;
+                }
+                effect.visit_child_effects(&mut |child|inspect(child,conditional||is_condition,counts));
+            }
+            let mut counts=(0,0);
+            for effect in definition.spell_effect.as_ref().unwrap().flattened_default_effects() {
+                inspect(effect,false,&mut counts);
+            }
+            assert_eq!(counts,(1,1),"{name}: the lowering must retain exactly one conditional freeze");
+        }
+    }
+}
+
+#[test]
+fn conditional_freeze_is_checked_at_resolution_and_binds_only_legal_targets() {
+    for (name,_) in CONDITIONAL_CANDIDATES { for definition in definitions(name) {
+        for enabled_at_cast in [false,true] { for enabled_at_resolution in [false,true] {
+            for selected in 0..=2 { for removed in 0..=selected {
+                let mut g=game();
+                let mut witnesses=set_condition(&mut g,name,enabled_at_cast);
+                let first=creature(&mut g,B);let second=creature(&mut g,C);
+                let unselected=creature(&mut g,B);
+                let mut dm=Choices{x:selected as u32,targets:[first,second].into_iter().take(selected).map(Target::Object).collect(),..Default::default()};
+                cast(&mut g,&definition,&mut dm);
+                if selected > 0 || name == "Send to Sleep" {
+                    let requirements=&dm.target_contexts.last().unwrap().requirements;
+                    assert_eq!(requirements.len(),1);
+                    assert_eq!(requirements[0].min_targets,if name=="Icy Blast"{selected}else{0});
+                    assert_eq!(requirements[0].max_targets,Some(if name=="Icy Blast"{selected}else{2}));
+                }
+                if enabled_at_cast != enabled_at_resolution {
+                    for witness in witnesses.drain(..) {g.move_object_by_effect(witness,Zone::Exile).unwrap();}
+                    witnesses=set_condition(&mut g,name,enabled_at_resolution);
+                }
+                for id in [first,second].into_iter().take(removed){g.move_object_by_effect(id,Zone::Graveyard).unwrap();}
+                settle(&mut g,&mut dm);
+                assert!(!g.is_tapped(unselected),"{name}: empty, partial, and all-illegal selections must not tap an existing unselected creature");
+                g.tap(unselected);
+                for id in [first,second].into_iter().take(selected).skip(removed){assert!(g.is_tapped(id));}
+                let late=creature(&mut g,B);g.tap(late);
+                // Changing the condition after resolution must neither create
+                // a missing freeze nor cancel an already-created one.
+                for witness in witnesses {g.move_object_by_effect(witness,Zone::Exile).unwrap();}
+                set_condition(&mut g,name,!enabled_at_resolution);
+                untap(&mut g,B);untap(&mut g,C);
+                assert!(!g.is_tapped(late));
+                assert!(!g.is_tapped(unselected),"{name}: empty, partial, and all-illegal selections must not freeze an existing unselected creature");
+                for id in [first,second].into_iter().take(selected).skip(removed){assert_eq!(g.is_tapped(id),enabled_at_resolution,"{name}");}
+                untap(&mut g,B);untap(&mut g,C);
+                for id in [first,second].into_iter().take(selected).skip(removed){assert!(!g.is_tapped(id));}
+            }}
+        }}
+    }}
+}
+
+#[test]
+fn malformed_conditional_bodies_cannot_be_accepted_losslessly() {
+    for (name,_) in CONDITIONAL_CANDIDATES {
+        let rows=fixtures();let row=rows.iter().find(|row|row["name"]==name).unwrap();
+        for text in [
+            row["text"].as_str().unwrap().replace("next untap steps","next two untap steps"),
+            format!("{} Except on Tuesdays.",row["text"].as_str().unwrap()),
+            row["text"].as_str().unwrap().replace("during their controllers' next untap steps","until their controllers' next untap steps"),
+        ] {
+            let (result,loss)=ironsmith_compiler::parse_loss::capture(||compile_to_runtime_definition(name,&text,false));
+            assert!(result.is_err()||loss.is_lossy(),"{text}");
+            let (result,loss)=ironsmith_compiler::parse_loss::capture(||compile_to_artifact(name,&text,false));
+            assert!(result.is_err()||loss.is_lossy(),"{text}");
+        }
+    }
+}
+
+#[test]
+fn spell_mastery_counts_qualifying_cards_in_only_your_graveyard() {
+    for definition in definitions("Send to Sleep") {
+        for (label, owner, zone, types, freezes) in [
+            ("one instant", A, Zone::Graveyard, vec!["Instant"], false),
+            ("one sorcery", A, Zone::Graveyard, vec!["Sorcery"], false),
+            ("two instants", A, Zone::Graveyard, vec!["Instant", "Instant"], true),
+            ("two sorceries", A, Zone::Graveyard, vec!["Sorcery", "Sorcery"], true),
+            ("instant and sorcery", A, Zone::Graveyard, vec!["Instant", "Sorcery"], true),
+            ("two nonqualifying cards", A, Zone::Graveyard, vec!["Land", "Artifact"], false),
+            ("one qualifying and one nonqualifying", A, Zone::Graveyard, vec!["Instant", "Land"], false),
+            ("opponent graveyard only", B, Zone::Graveyard, vec!["Instant", "Sorcery"], false),
+            ("own qualifying cards in hand only", A, Zone::Hand, vec!["Instant", "Sorcery"], false),
+            ("own qualifying cards in exile only", A, Zone::Exile, vec!["Instant", "Sorcery"], false),
+        ] {
+            let mut g = game();
+            for kind in types {
+                object(&mut g, owner, zone, "Graveyard witness", &format!("Type: {kind}"));
+            }
+            let target = creature(&mut g, B);
+            let mut dm = Choices { targets: vec![Target::Object(target)], ..Default::default() };
+            cast(&mut g, &definition, &mut dm);
+            settle(&mut g, &mut dm);
+            assert!(g.is_tapped(target), "the unconditional tap must survive: {label}");
+            untap(&mut g, B);
+            assert_eq!(g.is_tapped(target), freezes, "{label}");
+            untap(&mut g, B);
+            assert!(!g.is_tapped(target), "the freeze must expire: {label}");
+        }
+    }
+}
+
+#[test]
+fn ferocious_checks_your_creatures_at_the_inclusive_power_boundary() {
+    for definition in definitions("Icy Blast") {
+        for (owner, power, freezes) in [(A, 3, false), (B, 4, false), (A, 4, true), (A, 5, true)] {
+            let mut g = game();
+            object(&mut g, owner, Zone::Battlefield, "Power witness", &format!("Type: Creature — Bear\nPower/Toughness: {power}/6"));
+            let target = creature(&mut g, B);
+            let mut dm = Choices { x: 1, targets: vec![Target::Object(target)], ..Default::default() };
+            cast(&mut g, &definition, &mut dm);
+            settle(&mut g, &mut dm);
+            assert!(g.is_tapped(target));
+            untap(&mut g, B);
+            assert_eq!(g.is_tapped(target), freezes, "owner={owner:?}, power={power}");
+            untap(&mut g, B);
+            assert!(!g.is_tapped(target));
+        }
+    }
+}
+
+#[test]
+fn conditional_taps_allow_any_creature_but_do_not_widen_to_unselected_objects() {
+    for (name, _) in CONDITIONAL_CANDIDATES {
+        for definition in definitions(name) {
+            let mut g = game();
+            set_condition(&mut g, name, true);
+            let own = creature(&mut g, A);
+            let opponent = creature(&mut g, B);
+            let unselected = creature(&mut g, B);
+            let other_opponent = creature(&mut g, C);
+            let noncreature = object(&mut g, B, Zone::Battlefield, "Noncreature witness", "Type: Artifact");
+            let mut dm = Choices { x: 2, targets: vec![Target::Object(own), Target::Object(opponent)], ..Default::default() };
+            cast(&mut g, &definition, &mut dm);
+            let requirements = &dm.target_contexts.last().unwrap().requirements;
+            assert_eq!(requirements.len(), 1);
+            let legal = &requirements[0].legal_targets;
+            for id in [own, opponent, unselected, other_opponent] {
+                assert!(legal.contains(&Target::Object(id)), "{name}: all controllers' creatures are legal");
+            }
+            assert!(!legal.contains(&Target::Object(noncreature)), "{name}: a noncreature must not be legal");
+            settle(&mut g, &mut dm);
+            assert!(g.is_tapped(own));
+            assert!(g.is_tapped(opponent));
+            for id in [unselected, other_opponent, noncreature] {
+                assert!(!g.is_tapped(id), "{name}: an existing unselected object must not be tapped");
+                // Tap it independently after resolution. This catches a freeze
+                // captured over too broad a resolution-time object set.
+                g.tap(id);
+            }
+            untap(&mut g, A);
+            untap(&mut g, B);
+            untap(&mut g, C);
+            assert!(g.is_tapped(own));
+            assert!(g.is_tapped(opponent));
+            for id in [unselected, other_opponent, noncreature] {
+                assert!(!g.is_tapped(id), "{name}: an existing unselected object must not be frozen");
+            }
+            untap(&mut g, A);
+            untap(&mut g, B);
+            assert!(!g.is_tapped(own));
+            assert!(!g.is_tapped(opponent));
+        }
+    }
+}
+
+#[test]
+fn icy_blast_x_three_is_not_capped_at_send_to_sleeps_two_targets() {
+    for definition in definitions("Icy Blast") {
+        let mut g = game();
+        set_condition(&mut g, "Icy Blast", true);
+        let targets = [creature(&mut g, A), creature(&mut g, B), creature(&mut g, C)];
+        let mut dm = Choices { x: 3, targets: targets.into_iter().map(Target::Object).collect(), ..Default::default() };
+        cast(&mut g, &definition, &mut dm);
+        let requirements = &dm.target_contexts.last().unwrap().requirements;
+        assert_eq!(requirements.len(), 1);
+        assert_eq!(requirements[0].min_targets, 3);
+        assert_eq!(requirements[0].max_targets, Some(3));
+        for id in targets { assert!(requirements[0].legal_targets.contains(&Target::Object(id))); }
+        settle(&mut g, &mut dm);
+        for id in targets { assert!(g.is_tapped(id)); }
+        for player in [A, B, C] { untap(&mut g, player); }
+        for id in targets { assert!(g.is_tapped(id)); }
+        for player in [A, B, C] { untap(&mut g, player); }
+        for id in targets { assert!(!g.is_tapped(id)); }
     }
 }

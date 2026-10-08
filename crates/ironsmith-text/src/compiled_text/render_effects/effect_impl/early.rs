@@ -3726,6 +3726,26 @@
         );
     }
     if let Some(counter_spell) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+        if let Some(permission) = &counter_spell.exile_permission {
+            // Render the atomic rider from its typed contract. In particular,
+            // a permanent-only replacement must not narrow the counter target.
+            let mut plain_counter = counter_spell.clone();
+            plain_counter.exile_permission = None;
+            let counter_text = describe_effect(&Effect::new(plain_counter));
+            let antecedent = match permission.gate {
+                ironsmith_core::CounterExileGate::AnySpell => "that spell",
+                ironsmith_core::CounterExileGate::PermanentSpell => "a permanent spell",
+            };
+            let permission_text = if permission.allow_land {
+                "play it"
+            } else {
+                "cast that card"
+            };
+            return format!(
+                "{}. If {antecedent} is countered this way, exile it instead of putting it into its owner's graveyard. You may {permission_text} without paying its mana cost for as long as it remains exiled",
+                counter_text.trim_end_matches('.')
+            );
+        }
         if let Some(target_text) =
             describe_counter_target_with_positive_cast_origin(counter_spell)
         {
@@ -3774,6 +3794,7 @@
         let counter_target = if let [counter_effect] = unless_pays.effects.as_slice() {
             counter_effect
                 .downcast_ref::<crate::effects::CounterEffect>()
+                .filter(|counter| counter.exile_permission.is_none())
                 .map(|counter| &counter.target)
         } else {
             None
@@ -3852,6 +3873,7 @@
         if unless_pays.effects.len() == 1
             && let Some(counter) =
                 unless_pays.effects[0].downcast_ref::<crate::effects::CounterEffect>()
+            && counter.exile_permission.is_none()
         {
             if let Some(action_text) = action_payment_text(&payment_text) {
                 return format!(

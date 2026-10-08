@@ -7,6 +7,28 @@ use crate::lexer::lex_line;
 const IF_WORD: &str = "if";
 
 #[test]
+fn graveyard_contractions_match_word_view_without_weakening_token_consumption() {
+    for head in ["there's", "there’s", "theres"] {
+        let tokens = lex_line(&format!("{head} a Lesson card in your graveyard"), 0).unwrap();
+        assert_eq!(LexedClause::new(&tokens).word_refs()[0], "theres");
+        let expected = ObjectFilter::default().with_subtype(crate::types::Subtype::Lesson)
+            .in_zone(Zone::Graveyard).owned_by(PlayerFilter::You);
+        assert_eq!(parse_predicate(&tokens).unwrap(),
+            PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                player: PlayerAst::You, filter: expected,
+            }));
+        for suffix in [" {2}", " +", " with an unknown qualification", " and a missing predicate",
+            " or a missing predicate", " in exile"] {
+            let invalid = format!("{head} a Lesson card in your graveyard{suffix}");
+            assert!(parse_predicate(&lex_line(&invalid, 0).unwrap()).is_err(), "{invalid}");
+        }
+        let conjoined = format!("{head} an instant card and a sorcery card in your graveyard");
+        assert!(matches!(parse_predicate(&lex_line(&conjoined, 0).unwrap()).unwrap(), PredicateAst::And(_, _)));
+        assert!(parse_predicate(&lex_line(&format!("{conjoined} {{2}}"), 0).unwrap()).is_err());
+    }
+}
+
+#[test]
 fn contracted_graveyard_existence_keeps_owner_zone_and_subtype() {
     for text in ["there's a Lesson card in your graveyard", "there is a Lesson card in your graveyard"] {
         let tokens = lex_line(text, 0).unwrap();

@@ -223,3 +223,6 @@ pub mod cards {
 
 pub use card_builders::CardDefinitionBuilder;
 pub use ironsmith_compiler_semantic::cards::CardDefinition;
+
+#[cfg(test)]
+mod counter_exile_permission_tests;

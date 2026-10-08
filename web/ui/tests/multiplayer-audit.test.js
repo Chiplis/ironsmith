@@ -547,7 +547,7 @@ test("protocol24 counter payload evidence stays signature-only under the counter
     /genesis payload hash mismatch/);
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
     requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-  }), /checkpoint version 10/);
+  }), /checkpoint version 11/);
   assert.equal(callbacks, 0);
   assert.equal(canonicalJson(transcript), bytes);
 });
@@ -607,7 +607,7 @@ test("published protocol25 digest8 remains signature-only without injecting repe
     /genesis payload hash mismatch/);
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
     requireEngineReplay: false, replayTranscript: async () => { replayCalls++; },
-  }), /checkpoint version 10/);
+  }), /checkpoint version 11/);
   relabeled.finalPublicCheckpoint.version = CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION;
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, { requireEngineReplay: false }),
     /genesis payload hash mismatch/);
@@ -650,9 +650,9 @@ test("protocol26 digest9 stays signature-only across the compiler/cache release 
   for (const requireEngineReplay of [false, true]) {
     await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
       requireEngineReplay, replayTranscript: async () => { callbacks++; },
-    }), /requires audit protocol 28/);
+    }), /requires audit protocol 31/);
   }
-  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 28/);
+  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 31/);
   const changed = cloneTestPayload(transcript);
   const program = changed.finalPublicCheckpoint.players[0].restrictedMana[0]
     .restrictions[0].PaymentTransaction.on_spend[0].effects;
@@ -670,7 +670,7 @@ test("protocol26 digest9 stays signature-only across the compiler/cache release 
   for (const requireEngineReplay of [false, true]) {
     await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
       requireEngineReplay, replayTranscript: async () => { callbacks++; },
-    }), /checkpoint version 10/);
+    }), /checkpoint version 11/);
   }
   assert.equal(callbacks, 0);
   assert.equal(canonicalJson(transcript), bytes);
@@ -698,7 +698,7 @@ test("protocol27 digest9 retains exact canonical evidence and never enters the c
   for (const requireEngineReplay of [false, true]) {
     await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
       requireEngineReplay, replayTranscript: async () => { callbacks++; },
-    }), /requires audit protocol 28/);
+    }), /requires audit protocol 31/);
   }
   const changed = cloneTestPayload(transcript);
   changed.finalPublicCheckpoint.grandMelee.markers[0].combat.attackers.push([17, { kind: "player", player: 1 }]);
@@ -716,14 +716,14 @@ test("protocol27 digest9 retains exact canonical evidence and never enters the c
       { requireEngineReplay: false }), /final public checkpoint hash mismatch/);
   }
   const relabeled = cloneTestPayload(transcript);
-  relabeled.protocolVersion = 28;
-  relabeled.match.protocolVersion = 28;
+  relabeled.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  relabeled.match.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto,
     { requireEngineReplay: false }), /genesis payload hash mismatch/);
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
     requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-  }), /checkpoint version 10/);
-  relabeled.finalPublicCheckpoint.version = 10;
+  }), /checkpoint version 11/);
+  relabeled.finalPublicCheckpoint.version = CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION;
   await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
     requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
   }), /genesis payload hash mismatch/);
@@ -3537,4 +3537,157 @@ test("private views of a face-down exiled card its owner may not see are produce
     localSeat: 0, requestedRequirements: [], previewedRequirements: [blind, window] }), []);
   assert.deepEqual(authorizeCryptoMaterialRequestRequirements({
     localSeat: 1, requestedRequirements: [blind], previewedRequirements: [blind, window] }), [blind]);
+});
+
+// Source-authored, UNRUN: genuine signatures over synthetic model-shaped JSON,
+// not captured historical match bytes or compiler/build authentication.
+test("protocol28 digest10 remains signature-only across the Oct8 source-cache release", async () => {
+  const checkpoint = { version: 10, players: [], objects: [], stack: [],
+    lastAttackDeclarationStepPlayers: [],
+    grandMelee: { markers: [{ combat: { lastAttackDeclarationStepPlayers: null } }] } };
+  const hash = await publicCheckpointHash(checkpoint, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "historical28-oct8-source-cache", players: [], actions: [],
+    protocolVersion: 28, initialPublicCheckpointHash: hash,
+  });
+  transcript.finalPublicCheckpoint = checkpoint;
+  const bytes = canonicalJson(transcript);
+  const genesisBytes = canonicalJson(transcript.genesis);
+  const checkpointBytes = canonicalJson(checkpoint);
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto, { requireEngineReplay: false });
+  assert.equal(report.valid, true);
+  assert.equal(report.engineReplay, null);
+  let callbacks = 0;
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /requires audit protocol 31/);
+  }
+  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 31/);
+  const changed = cloneTestPayload(transcript);
+  changed.finalPublicCheckpoint.grandMelee.markers[0].combat.lastAttackDeclarationStepPlayers = [];
+  await assert.rejects(verifyLiveAuditTranscript(changed, webcrypto,
+    { requireEngineReplay: false }), /final public checkpoint hash mismatch/);
+  const relabeled = cloneTestPayload(transcript);
+  relabeled.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  relabeled.match.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  // The original digest10 remains historical. Callback admission must reject
+  // it before any engine replay; signature-only still checks signed genesis.
+  await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto,
+    { requireEngineReplay: false }), /genesis payload hash mismatch/);
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /checkpoint version 11/);
+  }
+  assert.equal(callbacks, 0);
+  assert.equal(canonicalJson(transcript), bytes);
+  assert.equal(canonicalJson(transcript.genesis), genesisBytes);
+  assert.equal(canonicalJson(checkpoint), checkpointBytes);
+  assert.equal(await publicCheckpointHash(checkpoint, webcrypto), hash);
+});
+
+// Source-authored, UNRUN: genuine signatures over synthetic model-shaped JSON,
+// not captured historical match bytes or compiler/build authentication.
+test("protocol29 digest10 remains signature-only across the second Oct8 source-cache release", async () => {
+  const checkpoint = { version: 10, players: [], objects: [], stack: [],
+    lastAttackDeclarationStepPlayers: [],
+    grandMelee: { markers: [{ combat: { lastAttackDeclarationStepPlayers: null } }] } };
+  const hash = await publicCheckpointHash(checkpoint, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "historical29-oct8-second-source-cache", players: [], actions: [],
+    protocolVersion: 29, initialPublicCheckpointHash: hash,
+  });
+  transcript.finalPublicCheckpoint = checkpoint;
+  const bytes = canonicalJson(transcript);
+  const genesisBytes = canonicalJson(transcript.genesis);
+  const checkpointBytes = canonicalJson(checkpoint);
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto, { requireEngineReplay: false });
+  assert.equal(report.valid, true);
+  assert.equal(report.engineReplay, null);
+  let callbacks = 0;
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /requires audit protocol 31/);
+  }
+  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 31/);
+  const changed = cloneTestPayload(transcript);
+  changed.finalPublicCheckpoint.grandMelee.markers[0].combat.lastAttackDeclarationStepPlayers = [];
+  await assert.rejects(verifyLiveAuditTranscript(changed, webcrypto,
+    { requireEngineReplay: false }), /final public checkpoint hash mismatch/);
+  const relabeled = cloneTestPayload(transcript);
+  relabeled.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  relabeled.match.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  // The original digest10 remains historical. Callback admission must reject
+  // it before any engine replay; signature-only still checks signed genesis.
+  await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto,
+    { requireEngineReplay: false }), /genesis payload hash mismatch/);
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /checkpoint version 11/);
+  }
+  assert.equal(callbacks, 0);
+  assert.equal(canonicalJson(transcript), bytes);
+  assert.equal(canonicalJson(transcript.genesis), genesisBytes);
+  assert.equal(canonicalJson(checkpoint), checkpointBytes);
+  assert.equal(await publicCheckpointHash(checkpoint, webcrypto), hash);
+});
+
+// Source-authored, UNRUN: genuine signatures over synthetic model-shaped JSON,
+// not captured historical match bytes or compiler/build authentication.
+test("protocol30 digest10 stays signature-only across the exact-permission boundary", async () => {
+  const checkpoint = { version: 10, players: [], objects: [], stack: [],
+    lastAttackDeclarationStepPlayers: [],
+    grandMelee: { markers: [{ combat: { lastAttackDeclarationStepPlayers: null } }] } };
+  const hash = await publicCheckpointHash(checkpoint, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "historical30-exact-permission-boundary", players: [], actions: [],
+    protocolVersion: 30, initialPublicCheckpointHash: hash,
+  });
+  transcript.finalPublicCheckpoint = checkpoint;
+  transcript.runtimeVersion = "unsigned-current-build-hint";
+  transcript.match.runtimeVersion = "unsigned-current-build-hint";
+  const bytes = canonicalJson(transcript);
+  const genesisBytes = canonicalJson(transcript.genesis);
+  const checkpointBytes = canonicalJson(checkpoint);
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto, { requireEngineReplay: false });
+  assert.equal(report.valid, true);
+  assert.equal(report.engineReplay, null);
+  let callbacks = 0;
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /requires audit protocol 31/);
+  }
+  await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 31/);
+  const changed = cloneTestPayload(transcript);
+  changed.finalPublicCheckpoint.grandMelee.markers[0].combat.lastAttackDeclarationStepPlayers = [];
+  await assert.rejects(verifyLiveAuditTranscript(changed, webcrypto,
+    { requireEngineReplay: false }), /final public checkpoint hash mismatch/);
+  const relabeled = cloneTestPayload(transcript);
+  relabeled.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  relabeled.match.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+  // The original digest10 remains historical. Callback admission must reject
+  // it before any engine replay; signature-only still checks signed genesis.
+  await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto,
+    { requireEngineReplay: false }), /genesis payload hash mismatch/);
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /checkpoint version 11/);
+  }
+  // Relabeling both protocol and digest cannot repair the signed genesis.
+  relabeled.finalPublicCheckpoint.version = CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION;
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /genesis payload hash mismatch/);
+  }
+  assert.equal(callbacks, 0);
+  assert.equal(canonicalJson(transcript), bytes);
+  assert.equal(canonicalJson(transcript.genesis), genesisBytes);
+  assert.equal(canonicalJson(checkpoint), checkpointBytes);
+  assert.equal(await publicCheckpointHash(checkpoint, webcrypto), hash);
 });

@@ -969,7 +969,7 @@ pub(crate) fn describe_compound_damage_regeneration_exile_bundle(
 fn effect_structurally_counters_spell(effect: &Effect) -> bool {
     let effect = unwrap_render_wrappers(effect);
     if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>() {
-        return matches!(
+        return counter.exile_permission.is_none() && matches!(
             counter.target.base(),
             ChooseSpec::Object(filter)
                 if filter.zone == Some(Zone::Stack)

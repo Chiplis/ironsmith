@@ -1039,6 +1039,7 @@ fn rewrite_source_copy_single_target_surface(def: &CardDefinition, line: &str) -
 fn rewrite_typed_x_cost_counter_surface(def: &CardDefinition, line: &str) -> String {
     fn contains_x_cost_counter(effect: &Effect) -> bool {
         if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>()
+            && counter.exile_permission.is_none()
             && matches!(counter.target.base(), ChooseSpec::Object(filter) if filter.has_x_in_cost)
         {
             return true;
@@ -8659,7 +8660,8 @@ fn describe_cross_segment_countered_spell_may_put_from_hand_window(
     let counter = tagged_counter
         .effect
         .downcast_ref::<crate::effects::CounterEffect>()?;
-    if counter.target != ChooseSpec::target(ChooseSpec::spell()) {
+    if counter.exile_permission.is_some()
+        || counter.target != ChooseSpec::target(ChooseSpec::spell()) {
         return None;
     }
 
@@ -12139,6 +12141,7 @@ fn tagged_object_filter(effect: &Effect) -> Option<(&TagKey, &ObjectFilter)> {
     } else if let Some(counter) = tagged
         .effect
         .downcast_ref::<crate::effects::CounterEffect>()
+        .filter(|counter| counter.exile_permission.is_none())
     {
         exact_single_target_object_filter(&counter.target)?
     } else if let Some(unless_pays) = tagged
@@ -12148,7 +12151,8 @@ fn tagged_object_filter(effect: &Effect) -> Option<(&TagKey, &ObjectFilter)> {
         let [counter_effect] = unless_pays.effects.as_slice() else {
             return None;
         };
-        let counter = counter_effect.downcast_ref::<crate::effects::CounterEffect>()?;
+        let counter = counter_effect.downcast_ref::<crate::effects::CounterEffect>()
+            .filter(|counter| counter.exile_permission.is_none())?;
         exact_single_target_object_filter(&counter.target)?
     } else {
         return None;
@@ -24353,6 +24357,7 @@ fn collect_self_replacement_action_targets<'a>(
         .or_else(|| {
             effect
                 .downcast_ref::<crate::effects::CounterEffect>()
+                .filter(|counter| counter.exile_permission.is_none())
                 .map(|counter| &counter.target)
         })
         .or_else(|| {
@@ -27552,6 +27557,7 @@ fn unwrap_tagged_effect(mut effect: &Effect) -> &Effect {
 fn counter_effect_target(effect: &Effect) -> Option<&ChooseSpec> {
     unwrap_tagged_effect(effect)
         .downcast_ref::<crate::effects::CounterEffect>()
+        .filter(|counter| counter.exile_permission.is_none())
         .map(|counter| &counter.target)
 }
 

@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with retained artifact14 and signed audit28. The real combat
-// owner adds last declaration-step evidence; the restricted-mana carrier is unchanged.
+// Coordinated with artifact17 and signed audit31. Nested counter riders and
+// canonical counter text extend the public vocabulary through existing carriers.
 // Historical digests retain their bytes; this is never a gameplay importer.
-const PUBLIC_AUDIT_VERSION: u32 = 10;
+const PUBLIC_AUDIT_VERSION: u32 = 11;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -79,6 +79,11 @@ mod public_audit_boundary_12_8_25_tests {
 #[cfg(test)]
 mod public_audit_boundary_13_9_26_tests {
     include!("public_audit_boundary_13_9_26_tests.rs");
+}
+
+#[cfg(test)]
+mod public_audit_boundary_17_11_31_tests {
+    include!("public_audit_boundary_17_11_31_tests.rs");
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1988,7 +1993,7 @@ mod public_audit_tests {
         let evidence = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         wasm.game.combat = Some(ironsmith::combat_state::CombatState::default());
         let absent = evidence(&wasm);
-        assert_eq!(PUBLIC_AUDIT_VERSION, 10);
+        assert_eq!(PUBLIC_AUDIT_VERSION, 11);
         assert_eq!(absent["version"], PUBLIC_AUDIT_VERSION);
         assert!(absent.as_object().unwrap().contains_key("lastAttackDeclarationStepPlayers"));
         assert!(absent["lastAttackDeclarationStepPlayers"].is_null());
