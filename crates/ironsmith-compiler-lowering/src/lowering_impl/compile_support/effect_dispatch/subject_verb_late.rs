@@ -2957,6 +2957,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
             target,
             player,
+            controllers_next_combat,
         }) => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2964,10 +2965,10 @@ pub(super) fn compile_subject_verb_late(
                 resolve_target_spec_with_choices(player, &current_reference_env(ctx))?;
             choices.extend(player_choices);
             Ok((
-                vec![Effect::new(crate::effects::MustAttackPlayerThisTurnEffect::new(
-                    spec,
-                    player_spec,
-                ))],
+                vec![Effect::new(
+                    crate::effects::MustAttackPlayerThisTurnEffect::new(spec, player_spec)
+                        .with_controllers_next_combat(*controllers_next_combat),
+                )],
                 choices,
             ))
         }

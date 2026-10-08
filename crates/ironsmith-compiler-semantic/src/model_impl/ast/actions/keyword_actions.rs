@@ -144,6 +144,9 @@ pub enum KeywordActionAst {
     MustAttackPlayerThisTurn {
         target: TargetAst,
         player: TargetAst,
+        /// "attacks during its controller's next combat phase if able":
+        /// `player` is unused.
+        controllers_next_combat: bool,
     },
     Suspect {
         target: TargetAst,

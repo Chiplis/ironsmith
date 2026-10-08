@@ -2021,6 +2021,12 @@
     if let Some(requirement) =
         effect.downcast_ref::<crate::effects::MustAttackPlayerThisTurnEffect>()
     {
+        if requirement.controllers_next_combat {
+            return format!(
+                "{} attacks during its controller's next combat phase if able",
+                capitalize_first(&describe_choose_spec(&requirement.target))
+            );
+        }
         return format!(
             "{} attacks {} this turn if able",
             capitalize_first(&describe_choose_spec(&requirement.target)),

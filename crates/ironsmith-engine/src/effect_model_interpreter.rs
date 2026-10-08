@@ -1935,10 +1935,13 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::MustAttackPlayerThisTurnEffect>(&effect)
     {
-        return Ok(Effect::new(crate::effects::MustAttackPlayerThisTurnEffect::new(
-            payload.target.clone(),
-            payload.player.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::MustAttackPlayerThisTurnEffect::new(
+                payload.target.clone(),
+                payload.player.clone(),
+            )
+            .with_controllers_next_combat(payload.controllers_next_combat),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BecomePlottedEffect>(&effect) {
         return Ok(Effect::new(crate::effects::BecomePlottedEffect::new(

@@ -2668,10 +2668,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field(target)
                 .finish()
             }
-            Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, player }) => f
+            Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                player,
+                controllers_next_combat,
+            }) => f
                 .debug_struct("MustAttackPlayerThisTurn")
                 .field("target", target)
                 .field("player", player)
+                .field("controllers_next_combat", controllers_next_combat)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Prepare { target, unprepare }) => {
                 if *unprepare {

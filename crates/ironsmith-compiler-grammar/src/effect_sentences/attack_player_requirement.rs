@@ -18,6 +18,28 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     };
     let tail = &tokens[attacks + 1..];
     let tail_words = crate::lexer::parser_token_word_refs(tail);
+    // "target creature an opponent controls attacks during its controller's
+    // next combat phase if able" (Trench Behemoth): no player is named; the
+    // requirement waits for that creature's controller's next combat.
+    if matches!(
+        tail_words.as_slice(),
+        ["during", "its", "controllers" | "controller's" | "controller’s", "next", "combat", "phase", "if", "able"]
+    ) && attacks > 0
+    {
+        let target = crate::util::parse_target_phrase(&tokens[..attacks])?;
+        if !matches!(target, TargetAst::Object(..)) {
+            return Ok(None);
+        }
+        return Ok(Some(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                player: TargetAst::Player(PlayerFilter::Any, None),
+                controllers_next_combat: true,
+            }),
+        )));
+    }
     let Some(player_words) = tail_words.strip_suffix(&["this", "turn", "if", "able"][..]) else {
         return Ok(None);
     };
@@ -45,6 +67,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
             target,
             player,
+            controllers_next_combat: false,
         }),
     )))
 }
