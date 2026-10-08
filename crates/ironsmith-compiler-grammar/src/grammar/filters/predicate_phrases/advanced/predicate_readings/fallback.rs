@@ -226,6 +226,10 @@ const SHAPES: &[Shape] = &[
     you_activated_loyalty_ability_this_turn,
     you_gained_and_lost_life_this_turn,
     you_controlled_referenced_object,
+    counted_this_way,
+    you_acted_this_way,
+    no_life_lost_this_way,
+    you_didnt_put_onto_battlefield_this_way,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -938,4 +942,120 @@ fn you_controlled_referenced_object(words: &[&str]) -> Option<PredicateAst> {
         )),
         _ => None,
     }
+}
+
+/// The count of objects a prior instruction acted on, read from the shared
+/// "<filter> <action> this way" metric grammar (bound to its exact producer
+/// by reference resolution).
+fn this_way_count(object_words: &[&str]) -> Option<Value> {
+    crate::grammar::shared_util::value_semantics::parse_prior_effect_aggregate_metric_value(
+        ironsmith_core::EffectMetric::Count,
+        object_words,
+    )
+}
+
+/// "If two or more cards are exiled this way" (Mysterious Stranger), "If
+/// eight or more cards were returned to your hand this way" (Long Rest).
+fn counted_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let [count, "or", "more", rest @ ..] = words else {
+        return None;
+    };
+    if !rest.ends_with(&["this", "way"]) {
+        return None;
+    }
+    Some(at_least(this_way_count(rest)?, number(count)?))
+}
+
+/// "If you return four or more nontoken permanents you control this way"
+/// (Flood of Tears), "If you return a nonland card to your hand this way"
+/// (Vengeful Rebirth), "If you draw one or more cards this way" (Transcendent
+/// Archaic), "If you didn't draw cards this way" (Mr. Foxglove): the active
+/// spelling of the passive count.
+fn you_acted_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let (negated, rest) = match words {
+        ["you", "didnt" | "dont", rest @ ..] => (true, rest),
+        ["you", "did", "not", rest @ ..] => (true, rest),
+        ["you", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let (participle, rest): (&[&str], &[&str]) = match rest {
+        ["return" | "returned", rest @ ..] => (&["returned"], rest),
+        ["draw" | "drew", rest @ ..] => (&["drawn"], rest),
+        _ => return None,
+    };
+    let [object @ .., "this", "way"] = rest else {
+        return None;
+    };
+    let (minimum, object) = match object {
+        [count, "or", "more", object @ ..] => (number(count)?, object),
+        ["a" | "an", object @ ..] => (1, object),
+        object => (1, object),
+    };
+    if object.is_empty() {
+        return None;
+    }
+    // "a nonland card to your hand": the destination follows the object.
+    let (object, destination): (&[&str], &[&str]) = match object {
+        [object @ .., "to", "your", "hand"] => (object, &["to", "your", "hand"]),
+        object => (object, &[]),
+    };
+    let object_words: Vec<&str> = object
+        .iter()
+        .copied()
+        .chain(participle.iter().copied())
+        .chain(destination.iter().copied())
+        .chain(["this", "way"])
+        .collect();
+    let predicate = at_least(this_way_count(&object_words)?, minimum);
+    Some(if negated {
+        PredicateAst::Not(Box::new(predicate))
+    } else {
+        predicate
+    })
+}
+
+/// "If no life is lost this way" (Blitzwing, Cruel Tormentor): the prior
+/// life-loss instruction's actual loss was zero.
+fn no_life_lost_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let ["no", "life", "is" | "was", "lost", "this", "way"] = words else {
+        return None;
+    };
+    Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::Outcome,
+            ironsmith_core::EffectMetric::LifeLost,
+        )),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(0),
+    })
+}
+
+/// "If you didn't put a card onto the battlefield this way" (Rulik Mons),
+/// "If you didn't put the revealed card onto the battlefield this way" (Break
+/// Out): the referenced card is not (or was not, last known) on the
+/// battlefield after the optional put.
+fn you_didnt_put_onto_battlefield_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let rest = match words {
+        ["you", "didnt", "put", rest @ ..] | ["you", "did", "not", "put", rest @ ..] => rest,
+        _ => return None,
+    };
+    let reference = match rest {
+        [reference @ .., "onto", "the", "battlefield", "this", "way"]
+        | [reference @ .., "onto", "battlefield", "this", "way"] => reference,
+        _ => return None,
+    };
+    if !matches!(
+        reference,
+        ["it"] | ["a", "card"] | ["the", "card"] | ["that", "card"] | ["the", "revealed", "card"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::Not(Box::new(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            filter: ObjectFilter::default().in_zone(Zone::Battlefield),
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+        },
+    ))))
 }
