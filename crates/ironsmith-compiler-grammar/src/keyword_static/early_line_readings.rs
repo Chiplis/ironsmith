@@ -193,6 +193,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_cycling_cost_alternative_line(input)),
     },
     Reading {
+        id: RuleId::new("echo-cost-alternative-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_echo_cost_alternative_line(input)),
+    },
+    Reading {
         id: RuleId::new("quoted-granted-ability-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -550,6 +556,14 @@ fn read_cycling_cost_alternative_line(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(ability) = parse_cycling_cost_alternative_line(tokens)? {
+        return Ok(Some(vec![ability.into()]));
+    }
+    Ok(None)
+}
+fn read_echo_cost_alternative_line(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) = super::echo_cost_alternative::parse_echo_cost_alternative_line(input.tokens)? {
         return Ok(Some(vec![ability.into()]));
     }
     Ok(None)

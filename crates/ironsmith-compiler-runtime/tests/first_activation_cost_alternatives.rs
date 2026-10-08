@@ -85,3 +85,19 @@ fn advancing_the_spirit_first_power_up_during_your_turns() {
         );
     }
 }
+
+/// Echo-cost alternative: a static whose compiled model the echo payment
+/// reads when the echo trigger resolves (CR 118.9, 702.30a).
+#[test]
+fn thick_skinned_goblin_offers_a_zero_echo_cost() {
+    for definition in support::definitions("Thick-Skinned Goblin") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("EchoCostAlternative"), "{debug}");
+        assert!(debug.contains("replacement_mana_cost"), "{debug}");
+        let text = support::rendered(&definition);
+        assert!(
+            text.contains("you may pay {0} rather than pay the echo cost for permanents you control"),
+            "{text}"
+        );
+    }
+}

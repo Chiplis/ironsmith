@@ -586,7 +586,9 @@ pub(crate) fn rewrite_static_model_words(
         | P::ChooseNamedOptionAsEnters { .. } | P::ConvertUnspentMana { .. }
         // A generic instead-replacement's event selectors are not yet
         // rewritten; hold rather than change only part of its words.
-        | P::EventReplacementWithEffects { .. } => return Err(hold(model)),
+        | P::EventReplacementWithEffects { .. }
+        // An echo-cost alternative's permanent filter is not rewritten yet.
+        | P::EchoCostAlternative { .. } => return Err(hold(model)),
     }
     Ok(rewritten)
 }
