@@ -95,6 +95,7 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 let mut costs = vec![Cost::mana(mana_cost)];
                 costs.extend(additional_costs.iter().cloned());
                 Some(AlternativeCastingMethod::Flashback {
+                    x_minimum: 0,
                     total_cost: TotalCost::from_costs(costs),
                 })
             }

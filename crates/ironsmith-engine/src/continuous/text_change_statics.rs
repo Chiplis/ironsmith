@@ -788,7 +788,7 @@ fn grantable_words(
             | D::LifeEqualManaValueFromZone { .. } => {}
         },
         G::AlternativeCast(method) => match method {
-            A::Blitz { total_cost } | A::Flashback { total_cost } | A::Harmonize { total_cost }
+            A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost }
             | A::Retrace { total_cost } | A::Madness { total_cost } | A::Bestow { total_cost }
             | A::FlashWithAdditionalCost { total_cost, .. } => {
                 *total_cost = rewrite_total_cost_words(total_cost, change)?;

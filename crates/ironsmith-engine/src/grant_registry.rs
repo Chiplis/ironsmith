@@ -2428,6 +2428,7 @@ mod tests {
                 Zone::Graveyard,
                 alice,
                 AlternativeCastingMethod::Flashback {
+                    x_minimum: 0,
                     total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
                 },
                 source,
@@ -2494,6 +2495,7 @@ mod tests {
             Zone::Graveyard,
             player,
             AlternativeCastingMethod::Flashback {
+                x_minimum: 0,
                 total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
             },
             GrantSource::Effect {

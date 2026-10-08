@@ -4640,7 +4640,7 @@ pub(super) fn flashback_keyword_accepts_non_mana_total_cost() {
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("Flashback"), "{debug}");
-    let crate::model::CompilerAlternativeCastingMethod::Flashback { total_cost } = parsed else {
+    let crate::model::CompilerAlternativeCastingMethod::Flashback { total_cost, .. } = parsed else {
         panic!("expected compiler-owned flashback cost: {debug}");
     };
     let costs = total_cost

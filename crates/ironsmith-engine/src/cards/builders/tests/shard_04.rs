@@ -766,7 +766,7 @@ pub(super) fn test_parse_flashback_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Flashback { total_cost } => {
+        AlternativeCastingMethod::Flashback { total_cost, .. } => {
             let cost = total_cost
                 .mana_cost()
                 .expect("flashback should include mana cost");

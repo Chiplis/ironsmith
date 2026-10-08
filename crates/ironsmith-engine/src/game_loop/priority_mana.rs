@@ -3572,6 +3572,7 @@ fn propose_spell_cast_with_origin(
                     ),
                     CastingMethod::GrantedFlashback => Some(
                         crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                            x_minimum: 0,
                             total_cost: crate::cost::TotalCost::mana(
                                 obj.mana_cost_owned().unwrap_or_default(),
                             ),

@@ -369,6 +369,7 @@ pub(super) fn test_non_mana_only_flashback_does_not_require_printed_mana_cost() 
             false,
         )])
         .alternative_cast(AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: TotalCost::from_costs(vec![
                 Cost::validated_effect(Effect::choose_objects(
                     ObjectFilter::creature().you_control(),
