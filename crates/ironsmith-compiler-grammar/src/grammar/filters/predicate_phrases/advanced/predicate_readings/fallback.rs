@@ -67,6 +67,7 @@ const SHAPES: &[Shape] = &[
     you_discarded_this_turn,
     opponent_dealt_noncombat_damage,
     more_cards_in_hand_than_each_opponent,
+    each_player_has_no_cards_in_hand,
     you_were_attacked,
     attacking_opponents,
     keyword_actions_this_turn,
@@ -348,6 +349,22 @@ fn opponent_dealt_noncombat_damage(words: &[&str]) -> Option<PredicateAst> {
         | ["an", "opponent", "was", "dealt", "noncombat", "damage", "this", "turn"] => Some(
             at_least(Value::NoncombatDamageDealtToPlayersThisTurn(PlayerFilter::Opponent), 1),
         ),
+        _ => None,
+    }
+}
+
+/// "each player has no cards in hand" (Howltooth Hollow): the largest hand
+/// among all players is empty.
+fn each_player_has_no_cards_in_hand(words: &[&str]) -> Option<PredicateAst> {
+    match words {
+        ["each", "player", "has", "no", "cards", "in", "hand"]
+        | ["each", "player", "has", "no", "cards", "in", "their", "hand"] => {
+            Some(PredicateAst::ValueComparison {
+                left: Value::MaxCardsInHand(PlayerFilter::Any),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(0),
+            })
+        }
         _ => None,
     }
 }

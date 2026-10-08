@@ -2390,8 +2390,27 @@ pub fn parse_cast_or_play_tagged_clause(
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
                 |(target_ref, tail_tokens)| {
                     let tail = parse_conditional_tagged_free_cast_tail_tokens(tail_tokens)?;
-                    let (operator, right) =
-                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)?;
+                    let predicate = if let Some((operator, right)) =
+                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)
+                    {
+                        PredicateAst::ValueComparison {
+                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                                target_ref.tag.clone(),
+                            ))),
+                            operator,
+                            right,
+                        }
+                    } else {
+                        // "You may play the exiled card without paying its
+                        // mana cost if each player has no cards in hand"
+                        // (Howltooth Hollow): a game-state condition checked
+                        // as the ability resolves (CR 608.2c).
+                        let (_, condition) = crate::grammar::primitives::parse_prefix(
+                            tail.condition_tokens,
+                            crate::grammar::primitives::kw("if"),
+                        )?;
+                        crate::grammar::filters::parse_condition_predicate_lexed(condition).ok()?
+                    };
                     let inner = if tail.lifetime == PermissionLifetime::Immediate {
                         EffectAst::subject_verb_cast_tagged(
                             crate::tag::TagRef::of(target_ref.tag.clone()),
@@ -2411,13 +2430,7 @@ pub fn parse_cast_or_play_tagged_clause(
                         )
                     };
                     Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                        predicate: PredicateAst::ValueComparison {
-                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                                target_ref.tag.clone(),
-                            ))),
-                            operator,
-                            right,
-                        },
+                        predicate,
                         if_true: vec![inner],
                         if_false: Vec::new(),
                     }))
