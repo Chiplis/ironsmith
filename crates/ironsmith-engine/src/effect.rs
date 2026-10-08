@@ -1903,6 +1903,20 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::BeAttachedBy(hosts, attachments) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && hosts.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_attached_by.push(crate::game_state::CantBeAttachedBy {
+                            host: obj_id,
+                            attachments: attachments.clone(),
+                            controller,
+                            source,
+                        });
+                    }
+                }
+            }
             Restriction::AttackBlockOrCrew(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

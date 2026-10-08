@@ -732,7 +732,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::MaximumBlockers { filter, .. }
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }
-        | R::BeTargetedFrom(blockers, attacker) => {
+        | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker) => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
         }

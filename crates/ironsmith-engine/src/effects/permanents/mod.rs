@@ -130,6 +130,19 @@ pub(crate) fn attachment_can_attach_to_target(
         return false;
     }
 
+    // "can't be enchanted by other Auras" / "can't be equipped": a
+    // prohibited attachment is illegal, so it can't attach and falls off
+    // (CR 704.5m/n).
+    if let AttachmentTarget::Object(host) = target
+        && game
+            .effect_store
+            .cant_effects
+            .cant_be_attached_by
+            .iter()
+            .any(|entry| entry.forbids(game, host, attachment))
+    {
+        return false;
+    }
     let attachment_controller = game.controller_of(attachment);
     if !game.attachment_target_is_within_range(attachment_controller, target, Some(attachment_id)) {
         return false;

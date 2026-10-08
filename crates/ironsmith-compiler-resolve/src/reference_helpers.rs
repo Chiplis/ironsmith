@@ -1623,6 +1623,10 @@ pub fn resolve_restriction_it_tag(
         Restriction::AttackBlockOrCrew(filter) => {
             Restriction::attack_block_or_crew(resolve_it_tag(filter, refs)?)
         }
+        Restriction::BeAttachedBy(hosts, attachments) => Restriction::be_attached_by(
+            resolve_it_tag(hosts, refs)?,
+            resolve_it_tag(attachments, refs)?,
+        ),
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),
         Restriction::BeDestroyed(filter) => {
             Restriction::be_destroyed(resolve_it_tag(filter, refs)?)

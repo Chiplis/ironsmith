@@ -1204,6 +1204,10 @@ pub enum Restriction {
     /// Privileges): attack and block prohibitions plus exclusion from crew
     /// costs (CR 702.122a taps "untapped creatures you control"). Appended.
     AttackBlockOrCrew(ObjectFilter),
+    /// "[hosts] can't be enchanted by other Auras" / "can't be equipped":
+    /// the second filter names attachments that can't become (or stay,
+    /// CR 704.5m/n) attached to the matching hosts. Appended.
+    BeAttachedBy(ObjectFilter, ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1570,6 +1574,10 @@ impl Restriction {
 
     pub fn attack_block_or_crew(filter: ObjectFilter) -> Self {
         Self::AttackBlockOrCrew(filter)
+    }
+
+    pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
+        Self::BeAttachedBy(hosts, attachments)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {
