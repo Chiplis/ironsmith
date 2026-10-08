@@ -1140,6 +1140,19 @@ impl CardDefinitionBuilder {
     }
 
     pub fn ninjutsu(self, cost: ManaCost) -> Self {
+        self.ninjutsu_from_zones(cost, vec![crate::zone::Zone::Hand])
+    }
+
+    /// CR 702.49d: commander ninjutsu functions from the hand and from the
+    /// command zone.
+    pub fn commander_ninjutsu(self, cost: ManaCost) -> Self {
+        self.ninjutsu_from_zones(
+            cost,
+            vec![crate::zone::Zone::Hand, crate::zone::Zone::Command],
+        )
+    }
+
+    fn ninjutsu_from_zones(self, cost: ManaCost, zones: Vec<crate::zone::Zone>) -> Self {
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
             crate::costs::Cost::effect(crate::effect::Effect::new(
@@ -1151,7 +1164,7 @@ impl CardDefinitionBuilder {
             total_cost,
             vec![crate::effect::Effect::ninjutsu()],
             crate::ability::ActivationTiming::DuringCombat,
-        ).in_zones(vec![crate::zone::Zone::Hand]);
+        ).in_zones(zones);
         if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
             activated.keyword = Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu);
         }

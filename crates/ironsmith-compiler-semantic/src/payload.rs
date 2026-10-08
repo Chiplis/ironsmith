@@ -77,6 +77,8 @@ pub enum KeywordAction {
     Eternalize(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Emerge(ManaCost),
     Ninjutsu(ManaCost),
+    /// CR 702.49d: ninjutsu that also functions from the command zone.
+    CommanderNinjutsu(ManaCost),
     Backup(u32),
     Cipher,
     Dash(ManaCost),
@@ -448,6 +450,7 @@ impl KeywordAction {
             Self::Eternalize(cost) => format!("Eternalize {}", cost.display()),
             Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
+            Self::CommanderNinjutsu(cost) => format!("Commander ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
             Self::Dash(cost) => format!("Dash {}", cost.to_oracle()),

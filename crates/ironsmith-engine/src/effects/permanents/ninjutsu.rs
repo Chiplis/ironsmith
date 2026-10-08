@@ -182,7 +182,9 @@ impl EffectExecutor for NinjutsuCostEffect {
                 let Some(source_obj) = game.object(ctx.source) else {
                     return Err(ExecutionError::ObjectNotFound(ctx.source));
                 };
-                if source_obj.zone != Zone::Hand {
+                // CR 702.49d: commander ninjutsu also functions from the command zone; the
+                // activated ability's functional zones decide which a given card allows.
+                if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
                     return Err(ExecutionError::Impossible(
                         "Ninjutsu source must be in hand".to_string(),
                     ));
@@ -230,7 +232,9 @@ impl CostExecutableEffect for NinjutsuCostEffect {
                 "Ninjutsu source does not exist".to_string(),
             ));
         };
-        if source_obj.zone != Zone::Hand {
+        // CR 702.49d: commander ninjutsu also functions from the command zone; the
+        // activated ability's functional zones decide which a given card allows.
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
             return Err(CostValidationError::Other(
                 "Ninjutsu source must be in hand".to_string(),
             ));
@@ -426,7 +430,9 @@ impl EffectExecutor for NinjutsuEffect {
                         EffectOutcome::target_invalid(),
                     ));
                 };
-                if source_obj.zone != Zone::Hand {
+                // CR 702.49d: commander ninjutsu also functions from the command zone; the
+                // activated ability's functional zones decide which a given card allows.
+                if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::target_invalid(),
                     ));
