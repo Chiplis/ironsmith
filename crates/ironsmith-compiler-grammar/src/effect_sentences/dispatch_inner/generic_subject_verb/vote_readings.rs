@@ -69,6 +69,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_generic_vote_option_effects(input)),
     },
     Reading {
+        id: RuleId::new("each-player-per-vote-received"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_each_player_per_vote_received(input)),
+    },
+    Reading {
+        id: RuleId::new("each-player-who-received-no-votes"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_each_player_who_received_no_votes(input)),
+    },
+    Reading {
         id: RuleId::new("generic-extra-vote"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -184,4 +196,86 @@ fn read_generic_extra_vote(input: &VoteSentence<'_>) -> Result<Option<EffectAst>
         return Ok(Some(effect));
     }
     Ok(None)
+}
+
+/// The participant body as "that player <body>", parsed as an ordinary chain
+/// with the iterated player as actor.
+fn that_player_body(body: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    let mut tokens = vec![
+        OwnedLexToken::word("that", crate::cards::builders::TextSpan::synthetic()),
+        OwnedLexToken::word("player", crate::cards::builders::TextSpan::synthetic()),
+    ];
+    tokens.extend_from_slice(crate::lexer::trim_lexed_commas(body));
+    crate::effect_sentences::parse_effect_chain_lexed(&tokens)
+}
+
+/// "Each player draws a card for each vote they received." (Círdan the
+/// Shipwright): each player repeats the body once per vote they received
+/// in the preceding player vote (CR 701.38).
+fn read_each_player_per_vote_received(
+    input: &VoteSentence<'_>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::phrase(&["each", "player"]))
+    else {
+        return Ok(None);
+    };
+    const SUFFIX: &[&str] = &["for", "each", "vote", "they", "received"];
+    let Some(body_len) = rest.len().checked_sub(SUFFIX.len()) else {
+        return Ok(None);
+    };
+    let (body, suffix) = rest.split_at(body_len);
+    if body.is_empty()
+        || primitives::parse_prefix(suffix, primitives::phrase(SUFFIX))
+            .is_none_or(|(_, after)| !after.is_empty())
+    {
+        return Ok(None);
+    }
+    let effects = that_player_body(body)?;
+    Ok(Some(EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::ForEach(
+                crate::cards::builders::ForEachEffectAst::RepeatEffects {
+                    count: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),
+                    effects,
+                },
+            )],
+        },
+    )))
+}
+
+/// "Each player who received no votes may put a permanent card from their
+/// hand onto the battlefield." (Círdan the Shipwright): the body applies to
+/// each player whose vote total in the preceding player vote is zero.
+fn read_each_player_who_received_no_votes(
+    input: &VoteSentence<'_>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    let Some((_, body)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["each", "player", "who", "received", "no", "votes"]),
+    ) else {
+        return Ok(None);
+    };
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let effects = that_player_body(body)?;
+    Ok(Some(EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Conditionals(
+                crate::cards::builders::ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::ValueComparison {
+                        left: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),
+                        operator: crate::effect::ValueComparisonOperator::Equal,
+                        right: Value::Fixed(0),
+                    },
+                    if_true: effects,
+                    if_false: Vec::new(),
+                },
+            )],
+        },
+    )))
 }
