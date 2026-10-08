@@ -1,0 +1,352 @@
+[
+ {
+  "name": "Twinned Vision",
+  "oracle_id": "fa1cc78f-26bc-4d5d-973b-7cb7d7490973",
+  "mana_cost": "{1}{U/R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Draw a card. If this spell wasn't cast from your hand, draw two cards instead.\nFlashback—{1}{U/R}{U/R}, Discard a card."
+ },
+ {
+  "name": "Apex of Power",
+  "oracle_id": "d06eedb4-bd5a-4864-9505-a570a745d165",
+  "mana_cost": "{7}{R}{R}{R}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Exile the top seven cards of your library. Until end of turn, you may cast spells from among them.\nIf this spell was cast from your hand, add ten mana of any one color."
+ },
+ {
+  "name": "Transpose",
+  "oracle_id": "77d5f298-06b4-49d1-9b33-f1f176665ba2",
+  "mana_cost": "{2}{B}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Draw a card, then discard a card. You lose 1 life. If this spell was cast from your hand, create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"\nRebound"
+ },
+ {
+  "name": "Sphinx of Lost Truths",
+  "oracle_id": "25597913-aa17-4e3b-a4e9-371ce1459160",
+  "mana_cost": "{3}{U}{U}",
+  "type_line": "Creature — Sphinx",
+  "power": "3",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Kicker {1}{U}\nFlying\nWhen this creature enters, draw three cards. Then if it wasn't kicked, discard three cards."
+ },
+ {
+  "name": "Court of Vantress",
+  "oracle_id": "ad82b43b-b15e-48f4-86ab-5ee2c448cf14",
+  "mana_cost": "{2}{U}{U}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "When this enchantment enters, you become the monarch.\nAt the beginning of your upkeep, choose up to one other target enchantment or artifact. If you're the monarch, you may create a token that's a copy of it. If you're not the monarch, you may have this enchantment become a copy of it, except it has this ability."
+ },
+ {
+  "name": "Dose of Dawnglow",
+  "oracle_id": "f852bc33-e2f8-43be-9e6e-7badd1f894ef",
+  "mana_cost": "{4}{B}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Return target creature card from your graveyard to the battlefield. Then if it isn't your main phase, blight 2."
+ },
+ {
+  "name": "Luminarch Ascension",
+  "oracle_id": "90076bf5-aa9a-4a6e-9035-9aa97fd5561e",
+  "mana_cost": "{1}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of each opponent's end step, if you didn't lose life this turn, you may put a quest counter on this enchantment.\n{1}{W}: Create a 4/4 white Angel creature token with flying. Activate only if this enchantment has four or more quest counters on it."
+ },
+ {
+  "name": "Visions of Beyond",
+  "oracle_id": "c68964df-51ae-43b0-abea-74735016c13f",
+  "mana_cost": "{U}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Draw a card. If a graveyard has twenty or more cards in it, draw three cards instead."
+ },
+ {
+  "name": "Jace, the Perfected Mind",
+  "oracle_id": "03dafab4-841f-41cb-8f2e-8188f5177837",
+  "mana_cost": "{2}{U}{U/P}",
+  "type_line": "Legendary Planeswalker — Jace",
+  "power": null,
+  "toughness": null,
+  "loyalty": "5",
+  "oracle_text": "Compleated\n+1: Until your next turn, up to one target creature gets -3/-0.\n−2: Target player mills three cards. Then if a graveyard has twenty or more cards in it, you draw three cards. Otherwise, you draw a card.\n−X: Target player mills three times X cards."
+ },
+ {
+  "name": "Nightmares and Daydreams",
+  "oracle_id": "0403bfb0-2174-4360-994d-68d8ca96fc55",
+  "mana_cost": "{2}{U}",
+  "type_line": "Enchantment — Saga",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "I, II, III — Until your next turn, whenever you cast an instant or sorcery spell, target player mills cards equal to that spell's mana value.\nIV — Draw a card. If a graveyard has twenty or more cards in it, draw three cards instead."
+ },
+ {
+  "name": "Sanguine Spy",
+  "oracle_id": "03af4b10-900e-4013-bd5d-dd8d132d50fb",
+  "mana_cost": "{2}{B}",
+  "type_line": "Creature — Vampire Rogue",
+  "power": "2",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Menace, lifelink\n{1}, Sacrifice another creature: Surveil 1.\nAt the beginning of your end step, if there are five or more mana values among cards in your graveyard, you may pay 2 life. If you do, draw a card."
+ },
+ {
+  "name": "Tainted Indulgence",
+  "oracle_id": "6944092f-22c6-4b65-840d-8c1b70883127",
+  "mana_cost": "{U}{B}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Draw two cards. Then discard a card unless there are five or more mana values among cards in your graveyard."
+ },
+ {
+  "name": "Negative Zone Portal",
+  "oracle_id": "8430ae03-2d4c-4031-aa29-4d53815ded78",
+  "mana_cost": "{2}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "{2}, {T}: Exile target card from an opponent's graveyard. If it's a creature card, draw a card.\nAt the beginning of your upkeep, if there are four or more creature cards exiled with this artifact, flip a coin. If you lose the flip, sacrifice this artifact and return a card exiled with it at random to its owner's hand."
+ },
+ {
+  "name": "Profane Procession // Tomb of the Dusk Rose",
+  "oracle_id": "a656ad7f-133f-4d93-919a-43bcf1f815f3",
+  "mana_cost": "{1}{W}{B}",
+  "type_line": "Legendary Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "{3}{W}{B}: Exile target creature. Then if there are three or more cards exiled with Profane Procession, transform it."
+ },
+ {
+  "name": "Timely Reinforcements",
+  "oracle_id": "64f4f0ed-e924-459e-86a4-8202fae6ef3e",
+  "mana_cost": "{2}{W}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you have less life than an opponent, you gain 6 life. If you control fewer creatures than an opponent, create three 1/1 white Soldier creature tokens."
+ },
+ {
+  "name": "Servant of the Stinger",
+  "oracle_id": "0c9ec9a1-738a-4f69-b367-5dbf3d046bf1",
+  "mana_cost": "{1}{B}",
+  "type_line": "Creature — Human Warlock",
+  "power": "1",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Deathtouch\nWhenever this creature deals combat damage to a player, if you've committed a crime this turn, you may sacrifice this creature. If you do, search your library for a card, put it into your hand, then shuffle."
+ },
+ {
+  "name": "Oko, the Ringleader",
+  "oracle_id": "4372b729-dc3d-4469-8fc5-811cc787d653",
+  "mana_cost": "{2}{G}{U}",
+  "type_line": "Legendary Planeswalker — Oko",
+  "power": null,
+  "toughness": null,
+  "loyalty": "3",
+  "oracle_text": "At the beginning of combat on your turn, Oko becomes a copy of up to one target creature you control until end of turn, except he has hexproof.\n+1: Draw two cards. If you've committed a crime this turn, discard a card. Otherwise, discard two cards.\n−1: Create a 3/3 green Elk creature token.\n−5: For each other nonland permanent you control, create a token that's a copy of that permanent."
+ },
+ {
+  "name": "The Raven Man",
+  "oracle_id": "19918740-f6e3-40cd-9848-3c7a852a6c2a",
+  "mana_cost": "{1}{B}",
+  "type_line": "Legendary Creature — Human Wizard",
+  "power": "2",
+  "toughness": "1",
+  "loyalty": null,
+  "oracle_text": "At the beginning of each end step, if a player discarded a card this turn, create a 1/1 black Bird creature token with flying and \"This token can't block.\"\n{3}{B}, {T}: Each opponent discards a card. Activate only as a sorcery."
+ },
+ {
+  "name": "River of Tears",
+  "oracle_id": "8a83d284-75a0-4901-b7d9-c4b7586ee327",
+  "mana_cost": "",
+  "type_line": "Land",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "{T}: Add {U}. If you played a land this turn, add {B} instead."
+ },
+ {
+  "name": "Kiora of Salt and Sand",
+  "oracle_id": "e70bb7f8-8098-49c5-929c-68f63cd821c5",
+  "mana_cost": "{1}{G}{U}",
+  "type_line": "Legendary Creature — Merfolk Noble",
+  "power": "2",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Whenever you attack, if you've activated a loyalty ability this turn, untap target attacking creature. It can't be blocked this turn.\nPlaneswalkers you control have \"[−8]: Create an 8/8 blue Leviathan creature token with hexproof.\""
+ },
+ {
+  "name": "Lunar Convocation",
+  "oracle_id": "cb68d1e4-36aa-4a00-b671-8959e7d526d4",
+  "mana_cost": "{W}{B}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of your end step, if you gained life this turn, each opponent loses 1 life.\nAt the beginning of your end step, if you gained and lost life this turn, create a 1/1 black Bat creature token with flying.\n{1}{B}, Pay 2 life: Draw a card."
+ },
+ {
+  "name": "Polis Crusher",
+  "oracle_id": "ffd6f55f-2592-46a5-94da-cb9424783004",
+  "mana_cost": "{2}{R}{G}",
+  "type_line": "Creature — Cyclops",
+  "power": "4",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Trample, protection from enchantments\n{4}{R}{G}: Monstrosity 3.\nWhenever this creature deals combat damage to a player, if this creature is monstrous, destroy target enchantment that player controls."
+ },
+ {
+  "name": "Arachnus Web",
+  "oracle_id": "8b25f353-0798-4a03-a928-6a701a919468",
+  "mana_cost": "{2}{G}",
+  "type_line": "Enchantment — Aura",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Enchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nAt the beginning of the end step, if enchanted creature's power is 4 or greater, destroy this Aura."
+ },
+ {
+  "name": "Domestication",
+  "oracle_id": "86da33ac-f8ac-48c8-a50b-22fd761dff8f",
+  "mana_cost": "{2}{U}{U}",
+  "type_line": "Enchantment — Aura",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Enchant creature\nYou control enchanted creature.\nAt the beginning of your end step, if enchanted creature's power is 4 or greater, sacrifice this Aura."
+ },
+ {
+  "name": "Anax, Hardened in the Forge",
+  "oracle_id": "e23cd06d-1360-4e5d-aecc-adf902bede69",
+  "mana_cost": "{1}{R}{R}",
+  "type_line": "Legendary Enchantment Creature — Demigod",
+  "power": "*",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Anax's power is equal to your devotion to red.\nWhenever Anax or another nontoken creature you control dies, create a 1/1 red Satyr creature token with \"This token can't block.\" If the creature had power 4 or greater, create two of those tokens instead."
+ },
+ {
+  "name": "Burn the Impure",
+  "oracle_id": "9503c801-eb6f-4f34-9062-c56105509b7b",
+  "mana_cost": "{1}{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Burn the Impure deals 3 damage to target creature. If that creature has infect, Burn the Impure deals 3 damage to that creature's controller."
+ },
+ {
+  "name": "Hotshot Investigators",
+  "oracle_id": "288fcf5c-f5aa-4f62-9dd8-ba295df48f7a",
+  "mana_cost": "{5}{U}",
+  "type_line": "Creature — Vedalken Detective",
+  "power": "4",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "When this creature enters, return up to one other target creature to its owner's hand. If you controlled it, investigate."
+ },
+ {
+  "name": "Unyielding Gatekeeper",
+  "oracle_id": "3c8fa799-7f30-4532-8317-f37a7ab787de",
+  "mana_cost": "{1}{W}",
+  "type_line": "Creature — Elephant Cleric",
+  "power": "3",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "Disguise {1}{W}\nWhen this creature is turned face up, exile another target nonland permanent. If you controlled it, return it to the battlefield tapped. Otherwise, its controller creates a 2/2 white and blue Detective creature token."
+ },
+ {
+  "name": "Gleeful Demolition",
+  "oracle_id": "66465bc1-4a34-4951-be53-57f90002976a",
+  "mana_cost": "{R}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Destroy target artifact. If you controlled that artifact, create three 1/1 red Phyrexian Goblin creature tokens."
+ },
+ {
+  "name": "Dissatisfied Customer",
+  "oracle_id": "15cea1c7-2c11-4e33-9b71-9ed94091bcac",
+  "mana_cost": "{2}{B}",
+  "type_line": "Creature — Vampire Guest",
+  "power": "2",
+  "toughness": "1",
+  "loyalty": null,
+  "oracle_text": "Flying, haste\nWhen this creature enters, roll a six-sided die. If the result is 3 or less, you lose that much life."
+ },
+ {
+  "name": "Non-Human Cannonball",
+  "oracle_id": "d4f3d013-d9e3-47bc-a615-b25f2c932b7c",
+  "mana_cost": "{2}{R}",
+  "type_line": "Artifact Creature — Clown Robot",
+  "power": "4",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "When this creature dies, roll a six-sided die. If the result is 4 or less, this creature deals that much damage to you."
+ },
+ {
+  "name": "Void Maw",
+  "oracle_id": "ad2a1b07-58f5-44c2-92e0-464ea2d45e7e",
+  "mana_cost": "{4}{B}{B}",
+  "type_line": "Creature — Horror",
+  "power": "4",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Trample\nIf another creature would die, exile it instead.\nPut a card exiled with this creature into its owner's graveyard: This creature gets +2/+2 until end of turn."
+ },
+ {
+  "name": "Paradox Shaper // Omit Variables",
+  "oracle_id": "511951ed-fbff-4e44-9429-27f237496672",
+  "mana_cost": "{1}{U/B}",
+  "type_line": "Creature — Octopus Wizard",
+  "power": "1",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, if this creature isn't prepared, it becomes prepared.\n{2}: Put target card from your graveyard on the bottom of your library."
+ },
+ {
+  "name": "Stingerquill Voxmancer // Vicious Verse",
+  "oracle_id": "e8f755f7-ec93-4d2e-bffc-c719984fa13d",
+  "mana_cost": "{B/R}",
+  "type_line": "Creature — Goblin Sorcerer",
+  "power": "1",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, if this creature isn't prepared, it becomes prepared."
+ },
+ {
+  "name": "Woodwork Prodigy // Soul Tether",
+  "oracle_id": "f3ed157f-a09b-405f-aec4-0e7a81d80fc8",
+  "mana_cost": "{2}{R/G}",
+  "type_line": "Creature — Cat Druid",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, if this creature isn't prepared, it becomes prepared."
+ }
+]
