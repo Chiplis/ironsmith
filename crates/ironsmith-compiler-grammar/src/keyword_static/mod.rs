@@ -556,6 +556,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         ],
         "parse_play_from_top_pay_life_line" => vec![StaticAbilityLineHeadHint::Single("you")],
         "parse_double_counters_replacement_line" => vec![StaticAbilityLineHeadHint::Single("if")],
+        // "Skip your upkeep step [if <condition>]" may follow an ability-word
+        // label ("Hellbent — Skip your upkeep step if ..."), and the rule name
+        // only derives the "players" head. Both readings are fully anchored.
+        "parse_players_skip_upkeep_line" => Vec::new(),
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
