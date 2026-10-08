@@ -2234,6 +2234,13 @@ fn restore_distinct_combat_damage_controller_target(
 }
 
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    if let Some(filter) =
+        crate::grammar::choices::parse_target_opponent_with_more_controlled_as_you_activate_tokens(
+            tokens,
+        )
+    {
+        return Ok(TargetAst::Player(filter, span_from_tokens(tokens)));
+    }
     // "any target chosen at random" / "target opponent chosen at random"
     // (Goblin Test Pilot, Witch Hunt): the target is still announced as the
     // ability is put on the stack, but the game picks it at random among the

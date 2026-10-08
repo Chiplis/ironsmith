@@ -15861,6 +15861,7 @@ mod relative_player_target_consult_program_tests {
                     player: Box::new(PlayerFilter::Active),
                     filter: Box::new(ObjectFilter::creature()),
                     fewer: false,
+                    as_you_activate: false,
                 },
             )))
             .with_chooser(PlayerFilter::Active),

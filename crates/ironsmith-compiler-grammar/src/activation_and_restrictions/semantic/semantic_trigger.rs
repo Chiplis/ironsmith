@@ -156,6 +156,7 @@ fn parse_combat_damage_trigger_lexed(
             player: Box::new(PlayerFilter::You),
             filter: Box::new(ObjectFilter::default().with_type(card_type)),
             fewer: false,
+            as_you_activate: false,
         }),
         // "Whenever a creature deals combat damage to its owner": the damaged
         // player is the damage source's own owner/controller.
