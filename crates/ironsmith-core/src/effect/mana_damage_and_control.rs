@@ -1150,6 +1150,9 @@ pub enum LinkedExileFollowUp {
     /// Return that exact exiled object to its owner's hand at the beginning of
     /// the next end step.
     ReturnToHandAtNextEndStep,
+    /// That exact exiled card becomes plotted (CR 702.170c), e.g. Lilah,
+    /// Undefeated Slickshot.
+    BecomePlotted,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

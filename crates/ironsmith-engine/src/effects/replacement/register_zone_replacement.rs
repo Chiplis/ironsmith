@@ -163,6 +163,15 @@ pub(crate) fn zone_replacement_action(
         )]);
     }
 
+    if let Some(ironsmith_core::LinkedExileFollowUp::BecomePlotted) = linked_exile_follow_up {
+        debug_assert_eq!(replacement_zone, Zone::Exile);
+        let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
+        let plot = crate::effect::Effect::new(crate::effects::BecomePlottedEffect::new(
+            ChooseSpec::All(ObjectFilter::tagged(tag).in_zone(Zone::Exile)),
+        ));
+        return ReplacementAction::ExileWithSourceLinkThen(vec![plot]);
+    }
+
     if replacement_zone == Zone::Library
         && let Some(placement) = library_placement
     {

@@ -80,6 +80,44 @@ const IF_YOU_DO_RETURN_TO_HAND_NEXT_END_STEP: &[&str] = &[
     "step",
 ];
 
+const RESOLVING_SPELL_EXILE_HEADS: &[&[&str]] = &[
+    &["exile", "that", "card"],
+    &["exile", "that", "spell"],
+    &["exile", "it"],
+];
+const INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES: &[&[&str]] = &[&[
+    "instead",
+    "of",
+    "putting",
+    "it",
+    "into",
+    "your",
+    "graveyard",
+    "as",
+    "it",
+    "resolves",
+]];
+const IF_YOU_DO_IT_BECOMES_PLOTTED: &[&str] = &["if", "you", "do", "it", "becomes", "plotted"];
+
+/// "exile that card [with a dream counter on it] instead of putting it into
+/// your graveyard as it resolves" (Goliath Daydreamer, Lilah): a replacement
+/// of the resolving spell's destination (CR 608.2n, 614.1a), never an
+/// immediate exile of the spell. Any words between the head and the tail must
+/// be an entering-counter phrase, which the caller reads separately.
+pub fn is_resolving_spell_exile_instead_shape(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    starts_sequence(tokens, RESOLVING_SPELL_EXILE_HEADS)
+        && ends_content_sequence(tokens, INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES)
+        && !contains_sequence_word(tokens, "if")
+        && !contains_sequence_word(tokens, "may")
+}
+
+/// "If you do, it becomes plotted." (Lilah, Undefeated Slickshot): a follow-up
+/// that happens only when the replacement actually exiles the spell.
+pub fn is_if_you_do_it_becomes_plotted_shape(tokens: &[OwnedLexToken]) -> bool {
+    matches_complete_sequence(tokens, &[IF_YOU_DO_IT_BECOMES_PLOTTED])
+}
+
 pub fn is_resolving_card_exile_then_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],

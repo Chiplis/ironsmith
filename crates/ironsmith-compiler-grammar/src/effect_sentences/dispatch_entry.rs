@@ -999,6 +999,22 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         return None;
     }
     let target = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+    // "exile that card with a dream counter on it instead of putting it into
+    // your graveyard as it resolves" (Goliath Daydreamer): the triggering
+    // spell's resolution destination is replaced (CR 608.2n, 614.1a); the
+    // spell is not exiled while it is still on the stack.
+    if effect_grammar::is_resolving_spell_exile_instead_shape(tokens) {
+        return Some(
+            EffectAst::subject_verb_register_zone_replacement_with_counters(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                future_zone_replacement_counters(tokens),
+            ),
+        );
+    }
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)

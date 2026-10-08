@@ -4480,6 +4480,34 @@
         return format!("{base}. {}", followups.join(". "));
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
+        // Resolving-spell destination replacements (Goliath Daydreamer, Lilah).
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+            && matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot)
+            && !register.optional
+            && matches!(register.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+        {
+            let with_counters = match register.counters.as_slice() {
+                [] => String::new(),
+                [(counter, 1)] => format!(" with a {} counter on it", counter.description()),
+                [(counter, count)] => format!(" with {count} {} counters on it", counter.description()),
+                _ => String::new(),
+            };
+            match register.linked_exile_follow_up {
+                Some(ironsmith_core::LinkedExileFollowUp::BecomePlotted) => {
+                    return format!(
+                        "Exile that spell{with_counters} instead of putting it into your graveyard as it resolves. If you do, it becomes plotted"
+                    );
+                }
+                None if register.counters.len() <= 1 => {
+                    return format!(
+                        "Exile that card{with_counters} instead of putting it into your graveyard as it resolves"
+                    );
+                }
+                _ => {}
+            }
+        }
         if register.from_zone == Some(Zone::Stack)
             && register.to_zone == Some(Zone::Graveyard)
             && register.replacement_zone == Zone::Exile

@@ -444,6 +444,24 @@ fn read_resolving_card_exile_then_return_next_end_step(
             ),
         ]));
     }
+    // "exile that spell instead of putting it into your graveyard as it
+    // resolves. If you do, it becomes plotted." (Lilah, Undefeated
+    // Slickshot): the plot happens only if the replacement exiles it.
+    if sentences.len() == 2
+        && bundle_grammar::is_resolving_spell_exile_instead_shape(sentences[0])
+        && bundle_grammar::is_if_you_do_it_becomes_plotted_shape(sentences[1])
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_register_zone_replacement_with_linked_exile_follow_up(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                ironsmith_core::LinkedExileFollowUp::BecomePlotted,
+            ),
+        ]));
+    }
     Ok(None)
 }
 fn read_choose_mixed_targets_then_for_each(
