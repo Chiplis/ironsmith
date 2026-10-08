@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Matopi Golem",
+    "oracle_id": "0308b9f2-11da-41d0-8d18-18e8c0c600ab",
+    "text": "Mana cost: {5}\nType: Artifact Creature — Golem\nPower/Toughness: 3/3\n{1}: Regenerate this creature. When it regenerates this way, put a -1/-1 counter on it."
+  },
+  {
+    "name": "Skeleton Scavengers",
+    "oracle_id": "88782913-bfba-4300-b26c-405e6a45537c",
+    "text": "Mana cost: {2}{B}\nType: Creature — Skeleton\nPower/Toughness: 0/0\nThis creature enters with a +1/+1 counter on it.\nPay {1} for each +1/+1 counter on this creature: Regenerate this creature. When it regenerates this way, put a +1/+1 counter on it."
+  }
+]

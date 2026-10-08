@@ -221,6 +221,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_regenerate_then_gain_control(input)),
     },
     Reading {
+        id: RuleId::new("regenerate-then-when-regenerates"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_regenerate_then_when_regenerates(input)),
+    },
+    Reading {
         id: RuleId::new("consult-then-put-matches-battlefield-rest-bottom"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -680,6 +686,15 @@ fn read_regenerate_then_gain_control(
             parse_regenerate_then_gain_control_if_regenerates_bundle(sentences[0], sentences[1])
     {
         return Ok(Some(effects));
+    }
+    Ok(None)
+}
+fn read_regenerate_then_when_regenerates(
+    input: &Bundle<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &input.sentences;
+    if sentences.len() == 2 {
+        return parse_regenerate_then_when_regenerates_bundle(sentences[0], sentences[1]);
     }
     Ok(None)
 }

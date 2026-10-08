@@ -1942,7 +1942,10 @@ use bundle_rules_reference_programs::{
 };
 #[path = "effect_composition/composition_object_action.rs"]
 mod bundle_rules_object_action_programs;
-use bundle_rules_object_action_programs::parse_regenerate_then_gain_control_if_regenerates_bundle;
+use bundle_rules_object_action_programs::{
+    parse_regenerate_then_gain_control_if_regenerates_bundle,
+    parse_regenerate_then_when_regenerates_bundle,
+};
 #[path = "effect_composition/composition_resource.rs"]
 mod bundle_rules_resource_programs;
 use bundle_rules_resource_programs::{

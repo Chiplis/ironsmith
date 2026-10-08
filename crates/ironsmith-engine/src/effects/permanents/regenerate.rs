@@ -72,9 +72,18 @@ impl EffectExecutor for RegenerateEffect {
             }
             let controller = ctx.controller;
 
+            // Follow-ups run in the replacement program with the shield's
+            // controller and source; a reflexive "when it regenerates this
+            // way" trigger keys off the damage removal's result id.
+            let clear_damage = Effect::clear_damage(ChooseSpec::SpecificObject(target_id));
+            let clear_damage = if self.follow_up_effects.is_empty() {
+                clear_damage
+            } else {
+                Effect::with_id(RegenerateEffect::SHIELD_USED_ID.0, clear_damage)
+            };
             let mut replacement_effects = vec![
                 Effect::tap(ChooseSpec::SpecificObject(target_id)).tag(TagKey::from("__it__")),
-                Effect::clear_damage(ChooseSpec::SpecificObject(target_id)),
+                clear_damage,
                 Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
                     ChooseSpec::SpecificObject(target_id),
                 )),

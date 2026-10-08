@@ -1648,6 +1648,12 @@ pub struct RegenerateEffect<E = ()> {
 }
 
 impl<E> RegenerateEffect<E> {
+    /// Result id of the regeneration replacement's own instruction (the
+    /// damage removal). A follow-up "When it regenerates this way, ..."
+    /// is a reflexive trigger keyed to it (CR 701.19, 603.12): it triggers
+    /// only when this shield actually replaced a destruction.
+    pub const SHIELD_USED_ID: crate::effect::EffectId = crate::effect::EffectId(0xFFFF_FE00);
+
     pub fn new(target: ChooseSpec, duration: Until) -> Self {
         Self {
             target,
