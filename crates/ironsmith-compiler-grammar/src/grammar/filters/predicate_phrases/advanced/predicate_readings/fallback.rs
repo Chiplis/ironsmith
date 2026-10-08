@@ -28,6 +28,12 @@ fn read_words(words: &[&str]) -> Option<PredicateAst> {
     if let Some(predicate) = negated_copula(words) {
         return Some(predicate);
     }
+    if let Some(predicate) = possessive_characteristic(words) {
+        return Some(predicate);
+    }
+    if let Some(predicate) = definite_referent_had(words) {
+        return Some(predicate);
+    }
     // "an oil counter was removed from a permanent you controlled this turn
     // or a permanent with an oil counter on it was put into a graveyard this
     // turn" (Churning Reservoir): two independent history queries.
@@ -867,4 +873,50 @@ fn you_gained_and_lost_life_this_turn(words: &[&str]) -> Option<PredicateAst> {
         Box::new(parse_predicate(&gained).ok()?),
         Box::new(parse_predicate(&lost).ok()?),
     ))
+}
+
+/// "enchanted creature's power is 4 or greater" (Arachnus Web, Domestication):
+/// the possessive spelling of "enchanted creature has power 4 or greater",
+/// read by the shared grammar for that spelling.
+fn possessive_characteristic(words: &[&str]) -> Option<PredicateAst> {
+    let [
+        determiner @ ("enchanted" | "equipped" | "target" | "that"),
+        possessor,
+        characteristic @ ("power" | "toughness"),
+        "is",
+        comparison @ ..,
+    ] = words
+    else {
+        return None;
+    };
+    let noun = match *possessor {
+        "creatures" => "creature",
+        "permanents" => "permanent",
+        _ => return None,
+    };
+    if comparison.is_empty() {
+        return None;
+    }
+    let rewritten: Vec<&str> = [*determiner, noun, "has", *characteristic]
+        .into_iter()
+        .chain(comparison.iter().copied())
+        .collect();
+    parse_predicate(&crate::lexer::synthetic_word_tokens(rewritten)).ok()
+}
+
+/// "If the creature had power 4 or greater" (Anax, Hardened in the Forge):
+/// a definite description of the referenced object in a past-tense
+/// (last-known) characteristic check reads as "that creature had ...".
+fn definite_referent_had(words: &[&str]) -> Option<PredicateAst> {
+    let ["the", noun @ ("creature" | "permanent"), "had", rest @ ..] = words else {
+        return None;
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let rewritten: Vec<&str> = ["that", *noun, "had"]
+        .into_iter()
+        .chain(rest.iter().copied())
+        .collect();
+    parse_predicate(&crate::lexer::synthetic_word_tokens(rewritten)).ok()
 }

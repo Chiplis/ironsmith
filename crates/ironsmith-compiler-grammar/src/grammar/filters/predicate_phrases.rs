@@ -1322,6 +1322,17 @@ fn source_state_predicate_from_clause(
             Some(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))
         };
     }
+    // "if this creature is monstrous" (Polis Crusher): the source's
+    // monstrosity designation (CR 701.37b).
+    if surface::exact(clause, &["monstrous"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsMonstrous,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
+        };
+    }
     None
 }
 
