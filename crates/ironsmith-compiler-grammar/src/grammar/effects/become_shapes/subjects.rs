@@ -21,6 +21,8 @@ const TAGGED_REFERENCES: &[&[&str]] = &[
     &["those", "creatures"],
     &["those", "permanents"],
     &["those", "objects"],
+    &["those", "lands"],
+    &["those", "artifacts"],
 ];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BecomeMassTargetKind {
