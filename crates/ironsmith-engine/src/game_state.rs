@@ -1953,6 +1953,9 @@ pub struct CantEffectTracker {
     /// Fires of Invention): the matching spell filter and its maximum.
     pub cant_cast_more_than: HashMap<PlayerId, Vec<(crate::target::ObjectFilter, u32)>>,
 
+    /// Players who draw from the bottom of their library (River Song).
+    pub draws_from_bottom: HashSet<PlayerId>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -2711,6 +2714,7 @@ impl CantEffectTracker {
                 self.add_cast_limit_filter(player, filter);
             }
         }
+        self.draws_from_bottom.extend(other.draws_from_bottom);
         for (player, limits) in other.cant_cast_more_than {
             for (filter, maximum) in limits {
                 self.add_counted_cast_limit(player, filter, maximum);
@@ -2805,6 +2809,7 @@ impl CantEffectTracker {
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_limit_filters.clear();
         self.cant_cast_more_than.clear();
+        self.draws_from_bottom.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -8696,18 +8701,31 @@ impl GameState {
         Some(info)
     }
 
+    /// The card a draw by `player` takes: the top of their library (CR
+    /// 121.1), or the bottom while a draw-from-bottom rule applies to them.
+    pub fn next_draw_card(&self, player: PlayerId) -> Option<ObjectId> {
+        let library = &self.player(player)?.library;
+        if self
+            .effect_store
+            .cant_effects
+            .draws_from_bottom
+            .contains(&player)
+        {
+            library.first().copied()
+        } else {
+            library.last().copied()
+        }
+    }
+
     /// Draws cards for a player, moving them from library to hand.
     /// Uses move_object to properly update the object's zone.
     /// Returns the new ObjectIds of the drawn cards.
     pub fn draw_cards(&mut self, player: PlayerId, count: usize) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            // Get the top card of the library (last element)
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            // The top card of the library (last element), or the bottom card
+            // under a draw-from-bottom rule (River Song).
+            let card_id = self.next_draw_card(player);
 
             if let Some(id) = card_id {
                 // Move from library to hand
@@ -8732,11 +8750,7 @@ impl GameState {
     ) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            let card_id = self.next_draw_card(player);
 
             let Some(id) = card_id else {
                 self.record_empty_library_draw_attempt(player);

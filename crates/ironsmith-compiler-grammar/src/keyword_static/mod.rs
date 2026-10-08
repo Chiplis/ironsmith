@@ -562,7 +562,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
         "parse_activate_abilities_as_though_haste_line"
-        | "parse_you_cast_spells_only_during_your_turn_line" => {
+        | "parse_you_cast_spells_only_during_your_turn_line"
+        | "parse_you_draw_cards_from_bottom_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
         "parse_zero_loyalty_state_based_exception_line" => {
@@ -1630,6 +1631,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_cast_spells_only_during_own_turns_line),
         multi_static_ability_ast_rule!(parse_players_cast_and_activate_only_during_own_turns_line),
         multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
+        single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2770,6 +2772,32 @@ fn parse_you_cast_spells_only_during_your_turn_line(
         display,
     ));
     Ok(Some(abilities))
+}
+
+/// "You draw cards from the bottom of your library rather than the top."
+/// (River Song): a lasting rule on which card the controller's draws take
+/// (CR 121.1).
+fn parse_you_draw_cards_from_bottom_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&[
+            "you", "draw", "cards", "from", "the", "bottom", "of", "your", "library", "rather",
+            "than", "the", "top",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::draw_from_bottom(PlayerFilter::You),
+        "You draw cards from the bottom of your library rather than the top".to_string(),
+    )))
 }
 
 /// "Players skip their untap steps." (Stasis), "Each player skips their untap

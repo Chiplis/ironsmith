@@ -703,6 +703,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
     use ironsmith_core::Restriction as R;
     match restriction {
         R::AdditionalLandPlays(player, _) | R::NoMaximumHandSize(player) | R::GainLife(player)
+        | R::DrawFromBottom(player)
         | R::SearchLibraries(player) | R::SearchOwnLibraryFromOwnEffects(player)
         | R::CastSpellsOnlyAsSorcery(player) | R::ActivateNonManaAbilities(player)
         | R::DrawCards(player) | R::DrawExtraCards(player) | R::PoisonCounters(player)

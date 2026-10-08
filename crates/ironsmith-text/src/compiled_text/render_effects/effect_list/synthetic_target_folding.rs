@@ -252,6 +252,7 @@ fn restriction_references_identity(
     match restriction {
         Restriction::AdditionalLandPlays(player, _)
         | Restriction::NoMaximumHandSize(player)
+        | Restriction::DrawFromBottom(player)
         | Restriction::GainLife(player)
         | Restriction::SearchLibraries(player)
         | Restriction::SearchOwnLibraryFromOwnEffects(player)

@@ -5486,6 +5486,14 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::DrawFromBottom(filter) => {
+            let (subject, library) = if matches!(filter, PlayerFilter::You) {
+                ("You".to_string(), "your library")
+            } else {
+                (describe_player_set_filter(filter), "their library")
+            };
+            format!("{subject} draw cards from the bottom of {library} rather than the top")
+        }
         crate::effect::Restriction::NoMaximumHandSize(filter) => {
             let subject = describe_player_set_filter(filter);
             let verb = if matches!(

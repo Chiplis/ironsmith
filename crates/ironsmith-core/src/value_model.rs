@@ -1243,6 +1243,11 @@ pub enum Restriction {
         spells: ObjectFilter,
         maximum: u32,
     },
+    /// "You draw cards from the bottom of your library rather than the top."
+    /// (River Song): a lasting player rule changing which card a draw takes
+    /// (CR 121.1 draws the top card; this rule substitutes the bottom card).
+    /// Appended to preserve existing serialized variant ordinals.
+    DrawFromBottom(PlayerFilter),
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -1677,6 +1682,10 @@ impl Restriction {
 
     pub fn attack_tax(rule: AttackTaxRule) -> Self {
         Self::AttackTax(rule)
+    }
+
+    pub fn draw_from_bottom(player: PlayerFilter) -> Self {
+        Self::DrawFromBottom(player)
     }
 
     pub fn cast_more_than_n_spells_each_turn(

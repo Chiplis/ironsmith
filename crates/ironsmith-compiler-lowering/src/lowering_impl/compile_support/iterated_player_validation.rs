@@ -545,6 +545,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     match restriction {
         AdditionalLandPlays(player, _)
         | NoMaximumHandSize(player)
+        | DrawFromBottom(player)
         | GainLife(player)
         | SearchLibraries(player)
         | SearchOwnLibraryFromOwnEffects(player)
