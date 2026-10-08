@@ -479,6 +479,19 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        // "You may play lands and cast spells from among cards exiled this
+        // way without paying their mana costs." (Gix, Magus of the Mind):
+        // to play a card is to play a land or cast a spell (CR 305.1, 601.1), so
+        // the permission covers exactly those exiled cards.
+        primitives::phrase(&[
+            "lands", "and", "cast", "spells", "from", "among", "cards", "exiled", "this", "way",
+        ])
+        .value((
+            TaggedPermissionReference::LastTagged,
+            false,
+            TaggedPermissionTargetSurface::ThoseCards,
+            None,
+        )),
         primitives::any_phrase(&[
             &["lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards"],
             &["lands", "and", "cast", "spells", "from", "among", "those", "cards"],
@@ -494,6 +507,25 @@ fn parse_tagged_permission_target_lexed<'a>(
             TaggedPermissionTargetSurface::ThisCard,
             None,
         )),
+        // "you may play a card exiled with Raphael": one play shared by the
+        // source-linked exile pool.
+        (
+            primitives::phrase(&["a", "card", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"],
+                &["artifact"],
+                &["enchantment"],
+                &["permanent"],
+                &["card"],
+                &["land"],
+            ])),
+        )
+            .value((
+                TaggedPermissionReference::SourceExiled,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                Some(1),
+            )),
         (
             primitives::phrase(&["cards", "exiled", "with", "this"]),
             opt(primitives::any_phrase(&[
@@ -796,6 +828,22 @@ fn parse_permission_tail_lexed<'a>(
             .map(|(_, duration, ())| (duration, true)),
         (parse_permission_lifetime_lexed, primitives::sentence_end())
             .map(|(lifetime, ())| (lifetime, false)),
+        // "You may play them without paying their mana costs for as long as
+        // they remain exiled." (Extract Power): the free price and the exile
+        // lifetime in either order.
+        (
+            parse_without_paying_mana_cost_lexed,
+            parse_permission_lifetime_lexed,
+            primitives::sentence_end(),
+        )
+            .map(|((), lifetime, ())| (lifetime, true)),
+        (
+            parse_permission_lifetime_lexed,
+            opt(primitives::comma()),
+            parse_without_paying_mana_cost_lexed,
+            primitives::sentence_end(),
+        )
+            .map(|(lifetime, _, (), ())| (lifetime, true)),
         (
             parse_without_paying_mana_cost_lexed,
             primitives::sentence_end(),
@@ -812,6 +860,12 @@ fn parse_permission_turn_duration_lexed<'a>(
     alt((
         primitives::phrase(&["until", "your", "next", "end", "step"])
             .value(PermissionLifetimeFact::UntilYourNextEndStep),
+        // "Until the beginning of your next upkeep, you may play that card."
+        // (Elkin Bottle): no player receives priority during the untap step
+        // (CR 502.4), so a play permission ending as your next upkeep begins
+        // ends exactly as one ending as your next turn begins.
+        primitives::phrase(&["until", "the", "beginning", "of", "your", "next", "upkeep"])
+            .value(PermissionLifetimeFact::UntilYourNextTurn),
         leaf::parse_leaf_turn_duration_phrase_lexed.map(lifetime_from_turn_duration),
     ))
     .parse_next(input)

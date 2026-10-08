@@ -1267,6 +1267,28 @@ pub fn parse_permission_clause_spec_lexed(
             ))
         })
         .or_else(|| {
+            // "cards you own exiled with this artifact": the same pool,
+            // narrowed to the permission player's own cards.
+            let (reference, tail) =
+                permission_source_exiled_facts::parse_owned_cards_from_source_exiled_tokens(
+                    rest_tokens,
+                )?;
+            Some((
+                TaggedPermissionTarget {
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                    as_copy: false,
+                    max_plays: None,
+                    surface: Some(
+                        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                            source: reference.surface,
+                        },
+                    ),
+                },
+                tail,
+                Some(ObjectFilter::default().owned_by(PlayerFilter::You)),
+            ))
+        })
+        .or_else(|| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens)
                 .map(|(target_ref, tail)| (target_ref, tail, None))
         })
@@ -1837,6 +1859,19 @@ fn next_turn_permission_grant_duration(
 ) -> Result<crate::grant::GrantDuration, CardTextError> {
     // The shared permission lifetime historically groups both next-turn
     // boundaries. Retain the actual grammatical duration when lowering a grant.
+    // "until the beginning of your next upkeep": nothing can be played during
+    // the untap step (CR 502.4), so the permission ends with your next
+    // turn's start.
+    if crate::grammar::primitives::parse_prefix(
+        trim_lexed_commas(tokens),
+        crate::grammar::primitives::phrase(&[
+            "until", "the", "beginning", "of", "your", "next", "upkeep",
+        ]),
+    )
+    .is_some()
+    {
+        return Ok(crate::grant::GrantDuration::UntilYourNextTurn);
+    }
     Ok(
         match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
             Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,

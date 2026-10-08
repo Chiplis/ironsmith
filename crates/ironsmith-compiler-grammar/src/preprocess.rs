@@ -521,6 +521,22 @@ fn replace_names_with_map(
         (start < idx).then_some(&bytes[start..idx])
     }
 
+    /// "a card exiled with Raphael" (Raphael, Most Attitude): the linked
+    /// exile pool of the source names it by its short name.
+    fn preceded_by_exiled_with(bytes: &[u8], idx: usize) -> bool {
+        if previous_word(bytes, idx) != Some(b"with".as_slice()) {
+            return false;
+        }
+        let mut with_start = idx;
+        while with_start > 0 && !bytes[with_start - 1].is_ascii_alphanumeric() {
+            with_start -= 1;
+        }
+        while with_start > 0 && bytes[with_start - 1].is_ascii_alphanumeric() {
+            with_start -= 1;
+        }
+        previous_word(bytes, with_start) == Some(b"exiled".as_slice())
+    }
+
     fn preceded_by_ability_grant_word(bytes: &[u8], idx: usize) -> bool {
         previous_word(bytes, idx)
             .is_some_and(|word| matches!(word, b"has" | b"have" | b"gain" | b"gains"))
@@ -674,6 +690,7 @@ fn replace_names_with_map(
                     | b"s"
             )
         }) || apostrophe_s
+            || preceded_by_exiled_with(bytes, idx)
     }
 
     fn is_result_optional_companion_short_name_context(
