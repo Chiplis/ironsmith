@@ -320,6 +320,14 @@ fn flashback_cost<'a>(input: &mut LexStream<'a>) -> WResult<()> {
             "mana",
             "cost",
         ]),
+        // "The flashback cost is equal to that card's mana cost." (Sphinx of
+        // Forgotten Lore): the same derived cost named by the card.
+        primitives::phrase(&[
+            "the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost",
+        ]),
+        primitives::phrase(&[
+            "the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost",
+        ]),
     ))
     .void()
     .parse_next(input)
