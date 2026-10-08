@@ -88,5 +88,25 @@
   "toughness": "4",
   "loyalty": null,
   "oracle_text": "Instant and sorcery spells you control have lifelink.\nAt the beginning of your upkeep, exile an instant or sorcery card at random from your graveyard. You may cast it this turn. If a spell cast this way would be put into your graveyard, exile it instead."
+ },
+ {
+  "name": "Blood Lust",
+  "oracle_id": "55a253f9-f44d-4898-af83-fea68b7b279d",
+  "mana_cost": "{1}{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If target creature has toughness 5 or greater, it gets +4/-4 until end of turn. Otherwise, it gets +4/-X until end of turn, where X is its toughness minus 1."
+ },
+ {
+  "name": "Hidetsugu's Second Rite",
+  "oracle_id": "749683c9-8cc0-4e8e-8d90-adda5e5f4e93",
+  "mana_cost": "{3}{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If target player has exactly 10 life, Hidetsugu's Second Rite deals 10 damage to that player."
  }
 ]

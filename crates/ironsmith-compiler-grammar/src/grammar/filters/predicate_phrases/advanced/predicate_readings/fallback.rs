@@ -237,6 +237,7 @@ const SHAPES: &[Shape] = &[
     creatures_attacked_this_turn,
     card_exiled_with_it,
     source_kicked_twice,
+    target_player_life_total,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -855,6 +856,39 @@ fn you_have_less_life_than_opponent(words: &[&str]) -> Option<PredicateAst> {
     Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou {
         player: PlayerAst::Opponent,
     }))
+}
+
+/// "target player has exactly 10 life" (Hidetsugu's Second Rite): a life-total
+/// comparison of a player the condition itself targets. The comparison reads
+/// as for "you have ..."; the player is the ability's target, which the
+/// conditional announces before it resolves (CR 601.2c, 608.2b).
+fn target_player_life_total(words: &[&str]) -> Option<PredicateAst> {
+    let (player, rest) = match words {
+        ["target", "player", "has", rest @ ..] => (PlayerFilter::target_player(), rest),
+        ["target", "opponent", "has", rest @ ..] => (PlayerFilter::target_opponent(), rest),
+        _ => return None,
+    };
+    if rest.last() != Some(&"life") {
+        return None;
+    }
+    let tokens =
+        crate::lexer::synthetic_word_tokens(["you", "have"].into_iter().chain(rest.iter().copied()));
+    let PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    } = parse_predicate(&tokens).ok()?
+    else {
+        return None;
+    };
+    if left.unhinted() != &Value::LifeTotal(PlayerFilter::You) {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::LifeTotal(player),
+        operator,
+        right,
+    })
 }
 
 /// "you've committed a crime this turn" (Servant of the Stinger, Oko, the
