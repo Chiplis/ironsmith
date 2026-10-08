@@ -892,6 +892,38 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("counted-number-2"),
+        head: HeadDiscriminator::words(&["count"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 2).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let next = sentences.get(sentence_idx + 2).map(SentenceInput::lowered);
+            let effects = match window {
+                Some(window) => super::counted_number::read(&window, next),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
+        id: RuleId::new("counted-number-3"),
+        head: HeadDiscriminator::words(&["count"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 3).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let next = sentences.get(sentence_idx + 3).map(SentenceInput::lowered);
+            let effects = match window {
+                Some(window) => super::counted_number::read(&window, next),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
         id: RuleId::new("guessed-wrong-free-cast"),
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 4,

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Rumbling Ruin",
+    "oracle_id": "8f36e0db-eea7-4c97-98ce-4bc2d8c7f734",
+    "mana_cost": "{5}{R}",
+    "type_line": "Creature — Elemental",
+    "oracle_text": "When this creature enters, count the number of +1/+1 counters on creatures you control. Creatures your opponents control with power less than or equal to that number can't block this turn.",
+    "power": "6",
+    "toughness": "6",
+    "text": "Mana cost: {5}{R}\nType: Creature — Elemental\nPower/Toughness: 6/6\nWhen this creature enters, count the number of +1/+1 counters on creatures you control. Creatures your opponents control with power less than or equal to that number can't block this turn."
+  },
+  {
+    "name": "Chaos Moon",
+    "oracle_id": "728e2960-1d85-4b3f-8b5b-915f9b9ffd2f",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of each upkeep, count the number of permanents. If the number is odd, until end of turn, red creatures get +1/+1 and whenever a player taps a Mountain for mana, that player adds an additional {R}. If the number is even, until end of turn, red creatures get -1/-1 and if a player taps a Mountain for mana, that Mountain produces colorless mana instead of any other type.",
+    "text": "Mana cost: {3}{R}\nType: Enchantment\nAt the beginning of each upkeep, count the number of permanents. If the number is odd, until end of turn, red creatures get +1/+1 and whenever a player taps a Mountain for mana, that player adds an additional {R}. If the number is even, until end of turn, red creatures get -1/-1 and if a player taps a Mountain for mana, that Mountain produces colorless mana instead of any other type."
+  }
+]

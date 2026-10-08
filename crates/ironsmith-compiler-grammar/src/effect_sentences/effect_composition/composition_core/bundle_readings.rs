@@ -191,6 +191,15 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_reveal_until_land_put_all_graveyard_bundle(input)),
     },
     Reading {
+        id: RuleId::new("counted-number-bundle"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+            input.outcome(crate::effect_sentences::counted_number::read(&sentences, None))
+        },
+    },
+    Reading {
         id: RuleId::new("guessed-wrong-free-cast-bundle"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
