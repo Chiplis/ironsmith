@@ -1,6 +1,6 @@
 # p11-other — card-failure campaign cf8 summary
 
-158 cards: **25 source-proposed**, **133 blocked**, 0 already-on-main, 0 untriaged.
+158 cards: **33 source-proposed**, **125 blocked**, 0 already-on-main, 0 untriaged.
 
 All work is source-only and UNBUILT (per brief). The prebuilt `compile_oracle_text` was used for probing until it disappeared mid-session (main checkout rebuilding); clusters fixed after that point (blocker-count, block-alone, without-either-keyword, possessive switch) are verified by code reading only. A probe run at session start showed none of the 158 cards compiled on the binary, so none are already-on-main.
 
@@ -31,6 +31,25 @@ Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{discarded_this_turn_cou
 - New enum variants: `DirectCantFact::SourceCantBlockAlone`, `FilterTailDecoration::WithoutEitherKeyword` (all matches updated; grammar-crate local).
 - Possible conflicts with siblings: `activation_costs.rs` (parse_cant_clauses_unbound guard list), `keyword_static/mod.rs` rule list, `count_shapes_core.rs`, `value_semantics_core.rs`.
 
+## Second pass (coordinator queue)
+
+| Mechanism | Cards | Implementation | Files |
+|---|---|---|---|
+| top-of-library static condition | Mul Daya Channelers, Vampire Nocturnus | `PredicateAst`/`Condition::TopCardOfYourLibraryMatches(filter)`; `parse_predicate` reads 'the top card of your library is <a card noun / color>'; engine checks `library.last()` (CR 401.1); library-top changes already bump revision and dirty continuous state | grammar `predicate_phrases/advanced/library_top.rs`; semantic `predicates.rs`; resolve `predicate_conditions.rs`; core `value_model.rs`; engine `condition_eval.rs`, `dependency.rs`, `text_change_predicates.rs`; lowering `iterated_player_validation.rs`; text `condition_rendering.rs` |
+| lifetime damage history | Karakyk Guardian, Palladia-Mors, the Ruiner | `BattlefieldFlags.dealt_damage_since_entered` set in `commit_prepared_damage_original_with_outputs` (non-prevented damage, combat and noncombat; source = ctx.source), cleared with battlefield state (new object, CR 400.7); `Condition::SourceHasDealtDamageSinceEntered` invalidated through `mark_source_designation_changed`; grammar 'it/this creature hasn't dealt damage yet' | engine `game_state.rs`, `object_state_and_events.rs`, `turns_and_tracking.rs`, `rules/damage_assignment.rs` + condition plumbing above; grammar `advanced/source_damage_history.rs` |
+| wishes (outside the game) | Mastermind's Acquisition, North Wind Avatar, Ring of Ma'rûf, The Raven's Warning | outside-the-game = existing `Zone::OutsideGame` backed by `Player.sideboard` (ChooseObjects already enumerates owned sideboard cards; Burning-Wish-style reveal readings already used it). New `parse_outside_game_put_shape` + `parse_put_from_outside_game`: '[you may] put a(n) <card> you own from outside the game into your hand / on top of your library' | grammar `effects/effect_composition.rs`, `effect_sentences/effect_composition.rs`, `dispatch_entry.rs` |
+
+Second-pass tests (unrun): `top_of_library_conditions.rs`, `source_damage_history.rs`, `outside_game_put.rs`.
+
+### Findings on the queued items
+
+- **'Otherwise, that creature …' (Stolen Vitality): not a miscompile.** `rewrite_otherwise_referential_subject` deliberately turns it into 'target creature'; lowering's `push_choice` dedups equal target specs, so it binds the same declared target. This is required when the target is declared inside a gated branch (Insatiable Appetite, Pippin's Bravery), because the reference resolver hides gated-branch objects from the fallback's 'it'. The only other 'Otherwise, that …' cards in cards.json (Captivating Glance, Pulling Teeth, Zur's Weirding) are player subjects, not this rewrite. No collateral listed. Stolen Vitality itself ('Otherwise, it gains …' after an 'If it's your turn' conditional) stays blocked.
+- **Repeat-this-process loop: one already exists.** Core `RepeatProcessEffect<E>` (`ironsmith-core/src/effect/mana_damage_and_control.rs`) + `ForEachEffectAst::RepeatProcess` + `rewrite_repeat_process` in `ironsmith-compiler-resolve/src/effect_ast_normalization.rs`. I did not add a `repeat_process.rs`; p05 should reuse this type instead of adding a second loop. The 4 loop cards fail on body shapes, not on a missing loop (details in the ledger).
+- **Regeneration trigger:** design recorded in the ledger (Matopi Golem). Not implemented because `process_destroy_owned` runs the replacement program in the destroyer's context, so a reflexive trigger made there would get the wrong controller.
+- **Player-scoped restrictions, search filters, dice/Attractions:** each card needs a different missing piece (listed per card). Shared blockers: player-subject attack restrictions with a 'their next turn' duration; a keyword list longer than two in `FilterTailDecoration`; and the English-noun subtype exclusions (Plan, Sphere). Dice/Attractions need Attraction-visit rolls outside the turn structure, planar-die actions and die-roll replacements.
+
+Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive match (condition_eval, text_change_predicates, condition_rendering::describe_condition) was updated, and the other sites use wildcards. (2) `BattlefieldFlags` gains a `HashSet` field (Default; the struct is not serialized). (3) Every first damage dealt by a permanent now runs `mark_source_designation_changed` (once per object lifetime).
+
 ## Blocked, grouped by missing mechanic
 
 - **ability-copy**: Gogo, Master of Mimicry
@@ -53,7 +72,6 @@ Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{discarded_this_turn_cou
 - **conditional-prevention**: Sanwell, Avenger Ace
 - **cost-tap-substitution**: Heirloom Epic
 - **curse-attach-player**: Lynde, Cheerful Tormentor
-- **damage-history-condition**: Karakyk Guardian, Palladia-Mors, the Ruiner, Ruric Thar, Magecrusher
 - **damage-history-restriction**: Runesword
 - **delayed-zone-move**: Three Wishes
 - **dice-attractions**: Bamboozling Beeble, Centaur of Attention, Command Performance, Delina, Wild Mage, Ferris Wheel, Fractured Powerstone, Ichor Elixir, Line Cutter, Six-Sided Die
@@ -67,7 +85,6 @@ Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{discarded_this_turn_cou
 - **face-down-piles**: Expose the Culprit, Ghastly Conscription
 - **face-down-reveal**: Hauntwoods Shrieker
 - **flip**: Sasaya, Orochi Ascendant // Sasaya's Essence
-- **full-text-copy**: Volrath's Shapeshifter
 - **goad-permanent**: Jon Irenicus, Shattered One
 - **granted-damage-split**: Psionic Sliver
 - **granted-quoted-restriction**: Stilt-Man, Towering Terror
@@ -89,7 +106,7 @@ Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{discarded_this_turn_cou
 - **opponent-who-didnt**: Hollow Marauder, Zoyowa Lava-Tongue
 - **opponents-discard**: Everything Pizza
 - **otherwise-branch**: Stolen Vitality
-- **outside-game**: Mastermind's Acquisition, North Wind Avatar, Research // Development, Ring of Ma'rûf, The Raven's Warning
+- **outside-game-wish**: Research // Development
 - **player-chooses-name**: Petra Sphinx, Vexing Arcanix
 - **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin, Keen-Eared Sentry, Mirri, Weatherlight Duelist
 - **player-restriction-unless**: Antagonism
@@ -108,14 +125,15 @@ Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{discarded_this_turn_cou
 - **shared-color-condition**: Common Cause
 - **shuffle-zones**: Sway of the Stars, The Great Aurora
 - **skip-replacement**: Fasting, Island Sanctuary
+- **source-damage-history**: Ruric Thar, Magecrusher
 - **spell-trigger-filter**: Codie, Ravenous Codex, Riku of Many Paths, Virtual Assistant
 - **surveil-count**: Starving Revenant
 - **target-change-contest**: Psychic Battle
 - **token-followups**: Phantom Steed, Preston Garvey, Minuteman
-- **top-of-library-static**: Conspicuous Snoop, Crown of Convergence, Mul Daya Channelers, Skill Borrower, Vampire Nocturnus
+- **top-of-library-static**: Conspicuous Snoop, Crown of Convergence, Skill Borrower, Volrath's Shapeshifter
 - **trigger-suppression**: Hushbringer
 - **triggered-ability-counter**: Strict Proctor
 - **turn-history-zone-move-count**: Anzrag's Rampage, Structural Assault
 - **x-in-cost-filter**: Rosheen, Roaring Prophet
 
-Per-card precise gaps are in `ledger.jsonl` (`gameplay_gap`). Most promising next step: a `Condition::TopCardOfLibraryMatches{player, filter}` (engine already marks continuous state dirty on library-top changes) would unlock Mul Daya Channelers and Vampire Nocturnus.
+Per-card precise gaps are in `ledger.jsonl` (`gameplay_gap`).
