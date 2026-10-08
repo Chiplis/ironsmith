@@ -1,8 +1,9 @@
 # cf8 / p06-predicates — summary
 
-204 cards. Status: 35 source-proposed, 2 already-on-main, 74 blocked, 93 untriaged
+204 cards. Status: 56 source-proposed, 2 already-on-main, 146 blocked, 0 untriaged
 (see `ledger.jsonl`). Nothing was built or run; tests in
-`crates/ironsmith-compiler-runtime/tests/predicate_fallback_readings.rs` (fixture
+`crates/ironsmith-compiler-runtime/tests/predicate_fallback_readings.rs` and
+`crates/ironsmith-compiler-runtime/tests/event_instead_and_this_way_readings.rs` (fixture
 `fixtures/p06_predicate_fallbacks.json.fixture`) are authored and unrun.
 
 ## Root cause
@@ -46,3 +47,50 @@ ranked reading claims the input, so they cannot change cards that already compil
 - **Spell-sequence die roll result not exported**: Boing!, Clowning Around; Sword of Hours (result vs damage)
 - **Others examined**: Kaito Shizuki (short-name source surface), Cut Propulsion ("twice that much"), Gandalf (suspend in exile), Court of Locthwain (duration-led permission body), Discordant Spirit (opponent's-turn condition), Urza's Miter ("it was sacrificed"), Henry Wu (exploited-creature referent), River Song's Diary ("them" antecedent unverified)
 - **Untriaged (93)**: singleton predicates not reached in this pass; the ledger notes each one's failing predicate.
+
+## Second pass (after the coordinator's follow-up)
+
+### Generic "instead" replacement (CR 614.1a) — 8 cards
+Tainted Remedy, Plague Drone, Crumbling Sanctuary, Force Bubble, Dralnu, Lichenthrope, Szadek, Undead Alchemist.
+
+The engine already had everything except a static ability to install it. `ReplacementAction::Instead(effects)`
+runs through `effects/replacement/execute_payload.rs::with_replacement_child`. That gives the program:
+- the replaced event as its triggering event, so "that much"/"that many" read `EventValue(Amount)`;
+- the affected player as its iterated player, so "that player" works;
+- the damage target as its resolved target;
+- the event's applied-replacement history, so the replacement can't reapply to what its own program does (CR 614.5).
+
+New pieces (additive):
+- core `replaced_event_model.rs::ReplacedEventSpec`, which is DamageToPlayer, DamageToObject or LifeGain, each with source / combat filters;
+- an appended payload `StaticAbilityPayload::EventReplacementWithEffects` with its constructor and `try_map` arm, plus `StaticAbilityId::EventReplacementWithEffects`;
+- engine `static_abilities/misc/event_replacement_with_effects.rs`: the kind plus `ReplacedEventMatcher`. Unlike the prevention matchers, it also matches unpreventable damage. It is wired with a one-arm hunk in `model_interpreter.rs`. `text_change_statics.rs` holds the payload (no text-change rewriting);
+- a lowering arm that binds the iterated player and keeps event amounts;
+- grammar `keyword_static/event_instead_replacements.rs`. It reads "If <damage to X | X would be dealt damage | X would deal [combat] damage to <player> | <player> would gain life>, <program> instead", with "instead" either leading or closing the first sentence. It declines bodies naming prevention, damage, doubling, "plus", gain, may, or +1/+1 on the source, which belong to the specialized readers. It also declines any body it cannot parse, so it never adds a diagnostic to lines other readers own.
+
+### Prevention follow-up programs — 2 cards
+Gloom Surgeon, Nine Lives. `parse_prevention_proposed_amount_follow_up_line` now accepts any complete follow-up program after "prevent that damage and" or "prevent that damage,". It declines pronoun, choice, reflexive, damage, remove and +1/+1 tails, which are owned by the put-counter and remove-counter readers.
+
+### "This way" results — 8 cards
+Long Rest, Flood of Tears, Vengeful Rebirth, Transcendent Archaic, Mr. Foxglove, Blitzwing, Rulik Mons, Break Out.
+Counts use the existing `parse_prior_effect_aggregate_metric_value` grammar, which produces `PendingPriorEffectMetric{AffectedObjects, Count, action, filter}`. Reference resolution binds that to the producing instruction by its action. "No life is lost this way" reads the `Outcome, LifeLost` metric. "You didn't put a card onto the battlefield this way" is `Not(PlayerTaggedObjectMatches(It on battlefield))`.
+
+### Other additions — 3 cards
+- Case of the Gateway Express: creatures attacked this turn, via `TurnHistoryCount::CreaturesAttackedWith`.
+- Smirking Spelljacker: "a card is exiled with it".
+- Archangel of Wrath: "kicked twice" is `KickCount >= 2`.
+
+### Triage of the former 93 untriaged
+Each one now has a precise gap in the ledger. They are mostly singletons that need one of:
+- **Combat or turn history the engine doesn't keep:** this-combat attacks, last-turn damage, excess-damage history, damage dealt by a source to an object.
+- **Results of an earlier optional or choice step:** "if a player does", "if you pay", "if you can't", any-player payments.
+- **Leading-condition targets:** Blood Lust, Guiding Spirit.
+- **Facts recorded about a spell or ability at cast or activation time:** colors spent to activate, the sacrificed-cost record, life paid, the loyalty cost paid, warp / web-slinging / bargain / gift.
+- **Elliptical conditions:** "If it doesn't", "If it is".
+- **Repeat-process loops:** Sin, Rally the Horde.
+- **Graveyard order adjacency:** "directly above".
+- **Mechanics outside constructed play:** sticker kind, draft guessing.
+
+### Additional risks
+- A new core payload variant and a new `StaticAbilityId` were appended at the enum ends to keep ordinals stable. Sibling packages that append too will conflict textually at the enum tail, the `try_map` arm list and the id classification guard. These are trivial merges.
+- `event_instead_replacements` overlaps the "If ... would ..." lines of existing readers. Overlaps are avoided by declining their vocabulary. Because the static registry runs every rule and reports differing results as ambiguous, the first corpus run must check that no previously compiling "would ... instead" card changed.
+- Lich, Delaying Shield and Nefarious Lich now have their replacement lines, but they stay blocked on other lines. The ledger names each one's remaining gap.
