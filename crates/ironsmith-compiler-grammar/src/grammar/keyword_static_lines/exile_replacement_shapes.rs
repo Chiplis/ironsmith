@@ -77,6 +77,9 @@ pub enum ExileWouldDieSpec {
     SimpleSource(SimpleSourceReplacementKind),
     SimpleCreature {
         controller: ReplacementPlayerKind,
+        /// "If another creature would die" (Void Maw): the source itself is
+        /// excluded.
+        other: bool,
         follow_up_tokens: Vec<OwnedLexToken>,
     },
 }
@@ -563,7 +566,13 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ExileWouldDieSpec> {
     primitives::kw("if").parse_next(input)?;
-    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let other = opt(alt((
+        primitives::kw("a").value(false),
+        primitives::kw("an").value(false),
+        primitives::kw("another").value(true),
+    )))
+    .map(|other| other.unwrap_or(false))
+    .parse_next(input)?;
     primitives::kw("creature").parse_next(input)?;
     let player = opt(alt((
         alt((
@@ -589,6 +598,7 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     };
     Ok(ExileWouldDieSpec::SimpleCreature {
         controller: player,
+        other,
         follow_up_tokens,
     })
 }
