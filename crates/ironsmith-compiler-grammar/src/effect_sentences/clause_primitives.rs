@@ -519,9 +519,13 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "attack-if-able-clause",
+            // "Creatures target player controls attack this turn if able."
+            // (Incite War) and "Enchanted creature attacks this turn if able."
+            // (Nettling Curse) open with their subject's noun or attachment
+            // word; the complete requirement shape still owns the clause.
             &[
-                "all", "another", "attack", "attacks", "each", "it", "that", "they", "those",
-                "target", "up",
+                "all", "another", "attack", "attacks", "creatures", "each", "enchanted",
+                "equipped", "it", "that", "they", "those", "target", "up",
             ],
             parse_attack_this_turn_if_able_clause,
         ),
