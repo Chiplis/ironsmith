@@ -32,11 +32,29 @@ fn the_instead_line_is_one_conditional_amount_for_the_same_target() {
 }
 
 #[test]
+fn an_instead_line_restating_a_different_action_is_not_joined() {
+    // The statement draws; the "instead" line restates a damage action it
+    // never performed, so it must not become a self-replacement of the draw.
+    for body in [
+        "Mana cost: {U}\nType: Instant\nDraw a card.\nIf you control a Wizard, this spell deals 2 damage instead.",
+        "Mana cost: {R}\nType: Instant\nThis spell deals 2 damage to any target. Draw a card.\nIf you control a Wizard, it deals 3 damage instead.",
+    ] {
+        let compiled = ironsmith_compiler_runtime::compile_to_runtime_definition("Unrelated instead", body, false);
+        if let Ok(definition) = compiled {
+            let amounts: Vec<_> = support::find_all::<DealDamageEffect>(&definition)
+                .into_iter()
+                .map(|damage| damage.amount)
+                .collect();
+            assert!(!amounts.contains(&Value::Fixed(3)), "{body}: joined an unrelated restatement");
+            assert!(amounts.len() <= 1, "{body}: {amounts:?}");
+        }
+    }
+}
+
+#[test]
 fn an_ordinary_replacement_line_is_not_joined_as_a_restatement() {
     let body = "Mana cost: {R}\nType: Instant\nThis spell deals 2 damage to any target.\nIf a source would deal damage to you, prevent that damage instead.";
-    // "would" names an event: this is not a restatement of the spell's action.
-    let joined = ironsmith_compiler_runtime::compile_to_runtime_definition("Replacement neighbor", body, false);
-    if let Ok(definition) = joined {
+    if let Ok(definition) = ironsmith_compiler_runtime::compile_to_runtime_definition("Replacement neighbor", body, false) {
         assert_eq!(support::find_all::<DealDamageEffect>(&definition).len(), 1);
     }
 }
