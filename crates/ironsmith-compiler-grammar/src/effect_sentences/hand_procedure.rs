@@ -50,6 +50,7 @@ fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
         && matches!(
             hand_owner,
             PlayerFilter::DamagedPlayer
+                | PlayerFilter::Defending
                 | PlayerFilter::IteratedPlayer
                 | PlayerFilter::Target(_)
                 | PlayerFilter::AliasedTarget(_)
@@ -346,11 +347,77 @@ fn exile_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Optio
     Some(effects.remove(0))
 }
 
+/// "You may put a creature card from it onto the battlefield under your
+/// control tapped and attacking that player ..." (Zara, Renegade Recruiter):
+/// a put whose source is the looked-at hand. The sentence reads as the
+/// ordinary put without "from it"; the moved card is then bound to that hand.
+fn put_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Option<EffectAst> {
+    let tokens = sentence.lowered();
+    let from_it = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("from") && pair[1].is_word("it"))?;
+    if !tokens.iter().any(|token| token.is_word("put")) {
+        return None;
+    }
+    let mut stripped = tokens[..from_it].to_vec();
+    stripped.extend_from_slice(&tokens[from_it + 2..]);
+    let mut effects = super::parse_effect_sentence_lexed(&stripped).ok()?;
+    let [effect] = effects.as_mut_slice() else {
+        return None;
+    };
+    fn bind(effect: &mut EffectAst, owner: &PlayerFilter) -> Option<()> {
+        match effect {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+                let [effect] = effects.as_mut_slice() else {
+                    return None;
+                };
+                bind(effect, owner)
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::MoveToZone {
+                            target,
+                            zone: Zone::Battlefield,
+                            ..
+                        },
+                    ),
+                ..
+            }) => {
+                fn filter(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+                    match target {
+                        TargetAst::Object(filter, ..) => Some(filter),
+                        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                            filter(inner)
+                        }
+                        _ => None,
+                    }
+                }
+                let filter = filter(target)?;
+                if filter.owner.is_some() || filter.controller.is_some() {
+                    return None;
+                }
+                if filter.zone.is_some_and(|zone| zone != Zone::Hand) {
+                    return None;
+                }
+                filter.zone = Some(Zone::Hand);
+                filter.owner = Some(owner.clone());
+                Some(())
+            }
+            _ => None,
+        }
+    }
+    bind(effect, &owner)?;
+    Some(effects.remove(0))
+}
+
 /// The statement a sentence makes over the shown hand, if any.
 fn statement(shown: &Shown, sentence: &SentenceInput) -> Option<EffectAst> {
     match shown {
         Shown::Selected(tag) => cast_from_selected_hand(tag, sentence),
         Shown::Looked(owner) => exile_from_shown_hand(sentence, owner.clone())
+            .or_else(|| put_from_shown_hand(sentence, owner.clone()))
             .or_else(|| may_cast_spell_from_among(sentence)),
         Shown::Revealed(player) => {
             let revealed = match player {
