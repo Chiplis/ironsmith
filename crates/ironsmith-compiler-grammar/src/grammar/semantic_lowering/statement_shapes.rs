@@ -670,6 +670,8 @@ pub fn parse_day_night_starts_day_tokens(tokens: &[OwnedLexToken]) -> Option<Day
                 &["as", "this", "creature", "enters"],
                 &["as", "this", "permanent", "enters"],
                 &["as", "this", "object", "enters"],
+                &["as", "this", "artifact", "enters"],
+                &["as", "this", "enters"],
             ],
         ))
     .then_some(DayNightStartsDay)

@@ -4112,6 +4112,14 @@ pub fn parse_anthem_clause(
                                     | Value::DistinctPowers(_)
                                     | Value::CountPlayersBelowHalfStartingLifeTotal(_)
                             )
+                            // "for each opponent you have" (Blazing Sunsteel):
+                            // a live player count, not an object filter.
+                            || matches!(
+                                value.unhinted(),
+                                Value::CountPlayers(
+                                    PlayerFilter::Opponent | PlayerFilter::Any | PlayerFilter::You
+                                )
+                            )
                         {
                             value_scale = Some(
                                 value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),

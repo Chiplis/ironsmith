@@ -195,7 +195,9 @@ pub fn parse_day_night_enters_tokens(tokens: &[OwnedLexToken]) -> Option<DayNigh
         && surface_has_sequence(tokens, &["it", "becomes", "day"])
         && (surface_has_sequence(tokens, &["as", "this", "creature", "enters"])
             || surface_has_sequence(tokens, &["as", "this", "permanent", "enters"])
-            || surface_has_sequence(tokens, &["as", "this", "object", "enters"])))
+            || surface_has_sequence(tokens, &["as", "this", "object", "enters"])
+            || surface_has_sequence(tokens, &["as", "this", "artifact", "enters"])
+            || surface_has_sequence(tokens, &["as", "this", "enters"])))
     .then_some(DayNightEntersShape)
 }
 

@@ -215,7 +215,10 @@ pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
         Value::MaximumLifeTotal(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You)
         | Value::CountPlayersBelowHalfStartingLifeTotal(
             PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You,
-        ) => true,
+        )
+        | Value::CountPlayers(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You) => {
+            true
+        }
         Value::LifeTotal(PlayerFilter::You)
         | Value::CardsInHand(PlayerFilter::You)
         | Value::CardsInLibrary(PlayerFilter::You)
