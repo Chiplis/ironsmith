@@ -63,4 +63,6 @@ pub enum SourcePredicateAst {
     /// "as long as this creature is monstrous"
     SourceIsMonstrous,
     SourceIsHarnessed,
+    /// "if this creature isn't prepared"
+    SourceIsPrepared,
 }

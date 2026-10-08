@@ -2030,6 +2030,9 @@ pub enum Condition {
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
     SourceIsHarnessed,
+    /// "if this creature isn't prepared" (Paradox Shaper): the source bears
+    /// the prepared designation.
+    SourceIsPrepared,
     SourceIsRenowned,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),

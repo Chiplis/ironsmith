@@ -2184,6 +2184,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceIsSaddled
         | C::SourceDevouredCreaturesOrMore(_)
         | C::SourceIsHarnessed
+        | C::SourceIsPrepared
         | C::SourceIsMonstrous
         | C::SourceIsRenowned
         | C::SourceIsFaceDown

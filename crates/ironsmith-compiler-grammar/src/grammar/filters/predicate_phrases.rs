@@ -1215,6 +1215,8 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
                 "tapped",
                 "untapped",
                 "saddled",
+                "prepared",
+                "monstrous",
             ]),
         ),
     ];
@@ -1320,6 +1322,17 @@ fn source_state_predicate_from_clause(
             ))))
         } else {
             Some(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))
+        };
+    }
+    // "if this creature isn't prepared" (Paradox Shaper): the source's
+    // prepared designation, which a permanent cannot hold twice.
+    if surface::exact(clause, &["prepared"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsPrepared,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsPrepared))
         };
     }
     // "if this creature is monstrous" (Polis Crusher): the source's
