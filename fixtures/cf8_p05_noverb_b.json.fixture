@@ -459,5 +459,15 @@
     "oracle_text": "This creature can't be blocked as long as you control no other creatures.\nWhen this creature deals combat damage to a player, exile it and the top card of your library in a face-down pile, shuffle that pile, then manifest those cards.",
     "power": "2",
     "toughness": "3"
+  },
+  {
+    "cluster": "forced_attack_reassignment",
+    "name": "Portal Manipulator",
+    "oracle_id": "0dd3127e-de13-4785-b5f2-0af996e9f15f",
+    "mana_cost": "{2}{W/U}{W/U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, choose target player and any number of target attacking creatures their opponents control. Those creatures are now attacking that player.",
+    "power": "3",
+    "toughness": "2"
   }
 ]

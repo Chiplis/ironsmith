@@ -41,6 +41,19 @@ impl EffectExecutor for ReselectAttackTargetEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
+            // "Those creatures are now attacking that player": the new
+            // attack is fixed when the effect resolves (CR 506.4).
+            let fixed_player = match &self.attacked_player {
+                Some(filter) => {
+                    match crate::effects::helpers::resolve_player_filter(game, filter, ctx) {
+                        Ok(player) => Some(player),
+                        // The named player is gone (an illegal target):
+                        // no attack changes.
+                        Err(_) => return Ok(EffectOutcome::count(0)),
+                    }
+                }
+                None => None,
+            };
             let mut changed = 0;
             for creature in creatures {
                 let Some(current) = game.combat.as_ref().and_then(|combat| {
@@ -63,6 +76,11 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                     super::enter_attacking::enters_attacking_targets(game, controller);
                 if self.players_only {
                     targets.retain(|target| matches!(target, AttackTarget::Player(_)));
+                }
+                if let Some(player) = fixed_player {
+                    // Only a player the creature's controller could attack
+                    // with it; otherwise the creature keeps its attack.
+                    targets.retain(|target| *target == AttackTarget::Player(player));
                 }
                 if targets.is_empty() {
                     continue;
@@ -129,5 +147,63 @@ impl EffectExecutor for ReselectAttackTargetEffect {
 
     fn target_description(&self) -> &'static str {
         "attacking creature"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::combat_state::AttackerInfo;
+    use crate::ids::{CardId, PlayerId};
+    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn attack_of(game: &GameState, creature: crate::ids::ObjectId) -> AttackTarget {
+        game.combat
+            .as_ref()
+            .and_then(|combat| combat.attackers.iter().find(|info| info.creature == creature))
+            .map(|info| info.target.clone())
+            .expect("still attacking")
+    }
+
+    #[test]
+    fn now_attacking_redirects_to_the_named_player_without_a_choice() {
+        // CR 506.4: "Those creatures are now attacking that player."
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Carol".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let card = CardBuilder::new(CardId::from_raw(1), "Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+        let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let mut combat = crate::combat_state::CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        game.combat = Some(combat);
+
+        // A player the creature's controller can't attack leaves the attack.
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        ReselectAttackTargetEffect::new(ChooseSpec::SpecificObject(attacker), false)
+            .now_attacking(PlayerFilter::Specific(alice))
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+        assert_eq!(attack_of(&game, attacker), AttackTarget::Player(bob));
+
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), bob);
+        let outcome = ReselectAttackTargetEffect::new(ChooseSpec::SpecificObject(attacker), false)
+            .now_attacking(PlayerFilter::Specific(carol))
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(attack_of(&game, attacker), AttackTarget::Player(carol));
     }
 }

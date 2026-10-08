@@ -6394,6 +6394,20 @@ impl EffectAst {
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
                 target,
                 players_only,
+                attacked_player: None,
+            }),
+        )
+    }
+
+    /// "<attacking creatures> are now attacking <player>" (CR 506.4).
+    pub fn subject_verb_now_attacking_player(target: TargetAst, player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                target,
+                players_only: true,
+                attacked_player: Some(player),
             }),
         )
     }

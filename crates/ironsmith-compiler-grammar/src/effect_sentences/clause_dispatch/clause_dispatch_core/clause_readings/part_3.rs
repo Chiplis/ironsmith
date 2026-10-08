@@ -873,6 +873,9 @@ pub(super) fn read_target_only(input: &Clause<'_>) -> Result<Option<EffectAst>, 
     if let Some(effect) = crate::effect_sentences::attack_player_requirement::parse(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = crate::effect_sentences::now_attacking::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     if let Some(shape) = clause_grammar::parse_target_only_shape(tokens) {
         if find_negation_span(tokens).is_some() || shape.restriction_like {
             return Err(CardTextError::ParseError(format!(

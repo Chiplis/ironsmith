@@ -2700,10 +2700,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
                 target,
                 players_only,
+                attacked_player,
             }) => f
                 .debug_struct("ReselectAttackTarget")
                 .field("target", target)
                 .field("players_only", players_only)
+                .field("attacked_player", attacked_player)
                 .finish(),
             Self::PermanentState(PermanentStateActionAst::Flip { target }) => {
                 f.debug_tuple("Flip").field(target).finish()

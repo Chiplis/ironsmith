@@ -12,6 +12,7 @@ mod temporary_attack_requirement;
 mod attacked_turn_permission;
 mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
+pub(crate) mod now_attacking;
 pub(crate) mod turn_scoped_enter_replacement;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;

@@ -7126,6 +7126,15 @@
             prompt.description().to_string()
         };
     }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()
+        && let Some(player) = &reselect.attacked_player
+    {
+        return format!(
+            "{} are now attacking {}",
+            describe_choose_spec(&reselect.target),
+            describe_player_filter(player)
+        );
+    }
     if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>() {
         let choices = if reselect.players_only { "player" } else { "player or permanent" };
         return format!(

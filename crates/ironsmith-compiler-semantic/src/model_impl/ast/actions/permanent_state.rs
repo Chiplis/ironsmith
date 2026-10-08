@@ -75,5 +75,7 @@ pub enum PermanentStateActionAst {
     ReselectAttackTarget {
         target: TargetAst,
         players_only: bool,
+        /// "are now attacking that player": the fixed new attacked player.
+        attacked_player: Option<PlayerAst>,
     },
 }
