@@ -4,7 +4,7 @@ Branch `cf8/p01-lossy-semantic-markers` (worktree `ironsmith-cf8-p01`), off orig
 Source-only: nothing was built or run. The prebuilt `compile_oracle_text` was used for
 diagnostics until it disappeared mid-session (main rebuild); later work is reviewed by reading.
 
-Status: 90 already-on-main, 36 source-proposed, 44 blocked, 0 untriaged (170 total).
+Status (round 3): 90 already-on-main, 44 source-proposed, 36 blocked, 3 semantic-fix-collateral (170 package cards + 3 collateral).
 Ledger: `ledger.jsonl`. Fixture with full typed bodies: `fixtures/p01_lossy_semantic_markers.json.fixture`.
 
 ## Clusters, root causes and fixes
@@ -93,6 +93,32 @@ per-type choices; new `effect_list/basic_land_type_choices.rs` renders the run. 
 - Death Cloud fail-loud rule retired (the each-player chain already owns Pox's shape).
   Rebuild the City's rule kept: it depends on token-copy exceptions owned by p12.
 - Dead `cfg(ironsmith_runtime_parser_tests)` expectations (engine shard_07/09/10) updated.
+
+## Round 3 (on cf8/integration)
+
+- Resolving-spell destination replacement (owned mechanism): "exile that card/spell [with N
+  <counter> counters on it] instead of putting it into your graveyard as it resolves" now registers
+  a one-shot RegisterZoneReplacement on the triggering spell (Stack→Graveyard ⇒ Exile, CR 608.2n /
+  614.1a) instead of exiling it on cast — fixes the Goliath Daydreamer and Lilah silent miscompiles.
+  Lilah's "If you do, it becomes plotted" is a new `LinkedExileFollowUp::BecomePlotted`, executed
+  only when the replacement exiles the card. Collateral: Gandalf of the Secret Fire's first sentence
+  (its suspend follow-up still needs the same follow-up treatment). Quintorius stays blocked
+  (future replacement without a library-bottom destination).
+- Random targets (owned): "<target> chosen at random" keeps `ChoiceCount.random`; casting,
+  activation and trigger target announcement narrow the requirement to a uniform pick from the
+  replayable random stream (`targeting/random_targets.rs`). Collateral: Scab-Clan Giant, Power Pack.
+- As-you-activate snapshot (owned): `ValueSurfaceHint::AsYouActivateThisAbility` on where-X
+  bindings (Bobbleheads, Lukka). Keeper of the Beasts still needs a player-filter reading.
+- Piles (owned): binary-pile program gains a graveyard-pool producer and an exile/battlefield
+  destination (Death or Glory). Ecological Appreciation / Abstract Performance not done.
+- Level-up triggers were done in round 2. Echo / first-each-turn cycling and power-up
+  alternatives: not done — no machinery exists (note: FirstEquipCostAlternative is display-only,
+  a likely silent miscompile for Bruenor-style cards outside this package).
+- Re-check of "needs pNN" dependants against the merged tree: p06's generic instead replacement
+  covers damage/life-gain events only (not destruction or cross-paragraph self-replacement); p09's
+  shares-a-card-type predicate covers "with that permanent / the exiled card / that spell" but not
+  "the card exiled this way" / "the card you discarded" / reveal-until; same-name forms still
+  missing; p12 copy exceptions not verified for Rebuild the City. All stay blocked.
 
 ## Blocked, grouped by missing mechanic
 - Owned by other packages: generalized "instead" replacements (p06): Epicenter, Orim's Touch,
