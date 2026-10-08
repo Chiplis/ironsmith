@@ -862,6 +862,21 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("as", "long"),
         ],
         "parse_commander_ninjutsu_line" => vec![StaticAbilityLineHeadHint::Pair("commander", "ninjutsu")],
+        // The rule reads every alternative casting kind ("Dash costs you pay
+        // cost {2} less", Warbringer), not only flashback.
+        "parse_flashback_cost_modifier_line" => vec![
+            StaticAbilityLineHeadHint::Single("flashback"),
+            StaticAbilityLineHeadHint::Single("dash"),
+            StaticAbilityLineHeadHint::Single("blitz"),
+            StaticAbilityLineHeadHint::Single("escape"),
+            StaticAbilityLineHeadHint::Single("madness"),
+            StaticAbilityLineHeadHint::Single("miracle"),
+            StaticAbilityLineHeadHint::Single("suspend"),
+            StaticAbilityLineHeadHint::Single("foretell"),
+            StaticAbilityLineHeadHint::Single("jump"),
+            StaticAbilityLineHeadHint::Single("jump-start"),
+            StaticAbilityLineHeadHint::Single("jumpstart"),
+        ],
         "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
         "parse_each_player_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("each"),

@@ -1365,6 +1365,29 @@ pub fn parse_flashback_cost_modifier_line(
             "missing flashback cost modifier amount".to_string(),
         ));
     }
+    // Anything after "less"/"more" must be owned, never dropped: "{1} less for
+    // each time you've cast your commander from the command zone this game"
+    // (Henzie) scales the amount.
+    let direction_idx = remaining_words
+        .iter()
+        .position(|word| matches!(*word, "less" | "more"))
+        .unwrap_or(0);
+    let direction_tail = &remaining_words[direction_idx + 1..];
+    let amount_value = if direction_tail.is_empty() {
+        amount_value
+    } else {
+        let Some((per_each, used)) = parse_for_each_count_value_words(direction_tail) else {
+            return Ok(None);
+        };
+        if used != direction_tail.len() {
+            return Ok(None);
+        }
+        match amount_value {
+            Value::Fixed(1) => per_each,
+            Value::Fixed(amount) => Value::Scaled(Box::new(per_each), amount),
+            _ => return Ok(None),
+        }
+    };
 
     let mut filter = ObjectFilter::default();
     filter.alternative_cast = Some(kind);
