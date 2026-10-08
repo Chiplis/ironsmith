@@ -311,6 +311,19 @@ fn normalize_restriction_for_resolution(
         Restriction::PhaseIn(filter) => {
             Restriction::phase_in(lock_filter_to_current_matching_objects(filter, ctx, game))
         }
+        // CR 107.3, 611.2a: War Tax's {X} is the value announced for this
+        // activation; it is fixed when the effect begins, not re-read later.
+        Restriction::AttackTax(rule) => {
+            let mut rule = rule.clone();
+            if !matches!(rule.mana_per_attacker, crate::effect::Value::Fixed(_))
+                && let Ok(amount) =
+                    crate::effects::helpers::resolve_value(game, &rule.mana_per_attacker, ctx)
+            {
+                rule.mana_per_attacker = crate::effect::Value::Fixed(amount.max(0));
+            }
+            rule.attackers = bind_restriction_target_players(&rule.attackers, ctx, game);
+            Restriction::AttackTax(rule)
+        }
         _ => restriction.clone(),
     }
 }

@@ -1826,6 +1826,25 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         ]));
     }
 
+    // "This turn, creatures can't attack unless their controller pays {X}
+    // for each attacking creature they control" (War Tax), "until your next
+    // turn, ... pays 2 life for each of those creatures" (Sivitri): a
+    // resolving effect's attack tax (CR 508.1g-h, 611.2a).
+    if let Some(fact) =
+        super::activation_costs::cant_shapes::parse_general_attack_tax_tokens(&clause_tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_cant_starting_with_duration_surface(
+                crate::effect::Restriction::attack_tax(fact.into_rule()),
+                duration,
+                crate::effect::RestrictionStart::Immediate,
+                duration_surface,
+                source_tapped_duration
+                    .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+            ),
+        ]));
+    }
+
     let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "unsupported restriction clause body (clause: '{}')",

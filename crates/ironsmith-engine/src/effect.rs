@@ -1767,7 +1767,7 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
+            Restriction::AttackYouUnlessControllerPaysPerAttacker(..) | Restriction::AttackTax(_) => {
                 // The payment exception is evaluated during attacker
                 // declaration. It must not be flattened into an unconditional
                 // `cant_attack` entry in the derived restriction tracker.

@@ -622,6 +622,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
         PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),
+        AttackTax(rule) => object_filter_mentions_iterated_player(&rule.attackers),
         PreventDamage | PreventCombatDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }

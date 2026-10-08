@@ -339,6 +339,7 @@ fn restriction_references_identity(
         Restriction::PreventDamageFrom { sources, .. } => {
             object_filter_references_identity(sources, identity)
         }
+        Restriction::AttackTax(rule) => object_filter_references_identity(&rule.attackers, identity),
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,

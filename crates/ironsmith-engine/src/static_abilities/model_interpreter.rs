@@ -1311,9 +1311,21 @@ impl StaticAbilityModelInterpreter {
                 Self::cant_attack_unless_condition_from_model(condition),
                 display.clone(),
             ),
-            ironsmith_core::StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } => {
-                StaticAbility::attack_cost(attackers.clone(), *covers_planeswalkers, cost.clone(), display.clone())
-            }
+            ironsmith_core::StaticAbilityPayload::AttackCost {
+                attackers,
+                covers_planeswalkers,
+                cost,
+                display,
+                planeswalkers_only,
+            } => StaticAbility::new(
+                super::AttackCost::new(
+                    attackers.clone(),
+                    *covers_planeswalkers,
+                    cost.clone(),
+                    display.clone(),
+                )
+                .with_planeswalkers_only(*planeswalkers_only),
+            ),
             ironsmith_core::StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,

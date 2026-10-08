@@ -794,6 +794,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         covers_planeswalkers: bool,
         cost: TotalCost<C>,
         display: String,
+        /// "can't attack planeswalkers you control unless ..." (Onakke
+        /// Oathkeeper): only attacks on the controller's planeswalkers are
+        /// taxed, never attacks on the player (CR 508.1g-h).
+        #[cfg_attr(feature = "serde", serde(default))]
+        planeswalkers_only: bool,
     },
     BlockCost {
         blockers: ObjectFilter,
@@ -2256,11 +2261,19 @@ where
                     display,
                 }
             }
-            StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } => {
-                StaticAbilityPayload::AttackCost {
-                    attackers, covers_planeswalkers, cost: map_total_cost(cost, map_cost)?, display,
-                }
-            }
+            StaticAbilityPayload::AttackCost {
+                attackers,
+                covers_planeswalkers,
+                cost,
+                display,
+                planeswalkers_only,
+            } => StaticAbilityPayload::AttackCost {
+                attackers,
+                covers_planeswalkers,
+                cost: map_total_cost(cost, map_cost)?,
+                display,
+                planeswalkers_only,
+            },
             StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,
@@ -4758,8 +4771,25 @@ impl<
                 covers_planeswalkers,
                 cost,
                 display,
+                planeswalkers_only: false,
             },
         }
+    }
+
+    /// Restricts an attack cost to attacks on the controller's planeswalkers
+    /// ("can't attack planeswalkers you control unless ..."). No-op for other
+    /// payloads.
+    pub fn with_attack_cost_planeswalkers_only(mut self) -> Self {
+        if let StaticAbilityPayload::AttackCost {
+            covers_planeswalkers,
+            planeswalkers_only,
+            ..
+        } = &mut self.payload
+        {
+            *covers_planeswalkers = true;
+            *planeswalkers_only = true;
+        }
+        self
     }
 
     pub fn block_cost(

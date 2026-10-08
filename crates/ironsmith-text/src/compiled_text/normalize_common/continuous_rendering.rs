@@ -5772,6 +5772,35 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::AttackTax(rule) => {
+            use ironsmith_core::value_model::AttackTaxDefenders;
+            let subject = pluralize_relative_object_phrase(&rule.attackers.description());
+            let (scope, per) = match rule.defenders {
+                AttackTaxDefenders::Controller => ("attack you", "for each of those creatures"),
+                AttackTaxDefenders::ControllerOrPlaneswalkers => (
+                    "attack you or planeswalkers you control",
+                    "for each of those creatures",
+                ),
+                AttackTaxDefenders::ControllerPlaneswalkers => (
+                    "attack planeswalkers you control",
+                    "for each creature they control that's attacking a planeswalker you control",
+                ),
+                AttackTaxDefenders::Anyone => {
+                    ("attack", "for each attacking creature they control")
+                }
+            };
+            let mut payments = Vec::new();
+            if !matches!(rule.mana_per_attacker, Value::Fixed(0)) {
+                payments.push(format!("{{{}}}", describe_value(&rule.mana_per_attacker)));
+            }
+            if rule.life_per_attacker > 0 {
+                payments.push(format!("{} life", rule.life_per_attacker));
+            }
+            format!(
+                "{subject} can't {scope} unless their controller pays {} {per}",
+                payments.join(" and ")
+            )
+        }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
         }

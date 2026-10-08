@@ -747,6 +747,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             optional_filter(&mut cause.source_filter, change)?;
             // Cause controller is a closed relation, not a PlayerFilter.
         }
+        R::AttackTax(rule) => rule.attackers = rewrite_filter_words(&rule.attackers, change)?,
         R::PreventDamage | R::PreventCombatDamage | R::AttackYouUnlessControllerPaysPerAttacker(_, _) => {}
     }
     Ok(())

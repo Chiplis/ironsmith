@@ -304,6 +304,46 @@ fn typed_attack_tax_static_ability(
     )))
 }
 
+/// "Creatures can't attack planeswalkers you control unless their controller
+/// pays {1} for each creature they control that's attacking a planeswalker
+/// you control." (Onakke Oathkeeper): attacks on the controller are free; only
+/// attacks on that player's planeswalkers are taxed (CR 508.1g-h). The
+/// player-inclusive wordings stay with the typed attack-tax reader above.
+fn planeswalker_attack_tax_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+    let fact = cant_shapes::parse_general_attack_tax_tokens(tokens)?;
+    if fact.defenders != ironsmith_core::value_model::AttackTaxDefenders::ControllerPlaneswalkers {
+        return None;
+    }
+    let mut costs = Vec::new();
+    match fact.mana {
+        Some(cant_shapes::AttackTaxManaAmount::Generic(amount)) if amount > 0 => {
+            costs.push(crate::model::CompilerCost::Mana(ManaCost::from_pips(vec![vec![
+                ManaSymbol::Generic(u8::try_from(amount).ok()?),
+            ]])));
+        }
+        Some(cant_shapes::AttackTaxManaAmount::Generic(_)) | None => {}
+        // A static ability has no announced X.
+        Some(cant_shapes::AttackTaxManaAmount::X) => return None,
+    }
+    if fact.life > 0 {
+        costs.push(crate::model::CompilerCost::Life(crate::effect::Value::Fixed(
+            i32::try_from(fact.life).ok()?,
+        )));
+    }
+    if costs.is_empty() {
+        return None;
+    }
+    Some(
+        StaticAbility::attack_cost(
+            ObjectFilter::creature(),
+            true,
+            ironsmith_core::TotalCost::from_costs(costs),
+            format_negated_restriction_display(tokens),
+        )
+        .with_attack_cost_planeswalkers_only(),
+    )
+}
+
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let fact = cant_shapes::parse_attack_unless_condition_tokens(tokens)?;
     let display = format_negated_restriction_display(fact.display_tokens);
@@ -1139,6 +1179,10 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     }
 
     if let Some(ability) = typed_attack_tax_static_ability(tokens)? {
+        return Ok(Some(ability));
+    }
+
+    if let Some(ability) = planeswalker_attack_tax_static_ability(tokens) {
         return Ok(Some(ability));
     }
 
