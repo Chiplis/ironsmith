@@ -65,6 +65,8 @@ pub enum EffectAst {
     /// friend or foe", "Each opponent chooses fame or fortune"); the players
     /// per option are recorded for the following instructions.
     ChoosePlayerOption(ironsmith_core::ChoosePlayerOptionEffect),
+    /// "You choose how each player votes this turn." (Illusion of Choice).
+    ControlVotesThisTurn,
     /// "This ability still resolves if its target becomes illegal."
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."

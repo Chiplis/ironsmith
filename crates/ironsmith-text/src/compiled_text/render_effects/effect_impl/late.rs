@@ -6372,6 +6372,12 @@
     if let Some(choice) = effect.downcast_ref::<crate::effects::ChoosePlayerOptionEffect>() {
         return describe_player_option_choice(choice);
     }
+    if effect
+        .downcast_ref::<crate::effects::ControlVotesThisTurnEffect>()
+        .is_some()
+    {
+        return "You choose how each player votes this turn".to_string();
+    }
     if let Some(day_night) = effect.downcast_ref::<crate::effects::SetDayNightEffect>() {
         return match day_night.designation {
             crate::effects::DayNightDesignation::Day => "It becomes day".to_string(),

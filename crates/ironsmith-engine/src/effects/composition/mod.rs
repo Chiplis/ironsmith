@@ -178,7 +178,8 @@ pub use unless_action::UnlessActionEffect;
 pub use unless_pays::UnlessPaysEffect;
 pub use villainous_choice::VillainousChoiceEffect;
 pub use player_option_choice::{
-    ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
 };
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,

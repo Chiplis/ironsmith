@@ -1413,6 +1413,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     game.effect_store.continuous_effects.cleanup_end_of_turn();
     game.cleanup_player_control_end_of_turn();
     game.cleanup_combat_choice_control_end_of_turn();
+    game.cleanup_vote_control_end_of_turn();
 
     // Restrictions are materialized into CantEffectTracker. Rebuild it only
     // after both direct restriction instances and continuous effects have

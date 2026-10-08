@@ -686,6 +686,9 @@ struct AuxiliaryTrackingState {
     combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
     /// Timestamp counter for combat-choice control effects.
     combat_choice_control_timestamp: u64,
+    /// "You choose how each player votes this turn" (Illusion of Choice):
+    /// (controller, turn number), latest last.
+    vote_control_effects: Vec<(PlayerId, u32)>,
     /// Highest pregame draft-note number recorded by a player for a named card.
     draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
     /// Colors selected during draft instructions, grouped by player and the

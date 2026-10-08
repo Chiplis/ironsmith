@@ -3556,6 +3556,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SolveCase
         | EffectAst::SetDayNight(_)
         | EffectAst::ChoosePlayerOption(_)
+        | EffectAst::ControlVotesThisTurn
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
         | EffectAst::GrantLoyaltyActivationAllowance { .. }

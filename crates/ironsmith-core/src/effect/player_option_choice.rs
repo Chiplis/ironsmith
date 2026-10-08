@@ -60,3 +60,17 @@ pub fn player_option_choice_tag(option: &str) -> TagKey {
         option.trim().to_ascii_lowercase()
     ))
 }
+
+/// "You choose how each player votes this turn." (Illusion of Choice): for
+/// the rest of the turn the effect's controller makes every vote choice; each
+/// player still casts their own votes (CR 701.38) and still decides whether
+/// to vote an additional time.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct ControlVotesThisTurnEffect;
+
+impl ControlVotesThisTurnEffect {
+    pub const fn new() -> Self {
+        Self
+    }
+}

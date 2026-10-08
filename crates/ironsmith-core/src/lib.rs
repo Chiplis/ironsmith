@@ -183,6 +183,7 @@ pub use effect::{
     SequenceEffect, SequenceSurface, SetBasePowerToughnessEffect, SetClassLevelEffect,
     DayNightDesignation, SetDayNightEffect,
     ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ControlVotesThisTurnEffect,
     SetLifeTotalEffect, SetQuantifierSurface, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,

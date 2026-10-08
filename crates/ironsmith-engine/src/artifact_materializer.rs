@@ -618,6 +618,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ChoosePlayerOptionEffect" => {
             decode_as::<T, ironsmith_core::ChoosePlayerOptionEffect>(effect)
         }
+        "ControlVotesThisTurnEffect" => {
+            decode_as::<T, ironsmith_core::ControlVotesThisTurnEffect>(effect)
+        }
         "SoulbondPairEffect" => decode_as::<T, ironsmith_core::SoulbondPairEffect>(effect),
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
@@ -1545,6 +1548,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::SetClassLevelEffect,
             crate::effects::SetDayNightEffect,
             crate::effects::ChoosePlayerOptionEffect,
+            crate::effects::ControlVotesThisTurnEffect,
             crate::effects::ShuffleLibraryEffect,
             crate::effects::ShuffleObjectsIntoLibraryEffect,
             crate::effects::SneakCostEffect,

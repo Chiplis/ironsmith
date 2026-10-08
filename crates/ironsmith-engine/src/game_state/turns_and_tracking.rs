@@ -1131,6 +1131,8 @@ impl GameState {
                 .retain(|effect| effect.controller != player && effect.target != player);
             aux.combat_choice_control_effects
                 .retain(|effect| effect.controller != player);
+            aux.vote_control_effects
+                .retain(|(controller, _)| *controller != player);
         }
 
         // Rebuild static effects after owned sources leave and control effects
@@ -2122,6 +2124,34 @@ impl GameState {
 
     pub fn combat_choice_controller_for_blockers(&self) -> Option<PlayerId> {
         self.combat_choice_controller_for(false)
+    }
+
+    /// "You choose how each player votes this turn." (Illusion of Choice):
+    /// `controller` makes every vote choice for the rest of this turn.
+    pub fn add_vote_control_this_turn(&mut self, controller: PlayerId) {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut()
+            .vote_control_effects
+            .push((controller, current_turn));
+    }
+
+    /// The player who chooses how each player votes this turn, if any; the
+    /// most recent such effect wins.
+    pub fn vote_controller_this_turn(&self) -> Option<PlayerId> {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking
+            .vote_control_effects
+            .iter()
+            .rev()
+            .find(|(_, turn)| *turn == current_turn)
+            .map(|(controller, _)| *controller)
+    }
+
+    pub fn cleanup_vote_control_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut()
+            .vote_control_effects
+            .retain(|(_, turn)| *turn != current_turn);
     }
 
     pub fn cleanup_combat_choice_control_end_of_turn(&mut self) {

@@ -109,3 +109,19 @@ impl EffectExecutor for ChoosePlayerOptionEffect {
         )
     }
 }
+
+pub use ironsmith_core::ControlVotesThisTurnEffect;
+
+impl EffectExecutor for ControlVotesThisTurnEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let controller = ctx.controller;
+        super::execute_world_checkpoint_transaction(game, |game| {
+            game.add_vote_control_this_turn(controller);
+            Ok(EffectOutcome::resolved())
+        })
+    }
+}

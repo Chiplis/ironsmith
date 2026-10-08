@@ -92,6 +92,7 @@ pub use ironsmith_core::{
     SecretObjectChoice, SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect,
     SetClassLevelEffect, SetLifeTotalEffect, SharedTypeConstraint, DayNightDesignation,
     SetDayNightEffect, ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ControlVotesThisTurnEffect,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect, ScheduledSkipKind, SkipMainPhasesThisTurnEffect,

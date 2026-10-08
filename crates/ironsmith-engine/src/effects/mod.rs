@@ -155,7 +155,8 @@ pub use composition::{
     TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
-    ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
 };
 pub use continuous::{
     ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification,

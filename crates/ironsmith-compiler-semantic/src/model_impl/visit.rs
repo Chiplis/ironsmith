@@ -266,6 +266,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SolveCase => {}
         EffectAst::SetDayNight(_) => {}
         EffectAst::ChoosePlayerOption(_) => {}
+        EffectAst::ControlVotesThisTurn => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType => {}
         EffectAst::GrantLoyaltyActivationAllowance { .. } => {}

@@ -60,6 +60,12 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("control-votes-this-turn"),
+        head: HeadDiscriminator::Words(&["you"]),
+        admits: |_| true,
+        read: |input| input.outcome(Ok(read_control_votes_this_turn(input))),
+    },
+    Reading {
         id: RuleId::new("trailing-local-action-replacement"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1266,4 +1272,17 @@ fn read_destroy_single_segment(
         return Ok(Some(vec![effect]));
     }
     Ok(None)
+}
+
+/// "You choose how each player votes this turn." (Illusion of Choice).
+fn read_control_votes_this_turn(input: &Statement<'_>) -> Option<Vec<EffectAst>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let (_, rest) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&[
+            "you", "choose", "how", "each", "player", "votes", "this", "turn",
+        ]),
+    )?;
+    rest.is_empty()
+        .then(|| vec![EffectAst::ControlVotesThisTurn])
 }
