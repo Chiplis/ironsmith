@@ -146,23 +146,45 @@ pub fn parse_craft_line_lexed(
         return Ok(None);
     };
     let material_text = crate::lexer::token_word_refs(spec.material_tokens).join(" ");
-    let (material_filter, material_count) = match spec.material {
-        CraftMaterialKind::CardType { card_type, count } => (
+    // CR 702.167a: craft exiles the source together with the listed
+    // materials from among permanents you control and/or cards in your
+    // graveyard. Each material slot is a separate exile payment.
+    let material_slots: Vec<(ObjectFilter, ChoiceCount)> = match spec.material {
+        CraftMaterialKind::CardType { card_type, count } => vec![(
             craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_type(card_type)),
             ChoiceCount::exactly(count as usize),
-        ),
-        CraftMaterialKind::Subtype { subtype, count } => (
+        )],
+        CraftMaterialKind::Subtype { subtype, count } => vec![(
             craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_subtype(subtype)),
             ChoiceCount::exactly(count as usize),
-        ),
-        CraftMaterialKind::OneOrMore => (
+        )],
+        CraftMaterialKind::CardTypeOrMore { card_type, minimum } => vec![(
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_type(card_type)),
+            ChoiceCount::at_least(minimum as usize),
+        )],
+        CraftMaterialKind::SubtypeOrMore { subtype, minimum } => vec![(
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_subtype(subtype)),
+            ChoiceCount::at_least(minimum as usize),
+        )],
+        CraftMaterialKind::SubtypeSlots(subtypes) => subtypes
+            .into_iter()
+            .map(|subtype| {
+                (
+                    craft_battlefield_or_graveyard_filter(
+                        ObjectFilter::default().with_subtype(subtype),
+                    ),
+                    ChoiceCount::exactly(1),
+                )
+            })
+            .collect(),
+        CraftMaterialKind::OneOrMore => vec![(
             craft_any_battlefield_or_graveyard_filter(),
             ChoiceCount::at_least(1),
-        ),
-        CraftMaterialKind::RedInstantOrSorcery { minimum } => (
+        )],
+        CraftMaterialKind::RedInstantOrSorcery { minimum } => vec![(
             craft_red_instant_or_sorcery_graveyard_filter(),
             ChoiceCount::at_least(minimum as usize),
-        ),
+        )],
         CraftMaterialKind::Unsupported => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported craft material clause '{material_text}'"
@@ -171,13 +193,15 @@ pub fn parse_craft_line_lexed(
     };
     let base_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::model::CompilerCost::ExileChosen {
-        count: material_count,
-        filter: material_filter,
-        top_only: false,
-        turn_face_up: false,
-        binding: None,
-    });
+    for (material_filter, material_count) in material_slots {
+        merged_costs.push(crate::model::CompilerCost::ExileChosen {
+            count: material_count,
+            filter: material_filter,
+            top_only: false,
+            turn_face_up: false,
+            binding: None,
+        });
+    }
     merged_costs.push(crate::model::CompilerCost::EmitKeywordAction {
         kind: crate::events::KeywordActionKind::Craft,
         amount: 1,
