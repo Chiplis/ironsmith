@@ -29,6 +29,8 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod leading_condition_wrapper;
+pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
 mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
@@ -836,6 +838,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_filtered_creatures_able_to_block_source_line" => {
             vec![StaticAbilityLineHeadHint::Single("all")]
         }
+        "parse_leading_condition_wrapped_static_line" => vec![
+            StaticAbilityLineHeadHint::Pair("during", "your"),
+            StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
         "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
         "parse_each_player_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("each"),
@@ -1844,6 +1850,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
+        multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
     ];
     RULES
 }
