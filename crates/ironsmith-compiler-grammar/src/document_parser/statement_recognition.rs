@@ -888,10 +888,17 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
         if is_station_result_boundary(items, next_idx, line) {
             break;
         }
-        if super::is_nonkeyword_choice_labeled_line(line) {
+        // "Adamant — If ..., it deals 4 damage instead." restates the
+        // preceding spell statement's action; kept apart it has no action of
+        // its own to replace.
+        let conditional_instead =
+            super::super::grammar::effects::followup_shapes::is_conditional_instead_restatement_sentence(
+                &line.tokens,
+            );
+        if !conditional_instead && super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line, &statement.parse_tokens) {
+        if !conditional_instead && !is_trigger_result_followup_line(line, &statement.parse_tokens) {
             break;
         }
 
