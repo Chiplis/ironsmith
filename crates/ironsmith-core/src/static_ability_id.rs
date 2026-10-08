@@ -400,6 +400,9 @@ pub enum StaticAbilityId {
     LookAtSourceExiledCards,
     /// Generic "<event> instead" replacement; appended for wire compatibility.
     EventReplacementWithEffects,
+    /// "If <creature> attacks, <creatures> attack if able"; appended for wire
+    /// compatibility.
+    ConditionalAttackRequirement,
 }
 
 impl StaticAbilityId {
@@ -498,6 +501,7 @@ impl StaticAbilityId {
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
             | GoadMatching
+            | ConditionalAttackRequirement
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
@@ -912,6 +916,7 @@ impl StaticAbilityId {
                 | CanAttackAsThoughHaste
                 | ActivateAbilitiesAsThoughHaste
                 | MustAttack
+                | ConditionalAttackRequirement
                 | MustBlock
                 | CantAttack
                 | CantAttackItsOwner
