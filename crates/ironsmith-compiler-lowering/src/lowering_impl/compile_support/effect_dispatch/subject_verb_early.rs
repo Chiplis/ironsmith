@@ -3172,40 +3172,49 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 source_filter,
                 source_would_deal_surface,
-                of_chosen_color,
             },
         ) => {
-            let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
-            let mut damage_filter = ironsmith_core::DamageFilter::all();
-            if source_filter != ObjectFilter::default() {
-                damage_filter.from_source = Some(source_filter);
-            }
+            let protect_source = matches!(target, TargetAst::Source(_));
             let non_choice = match target {
                 TargetAst::Player(PlayerFilter::You | PlayerFilter::Any, None) => true,
                 TargetAst::Object(filter, None, None) => filter.tagged_constraints.is_empty(),
                 TargetAst::ObjectOrPlayer(_, PlayerFilter::You | PlayerFilter::Any, None) => true,
                 _ => false,
             };
-            if non_choice && !*of_chosen_color {
-                let protected = prevention_target_from_non_choice_target(target, ctx)?;
+            let mut source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            if protect_source || non_choice {
+                let target = if protect_source {
+                    ironsmith_core::PreventionTarget::All
+                } else {
+                    prevention_target_from_non_choice_target(target, ctx)?
+                };
+                let mut damage_filter = ironsmith_core::DamageFilter::all();
+                damage_filter.from_source = Some(source_filter);
                 let mut effect = crate::effects::PreventAllDamageEffect::new(
-                    protected, damage_filter, duration.clone(),
+                    target,
+                    damage_filter,
+                    duration.clone(),
                 );
+                if protect_source {
+                    effect = effect.protecting_source();
+                }
                 if *source_would_deal_surface {
                     effect = effect.with_source_would_deal_surface();
                 }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
-            if non_choice {
-                return Err(CardTextError::ParseError(
-                    "chosen-color prevention for a live recipient set requires a shared set decision".into(),
-                ));
+            // A chosen-color source filter on a chosen recipient is "sources of
+            // the color of your choice": the color is chosen on resolution.
+            let source_color_choice = std::mem::take(&mut source_filter.chosen_color);
+            let mut damage_filter = ironsmith_core::DamageFilter::all();
+            if source_filter != ObjectFilter::default() {
+                damage_filter.from_source = Some(source_filter);
             }
             compile_effect_for_target(target, ctx, |spec| {
                 let mut effect = crate::effects::PreventAllDamageToTargetEffect::new(
                     spec, duration.clone(),
                 ).with_filter(damage_filter.clone());
-                if *of_chosen_color {
+                if source_color_choice {
                     effect = effect.with_source_color_choice();
                 }
                 Effect::new(effect)

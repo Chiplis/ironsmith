@@ -810,7 +810,6 @@ impl EffectAst {
                     duration,
                     source_filter,
                     source_would_deal_surface: false,
-                    of_chosen_color: false,
                 },
             ),
         )
