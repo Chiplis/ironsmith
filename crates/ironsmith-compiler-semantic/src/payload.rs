@@ -263,6 +263,9 @@ impl KeywordAction {
                 | Self::Persist
                 | Self::Prowess
                 | Self::Exalted
+                // Provoke is an attack trigger (CR 702.39); a grant ("All
+                // Sliver creatures have provoke") expands it like exalted.
+                | Self::Provoke
                 | Self::Cascade
                 | Self::Storm
                 | Self::Gravestorm

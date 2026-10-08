@@ -5105,7 +5105,7 @@
         return format!("Amplify {}", amplify.amount);
     }
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
-        return format!("Devour {}", devour.multiplier);
+        return devour.keyword_text();
     }
     if effect
         .downcast_ref::<crate::effects::NoteActivationManaTypeEffect>()

@@ -29,6 +29,20 @@ pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
 };
 mod leading_conditional_sentence_chain;
+mod devour_quality;
+mod base_toughness_line;
+pub use base_toughness_line::parse_base_toughness_only_line;
+mod absorb_keyword;
+pub use absorb_keyword::parse_absorb_keyword_line;
+mod granted_hand_warp;
+pub use granted_hand_warp::parse_granted_hand_warp_line;
+mod leading_condition_wrapper;
+pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
+mod filtered_lure;
+pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
+mod each_player_land_plays;
+pub use each_player_land_plays::parse_each_player_additional_land_play_line;
+pub use devour_quality::parse_devour_quality_line;
 pub use costs_replacements_and_permissions::*;
 
 use super::activation_and_restrictions::activation_restriction_clauses::parse_negated_object_restriction_clause;
@@ -828,6 +842,18 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_filtered_creatures_able_to_block_source_line" => {
+            vec![StaticAbilityLineHeadHint::Single("all")]
+        }
+        "parse_leading_condition_wrapped_static_line" => vec![
+            StaticAbilityLineHeadHint::Pair("during", "your"),
+            StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
+        "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
+        "parse_each_player_additional_land_play_line" => vec![
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Pair("each", "player"),
+        ],
         "parse_play_lands_from_graveyard_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -925,6 +951,20 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("snow"),
             StaticAbilityLineHeadHint::Single("token"),
             StaticAbilityLineHeadHint::Single("tokens"),
+            // Color and supertype adjectives open the same filtered subject
+            // ("Colorless creatures you control enter with ...").
+            StaticAbilityLineHeadHint::Single("colorless"),
+            StaticAbilityLineHeadHint::Single("multicolored"),
+            StaticAbilityLineHeadHint::Single("monocolored"),
+            StaticAbilityLineHeadHint::Single("white"),
+            StaticAbilityLineHeadHint::Single("blue"),
+            StaticAbilityLineHeadHint::Single("black"),
+            StaticAbilityLineHeadHint::Single("red"),
+            StaticAbilityLineHeadHint::Single("green"),
+            StaticAbilityLineHeadHint::Single("legendary"),
+            StaticAbilityLineHeadHint::Single("nonlegendary"),
+            StaticAbilityLineHeadHint::Single("noncreature"),
+            StaticAbilityLineHeadHint::Single("nonland"),
         ],
         // These rule names describe the choice payload, while every accepted
         // source line begins with the replacement-style `As this ... enters`
@@ -1791,6 +1831,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_prepared_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
+        single_static_ability_ast_rule!(parse_devour_quality_line),
+        single_static_ability_ast_rule!(parse_each_player_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
         single_static_ability_ast_rule!(
             parse_you_may_look_face_down_creatures_you_dont_control_any_time_line
@@ -1809,11 +1851,16 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_blocking_capacity_static_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
+        single_static_ability_ast_rule!(parse_filtered_creatures_able_to_block_source_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_all_creatures_able_to_block_line
         ),
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
+        single_static_ability_ast_rule!(parse_granted_hand_warp_line),
+        single_static_ability_ast_rule!(parse_base_toughness_only_line),
+        multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
+        multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
     ];
     RULES
 }

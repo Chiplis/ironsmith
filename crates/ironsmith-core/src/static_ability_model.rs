@@ -945,6 +945,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         power: i32,
     },
+    /// Layer 7b base toughness only (Maha, Its Feathers Night).
+    SetBaseToughness {
+        filter: ObjectFilter,
+        toughness: i32,
+    },
     SourceCharacteristicsOfLastExiledCreatureCard {
         filter: ObjectFilter,
         retained_subtypes: Vec<Subtype>,
@@ -2472,6 +2477,9 @@ where
             },
             StaticAbilityPayload::SetBasePower { filter, power } => {
                 StaticAbilityPayload::SetBasePower { filter, power }
+            }
+            StaticAbilityPayload::SetBaseToughness { filter, toughness } => {
+                StaticAbilityPayload::SetBaseToughness { filter, toughness }
             }
             StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
                 filter,
@@ -4027,6 +4035,14 @@ impl<
             id: Some(StaticAbilityId::SetBasePowerToughnessForFilter),
             label: "set base power".to_string(),
             payload: StaticAbilityPayload::SetBasePower { filter, power },
+        }
+    }
+
+    pub fn set_base_toughness(filter: ObjectFilter, toughness: i32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetBasePowerToughnessForFilter),
+            label: "set base toughness".to_string(),
+            payload: StaticAbilityPayload::SetBaseToughness { filter, toughness },
         }
     }
 

@@ -13,6 +13,9 @@ const HAND_REFERENCES: &[&[&str]] = &[
     &["hand"],
     &["your", "hand"],
     &["their", "hand"],
+    // "Any number of target opponents each discard their hands" (Wheel and
+    // Deal): the plural possessive is each player's own hand.
+    &["their", "hands"],
     &["that", "players", "hand"],
 ];
 const TAGGED_REFERENCES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
