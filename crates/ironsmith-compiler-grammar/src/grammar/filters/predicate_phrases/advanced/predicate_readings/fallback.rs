@@ -232,6 +232,7 @@ const SHAPES: &[Shape] = &[
     you_didnt_put_onto_battlefield_this_way,
     creatures_attacked_this_turn,
     card_exiled_with_it,
+    source_kicked_twice,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -1091,4 +1092,14 @@ fn card_exiled_with_it(words: &[&str]) -> Option<PredicateAst> {
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
         display: Some("a card is exiled with it".to_string()),
     })
+}
+
+/// "if it was kicked twice" (Archangel of Wrath): the source's kicker was
+/// paid at least twice (CR 702.33c).
+fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
+    let subject = words.strip_suffix(&["was", "kicked", "twice"])?;
+    if !is_source_reference(subject) {
+        return None;
+    }
+    Some(at_least(Value::KickCount, 2))
 }
