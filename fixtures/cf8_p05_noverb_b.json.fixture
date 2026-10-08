@@ -1,0 +1,162 @@
+[
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Brilliance Unleashed",
+    "oracle_id": "b047cd3f-9129-41cc-8b91-b0dc970f5068",
+    "mana_cost": "{4}{U}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose one or both —\n• Brilliance Unleashed deals 5 damage to target creature.\n• Choose target artifact card in your graveyard. Return it to the battlefield if it's an artifact creature card. Otherwise, return it to the battlefield and it's a 3/3 Robot artifact creature with flying."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Fang, Roku's Companion",
+    "oracle_id": "6665bfe2-942c-4b3d-a976-776fe00c99f4",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Legendary Creature — Dragon",
+    "oracle_text": "Flying\nWhenever Fang attacks, another target legendary creature you control gets +X/+0 until end of turn, where X is Fang's power.\nWhen Fang dies, if he wasn't a Spirit, return this card to the battlefield under your control. He's a Spirit in addition to his other types.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Princess Yue",
+    "oracle_id": "08c59e5e-d01c-49b7-a812-8ea75e9e945d",
+    "mana_cost": "{2}{U}",
+    "type_line": "Legendary Creature — Human Noble Ally",
+    "oracle_text": "When Princess Yue dies, if she was a nonland creature, return this card to the battlefield tapped under your control. She's a land named Moon. She gains \"{T}: Add {C}.\"\n{T}: Scry 2.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Sauron, Dino Devotee",
+    "oracle_id": "f5295bfe-7e73-44ad-9cfd-200e31c5d52b",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Legendary Creature — Dinosaur Vampire Villain",
+    "oracle_text": "Flying\nWhenever Sauron enters or attacks, choose one —\n• Cure Cancer — You gain 3 life.\n• Turn People into Dinosaurs — Put a saurian counter on another target creature. It's a green Dinosaur with base power and toughness 5/5 for as long as it has a saurian counter on it.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "The Master, Transcendent",
+    "oracle_id": "40262ae5-1472-4777-b759-d1752c0b0148",
+    "mana_cost": "{1}{B}{G}{U}",
+    "type_line": "Legendary Artifact Creature — Mutant",
+    "oracle_text": "When The Master enters, target player gets two rad counters.\n{T}: Put target creature card in a graveyard that was milled this turn onto the battlefield under your control. It's a green Mutant with base power and toughness 3/3.",
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Yedora, Grave Gardener",
+    "oracle_id": "1fa20b05-cc06-4fb7-ae76-677a29e2185a",
+    "mana_cost": "{4}{G}",
+    "type_line": "Legendary Creature — Treefolk Druid",
+    "oracle_text": "Whenever another nontoken creature you control dies, you may return it to the battlefield face down under its owner's control. It's a Forest land.",
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Eluge, the Shoreless Sea",
+    "oracle_id": "027989e7-20c4-4773-b6b4-20337cc5fe8c",
+    "mana_cost": "{1}{U}{U}{U}",
+    "type_line": "Legendary Creature — Elemental Fish",
+    "oracle_text": "Eluge's power and toughness are each equal to the number of Islands you control.\nWhenever Eluge enters or attacks, put a flood counter on target land. It's an Island in addition to its other types for as long as it has a flood counter on it.\nThe first instant or sorcery spell you cast each turn costs {U} less to cast for each land you control with a flood counter on it.",
+    "power": "*",
+    "toughness": "*"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Cavernous Maw",
+    "oracle_id": "952ab8fe-f7d3-4673-89de-8c6d3f8a081f",
+    "mana_cost": "",
+    "type_line": "Land — Cave",
+    "oracle_text": "{T}: Add {C}.\n{2}: This land becomes a 3/3 Elemental creature until end of turn. It's still a Cave land. Activate only if the number of other Caves you control plus the number of Cave cards in your graveyard is three or greater."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Chainer, Dementia Master",
+    "oracle_id": "cb905eb0-bb20-41c0-9695-0f5c71972561",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Legendary Creature — Human Minion",
+    "oracle_text": "All Nightmares get +1/+1.\n{B}{B}{B}, Pay 3 life: Put target creature card from a graveyard onto the battlefield under your control. That creature is black and is a Nightmare in addition to its other creature types.\nWhen Chainer leaves the battlefield, exile all Nightmares.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Quicksilver Fountain",
+    "oracle_id": "0e7cf14a-6149-4ba9-b3f5-c5faf9f772bc",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each player's upkeep, that player puts a flood counter on target non-Island land they control of their choice. That land is an Island for as long as it has a flood counter on it.\nAt the beginning of each end step, if all lands on the battlefield are Islands, remove all flood counters from them."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Grimoire of the Dead",
+    "oracle_id": "922c6e1b-abcf-40e0-847e-9ebb7d0b6fd4",
+    "mana_cost": "{4}",
+    "type_line": "Legendary Artifact — Book",
+    "oracle_text": "{1}, {T}, Discard a card: Put a study counter on Grimoire of the Dead.\n{T}, Remove three study counters from Grimoire of the Dead and sacrifice it: Put all creature cards from all graveyards onto the battlefield under your control. They're black Zombies in addition to their other colors and types."
+  },
+  {
+    "cluster": "contracted_suspicion_clear",
+    "name": "Airtight Alibi",
+    "oracle_id": "cb666ea8-55e3-4e27-ae6d-806677dfc17a",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Flash\nEnchant creature\nWhen this Aura enters, untap enchanted creature. It gains hexproof until end of turn. If it's suspected, it's no longer suspected.\nEnchanted creature gets +2/+2 and can't become suspected."
+  },
+  {
+    "cluster": "contracted_suspicion_clear",
+    "name": "Eliminate the Impossible",
+    "oracle_id": "c78d4cec-6764-4cce-96d2-a2d85a57b218",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected."
+  },
+  {
+    "cluster": "its_controller_manifest_dread",
+    "name": "Fear of Impostors",
+    "oracle_id": "628ae0e4-5d54-48a1-a24c-b9c1d862df9d",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Enchantment Creature — Nightmare",
+    "oracle_text": "Flash\nWhen this creature enters, counter target spell. Its controller manifests dread.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "its_controller_manifest_dread",
+    "name": "Unwanted Remake",
+    "oracle_id": "90aa9113-5148-486b-a1c6-b4230e6d3e41",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature. Its controller manifests dread."
+  },
+  {
+    "cluster": "opponent_only_activation",
+    "name": "Detention Vortex",
+    "oracle_id": "5383a1c1-662f-46fe-a0e5-0f38efe1a37a",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant nonland permanent\nEnchanted permanent can't attack or block, and its activated abilities can't be activated.\n{3}: Destroy this Aura. Only your opponents may activate this ability and only as a sorcery."
+  },
+  {
+    "cluster": "dungeon_game_noun_alias",
+    "name": "Dungeon Descent",
+    "oracle_id": "f086a63c-0c62-4674-bd27-82e7aed12b1a",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "This land enters tapped.\n{T}: Add {C}.\n{4}, {T}, Tap an untapped legendary creature you control: Venture into the dungeon. Activate only as a sorcery."
+  },
+  {
+    "cluster": "dungeon_game_noun_alias",
+    "name": "Dungeon Map",
+    "oracle_id": "20f1bba5-d398-4d6e-a76a-75e29df42aec",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}: Add {C}.\n{3}, {T}: Venture into the dungeon. Activate only as a sorcery."
+  }
+]
