@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Aggression",
+  "oracle_id": "b6c38a2b-2fe8-4080-80ce-cfa12aaf57f0",
+  "oracle_text": "Enchant non-Wall creature\nEnchanted creature has first strike and trample.\nAt the beginning of the end step of enchanted creature's controller, destroy that creature if it didn't attack this turn.",
+  "text": "Mana cost: {2}{R}\nType: Enchantment — Aura\nEnchant non-Wall creature\nEnchanted creature has first strike and trample.\nAt the beginning of the end step of enchanted creature's controller, destroy that creature if it didn't attack this turn."
+ },
+ {
+  "name": "Getaway Glamer",
+  "oracle_id": "98eac0f7-3f4d-46ef-9575-680c52e967cf",
+  "oracle_text": "Spree\n+ {1} — Exile target nontoken creature. Return it to the battlefield under its owner's control at the beginning of the next end step.\n+ {2} — Destroy target creature if no other creature has greater power.",
+  "text": "Mana cost: {W}\nType: Instant\nSpree\n+ {1} — Exile target nontoken creature. Return it to the battlefield under its owner's control at the beginning of the next end step.\n+ {2} — Destroy target creature if no other creature has greater power."
+ }
+]
