@@ -806,6 +806,7 @@ fn created_token_kind(
                 crate::types::CardType::Creature,
             ]
         }
+        TokenDefinitionSpec::Land(_) => vec![crate::types::CardType::Land],
         _ => return None,
     };
     Some(ObjectFilter {

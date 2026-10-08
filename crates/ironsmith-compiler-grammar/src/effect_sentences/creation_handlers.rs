@@ -2053,6 +2053,25 @@ pub fn parse_create(
                     crate::lexer::render_token_slice(&definition_tokens)
                 ))
             })?;
+    // "... land token named Everywhere that is every basic land type"
+    // (Overlord of the Hauntwoods): the relative clause sets the land's
+    // subtypes; it is never dropped from another kind of token.
+    if crate::word_primitives::sequence_occurs(&tail_words, &["every", "basic", "land", "type"]) {
+        let crate::model::token_definition::TokenDefinitionSpec::Land(land) = &mut definition
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported basic-land-type token clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        land.subtypes = vec![
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ];
+    }
     if has_raw_name_override {
         if let crate::model::token_definition::TokenDefinitionSpec::Builtin(template) = &definition {
             definition = crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(

@@ -358,6 +358,16 @@ pub struct VehicleTokenShape {
     pub crew_amount: Option<u32>,
 }
 
+/// A land token ("a tapped colorless land token named Everywhere that is
+/// every basic land type"). Basic land types give it their intrinsic mana
+/// abilities (CR 305.6).
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct LandTokenShape {
+    pub name: String,
+    pub subtypes: Vec<Subtype>,
+    pub legendary: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EnchantmentTokenShape {
     pub name: String,
@@ -472,6 +482,7 @@ pub enum TokenDefinitionSpec {
     Vehicle(VehicleTokenShape),
     Artifact(ArtifactTokenShape),
     Enchantment(EnchantmentTokenShape),
+    Land(LandTokenShape),
     Angel,
     Wall,
     Squirrel,
@@ -533,6 +544,7 @@ impl TokenDefinitionSpec {
             // Named and built-in token shapes may carry abilities during
             // lowering even when their compact parser shape has no fields for
             // them. Treat them conservatively as nonempty.
+            Self::Land(_) => false,
             Self::PrototypeReference(_)
             | Self::Builtin(_)
             | Self::Angel

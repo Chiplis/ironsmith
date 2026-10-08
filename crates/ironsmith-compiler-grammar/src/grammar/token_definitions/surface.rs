@@ -4,7 +4,7 @@ use crate::model::token_definition::{
     ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
     ConstructArtifactScalingShape, ConstructTokenShape, CreatureTokenInlineRuleKind,
     CreatureTokenInlineRulePresentation, CreatureTokenRulesShape, CreatureTokenShape,
-    EnchantmentTokenShape, ModifiedBuiltinTokenShape, ShapeshifterTokenShape, TokenCombatRestrictionShape,
+    EnchantmentTokenShape, LandTokenShape, ModifiedBuiltinTokenShape, ShapeshifterTokenShape, TokenCombatRestrictionShape,
     TokenDefinitionSpec, TokenKeywordShape, TokenPowerAsThoughGreaterShape, VehicleTokenShape,
 };
 use crate::target::SourceReferenceSurface;
