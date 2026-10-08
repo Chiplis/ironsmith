@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Blech, Loafing Pest",
+    "oracle_id": "c1bdd361-c7f2-4aa2-8d07-b582775551ff",
+    "mana_cost": "{1}{B}{G}",
+    "type_line": "Legendary Creature — Pest",
+    "oracle_text": "Whenever you gain life, put a +1/+1 counter on each Pest, Bat, Insect, Snake, and Spider you control.",
+    "power": "3",
+    "toughness": "4",
+    "text": "Mana cost: {1}{B}{G}\nType: Legendary Creature — Pest\nPower/Toughness: 3/4\nWhenever you gain life, put a +1/+1 counter on each Pest, Bat, Insect, Snake, and Spider you control."
+  },
+  {
+    "name": "Tawnos's Tinkering",
+    "oracle_id": "bd101a9b-4c1e-44c8-b9ef-cd79c4d28f36",
+    "mana_cost": "{3}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Put two +1/+1 counters on target artifact, creature, or land you control. Untap that permanent. If it isn't a creature, it becomes a 0/0 creature in addition to its other types.",
+    "text": "Mana cost: {3}{G}\nType: Instant\nPut two +1/+1 counters on target artifact, creature, or land you control. Untap that permanent. If it isn't a creature, it becomes a 0/0 creature in addition to its other types."
+  },
+  {
+    "name": "Brigid, Hero of Kinsbaile",
+    "oracle_id": "929ad5c3-4efe-44c3-93ac-eda432814385",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Legendary Creature — Kithkin Archer",
+    "oracle_text": "First strike\n{T}: Brigid deals 2 damage to each attacking or blocking creature target player controls.",
+    "power": "2",
+    "toughness": "3",
+    "text": "Mana cost: {2}{W}{W}\nType: Legendary Creature — Kithkin Archer\nPower/Toughness: 2/3\nFirst strike\n{T}: Brigid deals 2 damage to each attacking or blocking creature target player controls."
+  }
+]
