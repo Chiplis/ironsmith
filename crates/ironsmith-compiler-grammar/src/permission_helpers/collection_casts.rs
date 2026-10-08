@@ -45,6 +45,8 @@ enum Collection {
     SourceLinked { owned_by_you: bool },
     /// The caster's graveyard.
     YourGraveyard,
+    /// Cards the caster owns outside the game (the sideboard, CR 400.11).
+    OwnedOutsideGame,
 }
 
 fn collection_marker<'a>(
@@ -153,6 +155,16 @@ fn parse_tagged_collection(tokens: &[OwnedLexToken]) -> Option<Collection> {
                 Some(((), rest)) => (true, rest),
                 None => (false, rest),
             };
+        if owned_by_you
+            && primitives::probe_all(
+                rest,
+                primitives::phrase(&["outside", "the", "game"]),
+                "cast collection outside the game",
+            )
+            .is_some()
+        {
+            return Some(Collection::OwnedOutsideGame);
+        }
         if let Some(((), source)) =
             primitives::parse_prefix(rest, primitives::phrase(&["exiled", "with"]))
         {
@@ -308,6 +320,10 @@ pub(crate) fn parse_collection_cast_clause(
         }
         Collection::YourGraveyard => {
             filter.zone = Some(Zone::Graveyard);
+            filter.owner = Some(PlayerFilter::You);
+        }
+        Collection::OwnedOutsideGame => {
+            filter.zone = Some(Zone::OutsideGame);
             filter.owner = Some(PlayerFilter::You);
         }
     }
