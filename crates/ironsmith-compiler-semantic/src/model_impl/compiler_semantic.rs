@@ -200,6 +200,10 @@ pub struct ParsedModalHeader {
     pub choose_both_control_card_types: Vec<crate::types::CardType>,
     pub choose_both_exact_life_total: Option<i32>,
     pub trigger: Option<TriggerSpec>,
+    /// CR 603.4: a triggered modal header's `if ...,` clause between the
+    /// trigger event and `choose ...` is an intervening-if condition, checked
+    /// both when the ability triggers and again on resolution.
+    pub intervening_if: Option<super::ast::PredicateAst>,
     pub activated: Option<ParsedModalActivatedHeader>,
     pub x_replacement: Option<Value>,
     pub prefix_effects_ast: Vec<EffectAst>,

@@ -261,6 +261,8 @@ pub fn parse_modal_header(
     } else {
         trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
     };
+    let (intervening_if, prechoose_tokens) =
+        split_modal_trigger_intervening_if(trigger.is_some(), prechoose_tokens);
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
     let common_prefix_effects_ast = parse_modal_common_prefix_effects(tokens, choose_idx)?;
     let common_suffix_effects_ast = parse_modal_common_suffix_effects(tokens, choose_idx)?;
@@ -285,6 +287,7 @@ pub fn parse_modal_header(
         choose_both_control_card_types: modal_flags.choose_both_control_card_types,
         choose_both_exact_life_total: modal_flags.choose_both_exact_life_total,
         trigger,
+        intervening_if,
         activated,
         x_replacement,
         prefix_effects_ast,
@@ -292,6 +295,34 @@ pub fn parse_modal_header(
         common_suffix_effects_ast,
         modal_gate,
     }))
+}
+
+/// CR 603.4: in `<trigger>, if <condition>, choose one —` the whole
+/// pre-choice clause is an intervening-if condition, not a resolution-time
+/// conditional effect. Claim it only when the complete clause is a modeled
+/// predicate; anything else keeps the ordinary prefix-effect reading.
+fn split_modal_trigger_intervening_if(
+    has_trigger: bool,
+    prechoose_tokens: &[OwnedLexToken],
+) -> (
+    Option<crate::cards::builders::PredicateAst>,
+    &[OwnedLexToken],
+) {
+    if !has_trigger
+        || !prechoose_tokens
+            .first()
+            .is_some_and(|token| token.is_word("if"))
+    {
+        return (None, prechoose_tokens);
+    }
+    let predicate_tokens = trim_lexed_commas(&prechoose_tokens[1..]);
+    if predicate_tokens.is_empty() {
+        return (None, prechoose_tokens);
+    }
+    match super::grammar::structure::parse_modeled_predicate(predicate_tokens) {
+        Some(predicate) => (Some(predicate), &[]),
+        None => (None, prechoose_tokens),
+    }
 }
 
 fn parse_modal_presentation_label(
