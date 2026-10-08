@@ -165,6 +165,11 @@ fn parse_combat_damage_trigger_lexed(
         ["its", "controller"] if source_filter.is_some() => Some(PlayerFilter::ControllerOf(
             crate::filter::ObjectRef::FilterCandidate,
         )),
+        // "Whenever this creature deals combat damage to defending player"
+        // (Electryte, Latulla's Orders): the defending player of the current
+        // combat (CR 506.2). Trigger matching resolves it from the combat
+        // state of the damage event.
+        ["defending", "player"] | ["the", "defending", "player"] => Some(PlayerFilter::Defending),
         _ => None,
     };
     if let Some(player) =

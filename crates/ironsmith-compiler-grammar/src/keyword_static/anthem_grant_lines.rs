@@ -2823,6 +2823,14 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     // reference instead of falling through to the tolerant creature filter.
     let tokens =
         crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    // "Creatures you control also get +1/+0 ...": the additive adverb between
+    // the subject and its verb is cumulative wording only. Each static
+    // ability applies independently (CR 613.4c), so it never narrows or
+    // widens the affected set.
+    let tokens = match tokens.split_last() {
+        Some((last, head)) if last.is_word("also") && !head.is_empty() => head,
+        _ => tokens,
+    };
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);

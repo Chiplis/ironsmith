@@ -1353,7 +1353,23 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
         primitives::kw("have"),
         primitives::kw("this"),
         opt(primitives::kw("creature")),
-        primitives::phrase(&["assign", "its", "combat", "damage", "as", "though", "it"]),
+        primitives::kw("assign"),
+        // A named character card refers to itself with a personal pronoun
+        // ("You may have Wolverine assign his combat damage as though he
+        // weren't blocked."); the pronoun never changes the referent.
+        winnow::combinator::alt((
+            primitives::kw("its"),
+            primitives::kw("his"),
+            primitives::kw("her"),
+            primitives::kw("their"),
+        )),
+        primitives::phrase(&["combat", "damage", "as", "though"]),
+        winnow::combinator::alt((
+            primitives::kw("it"),
+            primitives::kw("he"),
+            primitives::kw("she"),
+            primitives::kw("they"),
+        )),
         winnow::combinator::alt((
             primitives::kw("werent"),
             primitives::kw("weren't"),
