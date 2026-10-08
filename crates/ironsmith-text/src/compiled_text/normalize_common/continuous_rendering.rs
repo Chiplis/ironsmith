@@ -5867,6 +5867,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::Untap(filter) => {
             format!("{} can't untap", filter.description())
         }
+        crate::effect::Restriction::BecomeUntapped(filter) => {
+            format!("{} can't become untapped", filter.description())
+        }
         crate::effect::Restriction::BeBlocked(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());

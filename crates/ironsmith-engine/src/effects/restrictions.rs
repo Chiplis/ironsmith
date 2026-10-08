@@ -277,6 +277,9 @@ fn normalize_restriction_for_resolution(
         Restriction::Untap(filter) => Restriction::untap(
             bind_restriction_target_players(filter, ctx, game),
         ),
+        Restriction::BecomeUntapped(filter) => Restriction::become_untapped(
+            bind_restriction_target_players(filter, ctx, game),
+        ),
         Restriction::AttackOrBlock(filter) => {
             Restriction::attack_or_block(lock_filter_to_current_matching_objects(filter, ctx, game))
         }

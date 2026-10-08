@@ -3719,6 +3719,16 @@ impl GameState {
 
     /// Untap a permanent.
     pub fn untap(&mut self, id: ObjectId) {
+        // "Can't become untapped" prohibits the event itself (CR 614.17b
+        // style "can't"): nothing untaps the permanent.
+        if self
+            .effect_store
+            .cant_effects
+            .cant_become_untapped
+            .contains(&id)
+        {
+            return;
+        }
         let changed = self.battlefield_flags_mut().tapped_permanents.remove(&id);
         if !changed {
             return;

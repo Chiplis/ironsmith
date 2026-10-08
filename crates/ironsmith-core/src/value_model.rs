@@ -1195,6 +1195,11 @@ pub enum Restriction {
     /// player; it is not part of the physical source-quality filter.
     /// Appended to preserve existing serialized variant ordinals.
     PlayerHexproofFrom(PlayerFilter, ObjectFilter),
+    /// "[objects] can't become untapped" (Blossombind): no event or rule may
+    /// untap the matching permanents, including the untap step and untap
+    /// costs. Distinct from `Untap`, which only skips the controller's untap
+    /// step. Appended to preserve existing serialized variant ordinals.
+    BecomeUntapped(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1553,6 +1558,10 @@ impl Restriction {
 
     pub fn untap(filter: ObjectFilter) -> Self {
         Self::Untap(filter)
+    }
+
+    pub fn become_untapped(filter: ObjectFilter) -> Self {
+        Self::BecomeUntapped(filter)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {

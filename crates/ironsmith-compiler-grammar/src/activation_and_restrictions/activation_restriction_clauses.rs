@@ -31,6 +31,12 @@ fn simple_negated_object_restriction(
         ));
     }
 
+    // "[objects] can't become untapped" (Blossombind): every untap is
+    // prohibited, not only the untap step's.
+    if words == ["become", "untapped"] {
+        return Some(Restriction::become_untapped(filter.clone()));
+    }
+
     let kind = restriction_grammar::parse_simple_object_restriction_words(words)?;
     use restriction_grammar::SimpleObjectRestrictionKind;
     Some(match kind {

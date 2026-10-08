@@ -2735,6 +2735,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
         | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)

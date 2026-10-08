@@ -313,6 +313,7 @@ fn restriction_references_identity(
         | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
+        | Restriction::BecomeUntapped(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)

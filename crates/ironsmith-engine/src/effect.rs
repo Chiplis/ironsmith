@@ -1903,6 +1903,15 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::BecomeUntapped(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_become_untapped.insert(obj_id);
+                    }
+                }
+            }
             Restriction::BeBlocked(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

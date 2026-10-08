@@ -1869,6 +1869,10 @@ pub struct CantEffectTracker {
     /// Example: "It doesn't untap during its controller's untap step"
     pub cant_untap: HashSet<ObjectId>,
 
+    /// Permanents that can't become untapped by any means.
+    /// Example: Blossombind "Enchanted creature can't become untapped".
+    pub cant_become_untapped: HashSet<ObjectId>,
+
     /// Permanents that can't be destroyed (indestructible via effect, not ability).
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
     pub cant_be_destroyed: crate::incremental::ObjectSet,
@@ -2613,6 +2617,7 @@ impl CantEffectTracker {
         }
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
+        self.cant_become_untapped.extend(other.cant_become_untapped);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
@@ -2722,6 +2727,7 @@ impl CantEffectTracker {
         self.maximum_blockers.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();
+        self.cant_become_untapped.clear();
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
@@ -2875,7 +2881,7 @@ impl CantEffectTracker {
 
     /// Check if a permanent can untap during untap step.
     pub fn can_untap(&self, permanent: ObjectId) -> bool {
-        !self.cant_untap.contains(&permanent)
+        !self.cant_untap.contains(&permanent) && !self.cant_become_untapped.contains(&permanent)
     }
 
     /// Check if a permanent can untap during the specified player's untap step.
@@ -2885,7 +2891,8 @@ impl CantEffectTracker {
         permanent_controller: PlayerId,
         untap_player: PlayerId,
     ) -> bool {
-        permanent_controller != untap_player || !self.cant_untap.contains(&permanent)
+        !self.cant_become_untapped.contains(&permanent)
+            && (permanent_controller != untap_player || !self.cant_untap.contains(&permanent))
     }
 
     /// Check if damage can be prevented.
