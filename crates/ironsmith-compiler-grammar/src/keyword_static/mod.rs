@@ -29,6 +29,8 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod absorb_keyword;
+pub use absorb_keyword::parse_absorb_keyword_line;
 mod granted_hand_warp;
 pub use granted_hand_warp::parse_granted_hand_warp_line;
 mod leading_condition_wrapper;
@@ -1853,6 +1855,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
         single_static_ability_ast_rule!(parse_granted_hand_warp_line),
+        multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
     ];
     RULES
