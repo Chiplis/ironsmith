@@ -1,8 +1,15 @@
 # cf8 p09-other — summary
 
-154 cards: 41 source-proposed, 113 blocked, 0 untriaged (second pass). Unvalidated: no builds or test
+154 cards: 43 source-proposed, 111 blocked, 0 untriaged (round 3). Unvalidated: no builds or test
 runs; the prebuilt probe binary was unavailable for the second pass, so proposals are checked only by
 reading. One full-card regression test file per mechanism (unrun).
+
+## Round 3 (on cf8/integration)
+- Counts: 43 source-proposed, 111 blocked, 0 untriaged.
+- Ported new engine executors to the transaction idiom: `SetDayNightEffect` and the unprepare branch of `PrepareEffect` run inside `execute_world_checkpoint_transaction`; added `SetDayNightEffect` to `effect-registry.tsv`.
+- **counter-kind** (Dramatist's Puppet, Quarry Hauler): root cause was the generic for-each-object readers (sentence reading part_4 and chain_carry) claiming "for each kind of counter on target permanent" as an object iteration and erroring; they now decline that shape so the existing `ForEachCounterKindPutOrRemove` primitive owns it. Test `counter_kind_put_or_remove.rs`.
+- p09 dependants in other ledgers (35 cards, almost all p12): villainous choice is already implemented on main (the p12 blocks are body-specific: "you gain control ... it's attacking", "a token that's a copy of that card", Dalek life loss); same-name filter grammar (`SameNameAsTagged`, "with the same name as") already exists — the blocked bodies need spell/splice/graveyard-relative antecedents; shares-a-card-type for reveal-until/per-opponent discard comparisons needs `ObjectCharacteristicRelation` wiring, not the selection relation added here; friend-or-foe, secret votes and per-player named choices remain open (multi-choice designation design not built this round).
+- Still open owned mechanisms: two-color/two-player designations (engine stores one chosen color per object), counter-kind choice referenced by a later put (Aven Courier, Contractual Safeguard), N untap steps (needs a counted `Until`), damaged-by-source-this-turn player filter, lost-the-game count, chroma/bushido per affected object, double-faced predicate, stack-ability source filters, Eye of Yawgmoth/Memories Returning partitions, Tovolar chosen-set transform, foretell from an effect, unblock/re-block, gain suspend (main holds Sinister Concierge deliberately), turn control.
 
 ## Second pass mechanisms
 - **land-play-ordinal** (Fastbond; fixes a silent miscompile): new `TurnHistoryCount::LandsPlayed(PlayerFilter)` (engine sums `Player::lands_played_this_turn`, CR 305.2); "if it wasn't/was the Nth land you played this turn" -> `LandsPlayed(You) !=/== N` (was "if it wasn't a land"); "any number of lands on each of your turns" -> `AdditionalLandPlays(u32::MAX)`. Collateral: none (corpus grep finds only Fastbond).
