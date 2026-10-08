@@ -3426,8 +3426,30 @@ impl EffectAst {
                 mode,
                 require_change,
                 copy_reference_plural: false,
+                new_target_restriction: None,
             }),
         )
+    }
+
+    /// Attach "The new target must be ..." to a stack retarget instruction.
+    /// Returns false when this effect is not a retarget.
+    pub fn set_retarget_new_target_restriction(
+        &mut self,
+        restriction: ironsmith_core::NewTargetRestriction,
+    ) -> bool {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
+                    new_target_restriction,
+                    ..
+                }),
+            ..
+        }) = self
+        {
+            *new_target_restriction = Some(restriction);
+            return true;
+        }
+        false
     }
 
     /// Preserve an authored plural copy back-reference ("the copies").

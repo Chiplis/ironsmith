@@ -74,6 +74,8 @@ pub enum StackActionAst {
         /// Preserve authored "the copies" independently of the copied
         /// stack-object tag and the per-event copy count.
         copy_reference_plural: bool,
+        /// "The new target must be a player." (Rebound, Silver Wyvern).
+        new_target_restriction: Option<ironsmith_core::NewTargetRestriction>,
     },
     Counter {
         target: TargetAst,

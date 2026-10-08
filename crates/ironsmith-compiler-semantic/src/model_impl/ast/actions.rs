@@ -2062,12 +2062,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 mode,
                 require_change,
                 copy_reference_plural,
+                new_target_restriction,
             }) => f
                 .debug_struct("RetargetStackObject")
                 .field("target", target)
                 .field("mode", mode)
                 .field("require_change", require_change)
                 .field("copy_reference_plural", copy_reference_plural)
+                .field("new_target_restriction", new_target_restriction)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilityToSource { ability, duration }) => f
                 .debug_struct("GrantAbilityToSource")
