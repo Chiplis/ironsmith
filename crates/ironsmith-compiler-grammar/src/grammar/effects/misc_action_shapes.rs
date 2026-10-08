@@ -462,6 +462,13 @@ pub fn parse_mill_action_tokens(
             count = parse_trailing_for_each_count(trailing).ok_or_else(|| {
                 CardTextError::ParseError("unsupported trailing mill clause".to_string())
             })?;
+        } else if let Value::Fixed(per_each) = count
+            && per_each > 1
+            && let Some(each) = parse_trailing_for_each_count(trailing)
+        {
+            // "mill three cards for each time it was kicked" (Urborg
+            // Lhurgoyf): a fixed batch per counted occurrence.
+            count = Value::Scaled(Box::new(each), per_each);
         } else {
             return Err(CardTextError::ParseError(
                 "unsupported trailing mill clause".to_string(),
