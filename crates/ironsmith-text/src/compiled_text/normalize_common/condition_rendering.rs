@@ -3827,6 +3827,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::DuringYourTurn => "during your turn",
                 crate::ability::ActivationTiming::DuringOpponentsTurn => "during opponents' turns",
                 crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => "by the controller of the enchanted creature",
+                crate::ability::ActivationTiming::AnyTimeByOpponents => "by an opponent",
+                crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+                    "by an opponent at sorcery speed"
+                }
                 crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                     "during the activating player's turn before the end step"
                 }

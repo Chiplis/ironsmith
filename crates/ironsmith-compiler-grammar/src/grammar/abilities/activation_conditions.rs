@@ -195,6 +195,24 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     ) {
         return Some(ActivationTiming::AnyTimeByEnchantedCreatureController);
     }
+    // "Only your opponents may activate this ability [and only as a
+    // sorcery]." (Detention Vortex, Soul Ransom): the activator is an
+    // opponent of the source's controller.
+    if matches_exact_tokens(
+        tokens,
+        &["only", "your", "opponents", "may", "activate", "this", "ability"],
+    ) {
+        return Some(ActivationTiming::AnyTimeByOpponents);
+    }
+    if matches_exact_tokens(
+        tokens,
+        &[
+            "only", "your", "opponents", "may", "activate", "this", "ability", "and", "only", "as",
+            "a", "sorcery",
+        ],
+    ) {
+        return Some(ActivationTiming::SorcerySpeedByOpponents);
+    }
     if matches_prefix_tokens(
         tokens,
         &[

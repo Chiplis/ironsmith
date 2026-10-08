@@ -2010,6 +2010,18 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
             game.is_active_player(controller) && game.turn.phase != Phase::Ending
         }
+        // "Only your opponents may activate this ability": the activating
+        // player must be an opponent of the source's current controller.
+        crate::ability::ActivationTiming::AnyTimeByOpponents => game
+            .current_controller(source)
+            .is_some_and(|source_controller| game.are_opponents(controller, source_controller)),
+        crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+            game.current_controller(source)
+                .is_some_and(|source_controller| game.are_opponents(controller, source_controller))
+                && game.is_active_player(controller)
+                && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                && game.stack_is_empty()
+        }
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)
                 .is_some_and(|object| game.is_active_player(object.owner))
