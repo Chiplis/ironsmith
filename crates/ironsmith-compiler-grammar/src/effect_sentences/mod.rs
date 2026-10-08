@@ -13,6 +13,7 @@ mod attacked_turn_permission;
 mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
 pub(crate) mod turn_scoped_enter_replacement;
+pub(crate) mod turn_scoped_control_entry;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;

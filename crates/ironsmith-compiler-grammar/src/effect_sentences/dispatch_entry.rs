@@ -983,6 +983,9 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
     if let Some(effect) = super::turn_scoped_enter_replacement::parse(tokens) {
         return Some(effect);
     }
+    if let Some(effect) = super::turn_scoped_control_entry::parse(tokens) {
+        return Some(effect);
+    }
     // This marker-based legacy representation has no characteristic gate.
     // A permanent-only counter destination belongs to the complete typed
     // counter/permission owner, including its fail-closed missing-tail case.

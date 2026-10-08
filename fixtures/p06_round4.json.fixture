@@ -178,5 +178,25 @@
   "toughness": null,
   "loyalty": "0",
   "oracle_text": "Jeska enters with a loyalty counter on her for each time you've cast a commander from the command zone this game.\n0: Choose target creature. Until your next turn, if that creature would deal combat damage to one of your opponents, it deals triple that damage to that player instead.\n−X: Jeska deals X damage to each of up to three targets.\nJeska, Thrice Reborn can be your commander.\nPartner"
+ },
+ {
+  "name": "Gather Specimens",
+  "oracle_id": "e3b8d70b-17aa-4a31-a4f9-319907d088c2",
+  "mana_cost": "{3}{U}{U}{U}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If a creature would enter the battlefield under an opponent's control this turn, it enters under your control instead."
+ },
+ {
+  "name": "Crafty Cutpurse",
+  "oracle_id": "2ef53e18-0baf-4eee-b671-4c19b464cbfb",
+  "mana_cost": "{3}{U}",
+  "type_line": "Creature — Human Pirate",
+  "power": "2",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "Flash\nWhen this creature enters, each token that would be created under an opponent's control this turn is created under your control instead."
  }
 ]

@@ -57,3 +57,15 @@ fn slivers_gain_an_optional_library_top_replacement() {
         assert!(debug.contains("Sliver"), "{debug}");
     }
 }
+
+#[test]
+fn entries_under_an_opponents_control_this_turn_enter_under_yours() {
+    for name in ["Gather Specimens", "Crafty Cutpurse"] {
+        for definition in definitions(name) {
+            let debug = format!("{definition:?}");
+            assert!(debug.contains("RegisterEnterUnderControlReplacement"), "{name}: {debug}");
+            assert!(debug.contains("UntilEndOfTurn"), "{name}: {debug}");
+            assert!(debug.contains("Opponent"), "{name}: {debug}");
+        }
+    }
+}
