@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger: 23 `source-proposed`, 134 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
+Ledger: 27 `source-proposed`, 130 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -36,6 +36,14 @@ gameplay scenario for the delayed watchers.
   bans and a `cant_crew` set excluded from crew candidates; BeAttachedBy is checked in
   `attachment_can_attach_to_target` (attach legality and SBA 704.5m/n).
 
+- **library-look-put** (Coral Fighters, Dimir Machinations): library owner "defending player's";
+  "put the rest back in any order" reuses `ReorderLibraryTopEffect` over the looked-at tag.
+- **cast-restriction** (Proft): `ThisSpellCastRestrictionKind.condition` (appended serde-default
+  field) → engine `ThisSpellCastCondition::Condition`, evaluated with the spell as source.
+  Rakdos still blocked: its short self-name isn't normalized to a self-reference.
+- **combat-restriction** (Bontu): attack/block-unless requirement falls back to the shared static
+  condition grammar.
+
 ## Silent miscompile fixed
 - Library placement ("put X and target Y on top/bottom of their owners' libraries") kept only one
   operand (source dropped the target) or merged two targets into one type union. It now splits
@@ -58,7 +66,7 @@ combat and noncombat, expiry; attacks-alone: lone attacker fires, two attackers 
 `cant_become_untapped.rs` (untap effect and primitive both refused).
 
 ## Risks
-- Schema: appended `DelayedTriggerSpec::{DealsDamage, DealsDamageTo, AttacksAlone}`, `ThisSpellCastTiming::NotDuringYourFirstTurns`, `Restriction::{BecomeUntapped, AttackBlockOrCrew, BeAttachedBy}`; FORMAT_VERSION/descriptor NOT bumped —
+- Schema: appended `DelayedTriggerSpec::{DealsDamage, DealsDamageTo, AttacksAlone}`, `ThisSpellCastTiming::NotDuringYourFirstTurns`, `ThisSpellCastRestrictionKind.condition` field, `Restriction::{BecomeUntapped, AttackBlockOrCrew, BeAttachedBy}`; FORMAT_VERSION/descriptor NOT bumped —
   needs the coordinated boundary.
 - Duration-scoped "whenever target creature deals combat damage …" elsewhere now declares/watches
   the target (fixes a silent target loss; old any-creature expectations would change).
