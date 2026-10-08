@@ -112,3 +112,55 @@ fn magnetic_web_compiles_a_counter_conditioned_requirement() {
         assert!(debug.contains("Magnet"), "{debug}");
     }
 }
+
+/// The automatic declarers (UI/replay auto-declare and the Minimum fallback
+/// declare exactly the creatures flagged `must_attack`; the Maximum fallback
+/// declares every legal attacker) must always produce a legal declaration.
+fn automatic_declarations(game: &GameState) -> [Vec<ObjectId>; 2] {
+    let ironsmith::decisions::context::DecisionContext::Attackers(ctx) =
+        ironsmith::game_loop::get_declare_attackers_decision(game, &CombatState::default())
+    else {
+        panic!("expected an attackers decision");
+    };
+    let forced = ctx
+        .attacker_options
+        .iter()
+        .filter(|option| option.must_attack)
+        .map(|option| option.creature)
+        .collect();
+    let all = ctx.attacker_options.iter().map(|option| option.creature).collect();
+    [forced, all]
+}
+
+#[test]
+fn automatic_declarers_complete_declare_attackers_with_viashino_bey() {
+    for definition in definitions(0) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let bey = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        game.remove_summoning_sickness(bey);
+        creature(&mut game, A, "Bear");
+        game.refresh_continuous_state().unwrap();
+        for attackers in automatic_declarations(&game) {
+            assert!(declares(&game, &attackers), "{attackers:?}");
+        }
+    }
+    // A Bey that must attack each combat activates its own requirement, so
+    // the forced set includes every other creature.
+    let forced_bey = compile_to_runtime_definition(
+        "Forced Bey",
+        "Mana cost: {2}{R}{R}\nType: Creature — Lizard\nPower/Toughness: 4/2\n\
+         This creature attacks each combat if able.\n\
+         If this creature attacks, all creatures you control attack if able.",
+        false,
+    )
+    .unwrap();
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let bey = game.create_object_from_definition(&forced_bey, A, Zone::Battlefield);
+    game.remove_summoning_sickness(bey);
+    let other = creature(&mut game, A, "Bear");
+    game.refresh_continuous_state().unwrap();
+    let [forced, all] = automatic_declarations(&game);
+    assert!(forced.contains(&bey) && forced.contains(&other), "{forced:?}");
+    assert!(declares(&game, &forced));
+    assert!(declares(&game, &all));
+}

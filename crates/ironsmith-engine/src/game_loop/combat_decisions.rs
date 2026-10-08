@@ -76,7 +76,7 @@ pub(super) fn static_abilities_for_object_with_effects(
 
 /// A conditional attack requirement ("If <trigger> attacks, <required>
 /// attack if able") whose condition the proposed declaration meets.
-struct ActiveConditionalAttackRequirement {
+pub(crate) struct ActiveConditionalAttackRequirement {
     source: ObjectId,
     controller: PlayerId,
     required: crate::target::ObjectFilter,
@@ -88,7 +88,7 @@ struct ActiveConditionalAttackRequirement {
 /// is then measured against that same set, so a creature that need not attack
 /// (Viashino Bey) is never forced to, while declaring it obliges the rest.
 /// Unconditional requirements keep their independent per-attacker scores.
-fn active_conditional_attack_requirements(
+pub(crate) fn active_conditional_attack_requirements(
     game: &GameState,
     view: &DerivedGameView,
     declarations: &[AttackerDeclaration],
@@ -133,7 +133,7 @@ fn active_conditional_attack_requirements(
 
 /// Active conditional requirements that apply to `attacker` (each is an
 /// "attack if able" requirement, independent of the attack target).
-fn conditional_attack_requirement_score(
+pub(crate) fn conditional_attack_requirement_score(
     game: &GameState,
     attacker: &crate::object::Object,
     active: &[ActiveConditionalAttackRequirement],
