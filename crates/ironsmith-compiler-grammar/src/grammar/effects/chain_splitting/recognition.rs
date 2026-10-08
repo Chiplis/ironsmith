@@ -869,6 +869,9 @@ fn starts_with_nonverb_effect_head(tokens: &[OwnedLexToken]) -> bool {
             &["target", "opponents", "chooses"],
             &["after", "this", "phase"],
             &["after", "this", "main", "phase"],
+            // "Time travel, then time travel." (The Parting of the Ways): the
+            // keyword action (CR 701.55) is an effect head without a verb.
+            &["time", "travel"],
         ],
     ) || first_word(tokens)
         .is_some_and(|word| crate::slice_primitives::contains(NONVERB_EFFECT_HEAD_WORDS, &word))

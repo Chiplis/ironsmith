@@ -255,6 +255,44 @@ pub fn parse_attack_player_requirement_shape(
     .then_some(shape)
 }
 
+fn time_travel_once<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["time", "travel"]).parse_next(input)
+}
+
+fn time_travel_count<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    opt(primitives::kw("then")).parse_next(input)?;
+    time_travel_once.parse_next(input)?;
+    let count = alt((
+        (
+            opt(primitives::comma()),
+            opt(primitives::kw("then")),
+            time_travel_once,
+        )
+            .value(2u32),
+        primitives::kw("twice").value(2u32),
+        (
+            crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+            primitives::kw("times"),
+        )
+            .map(|(count, _)| count),
+        winnow::combinator::empty.value(1u32),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(count)
+}
+
+/// "time travel", "time travel twice / three times", "time travel, then time
+/// travel": how many times the keyword action is performed.
+pub fn parse_time_travel_count_shape(tokens: &[OwnedLexToken]) -> Option<u32> {
+    crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        time_travel_count,
+        "time travel clause",
+    )
+    .filter(|count| *count > 0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReselectAttackTargetShape<'a> {
     pub attacker_tokens: &'a [OwnedLexToken],

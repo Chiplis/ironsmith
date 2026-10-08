@@ -11859,7 +11859,7 @@ mod tests {
     }
 }
 
-fn time_travel_effect_ast() -> EffectAst {
+pub(crate) fn time_travel_effect_ast() -> EffectAst {
     let permanent_with_time_counter = ObjectFilter::permanent()
         .you_control()
         .with_counter_type(crate::object::CounterType::Time);
