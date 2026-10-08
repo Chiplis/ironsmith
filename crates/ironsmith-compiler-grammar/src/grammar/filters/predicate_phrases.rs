@@ -1042,7 +1042,11 @@ fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let source_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_explicit_source_state_subject_clause(source_clause) {
+    // Gendered possessives ("if her power is 4 or greater", Viv Vision) name
+    // the card itself: Oracle refers to players with "their", never "his/her".
+    if !is_explicit_source_state_subject_clause(source_clause)
+        && !surface::exact_any(source_clause, &[&["her"], &["his"]])
+    {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;

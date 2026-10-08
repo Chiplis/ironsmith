@@ -634,8 +634,25 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
     // A counter-reference count starts with its counter descriptor. A later
     // counter noun belongs to an object filter such as "creature you control
     // with a +1/+1 counter on it" and must fall through to that parser.
-    if counter_idx == 0 || counter_idx > 2 {
+    if counter_idx > 2 {
         return None;
+    }
+    if counter_idx == 0 {
+        // "draw a card for each counter on it" (Cleopatra, Exiled Pharaoh):
+        // every counter of any kind on the current antecedent. Like the
+        // shared count grammar, a bare `it` names the bound object (a dying
+        // creature in a dies trigger), falling back to the source.
+        let ((), reference_tokens) =
+            primitives::parse_prefix(trimmed(after_counter), primitives::kw("on").void())?;
+        if !exact_any(trimmed(reference_tokens), &[&["it"]]) {
+            return None;
+        }
+        return Some(Value::CountersOn(
+            Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )),
+            None,
+        ));
     }
     let descriptor_tokens = trimmed(&tokens[..=counter_idx]);
     let counter_type = filters::parse_counter_type_from_tokens(descriptor_tokens);
