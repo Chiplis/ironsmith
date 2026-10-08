@@ -85,7 +85,9 @@ mod line_recognition;
 mod statement_recognition;
 mod unsupported;
 
-use block_parsing::{try_parse_level_header_block, try_parse_modal_bullet_block};
+use block_parsing::{
+    try_parse_level_header_block, try_parse_modal_bullet_block, try_parse_saga_modal_chapter_block,
+};
 use line_dispatch::{LineDispatchResult, dispatch_standard_line};
 use line_recognition::{
     recognize_level_item, recognize_modal_mode, recognize_saga_chapter_line, recognize_static_line,
@@ -4037,6 +4039,13 @@ fn dispatch_remaining_preprocessed_line(
     if let Some(next_idx) =
         try_push_level_header_block(preprocessed, idx, line, allow_unsupported, lines)?
     {
+        return Ok(next_idx);
+    }
+    if let Some((saga_modal, next_idx)) =
+        try_parse_saga_modal_chapter_block(preprocessed, idx, line)?
+    {
+        trace_recognized_line(&saga_modal);
+        lines.push(saga_modal);
         return Ok(next_idx);
     }
     if try_push_saga_chapter(preprocessed, line, lines)? {
