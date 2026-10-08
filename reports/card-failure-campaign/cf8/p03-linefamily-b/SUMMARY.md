@@ -1,8 +1,8 @@
 # p03-linefamily-b — summary
 
 176 cards, all failing with `parser does not yet support line family`. Ledger:
-`ledger.jsonl` (one row per card). Counts: **34 source-proposed**, **2 already-on-main**,
-**140 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
+`ledger.jsonl` (one row per card). Counts: **37 source-proposed**, **2 already-on-main**,
+**137 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
 until it disappeared mid-session; later clusters rely on reading the code only.
 
 ## Clusters fixed (source-proposed)
@@ -173,3 +173,26 @@ Risk notes for the new work: engine schema changes (`RedirectNextDamageToTargetE
 `PreventDamageEffect`, `ThisSpellCastCondition`) are serde-default/additive; the per-color expansion
 synthesizes color word tokens before the ordinary target grammar; `prevention_helpers` became
 `pub(crate)` so the redirection executor can reuse the source chooser.
+
+## Round 3 (on cf8/integration)
+
+| Mechanism | Cards | Change | Test |
+|---|---|---|---|
+| Per-opponent target groups (CR 601.2c) | Windgrace's Judgment | "For any number of opponents, <verb> target X that player controls" -> any number of targets "controlled by different players" (existing set constraint) | `per_player_target_groups.rs` |
+| Conditional Fog exception | Undergrowth | "If <pred>, this effect doesn't affect combat damage that would be dealt by <color> creatures" -> Conditional(pred){combat prevention from non-<color> creatures}{Fog} | `conditional_fog_exceptions.rs` |
+| Fog with excepted sets | Inspire Awe | "... except combat damage that would be dealt by enchanted creatures and enchantment creatures" -> complement filter (without Aura attached, not Enchantment) | `conditional_fog_exceptions.rs` |
+
+Mana-spend dedupe: on the merged tree the static spend-as-any-color shapes exist only in
+`grants_and_permissions.rs` (this package). p04/p05 added resolving/tagged-play spend riders
+(`mana_replacement.rs` temporary symbol permission, `tagged_surface.rs`), which are different scopes,
+so there is one implementation per scope and nothing to remove.
+
+"needs X (pNN)" recheck: Knight Rampager and Galactus re-pointed at p05's merged MustAttackPlayer
+(remaining gaps: chosen-player binding; most-life selector + named-creature gate). Other owner
+dependencies unchanged.
+
+Next in the owned queue (not started): friend-or-foe effect, Guff per-player mandatory groups,
+prevention riders that pick targets/branch on source type (Channel Harm, Comeuppance, Judgment of
+Alexander, Samite Ministration), Pollen Remedy, Eye for an Eye (p06 replacement), cost-modifier
+variants, keyword grants to spells, City of Solitude, Fires of Invention, labelled Doctor Who /
+Warhammer bodies.
