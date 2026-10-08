@@ -12,20 +12,41 @@ use crate::types::Subtype;
 pub struct CounterLinkedLandSubtypeFollowupShape {
     pub subtype: Subtype,
     pub counter_type: CounterType,
+    /// "in addition to its other types" keeps the land's other subtypes;
+    /// without it the land subtype is set (CR 305.7).
+    pub preserve_other_types: bool,
 }
 
 fn parse_counter_linked_land_subtype_followup_lexed(
     input: &mut LexStream<'_>,
 ) -> WResult<CounterLinkedLandSubtypeFollowupShape> {
-    primitives::phrase(&["that", "land", "is"]).parse_next(input)?;
+    // "That land is ..." (Quicksilver Fountain) or the pronoun copula
+    // "It's ..." (Eluge, the Shoreless Sea) naming the land just countered.
+    alt((
+        primitives::phrase(&["that", "land", "is"]),
+        primitives::phrase(&["it", "is"]),
+        primitives::phrase(&["it", "s"]),
+        primitives::kw("it's").void(),
+        primitives::kw("it’s").void(),
+        primitives::kw("its").void(),
+    ))
+    .parse_next(input)?;
     opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
     let subtype_word = primitives::word_parser_text.parse_next(input)?;
     let subtype = leaf::parse_leaf_subtype_flexible_complete(subtype_word)
         .map_err(|_| primitives::backtrack_err("counter-linked land type", "known subtype"))?;
-    primitives::phrase(&[
-        "in", "addition", "to", "its", "other", "types", "for", "as", "long", "as", "it", "has",
-    ])
-    .parse_next(input)?;
+    let preserve_other_types = opt(primitives::phrase(&[
+        "in", "addition", "to", "its", "other", "types",
+    ]))
+    .parse_next(input)?
+    .is_some();
+    if !preserve_other_types && !subtype.is_basic_land_type() {
+        return Err(primitives::backtrack_err(
+            "counter-linked land type",
+            "basic land type when setting the land's subtype",
+        ));
+    }
+    primitives::phrase(&["for", "as", "long", "as", "it", "has"]).parse_next(input)?;
     opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
     let counter_tokens = repeat_till(
         1..,
@@ -45,6 +66,7 @@ fn parse_counter_linked_land_subtype_followup_lexed(
     Ok(CounterLinkedLandSubtypeFollowupShape {
         subtype,
         counter_type,
+        preserve_other_types,
     })
 }
 

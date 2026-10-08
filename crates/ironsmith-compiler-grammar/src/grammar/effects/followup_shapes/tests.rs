@@ -126,6 +126,7 @@ fn parses_counter_linked_land_subtype_followup_to_typed_facts() {
         Some(CounterLinkedLandSubtypeFollowupShape {
             subtype: crate::types::Subtype::Island,
             counter_type: crate::object::CounterType::Flood,
+            preserve_other_types: true,
         })
     );
 }
