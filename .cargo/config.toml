@@ -1,4 +1,6 @@
 [build]
+rustc-wrapper = "scripts/rustc-cache.sh"
+incremental = false
 jobs = 8
 
 [env]

@@ -131,7 +131,7 @@ fn free_exile_price_keeps_mandatory_mana_and_life_costs_through_actual_payment()
     assert_eq!(game.player(player).unwrap().mana_pool.red, 0);
     assert_eq!(game.player(player).unwrap().life, 18);
     assert_eq!(game.object(stack).unwrap().owner, owner);
-    assert_eq!(game.object(stack).unwrap().controller, player);
+    assert_eq!(game.controller_of_id(stack), Some(player));
     assert!(matches!(game.object(stack).unwrap().cast_alternative_method.as_deref(),
         Some(AlternativeCastingMethod::FromZone { total_cost, .. }) if total_cost.costs().is_empty()));
 }
@@ -238,7 +238,7 @@ fn free_exile_play_price_has_land_face_permission_only_when_authored() {
                 &mut PriorityLoopState::new(2), &PriorityResponse::PriorityAction(land),
                 &mut SelectFirstDecisionMaker).unwrap();
             assert!(game.battlefield.iter().any(|id| game.object(*id).is_some_and(|object|
-                object.name.as_str() == "Modal priced land" && object.controller == player)));
+                object.name.as_str() == "Modal priced land" && game.controller_of(object) == player)));
         }
     }
 }
@@ -393,7 +393,7 @@ fn free_exile_x_minimum_uses_only_the_selected_face_and_its_proposed_characteris
         assert_eq!(game.object(stack).unwrap().name.as_str(),
             if restrict_other { "Minimum front" } else { "Minimum other" });
         assert_eq!(game.object(stack).unwrap().x_value, Some(0));
-        assert_eq!(game.object(stack).unwrap().controller, player);
+        assert_eq!(game.controller_of_id(stack), Some(player));
     }
 }
 

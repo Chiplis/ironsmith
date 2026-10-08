@@ -1651,6 +1651,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
