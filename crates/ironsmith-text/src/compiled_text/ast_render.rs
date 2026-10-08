@@ -209,6 +209,7 @@ enum DelegatedPartitionSet {
 enum DelegatedPartitionMove {
     Hand(DelegatedPartitionSet),
     Library(DelegatedPartitionSet),
+    Battlefield(DelegatedPartitionSet),
 }
 
 fn delegated_partition_set(spec: &ChooseSpec) -> Option<DelegatedPartitionSet> {
@@ -247,14 +248,14 @@ fn delegated_partition_move(effect: &Effect) -> Option<DelegatedPartitionMove> {
     let effect = structural_unwrap_render_wrappers(effect);
     if let Some(movement) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let set = delegated_partition_set(&movement.target)?;
-        if movement.zone != Zone::Hand
-            || movement.to_top
-            || movement.library_order.is_some()
-            || movement.enters_tapped
-        {
+        if movement.to_top || movement.library_order.is_some() || movement.enters_tapped {
             return None;
         }
-        return Some(DelegatedPartitionMove::Hand(set));
+        return match movement.zone {
+            Zone::Hand => Some(DelegatedPartitionMove::Hand(set)),
+            Zone::Battlefield => Some(DelegatedPartitionMove::Battlefield(set)),
+            _ => None,
+        };
     }
     let shuffle = effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     let set = delegated_partition_set(&shuffle.target)?;
@@ -282,6 +283,7 @@ fn describe_cross_segment_delegated_search_partition_program(
         choose_effect,
         first_move,
         second_move,
+        trailing @ ..
     ] = effects.as_slice()
     else {
         return None;
@@ -329,6 +331,14 @@ fn describe_cross_segment_delegated_search_partition_program(
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(second)),
         ) if first == chosen && second.as_str() == "rest" => (Zone::Hand, Zone::Library),
+        // "Shuffle the chosen cards into your library and put the rest onto
+        // the battlefield." (Ecological Appreciation)
+        (
+            DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
+            DelegatedPartitionMove::Battlefield(DelegatedPartitionSet::Difference { pool, excluded }),
+        ) if first == chosen && pool == search.tag && excluded == chosen => {
+            (Zone::Library, Zone::Battlefield)
+        }
         (
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(second)),
@@ -375,11 +385,23 @@ fn describe_cross_segment_delegated_search_partition_program(
         (Zone::Library, Zone::Hand) => {
             "Shuffle the chosen cards into your library and put the rest into your hand"
         }
+        (Zone::Library, Zone::Battlefield) => {
+            "Shuffle the chosen cards into your library and put the rest onto the battlefield"
+        }
         _ => return None,
     };
-    Some(format!(
-        "{search_line}. An opponent chooses two of {choice_object}. {movement}"
-    ))
+    let mut rendered =
+        format!("{search_line}. An opponent chooses two of {choice_object}. {movement}");
+    for effect in trailing {
+        let text = describe_effect(effect);
+        let text = text.trim().trim_end_matches('.');
+        if text.is_empty() {
+            return None;
+        }
+        rendered.push_str(". ");
+        rendered.push_str(&capitalize_first(text));
+    }
+    Some(rendered)
 }
 
 fn exact_guided_library_category_choice(
