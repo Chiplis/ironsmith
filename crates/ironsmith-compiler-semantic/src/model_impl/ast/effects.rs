@@ -661,6 +661,34 @@ impl EffectAst {
                     reflect_damage_to_source_controller,
                     reflect_source_filter: None,
                     follow_up_effects: Vec::new(),
+                    portion: ironsmith_core::NextTimeDamagePreventionPortion::All,
+                    combat_only: false,
+                },
+            ),
+        )
+    }
+
+    /// "The next time <source> would deal [combat] damage to <recipient> this
+    /// turn, prevent half that damage, rounded down / all but N of that
+    /// damage."
+    pub fn subject_verb_prevent_next_time_damage_portion(
+        source: PreventNextTimeDamageSourceAst,
+        target: PreventNextTimeDamageTargetAst,
+        portion: ironsmith_core::NextTimeDamagePreventionPortion,
+        combat_only: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage {
+                    source,
+                    target,
+                    reflect_damage_to_source_controller: false,
+                    reflect_source_filter: None,
+                    follow_up_effects: Vec::new(),
+                    portion,
+                    combat_only,
                 },
             ),
         )
