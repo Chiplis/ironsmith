@@ -25,9 +25,20 @@ pub(super) fn parse_matching_filter_or_exposed_count_stop(
     })
 }
 
+/// "until they have exiled cards with total mana value 5 or greater this
+/// way" (Dream Harvest), "until that player has exiled ..." (Tasha's Hideous
+/// Laughter): the perfect form of the consult verb.
+const PERFECT_CONSULT_VERBS: &[&[&str]] = &[
+    &["have", "exiled"],
+    &["has", "exiled"],
+    &["have", "revealed"],
+    &["has", "revealed"],
+];
+
 pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalStopShape> {
     let tokens = trim_commas(tokens);
-    let verb = find_phrase_span(tokens, CONSULT_VERBS)?;
+    let verb = find_phrase_span(tokens, PERFECT_CONSULT_VERBS)
+        .or_else(|| find_phrase_span(tokens, CONSULT_VERBS))?;
     if verb.start == 0 {
         return None;
     }
@@ -39,7 +50,10 @@ pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTrave
         primitives::phrase(&["with", "total", "mana", "value"]).void()
     }) {
         let words = TokenWordView::new(total).word_refs();
-        if let [threshold, "or", "greater"] = words.as_slice()
+        let words = words
+            .strip_suffix(&["this", "way"])
+            .unwrap_or(words.as_slice());
+        if let [threshold, "or", "greater"] = words
             && let Ok(threshold) = threshold.parse::<i32>()
         {
             return Some(ConsultTraversalStopShape {
