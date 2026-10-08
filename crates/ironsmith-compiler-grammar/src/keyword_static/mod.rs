@@ -29,6 +29,8 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod filtered_lure;
+pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
 pub use each_player_land_plays::parse_each_player_additional_land_play_line;
 pub use devour_quality::parse_devour_quality_line;
@@ -831,6 +833,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_filtered_creatures_able_to_block_source_line" => {
+            vec![StaticAbilityLineHeadHint::Single("all")]
+        }
         "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
         "parse_each_player_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("each"),
@@ -1833,6 +1838,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_blocking_capacity_static_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
+        single_static_ability_ast_rule!(parse_filtered_creatures_able_to_block_source_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_all_creatures_able_to_block_line
         ),
