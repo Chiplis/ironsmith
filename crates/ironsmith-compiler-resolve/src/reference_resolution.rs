@@ -7077,6 +7077,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
@@ -8514,6 +8515,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {

@@ -16,7 +16,11 @@ impl EffectExecutor for UnlockRoomDoorEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter_as_chooser(game, &self.player, ctx)?;
-        let filter_ctx = game.filter_context_for(chooser, Some(ctx.source));
+        // A targeted unlock ("up to one target Room") restricts the Room to
+        // the announced target through `is_target_object`.
+        let filter_ctx = game
+            .filter_context_for(chooser, Some(ctx.source))
+            .with_target_objects(ctx.filter_context(game).target_objects);
         let candidates = game
             .battlefield
             .iter()

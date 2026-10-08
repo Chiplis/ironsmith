@@ -2659,6 +2659,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
                 f.debug_tuple("BecomePlotted").field(target).finish()
             }
+            Self::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target }) => {
+                f.debug_tuple("UnlockTargetRoomDoor").field(target).finish()
+            }
             Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, player }) => f
                 .debug_struct("MustAttackPlayerThisTurn")
                 .field("target", target)

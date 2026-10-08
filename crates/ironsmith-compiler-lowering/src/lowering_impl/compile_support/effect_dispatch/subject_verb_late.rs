@@ -89,6 +89,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
                 ..
             })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { .. })
@@ -2927,6 +2928,25 @@ pub(super) fn compile_subject_verb_late(
             let effect = tag_object_target_effect(goad, &spec, ctx, "goaded");
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target }) => {
+            // CR 709.5f: unlock a locked door of the announced Room. The
+            // target declaration owns the choice; the unlock effect is
+            // restricted to the target object.
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut room_filter = ObjectFilter::default()
+                .with_subtype(Subtype::Room)
+                .you_control()
+                .in_zone(Zone::Battlefield);
+            room_filter.is_target_object = true;
+            Ok((
+                vec![
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec)),
+                    Effect::unlock_room_door(PlayerFilter::You, room_filter),
+                ],
+                choices,
+            ))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
             target,
