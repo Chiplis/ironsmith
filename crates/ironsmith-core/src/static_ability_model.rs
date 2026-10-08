@@ -999,6 +999,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     PlayerSkipsDrawStep {
         player: PlayerFilter,
     },
+    /// CR 502 / 614.1b: matching players skip their untap steps (Stasis).
+    PlayersSkipUntapStep {
+        player: PlayerFilter,
+    },
     PlayersSkipExtraTurns {
         player: PlayerFilter,
     },
@@ -1934,6 +1938,9 @@ where
             }
             StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbilityPayload::PlayerSkipsDrawStep { player }
+            }
+            StaticAbilityPayload::PlayersSkipUntapStep { player } => {
+                StaticAbilityPayload::PlayersSkipUntapStep { player }
             }
             StaticAbilityPayload::LookAtSourceExiledCards { pair, source } => {
                 StaticAbilityPayload::LookAtSourceExiledCards { pair, source }
@@ -6244,6 +6251,13 @@ impl<
             id: Some(StaticAbilityId::PlayerSkipsDrawStep),
             label: "skip your draw step".into(),
             payload: StaticAbilityPayload::PlayerSkipsDrawStep { player },
+        }
+    }
+    pub fn players_skip_untap_steps(player: PlayerFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PlayersSkipUntapStep),
+            label: "players skip their untap steps".into(),
+            payload: StaticAbilityPayload::PlayersSkipUntapStep { player },
         }
     }
     pub fn players_skip_extra_turns(player: PlayerFilter) -> Self {

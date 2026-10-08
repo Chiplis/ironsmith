@@ -1589,6 +1589,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_extra_turns_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
+        single_static_ability_ast_rule!(parse_skip_untap_steps_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2565,6 +2566,28 @@ fn parse_players_cant_search_with_any_player_ignore_line(
 }
 
 mod single_line_readings;
+
+/// "Players skip their untap steps." (Stasis), "Each player skips their untap
+/// step.", "Skip your untap step." (CR 502, 614.10).
+fn parse_skip_untap_steps_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let forms: [(&'static [&'static str], PlayerFilter); 3] = [
+        (&["players", "skip", "their", "untap", "steps"], PlayerFilter::Any),
+        (&["each", "player", "skips", "their", "untap", "step"], PlayerFilter::Any),
+        (&["skip", "your", "untap", "step"], PlayerFilter::You),
+    ];
+    for (phrase, player) in forms {
+        if let Some(((), rest)) = primitives::parse_prefix(&clean, primitives::phrase(phrase))
+            && rest.is_empty()
+        {
+            return Ok(Some(StaticAbility::players_skip_untap_steps(player)));
+        }
+    }
+    Ok(None)
+}
 
 /// "You may cast this card from your graveyard if <condition>." /
 /// "... as long as <condition>." The trailing condition gates the same

@@ -625,6 +625,10 @@ pub fn execute_untap_step_with(
     game: &mut GameState,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
+    // CR 614.10: a static "skip your untap step" (Stasis) skips the occurrence.
+    if game.player_skips_untap_step(game.turn.active_player) {
+        return Ok(());
+    }
     let checkpoint = game.clone();
     let result = capture_untap_step_boundary(game)
         .and_then(|boundary| execute_untap_step_inner(game, decision_maker, &boundary));

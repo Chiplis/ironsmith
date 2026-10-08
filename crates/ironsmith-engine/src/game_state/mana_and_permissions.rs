@@ -1183,6 +1183,18 @@ impl GameState {
             && self.player(player).is_some()
     }
 
+    /// Whether an active battlefield static ability makes this player skip
+    /// their untap step (CR 502, Stasis).
+    pub fn player_skips_untap_step(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            ability
+                .skips_untap_step_for_player(self, source, controller, player)
+                .then_some(true)
+        })
+        .unwrap_or(false)
+            && self.player(player).is_some()
+    }
+
     /// Whether an active battlefield static ability replaces this player's
     /// next extra turn with skipping that turn. The query is evaluated when
     /// the queued turn would begin, so removing the source restores later

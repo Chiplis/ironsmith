@@ -488,6 +488,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    fn skips_untap_step_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
     fn skips_extra_turn_for_player(
         &self,
         _game: &GameState,
@@ -1907,6 +1917,17 @@ impl StaticAbility {
     ) -> bool {
         self.0
             .skips_draw_step_for_player(game, source, controller, player)
+    }
+
+    pub fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_untap_step_for_player(game, source, controller, player)
     }
 
     pub fn skips_extra_turn_for_player(
@@ -4034,6 +4055,10 @@ impl StaticAbility {
 
     pub fn players_skip_extra_turns(player: crate::target::PlayerFilter) -> Self {
         Self::new(PlayersSkipExtraTurns::new(player))
+    }
+
+    pub fn players_skip_untap_steps(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayersSkipUntapStep::new(player))
     }
 
     pub fn starting_life_bonus(amount: i32) -> Self {

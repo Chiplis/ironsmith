@@ -1081,6 +1081,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbility::player_skips_draw_step(player.clone())
             }
+            ironsmith_core::StaticAbilityPayload::PlayersSkipUntapStep { player } => {
+                StaticAbility::players_skip_untap_steps(player.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbility::players_skip_extra_turns(player.clone())
             }
@@ -2836,6 +2839,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> bool {
         self.leaf_static_ability().is_some_and(|ability| {
             ability.skips_draw_step_for_player(game, source, controller, player)
+        })
+    }
+
+    fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_untap_step_for_player(game, source, controller, player)
         })
     }
 
