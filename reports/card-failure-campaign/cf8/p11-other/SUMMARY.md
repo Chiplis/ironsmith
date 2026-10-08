@@ -1,6 +1,6 @@
 # p11-other — card-failure campaign cf8 summary
 
-158 cards: **41 source-proposed**, **117 blocked**, 0 already-on-main, 0 untriaged.
+158 cards: **49 source-proposed**, **109 blocked**, 0 already-on-main, 0 untriaged (after round 4).
 
 All work is source-only and UNBUILT (per brief). The prebuilt `compile_oracle_text` was used for probing until it disappeared mid-session (main checkout rebuilding); clusters fixed after that point (blocker-count, block-alone, without-either-keyword, possessive switch) are verified by code reading only. A probe run at session start showed none of the 158 cards compiled on the binary, so none are already-on-main.
 
@@ -66,6 +66,27 @@ Not done this round:
 - **Owned by other packages:** player 'during their next turn' restrictions (p10), and play-from-another-player permissions (p05).
 - **Dice/Attractions:** need an effect form of the roll-to-visit action. The turn-runner version takes the trigger queue directly.
 
+## Round 4
+
+| Mechanism | Cards | Implementation |
+|---|---|---|
+| repeat-process choice history | Forgotten Lore, Shrouded Lore | Marker `ForEachEffectAst::RepeatThisProcessExcludingPriorChoices` from "repeat this process except that <player> can't choose a card already chosen for <this>". Resolve adds `IsNotTaggedObject(PriorProcessChoices)` to the body's object choices. Lowering then sets the additive core field `RepeatProcessEffect.choice_history: Vec<RepeatProcessChoiceHistory{chosen, previously_chosen}>` (serde default). Before each later round, the engine moves the finished round's choice into `__prior_process_choices__` and clears the choice tag, so "the last chosen card" (now read as the It tag) is the final round's card. |
+| Crooked Scales root cause | Crooked Scales | The grouped-coin document is a registered multi-sentence program whose sentences reparse identically, so it returns one `SourceSentence` per sentence. `rewrite_repeat_process_result` only looked for a direct trailing `IfResult`. It now peels one-effect sentence wrappers and also accepts the payment+marker pair as a two-member `Coordination`. |
+| activation player into a shield | Soldevi Sentry | A 3-sentence bundle (choose-target prelude + regenerate + when-regenerates). Lowering compiles the trigger with "that player" = IteratedPlayer and records `RegenerateEffect.follow_up_player` (additive, serde default). The engine resolves it when the shield is created and wraps the follow-ups in `ForPlayers(Specific(p))`. The pending reflexive trigger keeps the iteration (CR 701.19, 603.12). |
+| per-player limits | Mirri, Weatherlight Duelist; Keen-Eared Sentry | `Restriction::BlockWithMoreThan{player, maximum}` (tracker keeps the smallest cap per player; declare-blockers and the requirement search enforce it, CR 509.1c) and `Restriction::VentureMoreThanOnceEachTurn(player)` (`advance_player_dungeon`, which venture and the initiative share, stops after a venture in this turn's history, CR 701.49). |
+| roll to visit (CR 701.52) | Line Cutter; Six-Sided Die | Core `RollToVisitAttractionsEffect` via `KeywordActionAst::RollToVisitAttractions`. `effects::player::roll_to_visit_attractions::roll_to_visit_attractions_for_player` is now the single owner of the visit d6 and the lit-Attraction batch. The turn runner (CR 505.5b) calls it, and the effect publishes each VisitAttraction keyword action. Six-Sided Die: preprocess no longer treats the card name after "roll a/an" as a self-reference. |
+
+Re-checked against the merged tree: Willie Lumpkin, Sen Triplets and Xanathar still need p10's player-subject restrictions and p05's play-from-another-player permissions. Neither is in the tree yet, so they stay blocked. Command Performance still needs ticket gain ({TK}) and a sticker mode.
+
+Round 4 tests (unrun): `repeat_process_choice_history.rs`, `regeneration_follow_up_player.rs`, `per_player_action_limits.rs`, `attraction_visit_rolls.rs`.
+
+Round 4 risks:
+- `RepeatProcessEffect` gained `choice_history`, and p05 is extending the same struct, so a textual merge conflict is likely in `mana_damage_and_control.rs`, `artifact_text_program_codec.rs` (struct literal) and `effect_model_interpreter.rs`. Keep both sets of fields.
+- New enum variants: `ForEachEffectAst::RepeatThisProcessExcludingPriorChoices`, `RepeatProcessShape::ExcludingPriorChoices`, `KeywordActionAst::RollToVisitAttractions`, `Restriction::{BlockWithMoreThan, VentureMoreThanOnceEachTurn}`, `PlayerActivationRestrictionTailFact::{BlockWithMoreThan, VentureMoreThanOnceEachTurn}` and `CompilerReferenceTag::PriorProcessChoices`. Arms were added at every site that lists a sibling variant.
+- `CantEffectTracker` gained two fields. They are merged and cleared alongside the others.
+- Soldevi: if resolve rewrites `PlayerAst::That` before lowering, the IteratedPlayer binding is not used. The shield then carries no player, and the trigger would fail validation instead of miscompiling.
+- The "the last chosen card" reading was added to `try_apply_leading_tagged_reference_prefix`. It only matches "last chosen <object noun>".
+
 ## Blocked, grouped by missing mechanic
 
 - **ability-copy**: Gogo, Master of Mimicry
@@ -90,7 +111,7 @@ Not done this round:
 - **curse-attach-player**: Lynde, Cheerful Tormentor
 - **damage-history-restriction**: Runesword
 - **delayed-zone-move**: Three Wishes
-- **dice-attractions**: Bamboozling Beeble, Centaur of Attention, Command Performance, Delina, Wild Mage, Ferris Wheel, Fractured Powerstone, Ichor Elixir, Line Cutter, Six-Sided Die
+- **dice-attractions**: Bamboozling Beeble, Centaur of Attention, Command Performance (tickets/stickers), Delina, Wild Mage, Ferris Wheel, Fractured Powerstone, Ichor Elixir
 - **draft-matters**: Archdemon of Paliano
 - **each-of-them**: The War in Heaven
 - **each-of-x-targets**: Batroc the Leaper
@@ -123,13 +144,11 @@ Not done this round:
 - **opponents-discard**: Everything Pizza
 - **otherwise-branch**: Stolen Vitality
 - **player-chooses-name**: Petra Sphinx, Vexing Arcanix
-- **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin, Keen-Eared Sentry, Mirri, Weatherlight Duelist
+- **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin (needs p10/p05 mechanisms)
 - **player-restriction-unless**: Antagonism
 - **power-parity-condition**: Kianne, Corrupted Memory
 - **rad-counters**: Vexing Radgull
 - **redirect-damage**: Nova Pentacle
-- **regeneration-trigger**: Soldevi Sentry
-- **repeat-process**: Crooked Scales, Forgotten Lore, Shrouded Lore
 - **reveal-conditional**: Omnath, Locus of All
 - **reveal-hand-and-top**: Psychotic Episode
 - **reveal-hand-count**: Blood Oath, Thought Hemorrhage
