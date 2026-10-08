@@ -834,13 +834,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_during_your_turn_graveyard_cards_have_retrace_line" => {
             vec![StaticAbilityLineHeadHint::Single("during")]
         }
-        "parse_graveyard_cards_have_retrace_line" => vec![
-            StaticAbilityLineHeadHint::Single("instant"),
-            StaticAbilityLineHeadHint::Single("instants"),
-            StaticAbilityLineHeadHint::Single("sorcery"),
-            StaticAbilityLineHeadHint::Single("sorceries"),
-            StaticAbilityLineHeadHint::Single("each"),
-        ],
+        // The subject may be any subtype list ("Merfolk and Druid cards in
+        // your graveyard have retrace"); the fully anchored retrace grammar is
+        // its own discriminator.
+        "parse_graveyard_cards_have_retrace_line" => Vec::new(),
         "parse_pregame_choose_color_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Single("choose"),

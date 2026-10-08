@@ -5290,6 +5290,7 @@ fn graveyard_cards_have_retrace_ability(
     } else {
         ObjectFilter {
             card_types: fact.card_types,
+            subtypes: fact.subtypes,
             ..ObjectFilter::default()
         }
     };
