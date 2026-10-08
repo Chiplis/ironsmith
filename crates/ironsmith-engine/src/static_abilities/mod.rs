@@ -3328,6 +3328,10 @@ impl StaticAbility {
         Self::new(SetBasePowerForFilter::new(filter, power))
     }
 
+    pub fn set_base_toughness(filter: crate::target::ObjectFilter, toughness: i32) -> Self {
+        Self::new(SetBaseToughnessForFilter::new(filter, toughness))
+    }
+
     pub fn set_colors(filter: crate::target::ObjectFilter, colors: crate::color::ColorSet) -> Self {
         Self::new(SetColorsForFilter::new(filter, colors))
     }

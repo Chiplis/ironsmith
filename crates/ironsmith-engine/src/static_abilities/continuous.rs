@@ -23,8 +23,10 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceRef
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
+mod base_toughness;
 mod grants;
 
+pub use base_toughness::*;
 pub use grants::*;
 
 #[cfg(test)]

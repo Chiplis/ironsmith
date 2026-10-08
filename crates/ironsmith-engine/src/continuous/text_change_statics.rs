@@ -139,7 +139,8 @@ pub(crate) fn rewrite_static_model_words(
         | P::RemoveSupertypes { filter, .. } | P::AddChosenCreatureType { filter, .. }
         | P::AddChosenBasicLandType { filter, .. } | P::AddChosenColor { filter, .. }
         | P::SetChosenColor { filter, .. } | P::SetBasePowerToughness { filter, .. }
-        | P::SetBasePower { filter, .. } | P::AddCardTypes { filter, .. }
+        | P::SetBasePower { filter, .. } | P::SetBaseToughness { filter, .. }
+        | P::AddCardTypes { filter, .. }
         | P::SetCardTypes { filter, .. } | P::AddAllSubtypesOfFamily { filter, .. }
         | P::RevealFromHandAsEnters { filter, .. } | P::RedirectZoneChange { filter, .. }
         | P::DrawReplacementRevealTopMatchingToHandRestBottom { filter, .. }
