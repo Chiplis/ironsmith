@@ -818,6 +818,15 @@ pub struct RedirectNextDamageToTargetEffect {
     pub protected_target: Option<ChooseSpec>,
     pub destination: RedirectNextDamageDestination,
     pub destination_target: Option<ChooseSpec>,
+    /// "The next N damage that a source of your choice would deal ...": the
+    /// source is chosen as the effect resolves and only its damage is
+    /// redirected (CR 609.7a, 614.9).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub source_of_your_choice: bool,
+    /// "... to you and/or permanents you control": the redirected damage is
+    /// damage to the controller or to a permanent matching this filter.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub protect_you_and_permanents: Option<ObjectFilter>,
 }
 
 impl RedirectNextDamageToTargetEffect {
@@ -827,6 +836,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: None,
             destination: RedirectNextDamageDestination::TargetObject,
             destination_target: Some(target),
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 
@@ -836,6 +847,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: Some(protected_target),
             destination: RedirectNextDamageDestination::Controller,
             destination_target: None,
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 }

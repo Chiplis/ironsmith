@@ -25,7 +25,7 @@ mod prevent_all_combat_damage_from;
 mod prevent_all_damage;
 mod prevent_all_damage_to_target;
 mod prevent_damage;
-mod prevention_helpers;
+pub(crate) mod prevention_helpers;
 mod become_blocked;
 mod remove_from_combat;
 mod set_base_power_toughness;

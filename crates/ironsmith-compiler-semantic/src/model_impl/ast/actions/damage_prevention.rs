@@ -123,6 +123,9 @@ pub enum DamagePreventionActionAst {
         protected_target: Option<TargetAst>,
         destination: RedirectNextTimeDamageDestinationAst,
         destination_target: Option<TargetAst>,
+        /// "that a source of your choice would deal" (CR 609.7a): only the
+        /// chosen source's damage is redirected.
+        source_of_your_choice: bool,
     },
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,

@@ -52,3 +52,36 @@ fn reflect_damage_redirects_the_chosen_sources_next_damage_to_its_controller() {
         assert!(text.contains("target: None"), "any recipient: {text}");
     }
 }
+
+const HARMS_WAY: &str = "Mana cost: {W}\nType: Instant\nThe next 2 damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to any target instead.";
+const SHINING_SHOAL: &str = "Mana cost: {X}{W}{W}\nType: Instant — Arcane\nYou may exile a white card with mana value X from your hand rather than pay this spell's mana cost.\nThe next X damage that a source of your choice would deal to you and/or creatures you control this turn is dealt to any target instead.";
+
+#[test]
+fn chosen_source_bounded_redirection_protects_you_and_your_permanents() {
+    for (name, text, amount, noun) in [
+        ("Harm's Way", HARMS_WAY, "Fixed(2)", "Permanent"),
+        ("Shining Shoal", SHINING_SHOAL, "X", "Creature"),
+    ] {
+        for definition in routes(name, text) {
+            assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+            let text = format!("{:?}", definition.spell_effect);
+            assert!(text.contains("RedirectNextDamageToTargetEffect"), "{name}: {text}");
+            assert!(text.contains("source_of_your_choice: true"), "{name}: {text}");
+            assert!(text.contains("protect_you_and_permanents: Some("), "{name}: {text}");
+            assert!(text.contains("protected_target: None"), "{name}: the protected set is not a target");
+            assert!(text.contains(amount), "{name}: {text}");
+            assert!(text.contains(noun), "{name}: {text}");
+            let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
+            assert!(rendered.contains("source of your choice"), "{rendered}");
+        }
+    }
+}
+
+#[test]
+fn unqualified_bounded_redirection_keeps_no_source_choice() {
+    let text = "Mana cost: {W}\nType: Instant\nThe next 2 damage that would be dealt to target creature this turn is dealt to you instead.";
+    for definition in routes("Bounded control", text) {
+        let text = format!("{:?}", definition.spell_effect);
+        assert!(text.contains("source_of_your_choice: false"), "{text}");
+    }
+}

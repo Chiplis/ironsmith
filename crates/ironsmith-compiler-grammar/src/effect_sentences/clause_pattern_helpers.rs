@@ -1884,6 +1884,7 @@ pub fn parse_redirect_next_damage_sentence(
             amount_tokens,
             protected_tokens,
             destination,
+            source_of_your_choice,
         } => {
             let Some((amount, amount_used)) = parse_value(amount_tokens) else {
                 return Err(CardTextError::ParseError(format!(
@@ -1897,7 +1898,28 @@ pub fn parse_redirect_next_damage_sentence(
                     clause_text
                 )));
             }
-            let protected_target = protected_tokens.map(parse_target_phrase).transpose()?;
+            // "you and/or permanents you control" names the controller plus
+            // every matching permanent; it declares no target.
+            let protected_target = match protected_tokens {
+                Some(tokens) if source_of_your_choice => {
+                    match clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
+                        Some(filter) => {
+                            Some(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None))
+                        }
+                        None => Some(parse_target_phrase(tokens)?),
+                    }
+                }
+                Some(tokens) => Some(parse_target_phrase(tokens)?),
+                None => None,
+            };
+            if source_of_your_choice
+                && !matches!(destination, clause_shapes::RedirectDamageDestinationShape::Target(_))
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "chosen-source redirection supports only a target destination (clause: '{}')",
+                    clause_text
+                )));
+            }
             match destination {
                 clause_shapes::RedirectDamageDestinationShape::Controller => {
                     let protected_target = protected_target.ok_or_else(|| {
@@ -1921,11 +1943,13 @@ pub fn parse_redirect_next_damage_sentence(
                         && let SubjectVerbActionAst::DamagePrevention(
                             DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                                 protected_target: effect_protected_target,
+                                source_of_your_choice: effect_source_choice,
                                 ..
                             },
                         ) = &mut subject_verb.action
                     {
                         *effect_protected_target = protected_target;
+                        *effect_source_choice = source_of_your_choice;
                     }
                     effect
                 }
@@ -1935,6 +1959,7 @@ pub fn parse_redirect_next_damage_sentence(
                             amount, protected_target,
                             destination: RedirectNextTimeDamageDestinationAst::SourceObject,
                             destination_target: None,
+                            source_of_your_choice: false,
                         }))
                 }
                 clause_shapes::RedirectDamageDestinationShape::SourceController

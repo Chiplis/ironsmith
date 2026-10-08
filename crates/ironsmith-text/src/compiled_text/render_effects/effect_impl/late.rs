@@ -3196,6 +3196,18 @@
                     .expect("redirect-next damage destination target"),
             ),
         };
+        if redirect_next.source_of_your_choice {
+            let recipient = match &redirect_next.protect_you_and_permanents {
+                Some(filter) => format!("you and/or {}", filter.description()),
+                None => protected_text,
+            };
+            return format!(
+                "The next {} damage that a source of your choice would deal to {} this turn is dealt to {} instead",
+                describe_value(&redirect_next.amount),
+                recipient,
+                destination_text
+            );
+        }
         return format!(
             "The next {} damage that would be dealt to {} this turn is dealt to {} instead",
             describe_value(&redirect_next.amount),

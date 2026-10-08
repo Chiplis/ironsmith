@@ -89,6 +89,8 @@ pub enum RedirectNextDamageShape<'a> {
         amount_tokens: &'a [OwnedLexToken],
         protected_tokens: Option<&'a [OwnedLexToken]>,
         destination: RedirectDamageDestinationShape<'a>,
+        /// "that a source of your choice would deal to ..." (Harm's Way).
+        source_of_your_choice: bool,
     },
 }
 fn tokens_before<'a, P>(input: &mut LexStream<'a>, parser: P) -> WResult<&'a [OwnedLexToken]>
@@ -651,7 +653,9 @@ use combat_programs::parse_redirect_next_damage_lexed;
 pub use combat_programs::parse_redirect_next_damage_tokens;
 #[path = "damage/core.rs"]
 mod core_programs;
-use core_programs::{next_time_tail, parse_next_amount, parse_next_time};
+use core_programs::{
+    next_time_tail, parse_next_amount, parse_next_amount_by_chosen_source, parse_next_time,
+};
 #[path = "damage/condition.rs"]
 mod condition_programs;
 use condition_programs::{classify_next_amount_destination, classify_next_time_destination};
