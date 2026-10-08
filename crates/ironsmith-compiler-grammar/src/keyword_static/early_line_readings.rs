@@ -399,7 +399,7 @@ fn read_cant_cast_this_during_first_turns(
 /// "X can't be greater than the greatest toughness among creatures you
 /// control." (Soul Immolation): the announced X is bounded by a live aggregate
 /// read as the spell is cast (CR 601.2b).
-fn read_aggregate_x_maximum(
+pub(crate) fn read_aggregate_x_maximum(
     tokens: &[crate::cards::builders::OwnedLexToken],
 ) -> Option<StaticAbilityAst> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);

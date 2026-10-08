@@ -6,7 +6,7 @@
 //! against the chosen card as the ability resolves (CR 608.2c). Read apart,
 //! the guess and its follow-ups have no action of their own.
 use crate::cards::builders::{
-    CardTextError, ChooseOneModeAst, ConditionalEffectAst, EffectAst, IfResultPredicate,
+    CardTextError, ChooseOneModeAst, ConditionalEffectAst, EffectAst,
     ObjectChoiceEffectAst, OwnedLexToken, PermissionEffectAst, PlayerAst, PredicateAst,
 };
 use crate::effect::{ChoiceCount, Value};
@@ -65,13 +65,14 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
         )],
     });
     let investigate = EffectAst::subject_verb_investigate(PlayerAst::You, Value::Fixed(1));
-    let cast_or_investigate = vec![
-        cast,
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::DidNot,
-            effects: vec![investigate.clone()],
-        }),
-    ];
+    // The fallback is bound to this exact optional cast (not to whatever
+    // effect happens to precede it after lowering).
+    let cast_or_investigate = vec![EffectAst::Conditionals(
+        ConditionalEffectAst::IfEffectDidNotHappen {
+            effect: Box::new(cast),
+            otherwise: vec![investigate.clone()],
+        },
+    )];
     let greater = PredicateAst::ValueComparison {
         left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(chosen.key.clone()))),
         operator: crate::effect::ValueComparisonOperator::GreaterThan,

@@ -2075,6 +2075,7 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
 }
 
 mod early_line_readings;
+pub(crate) use early_line_readings::read_aggregate_x_maximum;
 
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
