@@ -88,6 +88,8 @@ mod prepared_effects;
 use ironsmith_compiler_resolve::tag_support;
 #[path = "compile_support/trigger_support.rs"]
 mod trigger_support;
+#[path = "compile_support/trailing_if_antecedent.rs"]
+mod trailing_if_antecedent;
 
 #[cfg(test)]
 use crate::cards::builders::ParseAnnotations;

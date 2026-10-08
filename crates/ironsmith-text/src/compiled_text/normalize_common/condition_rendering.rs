@@ -3207,7 +3207,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     format!("{object} was {action} this way")
                 };
             }
-            if is_implicit_reference_tag(tag.as_str()) {
+            // A condition over the declared choice set ("Choose target creature
+            // you control and target creature an opponent controls. Put a
+            // counter on the creature you control if it has power 4 or
+            // greater") reads as a pronoun for the consequence's object.
+            if is_implicit_reference_tag(tag.as_str()) || tag.as_str() == "__chosen_objects__" {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
                     return "that enchantment is an Aura".to_string();

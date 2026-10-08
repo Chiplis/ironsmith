@@ -1989,7 +1989,10 @@ pub(super) fn try_compile_stack_and_condition_effect(
             };
             compiled.push(Effect::new(
                 crate::effects::ConditionalEffect::new(
-                    lowered_conditional.condition.clone(),
+                    super::trailing_if_antecedent::narrow_trailing_condition_to_consequence_object(
+                        lowered_conditional.condition.clone(),
+                        &lowered_conditional.if_true,
+                    ),
                     lowered_conditional.if_true.clone(),
                     lowered_conditional.if_false.clone(),
                 )
