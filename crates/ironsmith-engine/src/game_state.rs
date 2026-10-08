@@ -1956,6 +1956,10 @@ pub struct CantEffectTracker {
     /// Players who draw from the bottom of their library (River Song).
     pub draws_from_bottom: HashSet<PlayerId>,
 
+    /// Players who can't activate any abilities, mana abilities included,
+    /// from any zone (City of Solitude during other players' turns).
+    pub cant_activate_abilities: HashSet<PlayerId>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -2715,6 +2719,7 @@ impl CantEffectTracker {
             }
         }
         self.draws_from_bottom.extend(other.draws_from_bottom);
+        self.cant_activate_abilities.extend(other.cant_activate_abilities);
         for (player, limits) in other.cant_cast_more_than {
             for (filter, maximum) in limits {
                 self.add_counted_cast_limit(player, filter, maximum);
@@ -2810,6 +2815,7 @@ impl CantEffectTracker {
         self.cant_cast_limit_filters.clear();
         self.cant_cast_more_than.clear();
         self.draws_from_bottom.clear();
+        self.cant_activate_abilities.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -3033,6 +3039,12 @@ impl CantEffectTracker {
     /// Check if a player can activate non-mana abilities.
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         !self.cant_activate_non_mana_abilities.contains(&player)
+            && !self.cant_activate_abilities.contains(&player)
+    }
+
+    /// Check if a player can activate abilities at all, mana abilities included.
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        !self.cant_activate_abilities.contains(&player)
     }
 
     /// Check if activated abilities of a permanent can be activated (including mana abilities).
@@ -8218,6 +8230,13 @@ impl GameState {
         self.effect_store
             .cant_effects
             .can_activate_non_mana_abilities(player)
+    }
+
+    /// Can the player activate abilities at all (mana abilities included)?
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_activate_abilities(player)
     }
 
     /// Can activated abilities of this permanent be activated (including mana abilities)?

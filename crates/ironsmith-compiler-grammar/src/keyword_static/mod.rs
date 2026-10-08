@@ -2682,9 +2682,8 @@ fn non_active_players() -> PlayerFilter {
 /// "Players can cast spells and activate abilities only during their own
 /// turns." (City of Solitude): a player who isn't the active player can't cast
 /// spells (CR 601.3) or activate abilities (CR 602.5), mana abilities
-/// included. The activation half is the player prohibition on non-mana
-/// abilities plus the object prohibition, mana abilities included, on the
-/// permanents those players control.
+/// included, whatever zone the ability's source is in (a card in hand
+/// included).
 fn parse_players_cast_and_activate_only_during_own_turns_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -2709,14 +2708,7 @@ fn parse_players_cast_and_activate_only_during_own_turns_line(
             display.to_string(),
         ),
         StaticAbility::restriction(
-            crate::effect::Restriction::activate_non_mana_abilities(non_active_players()),
-            display.to_string(),
-        ),
-        StaticAbility::restriction(
-            crate::effect::Restriction::activate_abilities_of(ObjectFilter {
-                controller: Some(non_active_players()),
-                ..ObjectFilter::default()
-            }),
+            crate::effect::Restriction::activate_abilities(non_active_players()),
             display.to_string(),
         ),
     ]))

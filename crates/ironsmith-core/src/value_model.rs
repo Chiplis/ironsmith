@@ -1248,6 +1248,10 @@ pub enum Restriction {
     /// (CR 121.1 draws the top card; this rule substitutes the bottom card).
     /// Appended to preserve existing serialized variant ordinals.
     DrawFromBottom(PlayerFilter),
+    /// "[players] can't activate abilities" with no exception: every
+    /// activated ability, mana abilities included, from any zone (City of
+    /// Solitude off-turn, CR 602.5). Appended to preserve serialized ordinals.
+    ActivateAbilities(PlayerFilter),
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -1682,6 +1686,10 @@ impl Restriction {
 
     pub fn attack_tax(rule: AttackTaxRule) -> Self {
         Self::AttackTax(rule)
+    }
+
+    pub fn activate_abilities(player: PlayerFilter) -> Self {
+        Self::ActivateAbilities(player)
     }
 
     pub fn draw_from_bottom(player: PlayerFilter) -> Self {

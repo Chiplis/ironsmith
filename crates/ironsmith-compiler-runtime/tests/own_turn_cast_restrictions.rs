@@ -18,8 +18,7 @@ fn city_of_solitude_lowers_the_casting_and_both_activation_halves() {
     for definition in support::definitions("City of Solitude", CITY) {
         let debug = format!("{:?}", definition.abilities);
         assert!(debug.contains("CastSpellsMatching"), "{debug}");
-        assert!(debug.contains("ActivateNonManaAbilities("), "{debug}");
-        assert!(debug.contains("ActivateAbilitiesOf("), "{debug}");
+        assert!(debug.contains("ActivateAbilities(Excluding"), "every ability, mana included: {debug}");
         assert!(debug.contains("Excluding"), "only non-active players: {debug}");
         assert!(debug.contains("Active"), "{debug}");
     }
@@ -57,11 +56,12 @@ fn city_of_solitude_stops_the_non_active_player_only() {
     assert!(game.can_activate_abilities_of(city));
     assert!(!game.can_cast_spells(B), "B can't cast on A's turn");
     assert!(!game.can_activate_non_mana_abilities(B));
-    assert!(!game.can_activate_abilities_of(land), "B's mana abilities too");
+    assert!(!game.can_activate_abilities(B), "B's mana abilities too, from any zone");
+    let _ = land;
 
     refresh_with_active(&mut game, B);
     assert!(game.can_cast_spells(B));
-    assert!(game.can_activate_abilities_of(land));
+    assert!(game.can_activate_abilities(B));
     assert!(!game.can_cast_spells(A), "the restriction binds its controller too");
 }
 
@@ -80,4 +80,31 @@ fn fires_of_invention_restricts_only_its_controller_and_caps_spells_at_two() {
     refresh_with_active(&mut game, B);
     assert!(!game.can_cast_spells(A), "A can't cast during B's turn");
     assert!(game.can_cast_spells(B));
+}
+
+#[test]
+fn city_of_solitude_follows_the_active_player_across_a_real_turn_change() {
+    // The cant tracker is rebuilt at every turn start (GameState::next_turn
+    // ends with update_cant_effects), so the own-turn rules flip without a
+    // manual refresh.
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    permanent(&mut game, "City of Solitude", CITY, A);
+    let guide = compile_to_runtime_definition(
+        "Spirit Guide Probe",
+        "Type: Creature — Elf Spirit\nPower/Toughness: 2/2\nExile this card from your hand: Add {G}.",
+        false,
+    )
+    .unwrap();
+    game.create_object_from_definition(&guide, B, Zone::Hand);
+    refresh_with_active(&mut game, A);
+    assert!(!game.can_activate_abilities(B), "no hand mana ability off-turn");
+    let starting_active = game.turn.active_player;
+    game.next_turn();
+    assert_ne!(game.turn.active_player, starting_active);
+    let active = game.turn.active_player;
+    let other = if active == A { B } else { A };
+    assert!(game.can_activate_abilities(active));
+    assert!(game.can_cast_spells(active));
+    assert!(!game.can_activate_abilities(other));
+    assert!(!game.can_cast_spells(other));
 }

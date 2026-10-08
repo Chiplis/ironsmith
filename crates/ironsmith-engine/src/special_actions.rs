@@ -2427,8 +2427,9 @@ fn can_activate_mana_ability_with_cost_checks(
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
 
-    // Rule restriction: activated abilities of this permanent can't be activated.
-    if !game.can_activate_abilities_of(permanent_id) {
+    // Rule restriction: activated abilities of this permanent can't be
+    // activated, or this player can't activate abilities at all (CR 602.5).
+    if !game.can_activate_abilities_of(permanent_id) || !game.can_activate_abilities(player) {
         return Err(ActionError::CantPayCost);
     }
 
@@ -2629,7 +2630,7 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
         .ok_or(ActionError::ObjectNotFound)?;
 
     let precheck_started_at = crate::perf::PerfTimer::start();
-    if !game.can_activate_abilities_of(permanent_id) {
+    if !game.can_activate_abilities_of(permanent_id) || !game.can_activate_abilities(player) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
         }

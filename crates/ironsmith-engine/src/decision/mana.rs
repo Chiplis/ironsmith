@@ -8441,6 +8441,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     if game.controller_of(object) != player
         || object.zone != Zone::Battlefield
         || !ability.functions_in(&object.zone)
+        || !game.can_activate_abilities(player)
     {
         return None;
     }

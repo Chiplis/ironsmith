@@ -5486,6 +5486,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::ActivateAbilities(filter) => {
+            format!("{} can't activate abilities", describe_player_set_filter(filter))
+        }
         crate::effect::Restriction::DrawFromBottom(filter) => {
             let (subject, library) = if matches!(filter, PlayerFilter::You) {
                 ("You".to_string(), "your library")
