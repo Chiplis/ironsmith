@@ -317,6 +317,18 @@ pub fn preserve_and_reason(
     {
         return Some(AndPreservation::TokenRules);
     }
+    // "return target creature card ... to the battlefield tapped and
+    // attacking with a finality counter on it" (Grim Reaper): `tapped and
+    // attacking` is one entry modifier of a return or put as well; a later
+    // counter rider's noun is not a second instruction's verb.
+    if starts_any(
+        current,
+        &[&["return"], &["returns"], &["put"], &["puts"]],
+    ) && ends_any(current, &[&["tapped"]])
+        && starts_any(remaining, &[&["attacking"]])
+    {
+        return Some(AndPreservation::TokenRules);
+    }
     if (is_token_creation_context_tokens(current) || has_inline_token_rules_context(current))
         && starts_with_inline_token_rules_tail_tokens(remaining)
     {
