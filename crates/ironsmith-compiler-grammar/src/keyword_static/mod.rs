@@ -28,6 +28,8 @@ pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
 };
 mod leading_conditional_sentence_chain;
+mod devour_quality;
+pub use devour_quality::parse_devour_quality_line;
 pub use costs_replacements_and_permissions::*;
 
 use super::activation_and_restrictions::activation_restriction_clauses::parse_negated_object_restriction_clause;
@@ -827,6 +829,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
         "parse_each_player_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("each"),
             StaticAbilityLineHeadHint::Pair("each", "player"),
@@ -1794,6 +1797,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_prepared_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
+        single_static_ability_ast_rule!(parse_devour_quality_line),
         single_static_ability_ast_rule!(parse_each_player_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
         single_static_ability_ast_rule!(

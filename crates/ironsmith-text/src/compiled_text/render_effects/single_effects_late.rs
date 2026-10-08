@@ -4262,7 +4262,7 @@ pub(super) fn describe_structural_as_enters_keyword_program(
     match presentation_label? {
         PresentationLabel::Keyword(PresentationKeyword::Devour(_)) => {
             let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
-            Some(format!("Devour {}", devour.multiplier))
+            Some(devour.keyword_text())
         }
         PresentationLabel::Keyword(PresentationKeyword::Amplify(_)) => {
             let amplify = effect.downcast_ref::<crate::effects::AmplifyEffect>()?;
@@ -4291,7 +4291,7 @@ pub(super) fn describe_structural_devour_keyword(
         return None;
     };
     let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
-    Some(format!("Devour {}", devour.multiplier))
+    Some(devour.keyword_text())
 }
 
 pub(super) fn describe_structural_amplify_keyword(

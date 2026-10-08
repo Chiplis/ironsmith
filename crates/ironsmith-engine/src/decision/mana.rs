@@ -1965,6 +1965,36 @@ pub(crate) fn this_spell_cast_timing_allows(
         ThisSpellCastTiming::AfterCombat => {
             matches!(game.turn.phase, Phase::NextMain | Phase::Ending)
         }
+        ThisSpellCastTiming::BeforeBlockersAreDeclared => match game.turn.phase {
+            Phase::Beginning | Phase::FirstMain => true,
+            Phase::Combat => matches!(
+                game.turn.step,
+                Some(Step::BeginCombat | Step::DeclareAttackers)
+            ),
+            Phase::NextMain | Phase::Ending => false,
+        },
+        ThisSpellCastTiming::DuringYourDeclareAttackersStep => {
+            game.is_active_player(player)
+                && matches!(game.turn.phase, Phase::Combat)
+                && game.turn.step == Some(Step::DeclareAttackers)
+        }
+        ThisSpellCastTiming::DuringDeclareBlockersStepOnOpponentsTurn => {
+            opponents_turn
+                && matches!(game.turn.phase, Phase::Combat)
+                && game.turn.step == Some(Step::DeclareBlockers)
+                && game
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.block_declaration_complete)
+        }
+        ThisSpellCastTiming::DuringOpponentsTurnBeforeAttackersAreDeclared => {
+            opponents_turn
+                && match game.turn.phase {
+                    Phase::Beginning | Phase::FirstMain => true,
+                    Phase::Combat => game.turn.step == Some(Step::BeginCombat),
+                    Phase::NextMain | Phase::Ending => false,
+                }
+        }
     }
 }
 

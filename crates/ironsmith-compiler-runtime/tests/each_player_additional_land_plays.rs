@@ -44,11 +44,11 @@ fn each_player_land_allowance_raises_every_players_land_plays() {
     for &(name, text) in CARDS {
         for definition in compile::compile_both(name, text) {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().unwrap();
             let base_alice = game.player(alice).unwrap().land_plays_per_turn;
             let base_bob = game.player(bob).unwrap().land_plays_per_turn;
             game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().unwrap();
             assert_eq!(game.player(alice).unwrap().land_plays_per_turn, base_alice + 1, "{name}");
             assert_eq!(
                 game.player(bob).unwrap().land_plays_per_turn,

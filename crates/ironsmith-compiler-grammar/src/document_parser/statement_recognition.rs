@@ -1004,13 +1004,7 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     if let Some(first) = sentences.first_mut()
         && first.first().is_some_and(|token| token.is_word("as"))
         && first.get(1).is_some_and(|token| token.is_word("this"))
-        && let Some(timing_idx) = crate::slice_primitives::select_position(first, |token| {
-            token.is_word("enters") || token.is_word("transforms")
-        })
-        && (first[timing_idx].is_word("enters")
-            || first
-                .get(timing_idx + 1)
-                .is_some_and(|token| token.is_word("into")))
+        && let Some(timing_idx) = as_this_replacement_timing_idx(first)
         && let Some(comma_idx) =
             crate::slice_primitives::select_position(&first[timing_idx + 1..], |token| {
                 token.is_comma()
@@ -1021,6 +1015,28 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
         first.drain(..=comma_idx);
     }
     sentences
+}
+
+/// The index of the timing word of an "As this <subject> enters / transforms
+/// into / is turned face up, <instruction>" replacement intro (CR 614.1c,
+/// CR 702.37 face-up replacements). The facts parser records which event
+/// the program is bound to; the statement body is the instruction after the
+/// comma.
+fn as_this_replacement_timing_idx(first: &[OwnedLexToken]) -> Option<usize> {
+    if let Some(timing_idx) = crate::slice_primitives::select_position(first, |token| {
+        token.is_word("enters") || token.is_word("transforms")
+    }) && (first[timing_idx].is_word("enters")
+        || first
+            .get(timing_idx + 1)
+            .is_some_and(|token| token.is_word("into")))
+    {
+        return Some(timing_idx);
+    }
+    let is_idx = crate::slice_primitives::select_position(first, |token| token.is_word("is"))?;
+    let face_up = first.get(is_idx + 1..is_idx + 4)?;
+    (face_up[0].is_word("turned") && face_up[1].is_word("face") && face_up[2].is_word("up")
+        && first.get(is_idx + 4).is_some_and(OwnedLexToken::is_comma))
+    .then_some(is_idx + 3)
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {

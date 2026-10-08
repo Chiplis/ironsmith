@@ -4347,11 +4347,74 @@ impl AmplifyEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct DevourEffect {
     pub multiplier: u32,
+    /// CR 702.82c "Devour [quality] N": the permanents that may be devoured.
+    /// `None` is the plain keyword's "creatures".
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub quality: Option<ObjectFilter>,
+    /// "Devour X, where X is the number of creatures devoured this way"
+    /// (Thromok the Insatiable): each devoured permanent is worth X counters,
+    /// so the source gets the devoured count squared.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub multiplier_is_devoured_count: bool,
 }
 
 impl DevourEffect {
     pub fn new(multiplier: u32) -> Self {
-        Self { multiplier }
+        Self {
+            multiplier,
+            quality: None,
+            multiplier_is_devoured_count: false,
+        }
+    }
+
+    pub fn with_quality(multiplier: u32, quality: ObjectFilter) -> Self {
+        Self {
+            multiplier,
+            quality: Some(quality),
+            multiplier_is_devoured_count: false,
+        }
+    }
+
+    pub fn devoured_count_squared() -> Self {
+        Self {
+            multiplier: 1,
+            quality: None,
+            multiplier_is_devoured_count: true,
+        }
+    }
+
+    /// The keyword's printed surface ("Devour 2", "Devour artifact 1",
+    /// "Devour X, where X is the number of creatures devoured this way").
+    pub fn keyword_text(&self) -> String {
+        if self.multiplier_is_devoured_count {
+            return "Devour X, where X is the number of creatures devoured this way".to_string();
+        }
+        let Some(quality) = &self.quality else {
+            return format!("Devour {}", self.multiplier);
+        };
+        let word = if let Some(subtype) = quality.subtypes.first() {
+            subtype.to_string()
+        } else if let Some(card_type) = quality.card_types.first() {
+            card_type.to_string().to_ascii_lowercase()
+        } else {
+            "permanent".to_string()
+        };
+        format!("Devour {word} {}", self.multiplier)
+    }
+
+    /// The +1/+1 counters the source gets for `devoured` permanents.
+    pub fn counters_for(&self, devoured: u32) -> u32 {
+        if self.multiplier_is_devoured_count {
+            devoured.saturating_mul(devoured)
+        } else {
+            devoured.saturating_mul(self.multiplier)
+        }
     }
 }
 
