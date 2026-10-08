@@ -105,9 +105,17 @@ fn conjoined_player_gets_counters_clause(
 fn player_counter_tail(
     input: &mut LexStream<'_>,
 ) -> winnow::error::ModalResult<(u32, PlayerCounterKind)> {
+    // "X rad counters" / "half X rad counters, rounded up" (Contaminated
+    // Drink): a dynamic count; this surface shape records only that a player
+    // receives counters, so a dynamic amount is recorded as zero.
     let count = opt(alt((
         primitives::kw("another").value(1),
         leaf::parse_leaf_number_prefix_lexed,
+        (
+            opt(primitives::kw("half")),
+            leaf::parse_leaf_number_or_x_prefix_lexed,
+        )
+            .value(0),
     )))
     .parse_next(input)?
     .unwrap_or(1);
@@ -120,6 +128,12 @@ fn player_counter_tail(
     ))
     .parse_next(input)?;
     alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    opt((
+        opt(primitives::comma()),
+        primitives::kw("rounded"),
+        alt((primitives::kw("up"), primitives::kw("down"))),
+    ))
+    .parse_next(input)?;
     Ok((count, kind))
 }
 

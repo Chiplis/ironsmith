@@ -495,6 +495,29 @@ pub fn parse_get(
                 return Ok(EffectAst::subject_verb_rad_counters(player, count));
             }
         }
+        // "you get half X rad counters, rounded up" (Contaminated Drink).
+        if let Some((half, rest)) = count_tokens.split_first()
+            && half.is_word("half")
+            && let Some((base, used)) = parse_value(rest)
+            && used == rest.len()
+        {
+            let rounding_words = tail
+                .iter()
+                .filter(|token| !token.is_comma())
+                .map(OwnedLexToken::parser_text)
+                .collect::<Vec<_>>();
+            let rounded = match rounding_words.as_slice() {
+                ["rounded", "down"] => Some(Value::HalfRoundedDown(Box::new(base))),
+                ["rounded", "up"] => Some(Value::HalfRoundedDown(Box::new(Value::Add(
+                    Box::new(base),
+                    Box::new(Value::Fixed(1)),
+                )))),
+                _ => None,
+            };
+            if let Some(count) = rounded {
+                return Ok(EffectAst::subject_verb_rad_counters(player, count));
+            }
+        }
         let tail_is_for_each =
             tail.is_empty() || grammar::match_word_prefix(tail, &["for", "each"]).is_some();
         if !count_is_complete || !tail_is_for_each {
