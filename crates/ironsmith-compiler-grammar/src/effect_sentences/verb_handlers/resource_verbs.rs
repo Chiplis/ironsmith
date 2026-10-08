@@ -56,6 +56,9 @@ pub fn parse_effect_with_verb(
                     Until::Forever,
                 ));
             }
+            if let Some(effect) = parse_lose_all_player_counters(tokens, subject)? {
+                return Ok(effect);
+            }
             parse_lose_life(tokens, subject)
         }
         Verb::Gain => {
@@ -929,4 +932,60 @@ mod counter_qualified_zone_move_tests {
             })
         ));
     }
+}
+
+
+/// "Target player loses all poison counters" (Leeches), "each opponent loses
+/// all counters" (Final Act): every counter of the named kind (or of every
+/// kind) is removed from the subject player (CR 122.1, 122.8). The subject
+/// becomes the removal's non-target holder, or the declared target player.
+fn parse_lose_all_player_counters(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+        return Ok(None);
+    };
+    if !first.is_word("all") || !last.is_word("counters") {
+        return Ok(None);
+    }
+    let descriptor = &tokens[1..tokens.len() - 1];
+    let counter_type = if descriptor.is_empty() {
+        None
+    } else {
+        match super::zone_handlers::parse_counter_type_from_descriptor_tokens(descriptor) {
+            Some(counter_type) => Some(counter_type),
+            None => return Ok(None),
+        }
+    };
+    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (target, holder) = match player {
+        PlayerAst::Target => (
+            parse_target_phrase(&crate::lexer::synthetic_word_tokens(&["target", "player"]))?,
+            PlayerFilter::target_player(),
+        ),
+        PlayerAst::TargetOpponent => (
+            parse_target_phrase(&crate::lexer::synthetic_word_tokens(&["target", "opponent"]))?,
+            PlayerFilter::target_opponent(),
+        ),
+        PlayerAst::You => (TargetAst::Player(PlayerFilter::You, None), PlayerFilter::You),
+        // The participant of "each opponent loses all counters"; outside an
+        // iteration the unbound player reference fails closed in lowering.
+        PlayerAst::That | PlayerAst::Implicit => (
+            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            PlayerFilter::IteratedPlayer,
+        ),
+        _ => return Ok(None),
+    };
+    let amount = match counter_type {
+        Some(counter_type) => Value::PlayerCounters(holder, counter_type),
+        None => Value::CountersOn(Box::new(ChooseSpec::EachPlayer(holder)), None),
+    };
+    Ok(Some(EffectAst::subject_verb_remove_up_to_any_counters(
+        amount,
+        target,
+        counter_type,
+        false,
+    )))
 }
