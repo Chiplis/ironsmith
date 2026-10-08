@@ -237,7 +237,6 @@ pub fn parse_unsupported_rewrite_line_kind(
                 }
             },
             parse_for_as_long_as_permission,
-            parse_multi_step_each_player,
             parse_artifact_creature_player_target,
             parse_creature_token_player_planeswalker_target,
             parse_villainous_choice,
@@ -401,29 +400,6 @@ fn parse_for_as_long_as_permission(
         }
     }
     Ok(UnsupportedRewriteLineKind::ForAsLongAsPermission)
-}
-
-fn parse_multi_step_each_player(
-    input: &mut WordSliceInput<'_>,
-) -> WResult<UnsupportedRewriteLineKind> {
-    let original = *input;
-    locate_word_sequence(&[
-        "each",
-        "player",
-        "loses",
-        "x",
-        "life",
-        "discards",
-        "x",
-        "cards",
-        "sacrifices",
-        "x",
-        "creatures",
-    ])
-    .parse_next(input)?;
-    let mut probe = original;
-    locate_word_sequence(&["then", "sacrifices", "x", "lands"]).parse_next(&mut probe)?;
-    Ok(UnsupportedRewriteLineKind::MultiStepEachPlayer)
 }
 
 fn parse_artifact_creature_player_target(
