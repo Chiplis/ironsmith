@@ -2792,7 +2792,7 @@ fn matching_object_targets_for_spec(
         .collect()
 }
 
-fn matching_player_targets_for_spec(
+pub(crate) fn matching_player_targets_for_spec(
     game: &GameState,
     spec: &ChooseSpec,
     ctx: &ExecutionContext,

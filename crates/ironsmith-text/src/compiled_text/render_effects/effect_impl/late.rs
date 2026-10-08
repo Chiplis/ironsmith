@@ -5279,6 +5279,22 @@
             );
         }
         let target = describe_choose_spec(&for_each_counter_kind.target);
+        if for_each_counter_kind.all_kinds
+            && for_each_counter_kind.put_only
+            && for_each_counter_kind.counter_source.is_none()
+        {
+            let recipient = if matches!(
+                for_each_counter_kind.target.base(),
+                ChooseSpec::ObjectOrPlayer(..)
+            ) {
+                "that permanent or player"
+            } else {
+                "it"
+            };
+            return format!(
+                "For each kind of counter on {target}, give {recipient} another counter of that kind"
+            );
+        }
         if for_each_counter_kind.all_kinds {
             return format!(
                 "For each kind of counter on {target}, choose to put or remove one of that kind"

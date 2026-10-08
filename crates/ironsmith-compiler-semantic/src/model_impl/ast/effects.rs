@@ -5606,6 +5606,25 @@ impl EffectAst {
         Self::subject_verb_counter_kind_put_or_remove(target, true)
     }
 
+    /// "For each kind of counter on target permanent or player, give that
+    /// permanent or player another counter of that kind" (CR 122.1: one more
+    /// counter of every kind already there, players included).
+    pub fn subject_verb_for_each_counter_kind_put_another(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source: None,
+                all_kinds: true,
+                fixed_counter_type: None,
+                optional_action: false,
+                put_only: true,
+                choose_target_per_kind: false,
+            }),
+        )
+    }
+
     pub fn subject_verb_one_counter_kind_put_or_remove(target: TargetAst) -> Self {
         Self::subject_verb_counter_kind_put_or_remove(target, false)
     }
