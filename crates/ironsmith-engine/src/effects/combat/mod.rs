@@ -28,6 +28,7 @@ mod prevent_damage;
 pub(crate) mod prevention_helpers;
 mod become_blocked;
 mod remove_from_combat;
+mod reselect_attack_target;
 mod set_base_power_toughness;
 
 pub use assign_no_combat_damage::AssignNoCombatDamageEffect;
@@ -51,4 +52,5 @@ pub use prevent_all_damage_to_target::PreventAllDamageToTargetEffect;
 pub use prevent_damage::PreventDamageEffect;
 pub use become_blocked::BecomeBlockedEffect;
 pub use remove_from_combat::RemoveFromCombatEffect;
+pub use reselect_attack_target::ReselectAttackTargetEffect;
 pub use set_base_power_toughness::SetBasePowerToughnessEffect;

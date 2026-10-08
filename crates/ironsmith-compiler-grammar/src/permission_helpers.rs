@@ -1272,6 +1272,28 @@ pub fn parse_permission_clause_spec_lexed(
             ))
         })
         .or_else(|| {
+            // "cards you own exiled with this artifact": the same pool,
+            // narrowed to the permission player's own cards.
+            let (reference, tail) =
+                permission_source_exiled_facts::parse_owned_cards_from_source_exiled_tokens(
+                    rest_tokens,
+                )?;
+            Some((
+                TaggedPermissionTarget {
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                    as_copy: false,
+                    max_plays: None,
+                    surface: Some(
+                        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                            source: reference.surface,
+                        },
+                    ),
+                },
+                tail,
+                Some(ObjectFilter::default().owned_by(PlayerFilter::You)),
+            ))
+        })
+        .or_else(|| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens)
                 .map(|(target_ref, tail)| (target_ref, tail, None))
         })
@@ -1842,6 +1864,19 @@ fn next_turn_permission_grant_duration(
 ) -> Result<crate::grant::GrantDuration, CardTextError> {
     // The shared permission lifetime historically groups both next-turn
     // boundaries. Retain the actual grammatical duration when lowering a grant.
+    // "until the beginning of your next upkeep": nothing can be played during
+    // the untap step (CR 502.4), so the permission ends with your next
+    // turn's start.
+    if crate::grammar::primitives::parse_prefix(
+        trim_lexed_commas(tokens),
+        crate::grammar::primitives::phrase(&[
+            "until", "the", "beginning", "of", "your", "next", "upkeep",
+        ]),
+    )
+    .is_some()
+    {
+        return Ok(crate::grant::GrantDuration::UntilYourNextTurn);
+    }
     Ok(
         match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
             Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,
@@ -2360,8 +2395,27 @@ pub fn parse_cast_or_play_tagged_clause(
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
                 |(target_ref, tail_tokens)| {
                     let tail = parse_conditional_tagged_free_cast_tail_tokens(tail_tokens)?;
-                    let (operator, right) =
-                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)?;
+                    let predicate = if let Some((operator, right)) =
+                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)
+                    {
+                        PredicateAst::ValueComparison {
+                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                                target_ref.tag.clone(),
+                            ))),
+                            operator,
+                            right,
+                        }
+                    } else {
+                        // "You may play the exiled card without paying its
+                        // mana cost if each player has no cards in hand"
+                        // (Howltooth Hollow): a game-state condition checked
+                        // as the ability resolves (CR 608.2c).
+                        let (_, condition) = crate::grammar::primitives::parse_prefix(
+                            tail.condition_tokens,
+                            crate::grammar::primitives::kw("if"),
+                        )?;
+                        crate::grammar::filters::parse_condition_predicate_lexed(condition).ok()?
+                    };
                     let inner = if tail.lifetime == PermissionLifetime::Immediate {
                         EffectAst::subject_verb_cast_tagged(
                             crate::tag::TagRef::of(target_ref.tag.clone()),
@@ -2381,13 +2435,7 @@ pub fn parse_cast_or_play_tagged_clause(
                         )
                     };
                     Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                        predicate: PredicateAst::ValueComparison {
-                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                                target_ref.tag.clone(),
-                            ))),
-                            operator,
-                            right,
-                        },
+                        predicate,
                         if_true: vec![inner],
                         if_false: Vec::new(),
                     }))

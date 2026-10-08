@@ -48,7 +48,8 @@ mod tests;
 #[path = "source_exiled/reference.rs"]
 mod reference_programs;
 pub use reference_programs::{
-    parse_cards_from_source_exiled_tokens, parse_spell_from_source_exiled_tokens,
+    parse_cards_from_source_exiled_tokens, parse_owned_cards_from_source_exiled_tokens,
+    parse_spell_from_source_exiled_tokens,
     parse_spells_from_source_exiled_tokens, parse_play_lands_and_spells_from_source_exiled_tokens, parse_look_and_play_source_exiled_tokens, parse_look_source_exiled_tokens, parse_play_source_exiled_with_mana_tokens, parse_play_source_exiled_inline_mana_tokens,
 };
 use reference_programs::{parse_source_exiled_tail_lexed, parse_spell_from_source_exiled_lexed};

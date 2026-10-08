@@ -782,6 +782,30 @@ fn classify_boundary<'a>(
         // same sacrifice, not two alternative actions.
         return None;
     }
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Or | CoordinationOperatorAst::Comma
+    ) && crate::lexer::token_word_refs(after).ends_with(&["whichever", "is", "greater"])
+    {
+        // "equal to the amount of life you gained this turn or the amount of
+        // life you lost this turn, whichever is greater" (Willowdusk): the
+        // alternatives belong to one amount, not to two actions.
+        return None;
+    }
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Or | CoordinationOperatorAst::Comma
+    ) && {
+        let before_words = crate::lexer::token_word_refs(before);
+        let after_words = crate::lexer::token_word_refs(after);
+        let is_color =
+            |word: &&str| crate::grammar::leaf::parse_leaf_color_complete(word).is_ok();
+        before_words.last().is_some_and(is_color) && after_words.first().is_some_and(is_color)
+    } {
+        // "exile target black or red permanent that player controls"
+        // (Lightwielder Paladin): a color list qualifies one object.
+        return None;
+    }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
         // "shuffles their hand and graveyard into their library" is one
         // shuffle whose object is a zone union; the connective is not an
@@ -799,7 +823,8 @@ fn classify_boundary<'a>(
     if matches!(
         candidate.operator,
         CoordinationOperatorAst::Comma | CoordinationOperatorAst::And | CoordinationOperatorAst::Or
-    ) && super::chain_splitting::is_creature_subtype_subject_list_boundary(before, after)
+    ) && (super::chain_splitting::is_creature_subtype_subject_list_boundary(before, after)
+        || super::chain_splitting::is_subtype_object_list_boundary(before, after))
     {
         // Serial subtype subjects are one filter even though the final arm
         // contains the clause's eventual verb: `Birds, Frogs, Otters, and

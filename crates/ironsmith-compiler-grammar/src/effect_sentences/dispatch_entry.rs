@@ -12758,6 +12758,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 ..
             })
@@ -13389,6 +13390,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                     target: effect_target,
                 })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target: effect_target, .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                     target: effect_target,
                 })

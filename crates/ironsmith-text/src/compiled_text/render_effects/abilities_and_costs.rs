@@ -2752,6 +2752,12 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                 "Activate only during an opponent's turn".to_string()
             }
             ActivationTiming::AnyTimeByEnchantedCreatureController => "Only the controller of the enchanted creature may activate this ability".to_string(),
+            ActivationTiming::AnyTimeByOpponents => {
+                "Only your opponents may activate this ability".to_string()
+            }
+            ActivationTiming::SorcerySpeedByOpponents => {
+                "Only your opponents may activate this ability and only as a sorcery".to_string()
+            }
             ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                 "Any player may activate this ability but only during their turn before the end step"
                     .to_string()

@@ -11,13 +11,18 @@ pub(super) fn parse_clear_suspected_clause(tokens: &[OwnedLexToken]) -> Result<O
     let copula = words.len().saturating_sub(4);
     let (subject, contracted) = match words.get(copula).copied() {
         Some("is" | "are" | "become" | "becomes") => (&tokens[..positions[copula]], false),
-        _ if words.as_slice() == ["its", "no", "longer", "suspected"]
-            || words.as_slice() == ["theyre", "no", "longer", "suspected"] => (&tokens[..positions[1]], true),
+        // The contraction is one lexed word ("it's", "they're"); its parser
+        // word piece drops the apostrophe.
+        _ if words.len() == 4
+            && tokens[positions[0]].is_any_word(&["its", "it's", "theyre", "they're"]) =>
+        {
+            (&tokens[..positions[1]], true)
+        }
         _ => return Ok(None),
     };
     let rebuilt;
     let subject = if contracted {
-        rebuilt = vec![OwnedLexToken::synthetic_word(if words[0] == "its" { "it" } else { "them" })];
+        rebuilt = vec![OwnedLexToken::synthetic_word(if tokens[positions[0]].is_any_word(&["its", "it's"]) { "it" } else { "them" })];
         rebuilt.as_slice()
     } else if subject.first().is_some_and(|token| token.is_word("have")) {
         &subject[1..]

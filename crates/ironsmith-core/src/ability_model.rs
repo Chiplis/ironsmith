@@ -59,6 +59,14 @@ pub enum ActivationTiming {
     BeforeEndOfCombatStep,
     /// The live controller of the creature enchanted by this ability source.
     AnyTimeByEnchantedCreatureController,
+    /// "Only your opponents may activate this ability": any opponent of the
+    /// source's current controller may activate it, at any time they could
+    /// activate an ability (CR 602.1, 602.5).
+    AnyTimeByOpponents,
+    /// "Only your opponents may activate this ability and only as a
+    /// sorcery": an opponent of the source's controller, during their own
+    /// main phase with an empty stack (CR 307.1, 602.5d).
+    SorcerySpeedByOpponents,
 }
 
 impl ActivationTiming {
@@ -1124,8 +1132,13 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     /// its source. The string fallback preserves older compiled definitions;
     /// new parses use the typed activator-relative timing variant.
     pub fn allows_any_player_to_activate(&self) -> bool {
-        matches!(self.timing, ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep | ActivationTiming::AnyTimeByEnchantedCreatureController)
-            || self.additional_restrictions.iter().any(|restriction| {
+        matches!(
+            self.timing,
+            ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+                | ActivationTiming::AnyTimeByEnchantedCreatureController
+                | ActivationTiming::AnyTimeByOpponents
+                | ActivationTiming::SorcerySpeedByOpponents
+        ) || self.additional_restrictions.iter().any(|restriction| {
                 restriction
                     .trim()
                     .to_ascii_lowercase()

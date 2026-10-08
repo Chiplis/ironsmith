@@ -5521,6 +5521,22 @@ fn evaluate_condition_in_context(
                         game.is_active_player(ctx.controller)
                             && game.turn.phase != crate::game_state::Phase::Ending
                     }
+                    crate::ability::ActivationTiming::AnyTimeByOpponents => game
+                        .current_controller(ctx.source)
+                        .is_some_and(|source_controller| {
+                            game.are_opponents(ctx.controller, source_controller)
+                        }),
+                    crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+                        game.current_controller(ctx.source).is_some_and(|source_controller| {
+                            game.are_opponents(ctx.controller, source_controller)
+                        }) && game.is_active_player(ctx.controller)
+                            && matches!(
+                                game.turn.phase,
+                                crate::game_state::Phase::FirstMain
+                                    | crate::game_state::Phase::NextMain
+                            )
+                            && game.stack_is_empty()
+                    }
                     crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                         game.object(ctx.source)
                             .is_some_and(|object| game.is_active_player(object.owner))

@@ -2602,6 +2602,7 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::ManifestDread {
             repeat,
             source_exiled_owner,
+            its_controller,
         } => {
             let manifest = if source_exiled_owner {
                 EffectAst::ForEach(ForEachEffectAst::ForEachObject {
@@ -2611,6 +2612,8 @@ pub fn parse_keyword_mechanic_clause(
                     .in_zone(Zone::Exile),
                     effects: vec![EffectAst::subject_verb_manifest_dread(PlayerAst::ItsOwner)],
                 })
+            } else if its_controller {
+                EffectAst::subject_verb_manifest_dread(PlayerAst::ItsController)
             } else {
                 EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit)
             };
@@ -2644,6 +2647,30 @@ pub fn parse_keyword_mechanic_clause(
             EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                 count: Value::Fixed(count as i32),
                 effects: vec![EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, false)],
+            })
+        }
+        clause_shapes::KeywordMechanicShape::ManifestTopCount {
+            count_tokens,
+            equal_to,
+        } => {
+            // CR 701.40c: multiple cards from a library are manifested one
+            // at a time, so the instruction repeats the single-card manifest.
+            let count = if equal_to {
+                crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(count_tokens)
+                    .or_else(|| {
+                        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(count_tokens)
+                    })
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported manifest amount (clause: '{clause_text}')"
+                        ))
+                    })?
+            } else {
+                parse_keyword_value_tokens(count_tokens, "manifest", &clause_text)?
+            };
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count,
+                effects: vec![EffectAst::subject_verb_manifest_top_card(PlayerAst::You)],
             })
         }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {

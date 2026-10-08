@@ -1855,6 +1855,10 @@ pub struct CantEffectTracker {
     /// Positive attack requirements from resolving rule effects, not abilities.
     pub must_attack: HashMap<ObjectId, usize>,
 
+    /// Requirements to attack a specific player if able (CR 508.1d), from
+    /// resolving rule effects. Each entry counts once per requiring effect.
+    pub must_attack_players: HashMap<ObjectId, Vec<PlayerId>>,
+
     /// Positive block requirements from source-owned rules.
     pub must_block: HashMap<ObjectId, usize>,
 
@@ -2613,6 +2617,12 @@ impl CantEffectTracker {
         for (object, count) in other.must_attack {
             *self.must_attack.entry(object).or_default() += count;
         }
+        for (object, players) in other.must_attack_players {
+            self.must_attack_players
+                .entry(object)
+                .or_default()
+                .extend(players);
+        }
         for (object, maximum) in other.maximum_blockers {
             self.maximum_blockers
                 .entry(object)
@@ -2726,6 +2736,7 @@ impl CantEffectTracker {
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
         self.must_attack.clear();
+        self.must_attack_players.clear();
         self.must_block.clear();
         self.maximum_blockers.clear();
         self.cant_block_alone.clear();
@@ -7347,6 +7358,17 @@ impl GameState {
             .filter_map(move |&(id, player, turn)| {
                 (id == creature && turn == self.turn.turn_number).then_some(player)
             })
+            // Rule-effect requirements ("attacks that player this combat if
+            // able") last for their restriction duration.
+            .chain(
+                self.effect_store
+                    .cant_effects
+                    .must_attack_players
+                    .get(&creature)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            )
     }
 
     pub fn is_goaded(&self, creature: ObjectId) -> bool {

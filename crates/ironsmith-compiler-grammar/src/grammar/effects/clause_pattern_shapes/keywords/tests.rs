@@ -38,6 +38,7 @@ fn parses_counted_manifest_dread() {
         Some(KeywordMechanicShape::ManifestDread {
             repeat: KeywordRepeatShape::Count(_),
             source_exiled_owner: false,
+            its_controller: false,
         })
     ));
 }
@@ -50,6 +51,7 @@ fn parses_bare_manifest_dread() {
         Some(KeywordMechanicShape::ManifestDread {
             repeat: KeywordRepeatShape::Once,
             source_exiled_owner: false,
+            its_controller: false,
         })
     ));
 }

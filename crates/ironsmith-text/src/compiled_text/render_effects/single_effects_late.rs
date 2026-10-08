@@ -1092,6 +1092,12 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => Some(
             "Any player may activate this ability but only during their turn before the end step",
         ),
+        ActivationTiming::AnyTimeByOpponents => {
+            Some("Only your opponents may activate this ability")
+        }
+        ActivationTiming::SorcerySpeedByOpponents => {
+            Some("Only your opponents may activate this ability and only as a sorcery")
+        }
         ActivationTiming::DuringSourceOwnersUpkeep => {
             Some("Activate only during this card's owner's upkeep")
         }

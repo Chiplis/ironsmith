@@ -1204,6 +1204,13 @@ pub enum Restriction {
     /// player; it is not part of the physical source-quality filter.
     /// Appended to preserve existing serialized variant ordinals.
     PlayerHexproofFrom(PlayerFilter, ObjectFilter),
+    /// "<creature> attacks <player> this combat if able": a requirement
+    /// (CR 508.1d) to attack that player, counted only when the creature
+    /// attacks that player. Appended to preserve serialized variant ordinals.
+    MustAttackPlayer {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1550,6 +1557,10 @@ impl Restriction {
 
     pub fn must_attack(filter: ObjectFilter) -> Self {
         Self::MustAttack(filter)
+    }
+
+    pub fn must_attack_player(attackers: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::MustAttackPlayer { attackers, player }
     }
 
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {

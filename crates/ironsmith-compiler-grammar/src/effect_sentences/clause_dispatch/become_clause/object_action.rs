@@ -127,6 +127,25 @@ pub fn parse_become_clause(
                 become_clause_tokens,
                 Some(ironsmith_core::AnimationDurationSurface::Leading),
             )
+        } else if let Some((counter_type, body)) =
+            crate::grammar::effects::parse_affected_object_counter_duration_suffix(
+                &become_clause_tokens,
+            )
+            && !trailing_duration_belongs_to_quoted_ability(&become_clause_tokens, body)
+        {
+            // "It's a green Dinosaur with base power and toughness 5/5 for as
+            // long as it has a saurian counter on it": the animation lasts
+            // while the animated object keeps that counter.
+            (
+                Until::ForAsLongAs(
+                    ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                        counter_type,
+                    ),
+                ),
+                subject_tokens.clone(),
+                body.to_vec(),
+                None,
+            )
         } else if let Some((duration, remainder)) =
             parse_restriction_duration(&become_clause_tokens)?
         {

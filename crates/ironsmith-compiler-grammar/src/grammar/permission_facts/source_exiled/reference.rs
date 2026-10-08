@@ -98,6 +98,17 @@ pub fn parse_cards_from_source_exiled_tokens(
     Some((reference, tail))
 }
 
+/// "cards you own exiled with this artifact" (Kayla's Music Box): the
+/// source-linked pool narrowed to cards the permission's player owns.
+pub fn parse_owned_cards_from_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(SourceExiledReference, &[OwnedLexToken])> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("cards"))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    owned_by_you.then_some((reference, tail))
+}
+
 /// A complete static land-and-spell permission over one source-linked pool.
 /// Leave durations, price riders and narrower spell subjects to their owners.
 pub fn parse_play_lands_and_spells_from_source_exiled_tokens(

@@ -120,6 +120,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::RemoveFromCombat { .. }
             )
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
@@ -3023,6 +3024,23 @@ pub(super) fn compile_subject_verb_late(
                 &spec,
                 ctx,
                 "removed_from_combat",
+            );
+            Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+            target,
+            players_only,
+        }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let effect = tag_object_target_effect(
+                Effect::new(crate::effects::ReselectAttackTargetEffect::new(
+                    spec.clone(),
+                    *players_only,
+                )),
+                &spec,
+                ctx,
+                "attack_reselected",
             );
             Ok((vec![effect], choices))
         }

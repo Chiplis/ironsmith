@@ -654,6 +654,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "TicketCountersEffect" => decode_as::<T, ironsmith_core::TicketCountersEffect>(effect),
         "TransformEffect" => decode_as::<T, ironsmith_core::TransformEffect>(effect),
         "TurnFaceDownEffect" => decode_as::<T, ironsmith_core::TurnFaceDownEffect>(effect),
+        "ReselectAttackTargetEffect" => {
+            decode_as::<T, ironsmith_core::ReselectAttackTargetEffect>(effect)
+        }
         "TurnFaceUpEffect" => decode_as::<T, ironsmith_core::TurnFaceUpEffect>(effect),
         "UnattachObjectsEffect" => decode_as::<T, ironsmith_core::UnattachObjectsEffect>(effect),
         "UnearthEffect" => decode_as::<T, ironsmith_core::UnearthEffect>(effect),
@@ -1551,6 +1554,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TransformEffect,
             crate::effects::TurnFaceDownEffect,
             crate::effects::TurnFaceUpEffect,
+            crate::effects::ReselectAttackTargetEffect,
             crate::effects::UnattachObjectsEffect,
             crate::effects::UnearthEffect,
             crate::effects::UntapEffect,

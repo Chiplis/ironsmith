@@ -85,11 +85,21 @@ pub enum KeywordMechanicShape<'a> {
     ManifestDread {
         repeat: KeywordRepeatShape<'a>,
         source_exiled_owner: bool,
+        /// "Its controller manifests dread." (Unwanted Remake): the
+        /// controller of the referenced object performs the action.
+        its_controller: bool,
     },
     ManifestTop {
         player: ManifestPlayerShape,
         /// CR 701.40c: multiple cards are manifested one at a time.
         count: u32,
+    },
+    /// "manifest the top two cards of your library" / "manifest a number of
+    /// cards from the top of your library equal to <amount>": the amount
+    /// tokens (with their "equal to" lead when `equal_to`).
+    ManifestTopCount {
+        count_tokens: &'a [OwnedLexToken],
+        equal_to: bool,
     },
     CloakTop {
         player: ManifestPlayerShape,
@@ -484,12 +494,21 @@ fn parse_manifest_dread<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechani
     ))
     .parse_next(input)?
     .is_some();
-    alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    let its_controller = !source_exiled_owner
+        && opt(primitives::phrase(&["its", "controller"]))
+            .parse_next(input)?
+            .is_some();
+    if its_controller {
+        primitives::kw("manifests").parse_next(input)?;
+    } else {
+        alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    }
     primitives::kw("dread").parse_next(input)?;
     let repeat = repeat_tail.parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestDread {
         repeat,
         source_exiled_owner,
+        its_controller,
     })
 }
 
@@ -510,6 +529,37 @@ fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMecha
         player: ManifestPlayerShape::You,
         count,
     })
+}
+
+fn parse_manifest_top_count_you<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::kw("manifest").parse_next(input)?;
+    alt((
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&["the", "top"]).parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::kw("cards").void())?;
+            primitives::phrase(&["cards", "of", "your", "library"]).parse_next(input)?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: false,
+            })
+        },
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&[
+                "a", "number", "of", "cards", "from", "the", "top", "of", "your", "library",
+            ])
+            .parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: true,
+            })
+        },
+    ))
+    .parse_next(input)
 }
 
 fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

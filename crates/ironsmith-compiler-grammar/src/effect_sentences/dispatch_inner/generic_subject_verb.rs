@@ -1541,6 +1541,12 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
                 "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
                 "this", "way",
             ],
+            // Klaw, Master of Sound: the singular spell cast from the same
+            // exiled card.
+            &[
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "a", "spell",
+                "this", "way",
+            ],
         ],
     );
     matches.then(|| {

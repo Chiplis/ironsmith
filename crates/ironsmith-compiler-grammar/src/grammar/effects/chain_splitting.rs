@@ -7,6 +7,7 @@ mod verbs;
 
 pub use recognition::{
     has_extended_effect_head_tokens, is_creature_subtype_subject_list_boundary,
+    is_subtype_object_list_boundary,
     is_token_creation_context_tokens, preserve_and_reason, starts_effect_clause_tokens,
     starts_with_inline_token_rules_tail_tokens, starts_with_player_may_tokens,
     strip_leading_instead_tokens,

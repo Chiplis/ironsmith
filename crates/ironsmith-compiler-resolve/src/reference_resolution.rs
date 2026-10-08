@@ -2312,6 +2312,12 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                     maybe_tag_target(target, frame, id_gen, "removed_from_combat")?;
                 }
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                    target,
+                    ..
+                }) => {
+                    maybe_tag_target(target, frame, id_gen, "attack_reselected")?;
+                }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
                 }
@@ -7064,6 +7070,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 ..
             })
@@ -8497,6 +8504,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 target,
             })
@@ -9745,7 +9753,8 @@ fn bind_unresolved_it_in_restriction(
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
-        | Restriction::AttackPlayer { attackers, .. } => {
+        | Restriction::AttackPlayer { attackers, .. }
+        | Restriction::MustAttackPlayer { attackers, .. } => {
             bind_unresolved_it_in_filter(attackers, seed_tag)
         }
         _ => 0,

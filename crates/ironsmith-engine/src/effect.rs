@@ -1866,6 +1866,32 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MustAttackPlayer { attackers, player } => {
+                let required = game
+                    .players
+                    .iter()
+                    .filter(|player_state| {
+                        player_state.is_in_game()
+                            && player_matches_restriction_filter(player_state.id, player)
+                    })
+                    .map(|player_state| player_state.id)
+                    .collect::<Vec<_>>();
+                if required.is_empty() {
+                    return;
+                }
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && attackers.matches(object, &ctx, game)
+                    {
+                        tracker
+                            .must_attack_players
+                            .entry(object.id)
+                            .or_default()
+                            .extend(required.iter().copied());
+                    }
+                }
+            }
             Restriction::MustBlock(filter) => {
                 for &object in &game.battlefield {
                     if !game.is_phased_out(object)
