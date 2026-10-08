@@ -2032,6 +2032,9 @@ pub(crate) fn this_spell_cast_condition_allows(
                 })
             })
         }
+        crate::static_abilities::ThisSpellCastCondition::CreatureDiedThisTurn => {
+            game.turn_store.turn_history.total_creatures_died_this_turn() > 0
+        }
         crate::static_abilities::ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(name) => {
             !game.battlefield.iter().any(|&id| {
                 game.object(id)

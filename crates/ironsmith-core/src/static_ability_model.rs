@@ -468,6 +468,10 @@ impl ThisSpellCastRestrictionKind {
         Self::named("if creature is attacking you")
     }
 
+    pub fn if_creature_died_this_turn() -> Self {
+        Self::named("if creature died this turn")
+    }
+
     pub fn after_combat() -> Self {
         Self::named("after combat")
     }

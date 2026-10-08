@@ -956,6 +956,9 @@ impl StaticAbilityModelInterpreter {
             "if creature is attacking you" => {
                 super::ThisSpellCastRestrictionKind::if_creature_is_attacking_you()
             }
+            "if creature died this turn" => {
+                super::ThisSpellCastRestrictionKind::if_creature_died_this_turn()
+            }
             "after combat" => super::ThisSpellCastRestrictionKind::after_combat(),
             "if you control snow land" => {
                 super::ThisSpellCastRestrictionKind::if_you_control_snow_land()

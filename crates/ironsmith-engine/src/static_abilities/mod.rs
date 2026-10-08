@@ -124,6 +124,8 @@ pub enum ThisSpellCastCondition {
     },
     /// "only if a creature is attacking you"
     CreatureIsAttackingYou,
+    /// "only if a creature died this turn" (CR 700.4)
+    CreatureDiedThisTurn,
     /// "only if no permanents named <name> are on the battlefield"
     NoPermanentsNamedOnBattlefield(String),
     /// "only if you control N or more matching permanents"
@@ -249,6 +251,10 @@ impl ThisSpellCastRestrictionKind {
 
     pub fn if_creature_is_attacking_you() -> Self {
         Self::condition(ThisSpellCastCondition::CreatureIsAttackingYou)
+    }
+
+    pub fn if_creature_died_this_turn() -> Self {
+        Self::condition(ThisSpellCastCondition::CreatureDiedThisTurn)
     }
 
     pub fn after_combat() -> Self {
