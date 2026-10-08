@@ -32797,10 +32797,13 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Awaken { amount, cost, .. } => {
             format!("Awaken {amount}—{}", cost.to_oracle())
         }
-        AlternativeCastingMethod::Flashback { total_cost, .. } => {
+        AlternativeCastingMethod::Flashback {
+            total_cost,
+            x_minimum,
+        } => {
             let costs = method.non_mana_costs();
             let mana_cost = total_cost.mana_cost().map(|cost| cost.to_oracle());
-            if costs.is_empty() {
+            let rendered = if costs.is_empty() {
                 format!(
                     "Flashback—{}",
                     mana_cost.unwrap_or_else(|| "{0}".to_string())
@@ -32812,6 +32815,14 @@ pub(super) fn describe_alternative_cast_line(
                 } else {
                     format!("Flashback—{extra}")
                 }
+            };
+            if *x_minimum > 0 {
+                format!(
+                    "{rendered}. If you cast this spell this way, X can't be {}",
+                    x_minimum - 1
+                )
+            } else {
+                rendered
             }
         }
         AlternativeCastingMethod::Harmonize { total_cost } => {
