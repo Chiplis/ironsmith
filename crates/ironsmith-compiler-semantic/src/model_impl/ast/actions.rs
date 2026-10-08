@@ -1049,11 +1049,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     duration,
                     source_filter,
                     of_chosen_color,
+                    source_of_your_choice,
                     ..
                 },
             ) => f
                 .debug_struct("PreventAllDamageToTargetFromSourceFilter")
                 .field("of_chosen_color", of_chosen_color)
+                .field("source_of_your_choice", source_of_your_choice)
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_filter", source_filter)

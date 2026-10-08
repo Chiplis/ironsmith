@@ -94,6 +94,9 @@ pub enum DamagePreventionActionAst {
         source_filter: ObjectFilter,
         source_would_deal_surface: bool,
         of_chosen_color: bool,
+        /// "a [red] source of your choice": one source matching
+        /// `source_filter` is chosen as the effect resolves (CR 609.7a).
+        source_of_your_choice: bool,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,
