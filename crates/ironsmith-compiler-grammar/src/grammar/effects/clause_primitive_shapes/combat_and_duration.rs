@@ -172,6 +172,70 @@ pub fn parse_combat_requirement_shape(
     (!shape.subject_tokens.iter().any(|token| token.is_period())).then_some(shape)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackRequirementPlayer {
+    /// "that player": the player the preceding instruction named.
+    ThatPlayer,
+    You,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttackPlayerRequirementShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub player: AttackRequirementPlayer,
+    pub duration: CombatRequirementDuration,
+}
+
+fn attack_player_suffix<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(AttackRequirementPlayer, CombatRequirementDuration)> {
+    (
+        alt((primitives::kw("attack"), primitives::kw("attacks"))),
+        alt((
+            primitives::phrase(&["that", "player"]).value(AttackRequirementPlayer::ThatPlayer),
+            primitives::kw("you").value(AttackRequirementPlayer::You),
+        )),
+        alt((
+            primitives::phrase(&["this", "turn"]).value(CombatRequirementDuration::Turn),
+            primitives::phrase(&["this", "combat"]).value(CombatRequirementDuration::Combat),
+        )),
+        primitives::phrase(&["if", "able"]),
+        primitives::sentence_end(),
+    )
+        .map(|(_, player, duration, _, _)| (player, duration))
+        .parse_next(input)
+}
+
+fn attack_player_requirement<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttackPlayerRequirementShape<'a>> {
+    let subject_tokens = repeat_till(1.., any.void(), peek(attack_player_suffix))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    let (player, duration) = attack_player_suffix.parse_next(input)?;
+    Ok(AttackPlayerRequirementShape {
+        subject_tokens: trim_shape_edges(subject_tokens),
+        player,
+        duration,
+    })
+}
+
+/// "This creature attacks that player this combat if able." (Ruhan of the
+/// Fomori): a requirement to attack one specific player (CR 508.1d).
+pub fn parse_attack_player_requirement_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<AttackPlayerRequirementShape<'_>> {
+    let shape = crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        attack_player_requirement,
+        "attack player requirement clause",
+    )?;
+    (!shape.subject_tokens.is_empty()
+        && !shape.subject_tokens.iter().any(|token| token.is_period()))
+    .then_some(shape)
+}
+
 fn subject_blocks_this_turn<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {
     let suffix = || {
         (

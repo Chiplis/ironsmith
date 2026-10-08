@@ -110,6 +110,7 @@ fn retarget_it_restriction_for_counter_followup(
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
         | Restriction::AttackPlayer { attackers, .. }
+        | Restriction::MustAttackPlayer { attackers, .. }
         | Restriction::PlayLandsMatching(_, attackers)
         | Restriction::CastSpellsMatching(_, attackers)
         | Restriction::CastMoreThanOneSpellEachTurn(_, attackers) => {

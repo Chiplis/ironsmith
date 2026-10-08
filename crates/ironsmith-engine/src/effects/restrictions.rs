@@ -253,6 +253,15 @@ fn normalize_restriction_for_resolution(
             // object references remain the identities the instruction named.
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
+        // "This creature attacks that player this combat if able": the
+        // creature and the player are the ones this resolution named
+        // (CR 608.2c), so a later choice cannot redirect the requirement.
+        Restriction::MustAttackPlayer { attackers, player } => Restriction::must_attack_player(
+            collapse_tagged_filter_to_specific_objects(attackers, ctx, game),
+            crate::effects::helpers::resolve_player_filter(game, player, ctx)
+                .map(crate::target::PlayerFilter::Specific)
+                .unwrap_or_else(|_| player.clone()),
+        ),
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),

@@ -526,6 +526,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_attack_this_turn_if_able_clause,
         ),
         specific_primitive!(
+            "attack-player-if-able-clause",
+            &["it", "that", "they", "target", "this", "up"],
+            parse_attack_player_if_able_clause,
+        ),
+        specific_primitive!(
             "must-be-blocked-clause",
             // Card-name preprocessing produces `this creature` (or `this
             // permanent` without metadata). The complete requirement parser
@@ -853,6 +858,64 @@ pub fn parse_attack_this_turn_if_able_clause(
         filter,
         vec![ability],
         duration,
+    )))
+}
+
+/// "This creature attacks that player this combat if able." (Ruhan of the
+/// Fomori, Raving Dead): a rule effect requiring the named creature to attack
+/// one specific player if able (CR 508.1d), for this combat or this turn.
+pub fn parse_attack_player_if_able_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::effect::Until;
+
+    let clause = LexedClause::new(tokens);
+    let Some(shape) = clause_shapes::parse_attack_player_requirement_shape(tokens) else {
+        return Ok(None);
+    };
+    let until = match shape.duration {
+        clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
+        clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
+    };
+    let player = match shape.player {
+        clause_shapes::AttackRequirementPlayer::ThatPlayer => PlayerFilter::IteratedPlayer,
+        clause_shapes::AttackRequirementPlayer::You => PlayerFilter::You,
+    };
+    let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
+    let subject_tokens = subject_clause.tokens();
+    let attackers = if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+    } else if starts_with_target_indicator(subject_tokens) {
+        let attacker_target = parse_target_phrase(subject_tokens)?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(attacker_target),
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::must_attack_player(
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                        player,
+                    ),
+                    until,
+                    None,
+                ),
+            ],
+        }));
+    } else {
+        let target = parse_target_phrase(subject_tokens)?;
+        target_ast_to_object_filter(target).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported attacker subject in attacks-player-if-able clause (clause: '{}')",
+                clause.text()
+            ))
+        })?
+    };
+    Ok(Some(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_attack_player(attackers, player),
+        until,
+        None,
     )))
 }
 

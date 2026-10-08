@@ -279,7 +279,8 @@ fn restriction_references_identity(
                 || object_filter_references_identity(filter, identity)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
-        | Restriction::AttackPlayer { attackers, player } => {
+        | Restriction::AttackPlayer { attackers, player }
+        | Restriction::MustAttackPlayer { attackers, player } => {
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }

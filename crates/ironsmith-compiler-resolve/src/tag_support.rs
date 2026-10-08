@@ -2781,7 +2781,8 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     }
 
     if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
-    | Restriction::AttackPlayer { attackers, .. } = restriction
+    | Restriction::AttackPlayer { attackers, .. }
+    | Restriction::MustAttackPlayer { attackers, .. } = restriction
     {
         return attackers
             .tagged_constraints

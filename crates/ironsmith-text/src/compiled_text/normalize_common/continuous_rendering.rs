@@ -5858,6 +5858,11 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "{} attack each combat if able",
             crate::compiled_text::pluralize_noun_phrase(&filter.description()),
         ),
+        crate::effect::Restriction::MustAttackPlayer { attackers, player } => {
+            let subject = restriction_backref_subject(attackers)
+                .unwrap_or_else(|| attackers.description());
+            format!("{subject} attacks {} if able", describe_player_filter(player))
+        }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }
