@@ -552,7 +552,7 @@ pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexTok
 /// "each creature and each planeswalker": two independently quantified
 /// object sets damaged by one simultaneous event. Player sets ("and each
 /// player/opponent") are owned by the player-damage readings instead.
-fn parse_each_object_set_union(
+pub(crate) fn parse_each_object_set_union(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some((and_idx, (), after)) = crate::grammar::primitives::find_prefix(filter_tokens, || {

@@ -1719,7 +1719,22 @@ pub fn parse_deal_damage_equal_to_power_clause(
                     ],
                 }));
             }
-            let mut target = parse_target_phrase(target_tokens)?;
+            // "to each creature and each planeswalker" (Corpse Explosion):
+            // one simultaneous damage event to the union of both sets.
+            let union_target = if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each"))
+            {
+                crate::effect_sentences::parse_each_object_set_union(&target_tokens[1..])?.map(
+                    |union| TargetAst::Object(union, None, span_from_tokens(target_tokens)),
+                )
+            } else {
+                None
+            };
+            let mut target = match union_target {
+                Some(target) => target,
+                None => parse_target_phrase(target_tokens)?,
+            };
             // "Target creature an opponent controls deals damage equal to
             // its power to that player": the only player named is the
             // targeted source's controller (lowering binds it to the source's

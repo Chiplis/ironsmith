@@ -179,6 +179,7 @@ pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_re
 pub use sequence_rules::try_parse_document_program;
 pub use subject_verb_primitives::*;
 pub use verb_handlers::parse_exiled_with_source_move_surface;
+pub(crate) use verb_handlers::parse_each_object_set_union;
 pub use verb_handlers::{
     damage_clause_has_terminal_unpreventable_rider, mark_damage_ast_unpreventable,
 };
