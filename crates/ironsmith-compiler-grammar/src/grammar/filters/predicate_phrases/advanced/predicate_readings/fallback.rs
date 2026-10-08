@@ -230,6 +230,8 @@ const SHAPES: &[Shape] = &[
     you_acted_this_way,
     no_life_lost_this_way,
     you_didnt_put_onto_battlefield_this_way,
+    creatures_attacked_this_turn,
+    card_exiled_with_it,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -1058,4 +1060,35 @@ fn you_didnt_put_onto_battlefield_this_way(words: &[&str]) -> Option<PredicateAs
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         },
     ))))
+}
+
+/// "Three or more creatures attacked this turn" (Case of the Gateway
+/// Express): distinct creatures any player attacked with this turn.
+fn creatures_attacked_this_turn(words: &[&str]) -> Option<PredicateAst> {
+    let [count, "or", "more", "creatures", "attacked", "this", "turn"] = words else {
+        return None;
+    };
+    Some(history_at_least(
+        ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+            player: PlayerFilter::Any,
+            filter: ObjectFilter::creature(),
+        },
+        number(count)?,
+    ))
+}
+
+/// "if a card is exiled with it" (Smirking Spelljacker): the source has a
+/// linked exiled card, exactly as "a card is exiled with this creature".
+fn card_exiled_with_it(words: &[&str]) -> Option<PredicateAst> {
+    let ["a", "card", "is", "exiled", "with", "it"] = words else {
+        return None;
+    };
+    let exiled_with_source =
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
+            .in_zone(Zone::Exile);
+    Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(exiled_with_source),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some("a card is exiled with it".to_string()),
+    })
 }
