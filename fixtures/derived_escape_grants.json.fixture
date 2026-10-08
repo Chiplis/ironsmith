@@ -1,0 +1,9 @@
+[
+ {
+  "name": "Confession Dial",
+  "oracle_id": "6316158c-2f66-4dc4-b78c-c6ff7c39bb77",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "oracle_text": "When this artifact enters, surveil 3.\n{T}: Target legendary creature card in your graveyard gains escape until end of turn. The escape cost is equal to its mana cost plus exile three other cards from your graveyard."
+ }
+]
