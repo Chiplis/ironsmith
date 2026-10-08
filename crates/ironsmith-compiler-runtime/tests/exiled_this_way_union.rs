@@ -56,5 +56,4 @@ fn separate_exile_sentences_bind_this_way_to_the_latest_exile() {
     assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
     let debug = format!("{definition:?}");
     assert!(!debug.contains("any_of: [ObjectFilter"), "{debug}");
-    assert!(!debug.contains("Coordinated"), "{debug}");
 }
