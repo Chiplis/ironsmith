@@ -240,7 +240,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
     let mut rewritten = value.clone();
     match &mut rewritten {
         Value::SurfaceHinted { value, .. } | Value::Scaled(value, _)
-        | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => {
+        | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => {
             **value = rewrite_value_words(value, change)?;
         }
         Value::Add(left, right) | Value::Min(left, right) => {
@@ -286,7 +287,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::PlayersWhoControlMoreThanYou { players: player, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou { players: player, filter, .. }
         | Value::SpellsCastThisTurnMatching { player, filter, .. }
-        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { player, filter } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }

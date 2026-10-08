@@ -214,6 +214,7 @@ pub enum LevelItemKind {
     KeywordActions,
     StaticAbilities,
     ActivatedAbility,
+    TriggeredAbility,
 }
 
 #[derive(Debug, Clone)]

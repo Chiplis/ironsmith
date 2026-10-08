@@ -589,6 +589,9 @@ fn parse_draw_for_each_object_filter_value(
     let Some(filter_tokens) = zone_move_grammar::strip_draw_for_each_prefix(tokens) else {
         return Ok(None);
     };
+    if let Some(value) = parse_card_types_among_spells_cast_value(filter_tokens) {
+        return Ok(Some(value));
+    }
     // "draw a card for each graveyard with seven or more cards in it" (The
     // Master of Lake-town) counts graveyards, not the cards in them.
     let mut counted_words = vec!["for", "each"];
@@ -1229,4 +1232,32 @@ mod counted_transfer_shape_tests {
             assert!(parse_move(&crate::lexer::lex_line(text, 0).unwrap()).is_err(), "{text}");
         }
     }
+}
+
+/// "draw a card for each card type among spells you've cast this turn"
+/// (April O'Neil, Hacktivist): distinct card types (CR 205.2a) among the
+/// spells counted by the ordinary cast-history quantity. The cast-history
+/// reading of the remainder supplies the player and spell filter; dropping
+/// the "card type among" head would silently count spells instead.
+fn parse_card_types_among_spells_cast_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(filter_tokens);
+    let rest = match words.as_slice() {
+        ["card", "type" | "types", "among", rest @ ..] if !rest.is_empty() => rest,
+        _ => return None,
+    };
+    let mut counted_words = vec!["for", "each"];
+    counted_words.extend_from_slice(rest);
+    let (value, used) = crate::util::parse_for_each_count_value_words(&counted_words)?;
+    if used != counted_words.len() {
+        return None;
+    }
+    let (player, filter) = match value.unhinted() {
+        Value::SpellsCastThisTurnMatching { player, filter, .. } => (player.clone(), filter.clone()),
+        Value::SpellsCastThisTurn(player) => (player.clone(), ObjectFilter::default()),
+        _ => return None,
+    };
+    Some(
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter }
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+    )
 }

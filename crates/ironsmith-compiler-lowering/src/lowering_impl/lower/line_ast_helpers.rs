@@ -125,6 +125,17 @@ pub fn lower_level_ability_ast(
                     }
                 }
             }
+            ParsedLevelAbilityItemAst::TriggeredAbility(triggered) => {
+                let info = triggered.info.clone();
+                let mut chunk = triggered.chunk;
+                apply_level_range_trigger_condition(&mut chunk, level.min_level, level.max_level);
+                activated_lines.push(normalize_line_ast_standalone(
+                    info,
+                    vec![chunk],
+                    triggered.restrictions,
+                    triggered.semantic_facts,
+                )?);
+            }
             ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
                 let info = activated.info.clone();
                 let mut chunk = activated.chunk;
@@ -152,6 +163,46 @@ pub fn lower_level_ability_ast(
 pub struct RewriteLoweredLevelAbilityAst {
     pub level_ability: crate::ability::LevelAbility,
     pub activated_lines: Vec<NormalizedLineAst>,
+}
+
+fn level_range_predicate(min_level: u32, max_level: Option<u32>) -> PredicateAst {
+    let min_condition = PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
+        counter_type: crate::CounterType::Level,
+        count: min_level,
+        surface: crate::SourceCounterThresholdSurface::SourceHas,
+    });
+    if let Some(max_level) = max_level {
+        PredicateAst::And(
+            Box::new(min_condition),
+            Box::new(PredicateAst::ValueComparison {
+                left: crate::Value::CountersOnSource(crate::CounterType::Level),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: crate::Value::Fixed(max_level as i32),
+            }),
+        )
+    } else {
+        min_condition
+    }
+}
+
+/// CR 711.2a: an ability in a level range exists only while the permanent has
+/// that many level counters. For a triggered ability that is an event-time
+/// gate (the ability must exist when the event happens); once triggered it
+/// resolves regardless of later counter changes, so this is not an
+/// intervening "if" (CR 603.4).
+fn apply_level_range_trigger_condition(chunk: &mut LineAst, min_level: u32, max_level: Option<u32>) {
+    let LineAst::Triggered { trigger, .. } = chunk else {
+        return;
+    };
+    let max_label = max_level
+        .map(|level| level.to_string())
+        .unwrap_or_else(|| "+".to_string());
+    let inner = std::mem::replace(trigger, TriggerSpec::AnyOf(Vec::new()));
+    *trigger = TriggerSpec::ConditionQualified {
+        trigger: Box::new(inner),
+        condition: level_range_predicate(min_level, max_level),
+        surface: format!("__ironsmith_level_range:{min_level}:{max_label}"),
+    };
 }
 
 fn apply_level_range_activation_condition(

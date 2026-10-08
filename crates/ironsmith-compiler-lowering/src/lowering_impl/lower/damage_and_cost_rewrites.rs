@@ -433,7 +433,8 @@ pub fn lower_normalized_card_ast_with_facts(
             }
             NormalizedCardItem::LevelAbility(level) => {
                 let _references = level.items.iter().find_map(|item| match item {
-                    crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                    crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated)
+                    | crate::model::ParsedLevelAbilityItemAst::TriggeredAbility(activated) => {
                         line_reference_scope(&symbols, activated.info.display_line_index)
                     }
                     _ => None,

@@ -4939,6 +4939,27 @@
                 lowercase_first(predicate)
             );
         }
+        // "For each flip you lose, this creature deals 3 damage to that
+        // player." (Mutalith Vortex Beast): the tagged set is the opponents
+        // whose per-opponent coin flip was lost.
+        if crate::cards::is_sentence_helper_tag(
+            for_each_tagged_player.tag.as_str(),
+            "coin_opponents_lost",
+        ) {
+            return format!(
+                "For each flip you lose, {}",
+                lowercase_first(&describe_effect_list(&for_each_tagged_player.effects))
+            );
+        }
+        // "Players dealt damage this way can't cast noncreature spells this
+        // turn." (Aurelia's Fury): name the remembered player set by the
+        // action that produced it instead of exposing the internal tag.
+        if let Some(action) = this_way_action_from_tag(&for_each_tagged_player.tag) {
+            return format!(
+                "For each player {action} this way, {}",
+                lowercase_first(&describe_effect_list(&for_each_tagged_player.effects))
+            );
+        }
         return format!(
             "For each tagged '{}' player, {}",
             for_each_tagged_player.tag.as_str(),
@@ -5573,6 +5594,7 @@
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen_exiled")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
         let helper_exiled =
             crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled");
@@ -5613,6 +5635,7 @@
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen_exiled")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
             || helper_consult_match
         {

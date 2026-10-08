@@ -812,6 +812,28 @@ pub(super) fn recognize_level_item(
         }
     }
 
+    // "LEVEL 7+ ... At the beginning of each end step, if it's not your turn,
+    // take an extra turn after this one." (Lighthouse Chronologist): a
+    // triggered ability inside a level range (CR 711.2a).
+    if line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+        && let Ok(chunk @ LineAst::Triggered { .. }) = parse_triggered_line_lexed(&line.tokens)
+    {
+        return Ok(Some(RecognizedLevelItem {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: LevelItemKind::TriggeredAbility,
+            parsed: ParsedLevelAbilityItemAst::TriggeredAbility(ParsedLevelActivatedAbilityAst {
+                info: line.info.semantic_info(),
+                chunk,
+                restrictions: Default::default(),
+                semantic_facts: line.info.semantic_facts.clone(),
+            }),
+        }));
+    }
+
     if !should_skip_keyword_action_static_probe(&line.tokens)
         && let Some(actions) = parse_ability_line_lexed(&line.tokens)
     {

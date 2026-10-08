@@ -277,4 +277,8 @@ pub enum ParsedLevelAbilityItemAst {
     StaticAbilities(Vec<StaticAbilityAst>),
     KeywordActions(Vec<KeywordAction>),
     ActivatedAbility(ParsedLevelActivatedAbilityAst),
+    /// A triggered ability printed inside a level range. It exists only while
+    /// the permanent has that many level counters (CR 711.2a), so it is gated
+    /// at event time, never re-checked as an intervening "if".
+    TriggeredAbility(ParsedLevelActivatedAbilityAst),
 }

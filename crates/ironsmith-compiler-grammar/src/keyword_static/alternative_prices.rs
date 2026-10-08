@@ -88,6 +88,24 @@ pub fn parse_independent_alternative_price_line(
     {
         return Ok(None);
     }
+    // "You may pay {W}{U}{B}{R}{G} rather than pay the mana cost for spells you
+    // cast": a pure mana price is owned by the fixed alternative-mana-cost
+    // grant. Mana groups contribute parser word pieces ("w", "0"), so the word
+    // check above never sees "rather" directly after "pay" for them; without
+    // this deferral both readings match with different ASTs and the registry
+    // rejects the line as ambiguous.
+    if !once
+        && !cast_head
+        && words.get(head + 2) == Some(&"pay")
+        && let Some(pay_token) = starts.get(head + 2).copied()
+        && let Some(rather_token) = starts.get(rather).copied()
+        && rather_token > pay_token + 1
+        && tokens[pay_token + 1..rather_token]
+            .iter()
+            .all(|token| token.kind == TokenKind::ManaGroup)
+    {
+        return Ok(None);
+    }
     let error = |what: &str| {
         CardTextError::ParseError(format!("unsupported independent alternative price: {what}"))
     };

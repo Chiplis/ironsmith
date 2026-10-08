@@ -285,6 +285,10 @@ pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             Value::ColorsAmong(filter) => {
                 format!("a card for each {}", describe_colors_among(filter))
             }
+            Value::CardTypesAmongSpellsCastThisTurn { player, filter } => format!(
+                "a card for each card type among {}",
+                describe_spells_cast_this_turn_phrase(player, filter)
+            ),
             Value::SourcePower
             | Value::SourceToughness
             | Value::PowerOf(_)
@@ -6301,6 +6305,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
 
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
+        Value::PowerOfTwo(exponent) => match exponent.unhinted() {
+            Value::X => "2ˣ".to_string(),
+            other => format!("2 to the power of {}", describe_value(other)),
+        },
         Value::HalfRoundedDown(value) => {
             if let Value::Add(left, right) = value.as_ref() {
                 let count_filter = match (left.as_ref(), right.as_ref()) {
@@ -7093,6 +7101,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::SourceDevouredCreatureCount => {
             "the number of creatures this creature devoured".to_string()
         }
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter } => format!(
+            "the number of card types among {}",
+            describe_spells_cast_this_turn_phrase(player, filter)
+        ),
         Value::SpellsCastThisTurnMatching {
             player,
             filter,
@@ -7351,4 +7363,24 @@ pub(crate) fn is_one_plus_kick_count(value: &Value) -> bool {
                 (Value::Fixed(1), Value::KickCount) | (Value::KickCount, Value::Fixed(1))
             )
     )
+}
+
+/// "spells you've cast this turn" / "instant spells your opponents have cast
+/// this turn": the cast-history set a per-spell aggregate ranges over.
+pub(crate) fn describe_spells_cast_this_turn_phrase(
+    player: &PlayerFilter,
+    filter: &ObjectFilter,
+) -> String {
+    let base = if *filter == ObjectFilter::default() {
+        "spells".to_string()
+    } else {
+        pluralize_noun_phrase(&describe_for_each_filter(filter))
+    };
+    let cast_surface = match player {
+        PlayerFilter::You => "you've cast this turn".to_string(),
+        PlayerFilter::Opponent => "your opponents have cast this turn".to_string(),
+        PlayerFilter::Any => "cast this turn".to_string(),
+        other => format!("cast this turn by {}", describe_player_filter(other)),
+    };
+    format!("{base} {cast_surface}")
 }

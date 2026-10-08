@@ -2286,6 +2286,20 @@ fn render_color_conditional_keyword_grants(
 }
 
 fn ability_level_range_prefix(ability: &Ability) -> Option<String> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind {
+        let qualified = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()?;
+        let range = qualified.surface.strip_prefix("__ironsmith_level_range:")?;
+        let (min, max) = range.split_once(':')?;
+        return Some(if max == "+" {
+            format!("Level {min}+")
+        } else if min == max {
+            format!("Level {min}")
+        } else {
+            format!("Level {min}-{max}")
+        });
+    }
     let AbilityKind::Activated(activated) = &ability.kind else {
         return None;
     };
@@ -36360,11 +36374,29 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     };
 
     let additional_costs = def.additional_non_mana_costs();
+    // A mandatory Waterbend additional cost is stored as a scoped mana
+    // component of the spell's additional cost, so it never appears among the
+    // non-mana components. Render its typed payment surface ("waterbend {5}",
+    // "waterbend {X}") instead of silently dropping the obligation.
+    let waterbend_additional_cost = def
+        .additional_cost
+        .as_all()
+        .and_then(|_| def.additional_cost.mana_cost())
+        .filter(|cost| cost.has_waterbend_obligation())
+        .map(|cost| lowercase_first(&cost.payment_surface()));
+    let mut additional_cost_parts = Vec::new();
+    if let Some(waterbend) = waterbend_additional_cost {
+        additional_cost_parts.push(waterbend);
+    }
     if !additional_costs.is_empty() {
-        let additional_cost_text = describe_additional_costs(&additional_costs);
+        additional_cost_parts.push(lowercase_first(&describe_additional_costs(
+            &additional_costs,
+        )));
+    }
+    if !additional_cost_parts.is_empty() {
         out.push(format!(
             "As an additional cost to cast this spell, {}",
-            lowercase_first(&additional_cost_text)
+            additional_cost_parts.join(" and ")
         ));
     }
     if !spell_like_card {

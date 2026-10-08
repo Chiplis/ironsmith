@@ -5601,6 +5601,10 @@ pub fn parse_effect_discard_to_library_replacement_line(
 pub fn parse_draw_replace_exile_top_face_down_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // A flavor-word label ("Binding Contract — If you would draw a card, ...")
+    // names the ability; it is not part of the replacement's event.
+    let tokens =
+        crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
     if is_draw_replace_exile_top_face_down_line_lexed(tokens) {
         return Ok(Some(StaticAbility::draw_replacement_exile_top_face_down()));
     }
@@ -5706,6 +5710,8 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     // Preserve the existing specialized readings' ownership (and their exact
     // semantics such as a count modification versus an executable program).
     if matches!(parse_conditional_draw_replacement_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replacement_double_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replace_exile_top_face_down_line(tokens), Ok(Some(_)))
         || matches!(parse_draw_extra_cards_replacement_line(tokens), Ok(Some(_)))
         || matches!(
             parse_if_opponent_would_draw_redirect_line(tokens),

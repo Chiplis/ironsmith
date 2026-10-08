@@ -198,12 +198,11 @@ pub fn parse_subject_cant_be_blocked_line(
     if subject_facts.has_rejected_clause_word {
         return Ok(None);
     }
-    if subject_facts.mentions_power_or_toughness {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported power-or-toughness cant-be-blocked subject (clause: '{}')",
-            crate::lexer::token_word_refs(tokens).join(" ")
-        )));
-    }
+    // "Creatures you control with power or toughness 1 or less can't be
+    // blocked." (Tetsuko Umezawa): the object-filter grammar lowers the
+    // either-characteristic comparison to a power/toughness disjunction, and
+    // the runtime evaluates P/T-reading filters on calculated characteristics,
+    // so the restriction follows the creature's current P/T (CR 509.1b).
 
     let subject = first_spell_each_turn_subject(subject_tokens)
         .map(Ok)

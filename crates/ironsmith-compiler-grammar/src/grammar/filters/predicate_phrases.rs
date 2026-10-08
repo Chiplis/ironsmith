@@ -25,6 +25,12 @@ mod advanced;
 mod capture_shapes;
 #[path = "predicate_phrases/surface.rs"]
 mod surface;
+#[path = "predicate_phrases/each_quality_control.rs"]
+mod each_quality_control;
+use each_quality_control::parse_each_quality_control_predicate;
+#[path = "predicate_phrases/pronoun_attached_to.rs"]
+mod pronoun_attached_to;
+use pronoun_attached_to::parse_pronoun_attached_to_predicate;
 
 pub use advanced::parse_predicate;
 
