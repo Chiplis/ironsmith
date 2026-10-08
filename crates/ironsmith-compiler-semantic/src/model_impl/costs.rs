@@ -164,7 +164,13 @@ impl ironsmith_core::CostComponent for CompilerCost {
                 count,
                 ..
             } => format!("put {count} {counter_type:?} counter(s)"),
-            Self::Blight { count } => format!("blight {count}"),
+            Self::Blight { count, x } => {
+                if *x {
+                    "blight X".to_string()
+                } else {
+                    format!("blight {count}")
+                }
+            }
             Self::RemoveCounters {
                 counter_type,
                 count,
@@ -391,6 +397,8 @@ pub enum CompilerCost {
     },
     Blight {
         count: u32,
+        /// "Blight X": the count is the announced X.
+        x: bool,
     },
     RemoveCounters {
         counter_type: Option<CounterType>,

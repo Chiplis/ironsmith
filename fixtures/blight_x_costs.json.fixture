@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Soul Immolation",
+    "oracle_id": "338747e8-bed8-4e60-8b19-5c2b80799477",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "As an additional cost to cast this spell, blight X. X can't be greater than the greatest toughness among creatures you control.\nSoul Immolation deals X damage to each opponent and each creature they control.",
+    "text": "Mana cost: {3}{R}{R}\nType: Sorcery\nAs an additional cost to cast this spell, blight X. X can't be greater than the greatest toughness among creatures you control.\nSoul Immolation deals X damage to each opponent and each creature they control."
+  }
+]

@@ -1916,7 +1916,7 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_blight_costs() {
         .expect("shared activation-cost parser should support blight costs");
     assert!(matches!(
         cst.segments.as_slice(),
-        [crate::grammar::activation_costs::ActivationCostSegmentCst::Blight { count: 1 }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::Blight { count: 1, .. }]
     ));
 
     let tokens = lex_line("Blight 1", 0).expect("lexer should classify blight activation cost");

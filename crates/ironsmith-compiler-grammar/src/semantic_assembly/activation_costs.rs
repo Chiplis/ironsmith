@@ -239,7 +239,10 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             count: *count,
             filter: Some(filter.clone()),
         },
-        ActivationCostSegmentCst::Blight { count } => CompilerCost::Blight { count: *count },
+        ActivationCostSegmentCst::Blight { count, x } => CompilerCost::Blight {
+            count: *count,
+            x: *x,
+        },
         ActivationCostSegmentCst::RemoveCounters {
             counter_type,
             count,

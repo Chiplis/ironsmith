@@ -174,6 +174,8 @@ pub enum ActivationCostSegmentCst {
     },
     Blight {
         count: u32,
+        /// "Blight X": the count is the announced X (CR 601.2b).
+        x: bool,
     },
     RemoveCounters {
         counter_type: CounterType,
