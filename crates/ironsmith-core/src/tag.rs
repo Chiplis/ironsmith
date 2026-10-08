@@ -53,6 +53,11 @@ pub const COST_EXILED_TAG: &str = "__cost_exiled__";
 /// Evaluated directly from the exile links rather than captured.
 pub const EXILED_BY_YOU_TAG: &str = "__exiled_by_you__";
 
+/// Runtime tag for the card on top of the filter context player's library
+/// ("that card" after "as long as the top card of your library is ...").
+/// Evaluated from the live library (CR 401.1), never captured.
+pub const TOP_OF_YOUR_LIBRARY_TAG: &str = "__top_of_your_library__";
+
 /// The exact new object created by a zone-change replacement before its
 /// replacement follow-up effects execute.
 pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";

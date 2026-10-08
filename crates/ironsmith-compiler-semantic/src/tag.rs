@@ -356,6 +356,8 @@ pub enum CompilerReferenceTag {
     /// Cards in exile that the source's controller exiled ("cards you
     /// exiled"), whatever source did the exiling.
     ExiledByYou,
+    /// The card on top of the source controller's library.
+    TopOfYourLibrary,
     MillProbe,
     EachPlayerRevealedThisWay,
     EachGraveyardChosen,
@@ -514,6 +516,7 @@ impl CompilerReferenceTag {
             Self::DiscardedCardReference => "__discarded_card__",
             Self::ThoseCardsReference => "__those_cards__",
             Self::ExiledByYou => "__exiled_by_you__",
+            Self::TopOfYourLibrary => ironsmith_core::tag::TOP_OF_YOUR_LIBRARY_TAG,
             Self::MillProbe => "__mill_probe__",
             Self::EachPlayerRevealedThisWay => "__each_player_revealed_this_way",
             Self::EachGraveyardChosen => "__each_graveyard_chosen",
