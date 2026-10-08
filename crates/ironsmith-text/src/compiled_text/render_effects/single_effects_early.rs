@@ -575,6 +575,13 @@ pub(crate) fn describe_for_players_history_damage_and_controlled_damage(
 }
 
 pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
+    if value.has_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility) {
+        let sampled = value
+            .clone()
+            .without_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility);
+        return describe_where_x_basis(&sampled)
+            .map(|basis| format!("{basis} as you activate this ability"));
+    }
     if value_prefers_equal_to(value) && !value_prefers_where_x(value) {
         return None;
     }

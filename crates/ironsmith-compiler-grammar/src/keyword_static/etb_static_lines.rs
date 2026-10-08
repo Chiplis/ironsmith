@@ -869,6 +869,22 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }
+    // "... as you activate this ability": an activation-time sampling clause
+    // on the whole binding, not part of the counted noun phrase.
+    {
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let view = crate::grammar::primitives::TokenWordView::new(trimmed);
+        let words = view.word_refs();
+        const SUFFIX: &[&str] = &["as", "you", "activate", "this", "ability"];
+        if let Some(start) = words.len().checked_sub(SUFFIX.len())
+            && start > 3
+            && words.get(start..) == Some(SUFFIX)
+            && let Some(&token_start) = view.token_start_indices().get(start)
+        {
+            return parse_value_binding_clause(&trimmed[..token_start])
+                .map(|value| value.with_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility));
+        }
+    }
     let clause = LexedClause::new(tokens);
     let word_view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
