@@ -1,6 +1,6 @@
 # cf8 / p06-predicates — summary
 
-204 cards. Status: 56 source-proposed, 2 already-on-main, 146 blocked, 0 untriaged
+204 cards. Status: 60 source-proposed, 2 already-on-main, 142 blocked, 0 untriaged
 (see `ledger.jsonl`). Nothing was built or run; tests in
 `crates/ironsmith-compiler-runtime/tests/predicate_fallback_readings.rs` and
 `crates/ironsmith-compiler-runtime/tests/event_instead_and_this_way_readings.rs` (fixture
@@ -94,3 +94,37 @@ Each one now has a precise gap in the ledger. They are mostly singletons that ne
 - A new core payload variant and a new `StaticAbilityId` were appended at the enum ends to keep ordinals stable. Sibling packages that append too will conflict textually at the enum tail, the `try_map` arm list and the id classification guard. These are trivial merges.
 - `event_instead_replacements` overlaps the "If ... would ..." lines of existing readers. Overlaps are avoided by declining their vocabulary. Because the static registry runs every rule and reports differing results as ambiguous, the first corpus run must check that no previously compiling "would ... instead" card changed.
 - Lich, Delaying Shield and Nefarious Lich now have their replacement lines, but they stay blocked on other lines. The ledger names each one's remaining gap.
+
+## Round 3
+
+### Instead replacement extended to more events
+`ReplacedEventSpec` now also covers:
+- **LifeLoss**, through the existing `WouldLoseLifeMatcher`;
+- **Destroy**, through `WouldBeDestroyedMatcher`. The destruction owner binds the permanent as `__it__` and as the program's target;
+- **ZoneChange**, for "would die" and "would be put into a graveyard [from the battlefield / from anywhere]", through `WouldChangeZoneMatcher`.
+
+Two supporting changes:
+- **Engine fix (`events/processing/mod.rs`):** an instead-program on a zone change outside a draw continuation now binds the object that would have moved as `it` / `__it__`, as the draw branch already did. Without this, "put it on top of its owner's library instead" had no object.
+- **Lowering:** sets the program's antecedent to that tag for Destroy and ZoneChange events.
+
+Grammar ownership:
+- The reader defers to the exile-instead readers and the "reveal it and shuffle it into its owner's library" reader.
+- It declines regeneration programs, because regeneration is itself the destruction replacement (CR 701.19).
+
+New source-proposed cards: Gravebane Zombie, Nissa's Chosen, Necromancer's Magemark. Ugin's Nexus, Darigaaz and Firestorm Phoenix now have their would-die lines but stay blocked on other lines.
+
+Not done: would draw, mill and scry. Draw already has its own owner (`DrawReplacementWithEffects`), and the mill/scry/surveil cases in this package and its dependants are count modifications, not instead programs.
+
+### Dependants in other packages
+Recorded in the Tainted Remedy ledger note:
+- **Now expressible:** Crackling Emergence and Harmonious Emergence (p01), via the Destroy instead program.
+- **Need an owner that isn't built yet:**
+  - p04's spell-cast-this-way graveyard replacements need a one-shot replacement on one specific spell.
+  - Pulmonic Sliver needs a granted, optional zone-change replacement.
+  - Many p02/p03/p07 cards are damage, counter, energy or draw count modifications or redirections, not instead programs.
+- **Wrongly attributed to p06:** Gideon's Triumph, Epicenter, Orim's Touch and Archmage's Newt are resolution-time "X instead if Y" spell text, not replacements.
+
+### Own remaining clusters
+- **Choice results:** "If no player does" now reads as did-not and "If a player does either" as did, in the if-result grammar. Distant Memories and Worms of the Earth stay blocked on their any-player choice bodies. "If you pay" after "unless you pay" is not mapped: whether that result records the payment or the punished action is ambiguous.
+- **Cast records:** "{C} wasn't spent to cast it" now reads as the negated mana-spent check (Wumpus Aberration). Bargain (Rowan's Grim Search) is blocked on its comma split, not on the predicate.
+- **Targets inside a leading "if"** (Blood Lust, Hidetsugu's Second Rite, Vraska, Guiding Spirit) and **elliptical conditions** ("If it doesn't", "If it is"): still blocked. Both need sentence-level work — declaring targets from a condition, or carrying the previous conditional's predicate to the next sentence — that I couldn't verify without a build.
