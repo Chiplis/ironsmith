@@ -183,3 +183,120 @@ turn), and The Eleventh Hour (copy name exception).
   `room_filter` is unaffected.
 - The create-token `with` slice now stops at `where X`. This affects every "token with <keywords>,
   where X is …" create; before the change those failed to parse.
+
+## Round 4 (coordinator: build the remaining owned mechanisms)
+
+Package counts: **48 source-proposed / 2 already-on-main / 73 blocked** (123), plus 2
+`semantic-fix-collateral` rows. There are also **8 `dependant-proposed` rows** for other packages'
+cards that the new mechanisms should unblock (status and `owner_package` are set so the orchestrator
+can move them; they are not counted in the 123).
+
+### Mechanisms (one commit each)
+- **Room door locking (CR 709.5c)** — `UnlockRoomDoorEffect.allow_lock` (serde default);
+  `special_actions::{unlocked_room_doors, apply_room_door_lock}` with
+  `GameState::{lock_room_only_unlocked_door, lock_door_of_fully_unlocked_room}`. Locking a fully
+  unlocked Room re-applies the current half's definition, which drops the fused overlay. Locking
+  the current door then shows the linked half. The grammar reads "lock or unlock a door of target
+  Room you control" (`UnlockTargetRoomDoor { allow_lock }`). Keys to the House, Marina Vendrell →
+  source-proposed.
+- **"Spend this mana only to cast <spells> and unlock doors" (CR 709.5e)** — new
+  `ManaUsageRestriction::CastSpellOrUnlockDoor`. Smoky Lounge → source-proposed.
+- **Next-combat attack requirement (CR 508.1d)** —
+  `MustAttackPlayerThisTurnEffect.controllers_next_combat` writes
+  `effect_store.next_combat_attack_requirements`. The requirement is read by `must_attack_with_view`
+  and attack scoring on that player's turn, and is spent at the end of that combat. Trench Behemoth
+  → source-proposed.
+- **Ability triggered by its source attacking + copy that triggered ability (CR 707.10)** —
+  `TriggerKind/TriggerSpec::AbilityTriggered.caused_by_source_attacking`. The match requires
+  `cause_kind == CreatureAttacked` and `cause_object == source`. `copy_spell` resolves an
+  `AbilityTriggeredEvent` source to the triggered ability's stack entry by trigger identity.
+  Firebender Ascension → source-proposed.
+- **Land token** — `TokenDefinitionSpec::Land(LandTokenShape)`. "That is every basic land type"
+  sets the five basic types, which grant their intrinsic mana abilities (CR 305.6). The clause fails
+  closed on any other kind of token. Overlord of the Hauntwoods → source-proposed.
+- **Copy cards, then cast the copies (CR 707.12)** — `copy_cast_procedure.rs` gains:
+  - "Copy that card N times" → `RepeatEffects(N, may cast copy)`.
+  - "Copy them / those cards" → `ForEachTagged(may cast copy of it)`.
+  - A plural cast statement: "You may cast [any number of] the copies [without paying their mana
+    costs]".
+  - "Choose a <filter> card exiled this way and copy it N times".
+- **Characteristic-list modes** — `document_parser/characteristic_modes.rs`. Under "Create a
+  [colors] creature token with those characteristics", each bullet (`P/T types with abilities`) is
+  read as "create a P/T <colors> <types> creature token with <abilities>". Quoted abilities keep
+  their authored tokens.
+- **Copy exceptions grant keywords (CR 707.9a)** — the keyword list after the last has/have/gain
+  (vigilance, menace, haste, reach, lifelink, deathtouch, hexproof, defender, first/double strike,
+  flying, trample).
+- **"For each other opponent"** — the opponents other than the defending (attacked) player.
+- **Copy activated abilities except mana abilities (CR 613.1f)** —
+  `CopyActivatedAbilities.exclude_mana_abilities` (core, serde default) → engine
+  `include_mana = false`.
+
+### Dependants proposed for other packages (`dependant-proposed` rows)
+| Card | Owner | Mechanism | Remaining risk |
+|---|---|---|---|
+| Mnemonic Deluge | p04 | copy that card three times | — |
+| Chandra, Pyromaster | p04 | choose exiled card, copy three times | +1 line not re-verified |
+| The Tale of Tamiyo | p04 | copy them, cast any number | chapters I–III need p11's repeat process |
+| Outlaws' Merriment | p04 | characteristic-list modes | — |
+| Genku, Future Shaper | p04 | characteristic-list modes | — |
+| Shredder, Shadow Master | p04 | for each other opponent | "attacking that player" rebinding in the filtered loop unverified |
+| Rebuild the City | p01 | copy exception keywords | p01 must retire its ChooseLeadingSpell guard |
+| Sharkey, Tyrant of the Shire | p03 | copy except mana abilities | "Mana of any type …" line is p05's |
+
+These dependants stay blocked, with the gaps named:
+- **Wild Shape** — "has that base power and toughness, becomes that creature type, and gains that
+  ability" template.
+- **Reversal of Fortune** — copy a card in a revealed hand.
+- **Arcane Bombardment** — copy each card exiled with this enchantment (linked-exile set).
+- **Zethi** — copy exiled cards with a kick counter.
+- **Spellweaver Volute** — copy the enchanted card, then re-attach.
+- **Bloodthirsty Adversary** — copy inside a reflexive "when you pay" trigger.
+- **Baron Helmut Zemo** — "up to three of the copies".
+- **Myra the Magnificent** — attraction-visit copy.
+- **Koh** — the last chosen card's abilities.
+- **Kasmina** — loyalty abilities granted to other planeswalkers, with exclude-source semantics.
+- **Vesuvan Doppelganger / Aurora Shifter** — "except it has this ability" self-reference.
+- **Ob Nixilis** — casualty copy with starting loyalty X.
+- **Mizzix's Mastery** — overload "each" exile collection.
+- **Calamity** — copy of the creature that saddled it.
+- **Garth One-Eye** — copy of a named card from outside the game.
+- **Esoteric Duplicator** — "If you do, at the beginning of the next end step, create a copy of
+  that artifact" (LKI copy in a delayed result branch).
+
+### Still blocked in this package (precise gaps in the ledger)
+- **Light Up the Night** — an X minimum scoped to the flashback method.
+- **Icingdeath** — the quoted-ability list split on the comma inside a quote.
+- **Moonlit Meditation** — a dynamic copy template plus a first-time-each-turn token replacement.
+- **Mr. House** — an in-effect alternative ("instead create that token and a Treasure") plus dice
+  counted from Treasure mana spent on an activation.
+
+### New tests (unrun)
+- `p12_room_lock_and_door_mana.rs` (plus engine unit tests in `unlock_room_door.rs`)
+- `p12_next_combat_attack_requirement.rs`
+- `p12_attack_caused_trigger_copy.rs` (plus a matcher unit test in `ability_triggered.rs`)
+- `p12_land_token.rs`
+- `p12_copy_cards_then_cast.rs`
+- `p12_characteristic_token_modes.rs`
+- `p12_copy_exception_keywords.rs`
+- `p12_each_other_opponent_token_copies.rs`
+- `p12_copy_activated_except_mana.rs`
+
+### Round 4 merge risks
+- **New fields / variants touching other crates:**
+  - `UnlockRoomDoorEffect.allow_lock`
+  - `MustAttackPlayerThisTurnEffect.controllers_next_combat`
+  - `TriggerKind::AbilityTriggered.caused_by_source_attacking`
+  - `CopyActivatedAbilities.exclude_mana_abilities`
+  - `ManaUsageRestriction::CastSpellOrUnlockDoor`
+  - `TokenDefinitionSpec::Land`
+  - AST fields: `UnlockTargetRoomDoor.allow_lock`, `MustAttackPlayerThisTurn.controllers_next_combat`,
+    `TriggerSpec::AbilityTriggered.caused_by_source_attacking`
+
+  Every match site found by grep was updated, including grammar tests and
+  `crates/ironsmith-compiler/tests/u013_ability_triggered.rs`.
+- **Minimize-list files:** `effect.rs` and the `static_ability_model/grants.rs` submodule got small
+  additive hunks. `keyword_static/costs_replacements_and_permissions.rs` changed only inside
+  `parse_copy_activated_abilities_line`.
+- **`EffectStore.next_combat_attack_requirements`** is a new field. Any checkpoint or serialization
+  code that lists EffectStore fields explicitly needs it; none was found by grep.
