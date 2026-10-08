@@ -348,5 +348,215 @@
   "toughness": "3",
   "loyalty": null,
   "oracle_text": "At the beginning of your upkeep, if this creature isn't prepared, it becomes prepared."
+ },
+ {
+  "name": "Tainted Remedy",
+  "oracle_id": "51b114cd-c174-4d74-a854-07c68b41fc9d",
+  "mana_cost": "{2}{B}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If an opponent would gain life, that player loses that much life instead."
+ },
+ {
+  "name": "Plague Drone",
+  "oracle_id": "9552fc97-9e6d-4307-bf58-30bf956356bf",
+  "mana_cost": "{3}{B}",
+  "type_line": "Creature — Demon",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Flying\nRot Fly — If an opponent would gain life, that player loses that much life instead."
+ },
+ {
+  "name": "Crumbling Sanctuary",
+  "oracle_id": "f9269fda-e1e6-4e10-9a64-26e8c0f38b0c",
+  "mana_cost": "{5}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If damage would be dealt to a player, that player exiles that many cards from the top of their library instead."
+ },
+ {
+  "name": "Dralnu, Lich Lord",
+  "oracle_id": "35ab189a-adc8-48d6-82d2-53eb56a4d5e4",
+  "mana_cost": "{3}{U}{B}",
+  "type_line": "Legendary Creature — Zombie Wizard",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "If damage would be dealt to Dralnu, sacrifice that many permanents instead.\n{T}: Target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost."
+ },
+ {
+  "name": "Lichenthrope",
+  "oracle_id": "ee7f698d-55c5-4a7a-803d-304febe6a758",
+  "mana_cost": "{3}{G}{G}",
+  "type_line": "Creature — Plant Fungus",
+  "power": "5",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "If damage would be dealt to this creature, put that many -1/-1 counters on it instead.\nAt the beginning of your upkeep, remove a -1/-1 counter from this creature."
+ },
+ {
+  "name": "Szadek, Lord of Secrets",
+  "oracle_id": "c40c823c-5954-457a-81a6-02683da57f7f",
+  "mana_cost": "{3}{U}{U}{B}{B}",
+  "type_line": "Legendary Creature — Vampire",
+  "power": "5",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Flying\nIf Szadek would deal combat damage to a player, instead put that many +1/+1 counters on Szadek and that player mills that many cards."
+ },
+ {
+  "name": "Undead Alchemist",
+  "oracle_id": "3807e6fe-0555-4b09-aef2-efd58abaf669",
+  "mana_cost": "{3}{U}",
+  "type_line": "Creature — Zombie",
+  "power": "4",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "If a Zombie you control would deal combat damage to a player, instead that player mills that many cards.\nWhenever a creature card is put into an opponent's graveyard from their library, exile that card and create a 2/2 black Zombie creature token."
+ },
+ {
+  "name": "Force Bubble",
+  "oracle_id": "655ae8e7-372b-4d8d-b33f-4aca46831abb",
+  "mana_cost": "{2}{W}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If damage would be dealt to you, put that many depletion counters on this enchantment instead.\nWhen there are four or more depletion counters on this enchantment, sacrifice it.\nAt the beginning of each end step, remove all depletion counters from this enchantment."
+ },
+ {
+  "name": "Gloom Surgeon",
+  "oracle_id": "48b8ab2d-9f3f-42b2-9c5d-7497bceae43e",
+  "mana_cost": "{1}{B}",
+  "type_line": "Creature — Spirit",
+  "power": "2",
+  "toughness": "1",
+  "loyalty": null,
+  "oracle_text": "If combat damage would be dealt to this creature, prevent that damage and exile that many cards from the top of your library."
+ },
+ {
+  "name": "Nine Lives",
+  "oracle_id": "236e1f57-7ef5-455a-82a6-8ff6b85d8849",
+  "mana_cost": "{1}{W}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Hexproof\nIf a source would deal damage to you, prevent that damage and put an incarnation counter on this enchantment.\nWhen there are nine or more incarnation counters on this enchantment, exile it.\nWhen this enchantment leaves the battlefield, you lose the game."
+ },
+ {
+  "name": "Long Rest",
+  "oracle_id": "fc8df5c8-fda6-454c-a1ac-21c6e3d75b9c",
+  "mana_cost": "{X}{G}{G}{G}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Return X target cards with different mana values from your graveyard to your hand. If eight or more cards were returned to your hand this way, your life total becomes equal to your starting life total. Exile Long Rest."
+ },
+ {
+  "name": "Flood of Tears",
+  "oracle_id": "3d92f2e6-27df-4329-b552-cf905f7616ba",
+  "mana_cost": "{4}{U}{U}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Return all nonland permanents to their owners' hands. If you return four or more nontoken permanents you control this way, you may put a permanent card from your hand onto the battlefield."
+ },
+ {
+  "name": "Vengeful Rebirth",
+  "oracle_id": "522297b1-493a-4c62-a82a-3017c44183e8",
+  "mana_cost": "{4}{R}{G}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Return target card from your graveyard to your hand. If you return a nonland card to your hand this way, Vengeful Rebirth deals damage equal to that card's mana value to any target.\nExile Vengeful Rebirth."
+ },
+ {
+  "name": "Transcendent Archaic",
+  "oracle_id": "fdd4b3a9-83ce-41bf-82e2-7808657e2c09",
+  "mana_cost": "{7}",
+  "type_line": "Creature — Avatar",
+  "power": "6",
+  "toughness": "6",
+  "loyalty": null,
+  "oracle_text": "Vigilance\nConverge — When this creature enters, you may draw X cards, where X is the number of colors of mana spent to cast this spell. If you draw one or more cards this way, discard two cards."
+ },
+ {
+  "name": "Mr. Foxglove",
+  "oracle_id": "c2008ba9-00df-4607-ba0c-189af52033eb",
+  "mana_cost": "{2}{G}{W}{U}",
+  "type_line": "Legendary Creature — Fox Rogue",
+  "power": "3",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Lifelink\nWhenever Mr. Foxglove attacks, draw cards equal to the number of cards in defending player's hand minus the number of cards in your hand. If you didn't draw cards this way, you may put a creature card from your hand onto the battlefield."
+ },
+ {
+  "name": "Blitzwing, Cruel Tormentor // Blitzwing, Adaptive Assailant",
+  "oracle_id": "9a10668a-df42-40c2-88d1-ad3b2aba5b03",
+  "mana_cost": "{5}{B}",
+  "type_line": "Legendary Artifact Creature — Robot",
+  "power": "6",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "More Than Meets the Eye {3}{B}\nAt the beginning of your end step, target opponent loses life equal to the life that player lost this turn. If no life is lost this way, convert Blitzwing."
+ },
+ {
+  "name": "Rulik Mons, Warren Chief",
+  "oracle_id": "741dc9c3-1998-4f4c-9c07-6f34fea2bae4",
+  "mana_cost": "{1}{R}{G}{G}",
+  "type_line": "Legendary Creature — Goblin",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Menace\nWhenever Rulik Mons attacks, look at the top card of your library. If it's a land card, you may put it onto the battlefield tapped. If you didn't put a card onto the battlefield this way, create a 1/1 red Goblin creature token."
+ },
+ {
+  "name": "Break Out",
+  "oracle_id": "99eaac39-28d4-4af7-984b-f75fd37902ed",
+  "mana_cost": "{R}{G}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Look at the top six cards of your library. You may reveal a creature card from among them. If that card has mana value 2 or less, you may put it onto the battlefield and it gains haste until end of turn. If you didn't put the revealed card onto the battlefield this way, put it into your hand. Put the rest on the bottom of your library in a random order."
+ },
+ {
+  "name": "Case of the Gateway Express",
+  "oracle_id": "42a9aeac-5b9c-4675-8c96-7c8ce7e9098c",
+  "mana_cost": "{1}{W}",
+  "type_line": "Enchantment — Case",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "When this Case enters, choose target creature you don't control. Each creature you control deals 1 damage to that creature.\nTo solve — Three or more creatures attacked this turn.\nSolved — Creatures you control get +1/+0."
+ },
+ {
+  "name": "Smirking Spelljacker",
+  "oracle_id": "b23c28ec-dc4d-4072-8fd8-6640a104335a",
+  "mana_cost": "{4}{U}",
+  "type_line": "Creature — Djinn Wizard Rogue",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "Flash\nFlying\nWhen this creature enters, exile target spell an opponent controls.\nWhenever this creature attacks, if a card is exiled with it, you may cast the exiled card without paying its mana cost."
+ },
+ {
+  "name": "Archangel of Wrath",
+  "oracle_id": "022e97af-2a3a-4e13-9b6b-d34fcc8cf168",
+  "mana_cost": "{2}{W}{W}",
+  "type_line": "Creature — Angel",
+  "power": "3",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Kicker {B} and/or {R}\nFlying, lifelink\nWhen this creature enters, if it was kicked, it deals 2 damage to any target.\nWhen this creature enters, if it was kicked twice, it deals 2 damage to any target."
  }
 ]
