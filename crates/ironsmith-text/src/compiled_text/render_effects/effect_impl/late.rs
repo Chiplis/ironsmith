@@ -2020,7 +2020,8 @@
         return format!("{} becomes plotted", describe_choose_spec(&plotted.target));
     }
     if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
-        return format!("{} becomes prepared", describe_choose_spec(&prepare.target));
+        let state = if prepare.unprepare { "unprepared" } else { "prepared" };
+        return format!("{} becomes {state}", describe_choose_spec(&prepare.target));
     }
     if let Some(clear) = effect.downcast_ref::<crate::effects::ClearGoadEffect>() {
         return match &clear.target {

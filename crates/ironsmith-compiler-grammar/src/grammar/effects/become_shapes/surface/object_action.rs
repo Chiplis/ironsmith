@@ -373,6 +373,8 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
         Some(BecomeExactKind::Plotted)
     } else if permission_shapes::exact_words(&words, &["prepared"]) {
         Some(BecomeExactKind::Prepared)
+    } else if permission_shapes::exact_words(&words, &["unprepared"]) {
+        Some(BecomeExactKind::Unprepared)
     } else {
         None
     };

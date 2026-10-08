@@ -6246,7 +6246,21 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare {
+                target,
+                unprepare: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_unprepare(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare {
+                target,
+                unprepare: true,
+            }),
         )
     }
 

@@ -2918,7 +2918,7 @@ pub(super) fn compile_subject_verb_late(
                 choices,
             ))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, unprepare }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let spec = if choices.is_empty() {
@@ -2929,8 +2929,12 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 spec
             };
-            let effect =
-                tag_object_target_effect(Effect::prepare(spec.clone()), &spec, ctx, "prepared");
+            let prepare = if *unprepare {
+                Effect::new(crate::effects::PrepareEffect::unprepare(spec.clone()))
+            } else {
+                Effect::prepare(spec.clone())
+            };
+            let effect = tag_object_target_effect(prepare, &spec, ctx, "prepared");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target }) => {

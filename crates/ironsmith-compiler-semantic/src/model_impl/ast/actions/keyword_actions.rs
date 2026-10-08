@@ -136,9 +136,11 @@ pub enum KeywordActionAst {
     Suspect {
         target: TargetAst,
     },
-    /// The Prepared keyword action: the subject becomes prepared.
+    /// The Prepared keyword action: the subject becomes prepared, or with
+    /// `unprepare`, stops being prepared ("becomes unprepared").
     Prepare {
         target: TargetAst,
+        unprepare: bool,
     },
     ClearSuspected {
         target: Option<TargetAst>,

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Biblioplex Tomekeeper",
+  "oracle_id": "08a0e845-9ef9-4de1-b9fe-4530357346ca",
+  "oracle_text": "When this creature enters, choose up to one —\n• Target creature becomes prepared.\n• Target creature becomes unprepared.",
+  "text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 3/4\nWhen this creature enters, choose up to one —\n• Target creature becomes prepared.\n• Target creature becomes unprepared."
+ },
+ {
+  "name": "Infinite Coursework",
+  "oracle_id": "666b34b5-a0c2-43e3-befd-7c3979313682",
+  "oracle_text": "Enchant creature\nWhen this Aura enters, tap enchanted creature. It becomes unprepared.\nEnchanted creature loses all abilities and doesn't untap during its controller's untap step.",
+  "text": "Mana cost: {2}{U}\nType: Enchantment — Aura\nEnchant creature\nWhen this Aura enters, tap enchanted creature. It becomes unprepared.\nEnchanted creature loses all abilities and doesn't untap during its controller's untap step."
+ }
+]

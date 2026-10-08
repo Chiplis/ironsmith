@@ -2653,8 +2653,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
                 f.debug_tuple("BecomePlotted").field(target).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Prepare { target }) => {
-                f.debug_tuple("Prepare").field(target).finish()
+            Self::KeywordActions(KeywordActionAst::Prepare { target, unprepare }) => {
+                if *unprepare {
+                    f.debug_tuple("Unprepare").field(target).finish()
+                } else {
+                    f.debug_tuple("Prepare").field(target).finish()
+                }
             }
             Self::KeywordActions(KeywordActionAst::Suspect { target }) => {
                 f.debug_tuple("Suspect").field(target).finish()
