@@ -623,6 +623,13 @@ impl StaticAbilityModelInterpreter {
             Model::NonManaAbility => Runtime::NonManaAbility,
             Model::LoyaltyAbility => Runtime::LoyaltyAbility,
             Model::Activator(player) => Runtime::Activator(player.clone()),
+            Model::FirstKeywordAbilityThisTurn {
+                keyword,
+                during_your_turn,
+            } => Runtime::FirstKeywordAbilityThisTurn {
+                keyword: *keyword,
+                during_your_turn: *during_your_turn,
+            },
             Model::All(conditions) => Runtime::All(
                 conditions
                     .iter()

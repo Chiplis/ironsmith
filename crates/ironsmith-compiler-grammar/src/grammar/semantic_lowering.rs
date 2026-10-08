@@ -1,3 +1,5 @@
+#[path = "semantic_lowering/first_keyword_cost_alternative.rs"]
+mod first_keyword_cost_alternative;
 #[path = "semantic_lowering/hideaway.rs"]
 mod hideaway;
 #[path = "semantic_lowering/keyword_shapes.rs"]
@@ -13,6 +15,7 @@ mod triggered_shapes;
 #[path = "semantic_lowering/villainous_choice_shapes.rs"]
 mod villainous_choice_shapes;
 
+pub use first_keyword_cost_alternative::*;
 pub use hideaway::*;
 pub use keyword_shapes::*;
 pub use special_triggered_programs::*;

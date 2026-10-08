@@ -149,19 +149,6 @@ fn is_named_deck_construction(words: &[&str]) -> bool {
         && words.len() > tail_start + 2
 }
 
-fn is_first_equip_alternative(words: &[&str]) -> bool {
-    phrase_is_prefix(words, &["you", "may", "pay"])
-        && phrase_is_present(
-            words,
-            &[
-                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-                "ability", "you", "activate",
-            ],
-        )
-        && (phrase_is_suffix(words, &["each", "turn"])
-            || phrase_is_suffix(words, &["during", "each", "of", "your", "turns"]))
-}
-
 pub fn parse_static_special_line_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticSpecialLineShape> {
@@ -192,11 +179,11 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::DraftRule)
     } else if is_named_deck_construction(&words) {
         Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
-    } else if is_first_equip_alternative(&words) {
+    } else if super::parse_first_keyword_cost_alternative_tokens(tokens).is_some() {
         Some(StaticSpecialLineShape::FirstEquipCostAlternative)
     } else if let Some(prefix) =
         crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens)
-        && is_first_equip_alternative(&parser_token_word_refs(prefix.remainder_tokens))
+        && super::parse_first_keyword_cost_alternative_tokens(prefix.remainder_tokens).is_some()
     {
         // "As long as you have an enduring story, you may pay {0} rather than
         // pay the equip cost …" (Kíli the Resourceful).

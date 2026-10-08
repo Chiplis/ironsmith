@@ -136,34 +136,13 @@ pub fn parse_statement_static_preference(
         return Some(StatementStaticPreference::DiscardOrRedirectReplacement);
     }
     let visible = super::parse_visible_line_tokens(tokens);
-    if first_equip_cost_alternative
-        .parse(LexStream::new(visible))
-        .is_ok()
+    if crate::grammar::semantic_lowering::parse_first_keyword_cost_alternative_tokens(visible)
+        .is_some()
     {
         return Some(StatementStaticPreference::FirstEquipCostAlternative);
     }
     let mut input = LexStream::new(tokens);
     crate::grammar::primitives::take_leaf(&mut input, statement_static_preference)
-}
-
-fn first_equip_cost_alternative(input: &mut LexStream<'_>) -> WResult<StatementStaticPreference> {
-    primitives::phrase(&["you", "may", "pay"]).parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        primitives::phrase(&[
-            "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-            "ability", "you", "activate",
-        ]),
-    )
-    .void()
-    .parse_next(input)?;
-    alt((
-        primitives::phrase(&["each", "turn"]),
-        primitives::phrase(&["during", "each", "of", "your", "turns"]),
-    ))
-    .parse_next(input)?;
-    Ok(StatementStaticPreference::FirstEquipCostAlternative)
 }
 
 fn statement_static_preference(input: &mut LexStream<'_>) -> WResult<StatementStaticPreference> {
