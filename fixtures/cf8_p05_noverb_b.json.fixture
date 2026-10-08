@@ -469,5 +469,21 @@
     "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, choose target player and any number of target attacking creatures their opponents control. Those creatures are now attacking that player.",
     "power": "3",
     "toughness": "2"
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Firemind's Foresight",
+    "oracle_id": "bf5765e0-def0-4ddf-9cd7-083feae71660",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Search your library for an instant card with mana value 3, reveal it, and put it into your hand. Then repeat this process for instant cards with mana values 2 and 1. Then shuffle."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Protection Racket",
+    "oracle_id": "4b51edb1-37cc-4993-a8a5-2eb5f79fa191",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, repeat the following process for each opponent in turn order. Reveal the top card of your library. That player may pay life equal to that card's mana value. If they do, exile that card. Otherwise, put it into your hand."
   }
 ]

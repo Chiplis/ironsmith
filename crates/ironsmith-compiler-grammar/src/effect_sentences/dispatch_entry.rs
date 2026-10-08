@@ -2086,7 +2086,7 @@ fn into_exact_single_conditional(mut parsed: Vec<EffectAst>) -> Option<EffectAst
     }
 }
 
-fn parse_effect_sentences_from_sentence_inputs(
+pub(super) fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn bind_definite_player_damage_to_carried_participant(

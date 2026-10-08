@@ -162,6 +162,42 @@ struct Shape {
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
     Shape {
+        id: RuleId::new("repeat-process-with-new-values"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_repeat_with_new_values(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("repeat-following-process-for-each-opponent-2"),
+        head: HeadDiscriminator::words(&["repeat"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_following_process_for_each_opponent(sentences, index, 2)),
+    },
+    Shape {
+        id: RuleId::new("repeat-following-process-for-each-opponent-3"),
+        head: HeadDiscriminator::words(&["repeat"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_following_process_for_each_opponent(sentences, index, 3)),
+    },
+    Shape {
+        id: RuleId::new("repeat-following-process-for-each-opponent-4"),
+        head: HeadDiscriminator::words(&["repeat"]),
+        consumed: 4,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_following_process_for_each_opponent(sentences, index, 4)),
+    },
+    Shape {
+        id: RuleId::new("repeat-following-process-for-each-opponent-5"),
+        head: HeadDiscriminator::words(&["repeat"]),
+        consumed: 5,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_following_process_for_each_opponent(sentences, index, 5)),
+    },
+    Shape {
+        id: RuleId::new("repeat-following-process-for-each-opponent-6"),
+        head: HeadDiscriminator::words(&["repeat"]),
+        consumed: 6,
+        read: |sentences, index| statements(sentences, index, super::repeat_process_variants::read_following_process_for_each_opponent(sentences, index, 6)),
+    },
+    Shape {
         id: RuleId::new("counter-placement-ability-total-limit"),
         head: HeadDiscriminator::words(&["put"]),
         consumed: 2,
