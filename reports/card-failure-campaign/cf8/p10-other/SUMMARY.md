@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger: 27 `source-proposed`, 130 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
+Ledger: 28 `source-proposed`, 129 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -40,7 +40,7 @@ gameplay scenario for the delayed watchers.
   "put the rest back in any order" reuses `ReorderLibraryTopEffect` over the looked-at tag.
 - **cast-restriction** (Proft): `ThisSpellCastRestrictionKind.condition` (appended serde-default
   field) → engine `ThisSpellCastCondition::Condition`, evaluated with the spell as source.
-  Rakdos still blocked: its short self-name isn't normalized to a self-reference.
+  Rakdos: preprocessing now treats 'cast <short name>' as a self reference (round 3).
 - **combat-restriction** (Bontu): attack/block-unless requirement falls back to the shared static
   condition grammar.
 
@@ -86,3 +86,17 @@ note/draft/secret choice (9); look/put/move library manipulation (27); misc sing
 
 Pre-existing bug observed: "Put this creature and target creature on top of their owners'
 libraries" drops the target; "Put target creature and target land …" collapses to an or-union.
+
+## Round 3: dependants from other packages (p10-owned mechanisms still missing)
+- look/reveal top N + cast from among with a dynamic mana-value bound + rest to bottom in random
+  order: Cosmic Cube, Invasion of Alara, Plargg and Nassari, Sunbird's Invocation, Talent of the
+  Telepath (cast-from-among exists in permission_facts/tagged_surface; the dynamic bound and the
+  combined procedure do not).
+- "players can cast spells only during their own turns" (+ activation): City of Solitude, Fires of
+  Invention (also needs "no more than two spells each turn").
+- exile-until with cumulative mana value / per-opponent exile-until-nonland + free cast: Dream
+  Harvest, Tasha's Hideous Laughter, Fevered Suspicion.
+- other cast restrictions: Mana Maze, Moonhold, Rock Jockey, Haakon, Null Chamber, Ward of Bones,
+  Suffocation, Angelic Arbiter, Peace Talks; draw-from-bottom (River Song); face-down look grant
+  (Spy Network); treasure per card put into graveyard this way (Dihada).
+None of these were implemented this round.
