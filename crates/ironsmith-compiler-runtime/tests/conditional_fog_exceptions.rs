@@ -37,3 +37,17 @@ fn undergrowth_branches_on_its_optional_cost() {
         assert!(text.contains("excluded_colors"), "kicked branch spares red creatures: {text}");
     }
 }
+
+const INSPIRE_AWE: &str = "Mana cost: {3}{G}\nType: Instant\nPrevent all combat damage that would be dealt this turn except combat damage that would be dealt by enchanted creatures and enchantment creatures. Scry 2.";
+
+#[test]
+fn inspire_awe_spares_enchanted_and_enchantment_creatures() {
+    for definition in routes("Inspire Awe", INSPIRE_AWE) {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+        let text = format!("{:?}", definition.spell_effect);
+        assert!(text.contains("without_attached_object: Some("), "enchanted creatures excepted: {text}");
+        assert!(text.contains("excluded_card_types: [Enchantment]"), "enchantment creatures excepted: {text}");
+        assert!(text.contains("Aura"), "{text}");
+        assert!(text.contains("Scry"), "{text}");
+    }
+}

@@ -1076,6 +1076,32 @@ fn parse_prevent_damage_source_excluding_target(
     Ok(Some((source_filter, excluded_target)))
 }
 
+/// The creatures outside "<set> creatures and <set> creatures", where each
+/// set is "enchanted" or a card type ("enchantment creatures"). Other set
+/// shapes are declined.
+fn excepted_creature_sets_complement(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = parser_token_word_refs(tokens);
+    let mut filter = ObjectFilter::creature();
+    for part in words.split(|word| *word == "and" || *word == "or") {
+        match part {
+            ["enchanted", "creatures"] => {
+                filter.without_attached_object = Some(Box::new(
+                    ObjectFilter::default().with_subtype(crate::types::Subtype::Aura),
+                ));
+            }
+            [card_type, "creatures"] => {
+                let card_type = crate::util::parse_card_type(card_type)?;
+                if card_type == crate::types::CardType::Creature {
+                    return None;
+                }
+                filter.excluded_card_types.push(card_type);
+            }
+            _ => return None,
+        }
+    }
+    Some(filter)
+}
+
 pub fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1150,6 +1176,26 @@ pub fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(EffectAst::subject_verb_prevent_all_combat_damage(
             duration.clone(),
         )));
+    }
+
+    // "... this turn except combat damage that would be dealt by enchanted
+    // creatures and enchantment creatures." (Inspire Awe): prevent combat
+    // damage from every creature outside the excepted creature sets
+    // (CR 615.1).
+    if let Some((_, excepted_tokens)) = primitives::parse_prefix(
+        &core_tokens,
+        primitives::phrase(&[
+            "that", "would", "be", "dealt", "except", "combat", "damage", "that", "would", "be",
+            "dealt", "by",
+        ]),
+    ) && let Some(source_filter) = excepted_creature_sets_complement(excepted_tokens)
+    {
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                source_filter,
+                duration.clone(),
+            ),
+        ));
     }
 
     if let Some((_, source_tokens)) =
