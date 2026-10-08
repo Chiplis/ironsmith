@@ -2388,6 +2388,7 @@ where
         crate::effects::TurnFaceDownEffect,
         crate::effects::TurnFaceUpEffect,
         crate::effects::ReselectAttackTargetEffect,
+        crate::effects::ChooseFriendsOrFoesEffect,
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
         crate::effects::ReturnToHandEffect,

@@ -1635,6 +1635,12 @@
         let selection = describe_choose_card_name_selection(choose_name);
         return format!("{chooser} {choose_verb} {selection} name");
     }
+    if effect
+        .downcast_ref::<crate::effects::ChooseFriendsOrFoesEffect>()
+        .is_some()
+    {
+        return "For each player, choose friend or foe".to_string();
+    }
     if let Some(choose_player) = effect.downcast_ref::<crate::effects::ChoosePlayerEffect>() {
         let chooser = describe_player_filter(&choose_player.chooser);
         let choose_verb = if choose_player.random {

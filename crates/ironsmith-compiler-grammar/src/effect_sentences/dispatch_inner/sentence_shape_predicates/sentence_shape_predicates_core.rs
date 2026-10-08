@@ -207,9 +207,59 @@ fn parse_for_any_number_of_opponents_target_expansion(
     parse_effect_sentence_lexed(&rewritten).map(Some)
 }
 
+/// "For each player, choose friend or foe." and the "Each friend/foe <verb>
+/// ..." instructions that follow it (Battlebond). The groups are tagged by
+/// the choice; each group instruction is the ordinary "Each player ..."
+/// reading restricted to that tagged group.
+fn parse_friend_or_foe_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    if let Some((_, rest)) = primitives::parse_prefix(
+        clean,
+        (
+            primitives::phrase(&["for", "each", "player"]),
+            winnow::combinator::opt(primitives::comma()),
+            primitives::phrase(&["choose", "friend", "or", "foe"]),
+        ),
+    ) && rest.is_empty()
+    {
+        return Ok(Some(vec![EffectAst::ChooseFriendsOrFoes {
+            friends: crate::tag::CompilerReferenceTag::Friends.bind(),
+            foes: crate::tag::CompilerReferenceTag::Foes.bind(),
+        }]));
+    }
+    let group = if primitives::parse_prefix(clean, primitives::phrase(&["each", "friend"])).is_some() {
+        crate::tag::CompilerReferenceTag::Friends
+    } else if primitives::parse_prefix(clean, primitives::phrase(&["each", "foe"])).is_some() {
+        crate::tag::CompilerReferenceTag::Foes
+    } else {
+        return Ok(None);
+    };
+    let mut rewritten = clean.to_vec();
+    rewritten[1] = OwnedLexToken::synthetic_word("player");
+    let parsed = parse_effect_sentence_lexed(&rewritten)?;
+    let [EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayer { effects })] =
+        parsed.as_slice()
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachTaggedPlayer {
+            tag: group.bind(),
+            effects: effects.clone(),
+            require_evidence: false,
+        },
+    )]))
+}
+
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_friend_or_foe_sentence(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_for_each_color_target_expansion(tokens)? {
         return Ok(effects);
     }

@@ -43,6 +43,7 @@ ChooseNamedOptionEffect	ironsmith_core::ChooseNamedOptionEffect	player
 ChooseNewTargetsEffect	ironsmith_core::ChooseNewTargetsEffect	stack-event
 ChooseObjectsEffect	ironsmith_core::ChooseObjectsEffect	composition-a-l
 ChoosePlayerEffect	ironsmith_core::ChoosePlayerEffect	player
+ChooseFriendsOrFoesEffect	ironsmith_core::ChooseFriendsOrFoesEffect	player
 ChooseSpellCastHistoryEffect	ironsmith_core::ChooseSpellCastHistoryEffect	composition-a-l
 CipherEffect	ironsmith_core::CipherEffect	composition-a-l
 ClashEffect	ironsmith_core::ClashEffect	zone-library

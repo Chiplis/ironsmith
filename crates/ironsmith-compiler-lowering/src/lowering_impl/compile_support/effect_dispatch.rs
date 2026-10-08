@@ -1320,6 +1320,15 @@ fn compile_effect_inner(
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
     }
+    if let EffectAst::ChooseFriendsOrFoes { friends, foes } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::ChooseFriendsOrFoesEffect::new(
+                friends.key().clone(),
+                foes.key().clone(),
+            ))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::PayToEndThisEffect { cost } = effect {
         return Ok((
             vec![Effect::new(

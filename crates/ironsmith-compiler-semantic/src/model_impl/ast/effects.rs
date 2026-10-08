@@ -65,6 +65,11 @@ pub enum EffectAst {
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."
     NoteActivationManaType,
+    /// "For each player, choose friend or foe." Tags the two player groups.
+    ChooseFriendsOrFoes {
+        friends: TagRef,
+        foes: TagRef,
+    },
     /// Relax the loyalty-ability activation rule this turn (CR 606.3).
     GrantLoyaltyActivationAllowance {
         scope: ironsmith_core::LoyaltyActivationScope,

@@ -18,7 +18,9 @@ use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 mod ascend;
 mod mana_damage_and_control;
 mod reselect_attack;
+mod friend_or_foe;
 pub use ascend::*;
+pub use friend_or_foe::*;
 pub use mana_damage_and_control::*;
 pub use reselect_attack::*;
 
