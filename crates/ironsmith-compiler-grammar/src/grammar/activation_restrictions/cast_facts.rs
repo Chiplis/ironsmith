@@ -502,6 +502,16 @@ fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) 
         });
         return Some(filter);
     }
+    // "... spells with the same name as that creature" (Reflector Mage):
+    // the name of the object the ability already referenced, compared
+    // against its tagged snapshot.
+    if exact_any(comparison, &[&["that", "creature"], &["that", "card"]]) {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        });
+        return Some(filter);
+    }
     None
 }
 

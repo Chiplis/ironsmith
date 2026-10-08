@@ -232,6 +232,20 @@ pub fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter
         Some(PlayerFilter::TaggedPlayer(
             (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
         ))
+    } else if exact_any(
+        words,
+        &[
+            &["that", "creature's", "owner"],
+            &["that", "creatures", "owner"],
+        ],
+    ) {
+        // "That creature's owner can't cast spells with the same name as
+        // that creature until your next turn." (Reflector Mage): the owner
+        // of the referenced object, resolved from the restriction's tagged
+        // snapshot when the effect applies.
+        Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )))
     } else {
         None
     }
