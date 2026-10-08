@@ -1511,6 +1511,27 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    // "Whenever an ability of equipped creature is activated" (Battlemage's
+    // Bracers): the passive form names no activator, so any player's
+    // activation of an ability whose source matches counts (CR 602.2).
+    if let [.., "is", "activated"] = &words[..]
+        && words.len() > 2
+        && let Some(is_token) =
+            trigger_word_token_start(tokens, words.len() - 2)
+        && let Some((filter, non_mana_only)) = parse_ability_of_object_trigger_tail_lexed(
+            &tokens[..is_token],
+            &words[..words.len() - 2],
+        )?
+    {
+        return Ok(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::Any,
+            filter,
+            non_mana_only,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
+        });
+    }
+
     if let Some(activate_idx) = trigger_atom_word(&words, TriggerClauseAtom::Activate) {
         let subject_tokens = &tokens[..activate_idx];
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
