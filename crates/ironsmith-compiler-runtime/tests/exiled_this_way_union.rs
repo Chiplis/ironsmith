@@ -40,3 +40,21 @@ fn crabomination_casts_from_the_union_of_its_three_exiles() {
         assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
     }
 }
+
+/// Two separate exile sentences are two instructions: "the card exiled this
+/// way" keeps naming the most recent exile only (no union).
+#[test]
+fn separate_exile_sentences_bind_this_way_to_the_latest_exile() {
+    let definition = compile_to_runtime_definition(
+        "Two Exiles",
+        "Mana cost: {3}{R}\nType: Sorcery\n\
+         Exile target creature an opponent controls. Exile the top card of your library. \
+         Until end of turn, you may play the card exiled this way.",
+        false,
+    )
+    .unwrap();
+    assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+    let debug = format!("{definition:?}");
+    assert!(!debug.contains("any_of: [ObjectFilter"), "{debug}");
+    assert!(!debug.contains("Coordinated"), "{debug}");
+}

@@ -1668,13 +1668,27 @@ fn advance_reference_frames(
     id_gen: &mut IdGenContext,
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
+    for effect in effects {
+        advance_reference_frame_for_effect(effect, id_gen, frame)?;
+    }
+    Ok(())
+}
+
+/// The members of ONE coordinated instruction ("exiles A, B, and C").
+fn advance_coordinated_reference_frames(
+    effects: &[EffectAst],
+    id_gen: &mut IdGenContext,
+    frame: &mut ReferenceFrame,
+) -> Result<(), CardTextError> {
     // "Target opponent exiles the top card of their library, a card at random
     // from their graveyard, and a card at random from their hand. You may
     // cast a spell from among cards exiled this way." (Crabomination): one
     // instruction exiles several groups, and "this way" names all of them.
-    // Consecutive exile producers in one effect list (choice helpers between
-    // them do not interrupt the instruction) keep one "exiled this way"
-    // alias per producer; the resolver reads them as a union.
+    // Consecutive exile producers among the members of one coordinated
+    // instruction (choice helpers between them do not interrupt it) keep one
+    // "exiled this way" alias per producer; the resolver reads them as a
+    // union. Separate sentences go through `advance_reference_frames`, where
+    // each exile replaces the alias (the most recent exile wins).
     let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
     let mut exile_group: Vec<TagKey> = Vec::new();
     for effect in effects {
@@ -1829,10 +1843,12 @@ fn advance_reference_frame_for_effect(
             advance_reference_frames(&iteration.body, id_gen, frame)?;
         }
         EffectAst::Vote(_) => {}
+        EffectAst::Coordinated { effects, .. } => {
+            advance_coordinated_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
