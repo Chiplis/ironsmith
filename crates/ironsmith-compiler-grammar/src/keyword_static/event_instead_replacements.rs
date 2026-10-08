@@ -206,6 +206,21 @@ pub fn parse_if_event_would_happen_instead_line(
     if trailing {
         body.remove(sentence_end - 1);
     }
+    // "If this permanent would be put into a graveyard, you may put it on top
+    // of its owner's library instead." (Pulmonic Sliver's granted ability):
+    // the permanent's controller may apply the replacement; declined, the
+    // permanent goes to the graveyard (CR 614.1a, 616.1). Only a source's own
+    // zone change reads this way, so "you" is the moving permanent's
+    // controller.
+    let optional = matches!(
+        &event,
+        ReplacedEventSpec::ZoneChange { object, .. } if object.source
+    ) && body.len() > 2
+        && body[0].is_word("you")
+        && body[1].is_word("may");
+    if optional {
+        body.drain(..2);
+    }
     let modification_words = event_modification_words(&event);
     if body.iter().any(|token| token.is_word("instead") || token.is_quote())
         || words_of(&body).iter().any(|word| {
@@ -258,9 +273,10 @@ pub fn parse_if_event_would_happen_instead_line(
     if effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(StaticAbility::event_replacement_with_effects(
-        event,
-        effects,
-        crate::lexer::render_token_slice(tokens),
-    )))
+    let display = crate::lexer::render_token_slice(tokens);
+    Ok(Some(if optional {
+        StaticAbility::optional_event_replacement_with_effects(event, effects, display)
+    } else {
+        StaticAbility::event_replacement_with_effects(event, effects, display)
+    }))
 }

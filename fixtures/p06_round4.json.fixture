@@ -148,5 +148,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "Kicker {1} (You may pay an additional {1} as you cast this spell.)\nPrevent the next 2 damage that would be dealt to any target this turn. If this spell was kicked, prevent the next 4 damage that would be dealt to that permanent or player this turn instead."
+ },
+ {
+  "name": "Pulmonic Sliver",
+  "oracle_id": "f578465d-f3a5-48da-bcab-cffbbdd88be8",
+  "mana_cost": "{3}{W}{W}",
+  "type_line": "Creature — Sliver",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "All Sliver creatures have flying.\nAll Slivers have \"If this permanent would be put into a graveyard, you may put it on top of its owner's library instead.\""
  }
 ]

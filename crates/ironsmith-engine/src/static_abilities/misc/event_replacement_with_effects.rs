@@ -29,6 +29,9 @@ pub struct EventReplacementWithEffects {
     pub event: ReplacedEventSpec,
     pub replacement_effects: Vec<Effect>,
     pub display: String,
+    /// "you may ... instead": the affected player may decline it, and then
+    /// the event happens unchanged (CR 616.1).
+    pub optional: bool,
 }
 
 impl EventReplacementWithEffects {
@@ -41,7 +44,13 @@ impl EventReplacementWithEffects {
             event,
             replacement_effects,
             display: display.into(),
+            optional: false,
         }
+    }
+
+    pub fn with_optional(mut self, optional: bool) -> Self {
+        self.optional = optional;
+        self
     }
 }
 
@@ -60,7 +69,7 @@ impl StaticAbilityKind for EventReplacementWithEffects {
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
         let action = ReplacementAction::Instead(self.replacement_effects.clone());
-        Some(match &self.event {
+        let replacement = match &self.event {
             ReplacedEventSpec::DamageToPlayer { .. }
             | ReplacedEventSpec::DamageToObject { .. }
             | ReplacedEventSpec::LifeGain { .. } => ReplacementEffect::with_matcher(
@@ -92,6 +101,11 @@ impl StaticAbilityKind for EventReplacementWithEffects {
                 WouldChangeZoneMatcher::new(object.clone(), *from, *to),
                 action,
             ),
+        };
+        Some(if self.optional {
+            replacement.optional()
+        } else {
+            replacement
         })
     }
 }

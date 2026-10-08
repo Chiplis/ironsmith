@@ -1907,11 +1907,15 @@ impl StaticAbilityModelInterpreter {
                 event,
                 replacement_effects,
                 display,
-            } => StaticAbility::new(super::EventReplacementWithEffects::new(
-                event.clone(),
-                replacement_effects.clone(),
-                display.clone(),
-            )),
+                optional,
+            } => StaticAbility::new(
+                super::EventReplacementWithEffects::new(
+                    event.clone(),
+                    replacement_effects.clone(),
+                    display.clone(),
+                )
+                .with_optional(*optional),
+            ),
             ironsmith_core::StaticAbilityPayload::EventAmountReplacement {
                 event,
                 modifier,

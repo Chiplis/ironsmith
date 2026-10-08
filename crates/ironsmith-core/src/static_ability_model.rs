@@ -1551,6 +1551,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         event: crate::ReplacedEventSpec,
         replacement_effects: Vec<E>,
         display: String,
+        /// "you may <program> instead": an optional replacement; declining
+        /// it lets the event happen (CR 614.1a, 616.1).
+        #[cfg_attr(feature = "serde", serde(default))]
+        optional: bool,
     },
     /// "If an opponent would mill one or more cards, they mill twice that
     /// many cards instead." (Bruvac), "If a source would deal 4 or more
@@ -1999,6 +2003,7 @@ where
                 event,
                 replacement_effects,
                 display,
+                optional,
             } => StaticAbilityPayload::EventReplacementWithEffects {
                 event,
                 replacement_effects: replacement_effects
@@ -2006,6 +2011,7 @@ where
                     .map(&mut *map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
                 display,
+                optional,
             },
             StaticAbilityPayload::EventAmountReplacement {
                 event,
@@ -7076,8 +7082,24 @@ impl<
                 event,
                 replacement_effects,
                 display,
+                optional: false,
             },
         }
+    }
+    /// "If <event> would happen, you may <effects> instead." (Pulmonic
+    /// Sliver's granted ability): the optional form (CR 614.1a).
+    pub fn optional_event_replacement_with_effects(
+        event: crate::ReplacedEventSpec,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let mut ability = Self::event_replacement_with_effects(event, replacement_effects, display);
+        if let StaticAbilityPayload::EventReplacementWithEffects { optional, .. } =
+            &mut ability.payload
+        {
+            *optional = true;
+        }
+        ability
     }
     /// "If you would draw a card, instead <effects>." (Underrealm Lich)
     pub fn draw_replacement_with_effects(

@@ -5624,6 +5624,7 @@ pub(crate) fn lower_compiler_static_ability_core(
             event,
             replacement_effects,
             display,
+            optional,
         } => {
             // One resolution program runs in place of the replaced event: the
             // event supplies "that much"/"that many", and the instead-payload
@@ -5660,6 +5661,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         event,
                         replacement_effects,
                         display,
+                        optional,
                     },
             })
         }
