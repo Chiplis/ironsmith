@@ -2623,6 +2623,14 @@ pub fn parse_all_are_color_and_type_addition_line(
 pub fn parse_all_creatures_are_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The dedicated colorless productions own their complete lines (CR
+    // 105.2c); reading them again as a set-colors effect is a second,
+    // non-equivalent interpretation of the same sentence.
+    if is_all_permanents_colorless_line_lexed(tokens)
+        || keyword_static_lines::parse_all_cards_spells_permanents_colorless_tokens(tokens)
+    {
+        return Ok(None);
+    }
     let Some(fact) = type_and_color_facts::parse_subject_color_tokens(tokens) else {
         return Ok(None);
     };
@@ -5715,6 +5723,9 @@ pub fn parse_if_you_would_draw_instead_effects_line(
             parse_draw_replacement_skip_empty_library_line(tokens),
             Ok(Some(_))
         )
+        // "If you would draw a card, draw two cards instead" is the
+        // dedicated doubling replacement (CR 614.1a).
+        || matches!(parse_draw_replacement_double_line(tokens), Ok(Some(_)))
         || matches!(
             parse_draw_replacement_exile_top_and_play_line(tokens),
             Ok(Some(_))
