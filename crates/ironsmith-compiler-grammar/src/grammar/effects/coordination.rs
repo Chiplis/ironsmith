@@ -792,6 +792,20 @@ fn classify_boundary<'a>(
         // alternatives belong to one amount, not to two actions.
         return None;
     }
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Or | CoordinationOperatorAst::Comma
+    ) && {
+        let before_words = crate::lexer::token_word_refs(before);
+        let after_words = crate::lexer::token_word_refs(after);
+        let is_color =
+            |word: &&str| crate::grammar::leaf::parse_leaf_color_complete(word).is_ok();
+        before_words.last().is_some_and(is_color) && after_words.first().is_some_and(is_color)
+    } {
+        // "exile target black or red permanent that player controls"
+        // (Lightwielder Paladin): a color list qualifies one object.
+        return None;
+    }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
         // "shuffles their hand and graveyard into their library" is one
         // shuffle whose object is a zone union; the connective is not an
