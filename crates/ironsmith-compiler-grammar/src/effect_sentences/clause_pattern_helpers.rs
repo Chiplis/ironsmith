@@ -2557,14 +2557,29 @@ pub fn parse_keyword_mechanic_clause(
                 }),
             }
         }
-        clause_shapes::KeywordMechanicShape::ManifestTop { player } => {
+        clause_shapes::KeywordMechanicShape::ManifestTop { player, count } => {
             let player = match player {
                 clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
                 clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
                     PlayerAst::ThatPlayerOrTargetController
                 }
             };
-            EffectAst::subject_verb_manifest_top_card(player)
+            let manifest = EffectAst::subject_verb_manifest_top_card(player);
+            // CR 701.40c: manifesting several cards manifests them one at a time.
+            if count > 1 {
+                EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                    count: Value::Fixed(count as i32),
+                    effects: vec![manifest],
+                })
+            } else {
+                manifest
+            }
+        }
+        clause_shapes::KeywordMechanicShape::OpenAttractions { count } => {
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: Value::Fixed(count as i32),
+                effects: vec![EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, false)],
+            })
         }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {
             let player = match player {
