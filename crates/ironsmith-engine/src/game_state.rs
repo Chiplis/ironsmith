@@ -951,6 +951,10 @@ pub struct TurnStore {
     /// Actual draws by each active player in this draw step. Shared turns must
     /// not reset one player's ordinal when another active player draws.
     pub cards_drawn_this_draw_step: HashMap<PlayerId, u32>,
+    /// Native receipt for the focused lane's actual untap occurrence.
+    /// Later registrations wait for another step, including one in this turn.
+    /// The untap transaction restores this receipt when a choice or error pauses.
+    pub untap_step_started_at: Option<(u32, u64)>,
     /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
@@ -2193,6 +2197,12 @@ pub struct RestrictionEffectInstance {
 
 impl RestrictionEffectInstance {
     pub fn untap_step_player(&self, game: &GameState) -> Option<PlayerId> {
+        if let crate::effect::Until::PlayersNextUntapStep { ref player } = self.duration {
+            return match player {
+                crate::target::PlayerFilter::Specific(player) => Some(*player),
+                _ => None,
+            };
+        }
         match self.untap_step_object {
             Some(id) => game
                 .object(id)
@@ -2209,8 +2219,8 @@ impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
         if matches!(
             self.duration,
-            crate::effect::Until::ControllersNextUntapStep
-                | crate::effect::Until::YourNextUntapStep
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
+                | crate::effect::Until::PlayersNextUntapStep { .. }
         ) && self.consumed_next_untap
         {
             return true;
@@ -2221,6 +2231,12 @@ impl RestrictionEffectInstance {
 
     pub fn is_active(&self, game: &GameState, current_turn: u32) -> bool {
         if self.is_pending() || self.is_expired(current_turn) {
+            return false;
+        }
+        if matches!(self.duration, crate::effect::Until::PlayersNextUntapStep { .. })
+            && !game.turn_store.untap_step_started_at.is_some_and(|(turn, timestamp)|
+                turn == current_turn && self.timestamp <= timestamp)
+        {
             return false;
         }
 
@@ -2240,10 +2256,15 @@ impl RestrictionEffectInstance {
                     false
                 }
             }
-            crate::effect::Until::ControllersNextUntapStep
-            | crate::effect::Until::YourNextUntapStep => {
-                self.untap_step_player(game)
-                    .is_some_and(|player| game.is_active_player(player))
+            crate::effect::Until::PlayersNextUntapStep { .. } => {
+                // Grand Melee can have other active players whose independent
+                // lanes are not executing this step. The receipt is lane-local.
+                self.untap_step_player(game).is_some_and(|player| game.turn_players().contains(&player))
+                    && matches!(game.turn.phase, Phase::Beginning)
+                    && matches!(game.turn.step, Some(Step::Untap))
+            }
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep => {
+                self.untap_step_player(game).is_some_and(|player| game.is_active_player(player))
                     && matches!(game.turn.phase, Phase::Beginning)
                     && matches!(game.turn.step, Some(Step::Untap))
             }

@@ -19,6 +19,7 @@ pub enum ClauseActorHeadAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClauseHeadFormAst {
     Action(ClauseVerbAst),
+    Restriction,
     Conditional,
     Iteration,
     Permission,
@@ -59,6 +60,41 @@ pub fn classify_typed_clause_head<'a>(
     let second_word = words.get(1).copied();
     let span = clause_span(tokens);
     let actor = classify_actor(first_word, second_word);
+
+    // A verb after clause-level negation names the prohibited action, not an
+    // imperative. The first `untap` in "those creatures don't untap during
+    // ..." must never lend its duration to affirmative target parsing.
+    // The existing quote-aware negation owner excludes relative control
+    // qualifiers and result conditions. Earlier affirmative actions and outer
+    // conditions keep ownership of their complete, possibly nested clauses.
+    let restriction_head = !matches!(
+        first_word,
+        "if" | "unless" | "when" | "whenever" | "at" | "repeat"
+    ) && !(first_word == "for" && second_word == Some("each"))
+        && crate::grammar::activation_restrictions::parse_activation_negation_span_tokens(tokens)
+        .is_some_and(|negation| {
+            !TokenWordView::new(&tokens[..negation.first])
+                .to_word_refs()
+                .iter()
+                .any(|word| {
+                    classify_action(word)
+                        .is_some_and(|action| action != ClauseVerbAst::Control)
+                        || is_structural_action(word)
+                        || matches!(*word, "may" | "can" | "could")
+                })
+        });
+    if restriction_head {
+        return ParseOutcome::matched(
+            TypedClauseHeadAst {
+                first_word,
+                second_word,
+                actor,
+                form: ClauseHeadFormAst::Restriction,
+                span,
+            },
+            span,
+        );
+    }
 
     if let Some(action) = words.iter().find_map(|word| classify_action(word)) {
         return ParseOutcome::matched(

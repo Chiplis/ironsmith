@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact11 and signed audit24. Restricted mana carries new
-// activation/combat models; blind-exile declarations add exact public evidence.
-// Historical digests retain their bytes; native recovery is unchanged.
-const PUBLIC_AUDIT_VERSION: u32 = 7;
+// Coordinated with retained artifact14 and signed audit28. The real combat
+// owner adds last declaration-step evidence; the restricted-mana carrier is unchanged.
+// Historical digests retain their bytes; this is never a gameplay importer.
+const PUBLIC_AUDIT_VERSION: u32 = 10;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -69,6 +69,16 @@ fn sync_restricted_mana(
 #[cfg(test)]
 mod public_audit_boundary_11_7_24_tests {
     include!("public_audit_boundary_11_7_24_tests.rs");
+}
+
+#[cfg(test)]
+mod public_audit_boundary_12_8_25_tests {
+    include!("public_audit_boundary_12_8_25_tests.rs");
+}
+
+#[cfg(test)]
+mod public_audit_boundary_13_9_26_tests {
+    include!("public_audit_boundary_13_9_26_tests.rs");
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -241,6 +251,10 @@ pub(crate) struct PublicAuditCheckpoint {
     #[serde(default)]
     grand_melee: Option<SyncGrandMelee>,
     stack: Vec<SyncStackEntry>,
+    /// Latest begun declare-attackers-step evidence retained with combat:
+    /// null is absent/uncommitted, [] committed empty, otherwise sorted players.
+    /// It is not evidence that the current arbitrary step contains an attack.
+    last_attack_declaration_step_players: Option<Vec<u8>>,
     hidden_zones: Vec<PublicAuditHiddenZone>,
     /// SHA-256 (hex) of the canonical JSON of the shared hidden-claim ledger
     /// (obligations, face-down cast claims, claim subjects, library anchor
@@ -767,6 +781,7 @@ struct SyncGrandMeleeMarker {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncGrandMeleeCombat {
+    last_attack_declaration_step_players: Option<Vec<u8>>,
     attackers: Vec<(u64, SyncGrandMeleeAttackTarget)>,
     blockers: Vec<(u64, Vec<u64>)>,
     #[serde(default)]
@@ -1030,6 +1045,11 @@ fn sync_turn_state(turn: &TurnState) -> SyncTurn {
 }
 
 
+fn sync_last_attack_declaration_step_players(combat: Option<&ironsmith::combat_state::CombatState>) -> Option<Vec<u8>> {
+    combat?.last_attack_declaration_step_players.as_ref()
+        .map(|players| players.iter().map(|player| player.0).collect())
+}
+
 fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> SyncGrandMeleeCombat {
     let mut blockers = combat
         .blockers
@@ -1052,6 +1072,7 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
         .collect::<Vec<_>>();
     had_to_attack_this_combat.sort_unstable();
     SyncGrandMeleeCombat {
+        last_attack_declaration_step_players: sync_last_attack_declaration_step_players(Some(combat)),
         attackers: combat
             .attackers
             .iter()
@@ -1806,6 +1827,7 @@ impl WasmGame {
 
         Ok(PublicAuditCheckpoint {
             version: PUBLIC_AUDIT_VERSION,
+            last_attack_declaration_step_players: sync_last_attack_declaration_step_players(self.game.combat.as_ref()),
             hidden_incarnation_high_water: self.game.hidden_incarnation_high_water(),
             format: self.match_format,
             perspective: 0,
@@ -1959,6 +1981,45 @@ mod public_audit_tests {
     use ironsmith::game_state::HiddenCardInfo;
 
     #[test]
+    fn attacked_step_projection_distinguishes_absent_empty_and_sorted_committed_players() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["A".into(), "B".into(), "C".into()], 20, 1);
+        let evidence = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+        wasm.game.combat = Some(ironsmith::combat_state::CombatState::default());
+        let absent = evidence(&wasm);
+        assert_eq!(PUBLIC_AUDIT_VERSION, 10);
+        assert_eq!(absent["version"], PUBLIC_AUDIT_VERSION);
+        assert!(absent.as_object().unwrap().contains_key("lastAttackDeclarationStepPlayers"));
+        assert!(absent["lastAttackDeclarationStepPlayers"].is_null());
+        let lane_absent = serde_json::to_value(sync_grand_melee_combat(wasm.game.combat.as_ref().unwrap())).unwrap();
+        assert!(lane_absent.as_object().unwrap().contains_key("lastAttackDeclarationStepPlayers"));
+        assert!(lane_absent["lastAttackDeclarationStepPlayers"].is_null());
+        wasm.game.combat.as_mut().unwrap().last_attack_declaration_step_players = Some(Default::default());
+        let empty = evidence(&wasm);
+        assert_eq!(empty["lastAttackDeclarationStepPlayers"], serde_json::json!([]));
+        assert_ne!(absent, empty);
+        let lane_empty = serde_json::to_value(sync_grand_melee_combat(wasm.game.combat.as_ref().unwrap())).unwrap();
+        assert_eq!(lane_empty["lastAttackDeclarationStepPlayers"], serde_json::json!([]));
+        assert_ne!(lane_absent, lane_empty);
+        let players = [PlayerId::from_index(2), PlayerId::from_index(0)].into_iter().collect();
+        wasm.game.combat.as_mut().unwrap().last_attack_declaration_step_players = Some(players);
+        let committed = evidence(&wasm);
+        assert_eq!(committed["lastAttackDeclarationStepPlayers"], serde_json::json!([0, 2]));
+        assert_ne!(empty, committed);
+        let lane = serde_json::to_value(sync_grand_melee_combat(wasm.game.combat.as_ref().unwrap())).unwrap();
+        assert_eq!(lane["lastAttackDeclarationStepPlayers"], serde_json::json!([0, 2]));
+        assert_ne!(lane_empty, lane);
+        assert_eq!(serde_json::to_vec(&wasm.build_public_audit_checkpoint()).unwrap(),
+            serde_json::to_vec(&wasm.build_public_audit_checkpoint()).unwrap());
+        let saved = wasm.game.clone();
+        wasm.game.combat.as_mut().unwrap().last_attack_declaration_step_players = None;
+        wasm.game = saved;
+        assert_eq!(evidence(&wasm), committed);
+    }
+
+
+    #[test]
     fn public_audit_v7_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
@@ -1966,7 +2027,7 @@ mod public_audit_tests {
         let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
         let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         let unset = checkpoint(&wasm);
-        assert_eq!(unset["version"], 7);
+        assert_eq!(unset["version"], PUBLIC_AUDIT_VERSION);
         let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
             pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
             acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
@@ -1993,7 +2054,7 @@ mod public_audit_tests {
         let baseline = wasm.game.clone();
         let object_evidence = |wasm: &WasmGame| {
             let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-            assert_eq!(checkpoint["version"], 7);
+            assert_eq!(checkpoint["version"], PUBLIC_AUDIT_VERSION);
             checkpoint["objects"].as_array().unwrap().iter()
                 .find(|object| object["id"] == id.0).unwrap().clone()
         };

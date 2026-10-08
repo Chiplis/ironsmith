@@ -2275,6 +2275,30 @@ pub(super) fn compile_subject_verb_early(
             let chooser = subject.clone_player_filter();
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *controller == ReturnControllerAst::Owner && !*cloak {
+                // Ownership is per object, including a captured collection
+                // with several owners. The native movement owner already
+                // retains that choice through prepared entry and completion.
+                let mut movement = crate::effects::MoveToZoneEffect::new(
+                    spec.clone(), Zone::Battlefield, false,
+                ).under_owner_control()
+                    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put);
+                if *tapped { movement = movement.tapped(); }
+                let effect = if ctx.auto_tag_object_targets
+                    && (choose_spec_may_hold_multiple_objects(&spec)
+                        || matches!(spec.base(), ChooseSpec::Tagged(_)))
+                {
+                    let tag = reserved_or_next_object_tag(ctx, "moved");
+                    ctx.last_object_tag = Some(tag.clone());
+                    Effect::new(movement).tag_all(tag)
+                } else {
+                    tag_object_target_effect(Effect::new(movement), &spec, ctx, "moved")
+                };
+                let mut all_choices = subject.into_choices();
+                for choice in choices { push_choice(&mut all_choices, choice); }
+                track_selected_object_player_provenance(&spec, ctx);
+                return Ok(Some((vec![effect], all_choices)));
+            }
             let controller_filter = match controller {
                 ReturnControllerAst::Preserve => chooser,
                 ReturnControllerAst::You => PlayerFilter::You,
@@ -2305,7 +2329,9 @@ pub(super) fn compile_subject_verb_early(
             if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
                 let tag = reserved_or_next_object_tag(ctx, "moved");
                 ctx.last_object_tag = Some(tag.clone());
-                effect = effect.tag(tag);
+                effect = if choose_spec_may_hold_multiple_objects(&spec)
+                    || matches!(spec.base(), ChooseSpec::Tagged(_))
+                { effect.tag_all(tag) } else { effect.tag(tag) };
             }
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], all_choices))
@@ -2855,11 +2881,17 @@ pub(super) fn compile_subject_verb_early(
             amount,
             target,
             duration,
+            combat_only,
             source_of_your_choice,
             protect_you_and_permanents_you_control,
             follow_up_effects,
         }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let damage_filter = if *combat_only {
+                ironsmith_core::DamageFilter::combat()
+            } else {
+                ironsmith_core::DamageFilter::all()
+            };
             let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
                 (Vec::new(), Vec::new())
             } else {
@@ -2876,6 +2908,7 @@ pub(super) fn compile_subject_verb_early(
                     ChooseSpec::SourceController,
                     duration.clone(),
                 )
+                .with_filter(damage_filter.clone())
                 .protecting_you_and_permanents_you_control();
                 if *source_of_your_choice {
                     prevent = prevent.with_source_of_your_choice();
@@ -2892,11 +2925,12 @@ pub(super) fn compile_subject_verb_early(
                 let filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 let effect = Effect::for_each(
                     filter,
-                    vec![Effect::prevent_damage(
+                    vec![Effect::new(crate::effects::PreventDamageEffect::new(
                         amount,
                         ChooseSpec::Iterated,
                         duration.clone(),
-                    )],
+                    ).with_filter(damage_filter.clone())
+                        .with_follow_up_effects(follow_up_effects.clone()))],
                 );
                 Ok((vec![effect], follow_up_choices))
             } else {
@@ -2907,6 +2941,7 @@ pub(super) fn compile_subject_verb_early(
                             spec,
                             duration.clone(),
                         )
+                        .with_filter(damage_filter.clone())
                         .with_source_of_your_choice();
                         if !follow_up_effects.is_empty() {
                             prevent = prevent.with_follow_up_effects(follow_up_effects.clone());
@@ -2919,10 +2954,13 @@ pub(super) fn compile_subject_verb_early(
                                 spec,
                                 duration.clone(),
                             )
+                            .with_filter(damage_filter.clone())
                             .with_follow_up_effects(follow_up_effects.clone()),
                         )
                     } else {
-                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
+                        Effect::new(crate::effects::PreventDamageEffect::new(
+                            amount.clone(), spec, duration.clone(),
+                        ).with_filter(damage_filter.clone()))
                     }
                 })?;
                 if target_is_any_damage_target(target) {
@@ -3040,8 +3078,10 @@ pub(super) fn compile_subject_verb_early(
                 }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
-            if let TargetAst::Object(filter, explicit_target_span, _) = target
+            if let TargetAst::Object(filter, explicit_target_span, reference_span) = target
                 && explicit_target_span.is_none()
+                && reference_span.is_none()
+                && filter.tagged_constraints.is_empty()
             {
                 let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 let mut effect = crate::effects::PreventAllDamageEffect::matching_with_filter(
@@ -3132,29 +3172,44 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 source_filter,
                 source_would_deal_surface,
+                of_chosen_color,
             },
         ) => {
-            let protect_source = matches!(target, TargetAst::Source(_));
-            let target = if protect_source {
-                ironsmith_core::PreventionTarget::All
-            } else {
-                prevention_target_from_non_choice_target(target, ctx)?
-            };
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
             let mut damage_filter = ironsmith_core::DamageFilter::all();
-            damage_filter.from_source = Some(source_filter);
-            let mut effect = crate::effects::PreventAllDamageEffect::new(
-                target,
-                damage_filter,
-                duration.clone(),
-            );
-            if protect_source {
-                effect = effect.protecting_source();
+            if source_filter != ObjectFilter::default() {
+                damage_filter.from_source = Some(source_filter);
             }
-            if *source_would_deal_surface {
-                effect = effect.with_source_would_deal_surface();
+            let non_choice = match target {
+                TargetAst::Player(PlayerFilter::You | PlayerFilter::Any, None) => true,
+                TargetAst::Object(filter, None, None) => filter.tagged_constraints.is_empty(),
+                TargetAst::ObjectOrPlayer(_, PlayerFilter::You | PlayerFilter::Any, None) => true,
+                _ => false,
+            };
+            if non_choice && !*of_chosen_color {
+                let protected = prevention_target_from_non_choice_target(target, ctx)?;
+                let mut effect = crate::effects::PreventAllDamageEffect::new(
+                    protected, damage_filter, duration.clone(),
+                );
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
+                }
+                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
-            Ok((vec![Effect::new(effect)], Vec::new()))
+            if non_choice {
+                return Err(CardTextError::ParseError(
+                    "chosen-color prevention for a live recipient set requires a shared set decision".into(),
+                ));
+            }
+            compile_effect_for_target(target, ctx, |spec| {
+                let mut effect = crate::effects::PreventAllDamageToTargetEffect::new(
+                    spec, duration.clone(),
+                ).with_filter(damage_filter.clone());
+                if *of_chosen_color {
+                    effect = effect.with_source_color_choice();
+                }
+                Effect::new(effect)
+            })
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventDamageToTargetPutCounters {

@@ -150,6 +150,9 @@ fn parse_battlefield_entry_counter(tail: &[OwnedLexToken]) -> Option<(u32, Count
 }
 
 pub fn parse_looked_move_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedMoveActionShape> {
+    if super::super::control_copy_attach_shapes::has_relative_collection_entry_controller(tokens) {
+        return None;
+    }
     let (head, tail) = split_from_among(tokens)?;
     let all_matching = tokens
         .get(head.clone())?

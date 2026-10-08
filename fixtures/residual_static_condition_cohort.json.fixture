@@ -1,0 +1,313 @@
+[
+  {
+    "name": "Crown of Convergence",
+    "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "Play with the top card of your library revealed.\nAs long as the top card of your library is a creature card, creatures you control that share a color with that card get +1/+1.\n{G}{W}: Put the top card of your library on the bottom of your library.",
+    "colors": [],
+    "color_identity": [
+      "G",
+      "W"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'the top card of your library is a creature card'); oracle-only fallback also failed: unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "098f4ad1c549067df9670f4eabd7ce9371bd1d6f48ad47322664eadc6b1f8725"
+    },
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Exact current top-card shared-color reference remains unsupported; no top-card groundwork is included."
+  },
+  {
+    "name": "Deepway Navigator",
+    "oracle_id": "812df594-75af-494f-be09-5f9633aca46a",
+    "mana_cost": "{W}{U}",
+    "type_line": "Creature — Merfolk Wizard",
+    "oracle_text": "Flash\nWhen this creature enters, untap each other Merfolk you control.\nAs long as you attacked with three or more Merfolk this turn, Merfolk you control get +1/+0.",
+    "power": "2",
+    "toughness": "2",
+    "colors": [
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "U",
+      "W"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'you attacked with three or more merfolk this turn'); oracle-only fallback also failed: unsupported static condition clause (clause: 'you attacked with three or more merfolk this turn')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'you attacked with three or more merfolk this turn')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'you attacked with three or more merfolk this turn')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'you attacked with three or more merfolk this turn')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "c5b15aebf655001188999c17dde1c3ef19b6f6b79e0780f38d88dfb850b4c60d"
+    },
+    "proposed_complete": true,
+    "status": "UNVALIDATED source restoration; fresh independent review pending",
+    "remaining": null
+  },
+  {
+    "name": "Essence Leak",
+    "oracle_id": "cb02daf6-9013-4ccc-bf1f-773b757ac468",
+    "mana_cost": "{U}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant permanent\nAs long as enchanted permanent is red or green, it has \"At the beginning of your upkeep, sacrifice this permanent unless you pay its mana cost.\"",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'enchanted permanent is red or green'); oracle-only fallback also failed: unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "89c832a08ad8f7c8295b77722db7fcf57f91cc573f534eadbc1dae692acb6634"
+    },
+    "proposed_complete": true,
+    "status": "UNVALIDATED source restoration; fresh independent review pending",
+    "remaining": null
+  },
+  {
+    "name": "Mul Daya Channelers",
+    "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Creature — Elf Druid Shaman",
+    "oracle_text": "Play with the top card of your library revealed.\nAs long as the top card of your library is a creature card, this creature gets +3/+3.\nAs long as the top card of your library is a land card, this creature has \"{T}: Add two mana of any one color.\"",
+    "power": "2",
+    "toughness": "2",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'the top card of your library is a creature card'); oracle-only fallback also failed: unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your library is a creature card')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "ba8834b7cc4bf571f9cc52b73e396283b956dd66f76e25660b21cd1f061a564c"
+    },
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Legitimate opaque top-card opening bootstrap before authoritative continuous derivation remains held; Condition203 is excluded."
+  },
+  {
+    "name": "The Ur-Dragon",
+    "oracle_id": "87b22b09-4f6d-4bc5-9cfc-663e4c7c6981",
+    "mana_cost": "{4}{W}{U}{B}{R}{G}",
+    "type_line": "Legendary Creature — Dragon Avatar",
+    "oracle_text": "Eminence — As long as The Ur-Dragon is in the command zone or on the battlefield, other Dragon spells you cast cost {1} less to cast.\nFlying\nWhenever one or more Dragons you control attack, draw that many cards, then you may put a permanent card from your hand onto the battlefield.",
+    "power": "10",
+    "toughness": "10",
+    "colors": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield'); oracle-only fallback also failed: unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "03badd1abdd66bc24c38462f7a93bbb44274ce241556b2b060fa7a6ad1b0e323"
+    },
+    "proposed_complete": true,
+    "status": "UNVALIDATED source restoration; fresh independent review pending",
+    "remaining": null
+  },
+  {
+    "name": "The Ur-Sphinx",
+    "oracle_id": "4a3fdb8e-4699-4bd9-84e6-3cc7fea0e1ef",
+    "mana_cost": "{6}{W}{U}{B}",
+    "type_line": "Legendary Creature — Sphinx Avatar",
+    "oracle_text": "Eminence — As long as The Ur-Sphinx is in the command zone or on the battlefield, other Sphinx spells you cast cost {1} less to cast.\nFlying\nWhenever one or more Sphinxes you control attack, each player mills that many cards. For each player, you may cast a card that player milled this way without paying its mana cost.",
+    "power": "10",
+    "toughness": "10",
+    "colors": [
+      "B",
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "B",
+      "U",
+      "W"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield'); oracle-only fallback also failed: unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "a4022849402d7ab1067aba6540bb8d70257969e95675b3ec19d18047582ed8e4"
+    },
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Per-player milled result collections and optional free casting remain independent unsupported body work."
+  },
+  {
+    "name": "Torrent of Lava",
+    "oracle_id": "f467ec85-ffe2-4963-82e0-509a7873fd63",
+    "mana_cost": "{X}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Torrent of Lava deals X damage to each creature without flying.\nAs long as Torrent of Lava is on the stack, each creature has \"{T}: Prevent the next 1 damage that would be dealt to this creature by Torrent of Lava this turn.\"",
+    "colors": [
+      "R"
+    ],
+    "color_identity": [
+      "R"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'this is on the stack'); oracle-only fallback also failed: unsupported static condition clause (clause: 'this is on the stack')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'this is on the stack')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this is on the stack')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this is on the stack')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "62830a2ee88109f71513992c517de08dbb6767ec09995791071d9716e66dcccb"
+    },
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Requires explicit source-on-stack functioning and an exact granting-spell finite-source prevention bridge."
+  },
+  {
+    "name": "Volrath's Shapeshifter",
+    "oracle_id": "16e9a4ee-0398-4e76-bc7e-dd2d52056aaf",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Creature — Phyrexian Shapeshifter",
+    "oracle_text": "As long as the top card of your graveyard is a creature card, this creature has the full text of that card and has the text \"{2}: Discard a card.\" (This creature has that card's name, mana cost, color, types, abilities, power, and toughness.)\n{2}: Discard a card.",
+    "power": "0",
+    "toughness": "1",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'the top card of your graveyard is a creature card'); oracle-only fallback also failed: unsupported static condition clause (clause: 'the top card of your graveyard is a creature card')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'the top card of your graveyard is a creature card')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your graveyard is a creature card')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'the top card of your graveyard is a creature card')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "4b9d36c6f86367640341d7b3aae87d9ad3974bdefe2d5103abda273410e7d558"
+    },
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Ordered top-graveyard full-text replacement requires its own text-changing owner, not ordinary copy/grant effects."
+  }
+]

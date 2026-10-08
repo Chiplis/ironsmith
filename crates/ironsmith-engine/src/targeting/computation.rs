@@ -2527,6 +2527,7 @@ mod tests {
         game.combat = Some(crate::combat_state::CombatState {
             block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
+        last_attack_declaration_step_players: None,
             attackers: vec![
                 crate::combat_state::AttackerInfo {
                     creature: attacking_alice_id,
@@ -2578,6 +2579,7 @@ mod tests {
         game.combat = Some(crate::combat_state::CombatState {
             block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
+        last_attack_declaration_step_players: None,
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,
                 target: crate::combat_state::AttackTarget::Player(bob),
@@ -2613,6 +2615,7 @@ mod tests {
         game.combat = Some(crate::combat_state::CombatState {
             block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
+        last_attack_declaration_step_players: None,
             attackers: vec![crate::combat_state::AttackerInfo {
                 creature: source_id,
                 target: crate::combat_state::AttackTarget::Planeswalker(bob_walker_id),

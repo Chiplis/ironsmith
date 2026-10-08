@@ -184,4 +184,29 @@ mod tests {
             initial_life + 2
         );
     }
+    #[test]
+    fn live_gate_receipt_is_sampled_before_branch_changes_the_predicate() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let controller = PlayerId(0);
+        let source = game.new_object_id();
+        let condition = EffectId(71);
+        let gate = crate::effects::ConditionalEffect::if_only(
+            crate::effect::Condition::LifeTotalOrLess(20), vec![Effect::gain_life(1)],
+        ).with_condition_result(true);
+        let process = RepeatProcessEffect::new(vec![
+            Effect::draw(1), Effect::with_id(condition.0, Effect::new(gate)),
+        ], condition, EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)));
+        for i in 0..3 {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), &format!("Card {i}"))
+                .card_types(vec![crate::types::CardType::Sorcery]).build();
+            game.create_object_from_card(&card, controller, crate::zone::Zone::Library);
+        }
+        let mut ctx = ExecutionContext::new_default(source, controller);
+        process.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(controller).unwrap().life, 21);
+        assert_eq!(game.player(controller).unwrap().hand.len(), 2,
+            "the successful first gate repeats even after its branch raises life to 21");
+        assert_eq!(ctx.get_outcome(condition).unwrap().as_count(), Some(0));
+    }
+
 }

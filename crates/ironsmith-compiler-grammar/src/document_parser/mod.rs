@@ -1185,8 +1185,8 @@ fn preflight_invalid_payment_keyword_lines(lines: &[&[OwnedLexToken]]) -> Option
 ///
 /// Recognition already holds the tokens, so the card's own name is replaced in
 /// them directly: every alias occurrence the string form would rewrite becomes
-/// the typed self-reference as synthesized word tokens, and the "enter" that
-/// follows a rewritten subject becomes "enters" the same way. Nothing is
+/// the typed self-reference as synthesized word tokens. Finite "enter" after
+/// that subject becomes "enters", while causative infinitives stay intact. Nothing is
 /// rendered back to text and lexed again. Kept tokens keep their spans; a
 /// synthesized subject takes the span of the name it stands in for, which is
 /// where the reference was authored.
@@ -1520,7 +1520,8 @@ fn replace_named_source_alias_tokens(
     Some(out)
 }
 
-/// "this creature enter" → "this creature enters", on tokens.
+/// Normalize a finite source-subject verb, without inflecting the bare
+/// infinitive in a causative such as "you may have this creature enter".
 fn normalize_named_source_enter_agreement_tokens(
     tokens: &mut [OwnedLexToken],
     subject: &str,
@@ -1534,12 +1535,18 @@ fn normalize_named_source_enter_agreement_tokens(
             .enumerate()
             .all(|(offset, word)| tokens[index + offset].is_word(word));
         let enter_index = index + subject_words.len();
+        // `have <object> enter` is already grammatical. The entry-copy reader
+        // accepts either spelling, so changing this to `enters` otherwise
+        // survives into its retained display and hides the damaged source
+        // sentence until the authoritative semantic-marker gate.
+        let causative_have = index > 0 && tokens[index - 1].is_word("have");
         // The string form only rewrote "enter" at the end of the text or
         // before a space, never before punctuation.
         let followed_by_word_or_end = tokens
             .get(enter_index + 1)
             .is_none_or(|next| matches!(next.kind, TokenKind::Word | TokenKind::Number));
-        if subject_here && tokens[enter_index].is_word("enter") && followed_by_word_or_end {
+        if subject_here && !causative_have
+            && tokens[enter_index].is_word("enter") && followed_by_word_or_end {
             let span = tokens[enter_index].span;
             tokens[enter_index] = OwnedLexToken::word("enters", span);
             changed = true;
@@ -3868,6 +3875,14 @@ fn propagate_station_thresholds(lines: &mut [RecognizedLine]) {
     }
 }
 
+fn is_owned_station_threshold(preprocessed: &PreprocessedDocument, idx: usize, line: &PreprocessedLine) -> bool {
+    line_family_grammar::parse_station_threshold_line(&line.tokens).is_some()
+        && preprocessed.items[..idx].iter().any(|item| {
+            let PreprocessedItem::Line(prior) = item else { return false; };
+            line_family_grammar::parse_station_keyword_line(&prior.tokens, &prior.info.source_tokens).is_some()
+        })
+}
+
 pub fn recognize_document_with_context(
     context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
@@ -3915,11 +3930,19 @@ pub fn recognize_document_with_context(
                     idx += 1;
                     continue;
                 }
-                // Numeric result rows belong to the preceding die-roll
-                // instruction, even when their body contains a gain clause.
+                // A local die-roll owner consumes its complete rows while
+                // extending its statement/activation/trigger. A row still
+                // here must belong to a real Station ability, not acquire a
+                // meaning from its N+ typography or an unrelated result.
                 if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens)
                     .is_some()
                 {
+                    if !is_owned_station_threshold(preprocessed, idx, line) {
+                        return Err(CardTextError::ParseError(format!(
+                            "numeric result row has no preceding die-result owner: '{}'",
+                            line.info.raw_line,
+                        )));
+                    }
                     idx = dispatch_remaining_preprocessed_line(
                         line_context,
                         preprocessed,
@@ -5675,6 +5698,44 @@ fn rewrite_line_normalized(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn source_enter_agreement_preserves_causative_copy_infinitives() {
+        for text in [
+            "You may have this creature enter as a copy of a creature you control.",
+            "If you attacked this turn, you may have this creature enter as a copy of any creature on the battlefield.",
+            "You may have this creature enter tapped as a copy of any creature on the battlefield.",
+        ] {
+            let mut tokens = super::lex_line(text, 0).unwrap();
+            let original = tokens.clone();
+            assert!(!super::normalize_named_source_enter_agreement_tokens(&mut tokens, "this creature"));
+            assert_eq!(tokens, original, "the infinitive and its exact source tokens survive");
+        }
+        let mut tokens = super::lex_line("This creature enter tapped.", 0).unwrap();
+        assert!(super::normalize_named_source_enter_agreement_tokens(&mut tokens, "this creature"));
+        assert_eq!(super::render_token_slice(&tokens), "This creature enters tapped.");
+    }
+
+    #[test]
+    fn named_copy_subject_keeps_enter_and_literal_name_exception() {
+        let card = super::CardBuilder::new(crate::ids::CardId::new(), "Chameleon, Master of Disguise")
+            .card_types(vec![crate::types::CardType::Creature]);
+        let text = "You may have Chameleon enter as a copy of a creature you control, except his name is Chameleon, Master of Disguise.";
+        let tokens = super::lex_line(text, 0).unwrap();
+        let rewritten = super::normalize_named_source_tokens_for_builder(&card, &tokens).unwrap();
+        let words = crate::lexer::parser_token_word_refs(&rewritten);
+        assert!(words.windows(5).any(|words| words == ["enter", "as", "a", "copy", "of"]));
+        assert!(!words.iter().any(|word| *word == "enters"));
+        let ability = crate::keyword_static::parse_enter_as_copy_as_enters_line(&rewritten)
+            .unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } = ability.payload else {
+            panic!("entry-copy model");
+        };
+        assert_eq!(spec.name_override.as_deref(), Some("Chameleon, Master of Disguise"));
+        assert!(display.contains("enter as a copy"));
+        assert!(spec.may);
+        assert_eq!(spec.filter.controller, Some(crate::target::PlayerFilter::You));
+    }
+
+    #[test]
     fn quoted_gain_shortcut_does_not_claim_continuous_bundles() {
         for text in [
             "Enchanted creature gets +2/+2 and has \"Whenever this creature attacks, draw a card.\"",
@@ -6170,6 +6231,99 @@ mod tests {
             assert!(!body.contains("add"), "{body}");
             assert!(render_token_slice(&next.effect_parse_tokens).contains("add"));
             assert!(table.presentation.is_some());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn all_resolving_envelopes_own_low_range_and_open_ended_rows()
+    -> Result<(), CardTextError> {
+        for head in [
+            "Roll a d20.",
+            "{2}: Roll a d20.",
+            "Fortune — {2}: Roll a d20.",
+            "When this artifact enters, roll a d20.",
+        ] {
+            let text = format!("{head}\n9 or less | Draw a card.\n10—19 | You gain 2 life.\n20+ | Draw two cards. You gain 3 life.\n{{T}}: Add {{U}}.");
+            let preprocessed = preprocess_document(
+                CardBuilder::new(CardId::new(), "Complete die envelopes").card_types(vec![CardType::Artifact]),
+                &text,
+            )?;
+            let recognized = super::recognize_document(&preprocessed, false)?;
+            let [table, super::RecognizedLine::Activated(next)] = recognized.lines.as_slice() else {
+                panic!("result table escaped its envelope: {:?}", recognized.lines);
+            };
+            let tokens = match table {
+                super::RecognizedLine::Statement(line) => &line.parse_tokens,
+                super::RecognizedLine::Activated(line) => &line.effect_parse_tokens,
+                super::RecognizedLine::Triggered(line) => &line.effect_parse_tokens,
+                other => panic!("unexpected result owner: {other:?}"),
+            };
+            let body = render_token_slice(tokens);
+            for fragment in ["roll a d20", "9 or less", "10—19", "20+", "gain 3 life"] {
+                assert!(body.contains(fragment), "{head}: {body}");
+            }
+            assert!(!body.contains("add"), "{body}");
+            assert!(render_token_slice(&next.effect_parse_tokens).contains("add"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_rows_require_a_die_owner_and_do_not_consume_station_striations()
+    -> Result<(), CardTextError> {
+        for head in ["", "Draw a card.\n", "{0}: Draw a card.\n", "When this artifact enters, draw a card.\n",
+            "Roll a d20. Draw a card.\n", "{0}: Roll a d20. Draw a card.\n",
+            "Fortune — {0}: Roll a d20. Draw a card.\n",
+            "When this artifact enters, roll a d20. Draw a card.\n",
+            "You may roll a d20.\n", "If you control a creature, roll a d20.\n"] {
+            for row in ["9 or less | Draw a card.", "15+ | Draw a card.", "15+ | Flying"] {
+                let preprocessed = preprocess_document(
+                    CardBuilder::new(CardId::new(), "Orphan numeric row").card_types(vec![CardType::Artifact]),
+                    &format!("{head}{row}"),
+                )?;
+                assert!(super::recognize_document(&preprocessed, false).is_err(), "{head}{row}");
+            }
+        }
+        // An ordinary activation immediately before a new striation cannot
+        // steal it as a result row just because N+ is now recognized.
+        let preprocessed = preprocess_document(
+            CardBuilder::new(CardId::new(), "Station ownership").card_types(vec![CardType::Artifact]),
+            "Station\n3+ | {T}: Add {U}.\n{1}: You gain 1 life.\n9+ | Flying",
+        )?;
+        let recognized = super::recognize_document(&preprocessed, false)?;
+        let [super::RecognizedLine::Activated(station), super::RecognizedLine::Activated(first), super::RecognizedLine::Activated(second), super::RecognizedLine::Static(last)] = recognized.lines.as_slice() else {
+            panic!("Station striations lost their separate owners: {:?}", recognized.lines);
+        };
+        assert!(station.chosen_option.is_none());
+        assert_eq!(first.chosen_option, Some(super::ChosenOptionContext::StationThreshold(3)));
+        assert_eq!(second.chosen_option, Some(super::ChosenOptionContext::StationThreshold(3)));
+        assert_eq!(last.chosen_option, Some(super::ChosenOptionContext::StationThreshold(9)));
+        Ok(())
+    }
+
+    #[test]
+    fn station_striation_is_not_consumed_by_any_preceding_die_ability_envelope()
+    -> Result<(), CardTextError> {
+        for head in ["{T}: Roll a d20.", "Fortune — {T}: Roll a d20.", "When this artifact enters, roll a d20."] {
+            let preprocessed = preprocess_document(
+                CardBuilder::new(CardId::new(), "Station with die ability").card_types(vec![CardType::Artifact]),
+                &format!("Station\n3+ | Flying\n{head}\n9+ | Vigilance"),
+            )?;
+            let recognized = super::recognize_document(&preprocessed, false)?;
+            assert_eq!(recognized.lines.len(), 4, "{head}: {:?}", recognized.lines);
+            let super::RecognizedLine::Static(last) = recognized.lines.last().unwrap() else {
+                panic!("9+ must retain its own static Station owner: {:?}", recognized.lines);
+            };
+            assert_eq!(last.chosen_option, Some(super::ChosenOptionContext::StationThreshold(9)));
+            let owner = &recognized.lines[2];
+            let (chosen_option, tokens) = match owner {
+                super::RecognizedLine::Activated(line) => (&line.chosen_option, &line.effect_parse_tokens),
+                super::RecognizedLine::Triggered(line) => (&line.chosen_option, &line.effect_parse_tokens),
+                other => panic!("die owner changed envelope: {other:?}"),
+            };
+            assert_eq!(*chosen_option, Some(super::ChosenOptionContext::StationThreshold(3)));
+            assert!(!render_token_slice(tokens).contains("vigilance"));
         }
         Ok(())
     }

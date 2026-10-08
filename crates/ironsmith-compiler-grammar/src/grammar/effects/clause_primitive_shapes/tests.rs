@@ -215,3 +215,19 @@ fn loyalty_damage_is_bound_to_its_explicit_source_subject() {
         if matches!(spec.base(), crate::target::ChooseSpec::Source))
     );
 }
+
+#[test]
+fn finite_and_optional_repeat_shapes_consume_the_complete_clause() {
+    for (text, expected) in [
+        ("Repeat this process X more times", RepeatProcessShape::Additional(Value::X)),
+        ("Repeat this process six more times", RepeatProcessShape::Additional(Value::Fixed(6))),
+        ("Repeat this process zero more times", RepeatProcessShape::Additional(Value::Fixed(0))),
+        ("Repeat this process as many times as they choose", RepeatProcessShape::May),
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert_eq!(parse_repeat_process_shape(&tokens), Some(expected));
+    }
+    for text in ["Repeat this process six more times and draw a card", "Repeat this process minus one more times"] {
+        assert!(parse_repeat_process_shape(&crate::lexer::lex_line(text, 0).unwrap()).is_none());
+    }
+}

@@ -931,6 +931,16 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
                 counter_idx + 3,
             ));
         }
+        if permission_shapes::starts_at_words(
+            words,
+            counter_idx + 1,
+            &["your", "opponents", "have"],
+        ) {
+            return Some((
+                Value::PlayerCounters(PlayerFilter::Opponent, counter_type),
+                counter_idx + 4,
+            ));
+        }
         if words
             .get(counter_idx + 1)
             .is_some_and(|word| matches!(*word, "youve" | "you've"))

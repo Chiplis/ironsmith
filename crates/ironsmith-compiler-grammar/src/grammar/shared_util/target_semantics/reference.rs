@@ -774,6 +774,30 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    if matches!(remaining_words.as_slice(),
+        ["this", "card" | "creature" | "permanent", "from",
+            "its" | "his" | "her" | "their", "owner" | "owners" | "owner's", "graveyard"]
+    ) {
+        // The source's graveyard owner is independent of the player who will
+        // receive it. Retain the exact source-zone restriction through delayed
+        // registration and never let the actor supply a replacement owner.
+        if crate::util::trim_edge_punctuation_tokens(remaining).iter()
+            .any(|token| token.as_word().is_none())
+        {
+            return Err(CardTextError::ParseError("unsupported token in source-owned graveyard reference".into()));
+        }
+        // A card in a graveyard is always in its owner's graveyard (CR 400.3),
+        // so the zone alone retains the owner restriction.
+        let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
+        if let Some(surface) = source_reference_surface_for_words(&remaining_words[..2])
+            .or_else(|| this_source_surface_for_words(&remaining_words[..2]))
+        {
+            source_filter = source_filter.with_source_surface(surface);
+        }
+        return Ok(wrap_target_count(
+            TargetAst::Object(source_filter, target_span, None), target_count,
+        ));
+    }
     if reference_shapes::is_source_from_your_graveyard(&remaining_words) {
         let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
         source_filter.owner = Some(PlayerFilter::You);

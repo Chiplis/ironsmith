@@ -688,9 +688,64 @@ fn is_plural_tagged_result_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
         })
 }
 
-fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
+fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
+    fn last_non_row(effects: &[EffectAst]) -> Option<&EffectAst> {
+        for effect in effects.iter().rev() {
+            match effect {
+                EffectAst::Sequence { effects }
+                | EffectAst::SourceSentence { effects, .. }
+                | EffectAst::CommaThen { effects }
+                | EffectAst::Coordinated { effects, .. } => {
+                    if let Some(last) = last_non_row(effects) { return Some(last); }
+                }
+                EffectAst::Coordination(coordination)
+                    if coordination.kind != crate::model::CoordinationKindAst::Disjunction
+                        && coordination.boundaries.iter().all(|boundary|
+                            boundary.ordering == crate::model::EffectOrderingAst::Ordered) =>
+                {
+                    for member in coordination.members.iter().rev() {
+                        if let Some(last) = last_non_row(&member.effects) { return Some(last); }
+                    }
+                }
+                EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::IfResult {
+                    predicate: crate::IfResultPredicate::DieValue(_), ..
+                }) => {}
+                other => return Some(other),
+            }
+        }
+        None
+    }
+    // Optional, conditional, iterated, or quoted rolls do not export one
+    // unconditional immediate result for a following table.
+    probe_effect_sentences_lexed(tokens).is_ok_and(|effects| matches!(
+        last_non_row(&effects),
+        Some(EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
+            action: crate::model::ast::SubjectVerbActionAst::Random(
+                crate::model::ast::RandomActionAst::RollDie { .. }
+                | crate::model::ast::RandomActionAst::RollDiceChooseResult { .. },
+            ),
+            ..
+        }))
+    ))
+}
+
+fn is_station_result_boundary(items: &[PreprocessedItem], idx: usize, line: &PreprocessedLine) -> bool {
+    // Station owns its N+ striations even when the preceding ability rolls.
+    // If the body is also a plausible die consequence, leave it to Station
+    // dispatch to reject rather than guessing which owner the author meant.
+    line_family_grammar::parse_station_threshold_line(&line.tokens).is_some()
+        && items[..idx].iter().any(|item| {
+            let PreprocessedItem::Line(prior) = item else { return false; };
+            line_family_grammar::parse_station_keyword_line(&prior.tokens, &prior.info.source_tokens).is_some()
+        })
+}
+
+fn is_trigger_result_followup_line(line: &PreprocessedLine, owner_tokens: &[OwnedLexToken]) -> bool {
     if super::document_grammar::parse_numeric_result_prefix_tokens(&line.tokens).is_some() {
-        return true;
+        // N+ is also the printed Station striation syntax. A resolving
+        // ability may consume a numeric row only when it owns a local roll;
+        // unrelated activations and triggers must leave striations alone.
+        return has_local_die_result_owner(owner_tokens);
     }
     if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
         return true;
@@ -725,6 +780,14 @@ pub(super) fn extend_triggered_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if is_station_result_boundary(items, next_idx, line) {
+            break;
+        }
+        if super::document_grammar::parse_numeric_result_prefix_tokens(&line.tokens).is_some()
+            && !has_local_die_result_owner(&triggered.effect_parse_tokens)
+        {
+            break;
+        }
         // A complete replacement ability has its own affected subject.
         // Its trailing "instead" does not replace the preceding trigger.
         if crate::keyword_static::parse_scoped_damage_redirection_line(&line.tokens)
@@ -745,7 +808,7 @@ pub(super) fn extend_triggered_line_with_result_followups(
         if !instead_replacement && super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !instead_replacement && !is_trigger_result_followup_line(line) {
+        if !instead_replacement && !is_trigger_result_followup_line(line, &triggered.effect_parse_tokens) {
             break;
         }
 
@@ -771,10 +834,13 @@ pub(super) fn extend_activated_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if is_station_result_boundary(items, next_idx, line) {
+            break;
+        }
         if super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line) {
+        if !is_trigger_result_followup_line(line, &activated.effect_parse_tokens) {
             break;
         }
 
@@ -803,10 +869,13 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if is_station_result_boundary(items, next_idx, line) {
+            break;
+        }
         if super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line) {
+        if !is_trigger_result_followup_line(line, &statement.parse_tokens) {
             break;
         }
 

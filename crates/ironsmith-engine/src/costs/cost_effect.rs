@@ -1175,7 +1175,19 @@ mod tests {
             let cost = crate::costs::Cost::try_effect(Effect::sacrifice(crate::target::ObjectFilter::specific(original), 1).tag(chosen_tag.clone())).unwrap();
             let mut dm = crate::decision::SelectFirstDecisionMaker;
             let mut context = CostContext::new(source, player, &mut dm).with_pre_chosen_cards(vec![original]);
-            assert!(matches!(cost.pay(&mut game, &mut context).unwrap(), CostPaymentResult::Paid));
+            // UNRUN integration assertion: retain the actual packet and the
+            // original sacrifice binding through the same payment owner.
+            let receipt = cost.pay_with_outputs(&mut game, &mut context).unwrap();
+            assert!(matches!(receipt.result, CostPaymentResult::Paid));
+            let outputs = receipt.outputs.expect("effect-backed payment retains its actual packet");
+            let retained = outputs.outcome.instruction_result().execution_facts.iter().find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
+                _ => None,
+            }).expect("the returned packet keeps the original sacrifice fact");
+            assert_eq!(retained.len(), usize::from(scenario == 1 || scenario == 3));
+            assert!(retained.iter().all(|object| object.to_snapshot(&game).object_id == original));
+            assert_eq!(game.turn_store.turn_history.event_kind_count(crate::events::EventKind::Sacrifice),
+                match scenario { 0 => 0, 3 => 2, _ => 1 });
             let actual = context.tagged_objects.get(&actual_tag).expect("completed original receipt, including zero");
             assert_eq!(actual.len(), usize::from(scenario == 1 || scenario == 3));
             if let Some(snapshot) = actual.first() {

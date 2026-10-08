@@ -1,6 +1,22 @@
 use super::*;
 
+/// Exact normalized source-zone clause shared with the cost-prefix owner.
+pub fn parse_source_command_or_battlefield_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
+    if !tokens.iter().all(|token| token.as_word().is_some()) { return false; }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let Some(is) = words.iter().position(|word| *word == "is") else { return false; };
+    words.first() == Some(&"this")
+        && crate::util::is_source_reference_words(&words[..is])
+        && words[is + 1..] == ["in", "the", "command", "zone", "or", "on", "the", "battlefield"]
+}
+
 pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
+    let body = crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    if let Some(prefix) = crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(body)
+        && parse_source_command_or_battlefield_condition_tokens(prefix.condition_tokens)
+    {
+        return Some(vec![Zone::Command, Zone::Battlefield]);
+    }
     if has_any_phrase(tokens, SOURCE_NOT_ON_BATTLEFIELD_PHRASES) {
         return Some(vec![
             Zone::Hand,
@@ -34,4 +50,26 @@ pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<
         .map(|(_, zone)| *zone)
         .collect::<Vec<_>>();
     (!zones.is_empty()).then_some(zones)
+}
+
+#[cfg(test)]
+mod command_zone_scope_tests {
+    use super::*;
+    #[test]
+    fn source_clause_is_consumed_completely() {
+        for source in ["this", "this creature", "this permanent", "this card"] {
+            let tokens = crate::lexer::lex_line(&format!("{source} is in the command zone or on the battlefield"), 0).unwrap();
+            assert!(parse_source_command_or_battlefield_condition_tokens(&tokens));
+        }
+        for text in [
+            "another creature is in the command zone or on the battlefield",
+            "this creature is in the command zone or on the battlefield and is red",
+            "this creature is in the command zone or on the stack",
+            "this creature is in the command zone or on the battlefield unless tapped",
+            "this creature is in the command zone or + on the battlefield",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(!parse_source_command_or_battlefield_condition_tokens(&tokens), "{text}");
+        }
+    }
 }

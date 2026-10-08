@@ -1093,14 +1093,19 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         IfResultPredicate::PriorEffectResult(surface) => {
             EffectPredicate::PriorEffectResult(surface)
         }
+        IfResultPredicate::AffectedObjectsShare { required_count, characteristic } => {
+            EffectPredicate::AffectedObjectsShare { required_count, characteristic }
+        }
+        IfResultPredicate::ConditionMatched => EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
-        IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
+        IfResultPredicate::Value(cmp) | IfResultPredicate::DieValue(cmp) => EffectPredicate::Value(cmp),
     }
 }
 
 pub fn compile_repeat_process_body(
     effects: &[EffectAst],
     continue_effect_index: usize,
+    capture_condition_result: bool,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, EffectId), CardTextError> {
     // A result-correlated followup is a separate instruction. Its side effects
@@ -1162,6 +1167,28 @@ pub fn compile_repeat_process_body(
                 break candidate;
             }
         };
+        if capture_condition_result {
+            fn capture_gate(effect: &mut Effect) -> bool {
+                if let Some(gate) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+                    *effect = Effect::new(gate.clone().with_condition_result(true));
+                    return true;
+                }
+                if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+                    let mut inner = (*with_id.effect).clone();
+                    let id = with_id.id;
+                    if capture_gate(&mut inner) {
+                        *effect = Effect::with_id(id.0, inner);
+                        return true;
+                    }
+                }
+                false
+            }
+            if !compiled.last_mut().is_some_and(capture_gate) {
+                return Err(CardTextError::InvariantViolation(
+                    "live repeat continuation requires its final conditional gate".into(),
+                ));
+            }
+        }
         assign_effect_result_id_for_ast(
             &mut compiled,
             &effects[continue_effect_index],

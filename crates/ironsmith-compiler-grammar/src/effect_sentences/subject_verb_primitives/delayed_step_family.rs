@@ -992,6 +992,29 @@ pub fn try_build_unless(
 
     if delayed_clause_starts_with_action(action_clause, delayed_grammar::DelayedActionShape::Pay) {
         if delayed_clause_mentions_mana_cost(action_clause) {
+            // "Its" has a proven antecedent only for this typed self-sacrifice.
+            // Consume every token; word projections alone discard punctuation.
+            if crate::grammar::primitives::probe_all(
+                action_clause.tokens(),
+                crate::grammar::primitives::phrase(&["pay", "its", "mana", "cost"]),
+                "self-sacrifice-unless-source-mana-cost",
+            ).is_some()
+                && !before_delayed_step
+                && matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                        filter, count: 1, target: None, one_of_referenced_set: false,
+                    }), ..
+                })] if filter.source)
+            {
+                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                    effects,
+                    player,
+                    cost: ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(
+                        ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+                    )),
+                    before_delayed_step: false,
+                })));
+            }
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
                 clause.text()
@@ -1953,5 +1976,27 @@ mod delayed_state_predicate_tests {
                 crate::cards::builders::SourcePredicateAst::SourceIsRingBearer { .. }
             )
         ));
+    }
+}
+
+#[cfg(test)]
+mod self_mana_cost_unless_tests {
+    #[test]
+    fn only_proven_self_sacrifice_binds_the_complete_its_mana_cost_clause() {
+        let tokens = crate::lexer::lex_line("Sacrifice this permanent unless you pay its mana cost.", 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_chain(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        assert!(debug.contains("UnlessPays") && debug.contains("source_mana_cost: true"), "{debug}");
+        assert!(!debug.contains("mana_cost_of: Some"), "{debug}");
+        for text in [
+            "Sacrifice a creature unless you pay its mana cost.",
+            "Sacrifice this permanent unless you pay its mana cost and 2 life.",
+            "Sacrifice this permanent unless you pay its mana cost before the next upkeep.",
+            "Sacrifice this permanent unless you pay its + mana cost.",
+            "Sacrifice this permanent unless you pay its | mana cost.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(crate::effect_sentences::parse_effect_chain(&tokens).is_err(), "{text}");
+        }
     }
 }

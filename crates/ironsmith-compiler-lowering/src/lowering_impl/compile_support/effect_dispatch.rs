@@ -28,6 +28,9 @@ use subject_verb_middle::compile_subject_verb_middle;
 
 type EffectCompileOutcome = (Vec<Effect>, Vec<ChooseSpec>);
 
+#[path = "effect_dispatch/next_step_duration_owners.rs"]
+mod next_step_duration_owners;
+
 fn with_target_count_preserving_value(spec: ChooseSpec, count: ChoiceCount) -> ChooseSpec {
     if let Some(value) = spec.count_value().cloned() {
         spec.with_count_value(count, value)
@@ -1834,6 +1837,7 @@ fn compile_effect_inner(
         effect,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
             | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+            | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
     ) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
@@ -2306,6 +2310,7 @@ fn compile_subject_verb_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
+    next_step_duration_owners::validate(&subject_verb.action)?;
     if matches!(
         subject_verb.action,
         SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })

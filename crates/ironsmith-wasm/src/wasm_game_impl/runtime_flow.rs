@@ -10,6 +10,15 @@ fn runtime_execution_error(message: &str) -> JsValue {
     }
 }
 
+// Keep the runner error path available to the native host as well as WASM;
+// native callers inspect Result while JS callers receive the original message.
+fn runner_execution_error(error: ironsmith::game_loop::GameLoopError) -> JsValue {
+    #[cfg(target_arch = "wasm32")]
+    { JsValue::from_str(&error.to_string()) }
+    #[cfg(not(target_arch = "wasm32"))]
+    { let _ = error; JsValue::NULL }
+}
+
 // Counter quantities are sparse: aggregate limits do not depend on pointer
 // width, and the selected kind order reaches the owning executor unchanged.
 fn validate_counter_allocations(
@@ -320,7 +329,7 @@ impl WasmGame {
                     let runner = self.runner.as_mut().unwrap();
                     runner
                         .advance(&mut self.game, &mut self.trigger_queue)
-                        .map_err(|e| runtime_execution_error(&format!("{e}")))?
+                        .map_err(runner_execution_error)?
                 };
                 perf.runner_advance_ms += runner_advance_started_at.elapsed_ms();
 

@@ -605,6 +605,7 @@ mod tests {
         game.combat = Some(CombatState {
             block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
+        last_attack_declaration_step_players: None,
             attackers: vec![
                 AttackerInfo {
                     creature: source_battlefield,

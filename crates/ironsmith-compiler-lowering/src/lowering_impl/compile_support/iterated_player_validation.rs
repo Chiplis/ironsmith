@@ -448,6 +448,7 @@ fn anthem_count_mentions_iterated_player(count: &ironsmith_core::AnthemCountExpr
         AnthemCountExpression::CommanderCastCount(player)
         | AnthemCountExpression::PlayerSpeed(player)
         | AnthemCountExpression::TotalUnspentMana(player)
+        | AnthemCountExpression::PlayerCounters(player, _)
         | AnthemCountExpression::UnspentMana { player, .. } => player.mentions_iterated_player(),
         AnthemCountExpression::GraveyardsWithAtLeastCards { .. } => false,
         _ => false,

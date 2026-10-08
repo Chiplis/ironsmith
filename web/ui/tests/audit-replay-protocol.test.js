@@ -40,8 +40,12 @@ const action = { command: { type: "priority_action", action_ref: { kind: "pass_p
 test("all engine replay entry points reject old, absent and mismatched protocol before reading engine state", async () => {
   const entries = [replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame,
     verifyEndOfMatchDisclosuresWithGame];
-  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
-  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 21), transcript(21, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 22), transcript(22, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 23), transcript(23, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
+  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
+  for (const version of [26, 27, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
+    invalid.push({ protocolVersion: version, match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION } });
+    invalid.push({ protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, match: { protocolVersion: version } });
+  }
+  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 21), transcript(21, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 22), transcript(22, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 23), transcript(23, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 24), transcript(24, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 25), transcript(25, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
   for (const candidate of invalid) {
     for (const entry of entries) {
       const h = replayGame();
@@ -60,12 +64,16 @@ test("actions require successful initialization and recheck the session protocol
   const h = replayGame();
   await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /successfully initialized/);
   assert.deepEqual(h.calls, []);
-  const candidate = transcript();
-  await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });
-  h.calls.length = 0;
-  candidate.match.protocolVersion = 23;
-  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
-  assert.deepEqual(h.calls, []);
+  for (const version of [25, 26, 27, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
+    for (const owner of ["transcript", "match"]) {
+      const candidate = transcript();
+      await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });
+      h.calls.length = 0;
+      (owner === "match" ? candidate.match : candidate).protocolVersion = version;
+      await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
+      assert.deepEqual(h.calls, []);
+    }
+  }
 });
 
 test("a failed initial checkpoint comparison cannot authorize a later action", async () => {
@@ -77,29 +85,33 @@ test("a failed initial checkpoint comparison cannot authorize a later action", a
   assert.deepEqual(h.calls, []);
 });
 
-test("current replay requires v7 checkpoint exports before start and per-action mutation", async () => {
-  for (const version of [undefined, null, 2, 3, 4, 5, 6, "7"]) {
+test("current replay requires v10 checkpoint exports before start and per-action mutation", async () => {
+  for (const version of [undefined, null, 2, 3, 4, 5, 6, 7, 8, 9, "9", "10"]) {
     for (const entry of [startAuditTranscriptReplayWithGame, replayAuditTranscriptWithGame,
       verifyEndOfMatchDisclosuresWithGame]) {
       const h = replayGame();
       h.setCheckpoint({ version });
-      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 7/);
+      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 10/);
       assert.deepEqual(h.calls, ["export"]);
     }
   }
-  const h = replayGame();
-  await startAuditTranscriptReplayWithGame({ game: h.game, transcript: transcript(), cryptoImpl: webcrypto });
-  h.calls.length = 0;
-  h.setCheckpoint({ version: 6 });
-  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 7/);
-  assert.deepEqual(h.calls, ["export"]);
+  for (const version of [undefined, null, 7, 8, 9, "9", "10"]) {
+    const h = replayGame();
+    await startAuditTranscriptReplayWithGame({ game: h.game, transcript: transcript(), cryptoImpl: webcrypto });
+    h.calls.length = 0;
+    h.setCheckpoint({ version });
+    await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 10/);
+    assert.deepEqual(h.calls, ["export"]);
+  }
 });
 
 test("current signed replay refuses a historical final digest before invoking its replay callback", async () => {
   let callbacks = 0;
-  await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version: 6 } }, webcrypto, {
-    requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-  }), /checkpoint version 7/);
+  for (const version of [undefined, null, 7, 8, 9, "9", "10"]) {
+    await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version } }, webcrypto, {
+      requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
+    }), /checkpoint version 10/);
+  }
   assert.equal(callbacks, 0);
 });
 
@@ -224,4 +236,53 @@ test("synthetic historical v5 typed mana-program hashing preserves canonical byt
   program.flattened_default_effects[0].payload.amount.Fixed = 3;
   assert.notEqual(await publicCheckpointHash(changed, webcrypto), expected);
   assert.deepEqual(checkpoint, before, "hashing cannot migrate historical programs");
+});
+
+// Source-authored, UNRUN. Synthetic v7 model bytes, not a recovered historical
+// golden. Historical verification must not run the new Rust model defaults.
+test("historical v7 typed prevention programs retain absent fields and the original hash domain", async () => {
+  const finite = { kind: "PreventDamageEffect", payload: {
+    amount: { Fixed: 4 }, target: "Source", until: "EndOfTurn", follow_up_effects: [],
+    source_of_your_choice: false, protect_you_and_permanents_you_control: false,
+  } };
+  const unlimited = { kind: "PreventAllDamageToTargetEffect", payload: {
+    target: "Source", until: "EndOfTurn", follow_up_effects: [], combat_only: true,
+  } };
+  const checkpoint = { version: 7, players: [{ id: 0, restrictedMana: [{
+    symbol: "Green", source: 17, source_controller: 0, source_chosen_creature_type: null,
+    restrictions: [{ PaymentTransaction: { restriction: "Any", on_spend: [{
+      predicate: "Any", effects: {
+        segments: [{ default_effects: [finite, unlimited], self_replacements: [], starts_new_source_line: false }],
+        flattened_default_effects: [finite, unlimited],
+      }, choices: [],
+    }] } }],
+  }] }], stack: [], objects: [], hiddenClaimLedgerDigest: "7".repeat(64) };
+  // Independently canonicalize these already public synthetic rows. This does
+  // not call the production checkpoint normalizer or decode a Rust model.
+  const canonical = value => Array.isArray(value) ? value.map(canonical)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+  const expected = createHash("sha256").update(JSON.stringify(canonical({
+    checkpoint, domain: "ironsmith-public-audit-checkpoint-v1",
+  }))).digest("hex");
+  const before = structuredClone(checkpoint);
+  assert.equal(await publicCheckpointHash(checkpoint, webcrypto), expected);
+  assert.deepEqual(checkpoint, before);
+  assert.equal(Object.hasOwn(finite.payload, "damage_filter"), false);
+  assert.equal(Object.hasOwn(unlimited.payload, "damage_filter"), false);
+  assert.equal(Object.hasOwn(unlimited.payload, "source_color_of_your_choice"), false);
+  assert.notEqual(await publicCheckpointHash({ ...checkpoint, version: 8 }, webcrypto), expected);
+  for (const [index, key, value] of [
+    [0, "damage_filter", { combat_only: false, noncombat_only: false }],
+    [1, "damage_filter", { combat_only: false, noncombat_only: false }],
+    [1, "source_color_of_your_choice", false],
+    [1, "source_color_of_your_choice", true],
+  ]) {
+    const changed = structuredClone(checkpoint);
+    const program = changed.players[0].restrictedMana[0].restrictions[0].PaymentTransaction.on_spend[0].effects;
+    program.segments[0].default_effects[index].payload[key] = value;
+    program.flattened_default_effects[index].payload[key] = value;
+    assert.notEqual(await publicCheckpointHash(changed, webcrypto), expected);
+  }
+  assert.deepEqual(checkpoint, before);
 });

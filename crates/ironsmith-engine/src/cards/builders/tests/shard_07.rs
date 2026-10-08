@@ -2217,6 +2217,9 @@ pub(super) fn heavy_fog_cast_restriction_requires_declare_attackers_after_you_we
         .expect("combat should be present")
         .attackers[0]
         .target = crate::combat_state::AttackTarget::Player(alice);
+    // This fixture hand-builds combat, so explicitly retain its declaration event.
+    game.combat.as_mut().unwrap().last_attack_declaration_step_players =
+        Some([alice].into_iter().collect());
 
     let spell = game.object(spell_id).expect("Heavy Fog should be in hand");
     assert!(

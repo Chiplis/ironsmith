@@ -3734,6 +3734,9 @@ fn source_counter_count_expression(
 fn anthem_count_expression_from_value(value: Value) -> Option<AnthemCountExpression> {
     match value.into_unhinted() {
         Value::Count(filter) => Some(AnthemCountExpression::MatchingFilter(filter)),
+        Value::PlayerCounters(player, counter_type) => {
+            Some(AnthemCountExpression::PlayerCounters(player, counter_type))
+        }
         Value::CountersOnSource(counter_type) => {
             Some(AnthemCountExpression::CountersOnSource(counter_type))
         }
@@ -5390,6 +5393,87 @@ mod dynamic_anthem_tests {
             ),
             "{clause:#?}"
         );
+    }
+
+    // Source-only authored regressions. UNRUN until the coordinated gate.
+    #[test]
+    fn player_counter_values_preserve_player_scope_and_counter_kind() {
+        for (player, counter_type) in [
+            (PlayerFilter::You, crate::CounterType::Experience),
+            (PlayerFilter::Opponent, crate::CounterType::Poison),
+        ] {
+            let expected = AnthemCountExpression::PlayerCounters(player.clone(), counter_type);
+            let value = Value::PlayerCounters(player, counter_type)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+            assert_eq!(anthem_count_expression_from_value(value), Some(expected));
+        }
+    }
+
+    #[test]
+    fn standalone_for_each_player_counter_reader_is_complete() {
+        for (text, player, counter_type) in [
+            ("for each experience counter you have", PlayerFilter::You, crate::CounterType::Experience),
+            ("for each poison counter your opponents have", PlayerFilter::Opponent, crate::CounterType::Poison),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(parse_anthem_for_each_expression(&tokens).unwrap(),
+                AnthemCountExpression::PlayerCounters(player, counter_type));
+        }
+        let tokens = lex_line("for each poison counter your opponents have nonsense", 0).unwrap();
+        assert!(parse_anthem_for_each_expression(&tokens).is_err(),
+            "an unconsumed suffix must not silently disappear");
+    }
+
+    #[test]
+    fn player_counter_anthems_keep_typed_subject_values_and_surface() {
+        for (text, player, counter_type, power, toughness, where_x) in [
+            (
+                "This creature gets +1/+1 for each experience counter you have.",
+                PlayerFilter::You, crate::CounterType::Experience, 1, 1, false,
+            ),
+            (
+                "This creature gets +2/-1 for each poison counter your opponents have.",
+                PlayerFilter::Opponent, crate::CounterType::Poison, 2, -1, false,
+            ),
+            (
+                "This creature gets +X/+X, where X is the number of poison counters your opponents have.",
+                PlayerFilter::Opponent, crate::CounterType::Poison, 1, 1, true,
+            ),
+        ] {
+            let clause = parse_clause(text);
+            let count = AnthemCountExpression::PlayerCounters(player, counter_type);
+            assert!(matches!(clause.subject, AnthemSubjectAst::Source));
+            assert_eq!(clause.power, AnthemValue::scaled(power, count.clone()));
+            assert_eq!(clause.toughness, AnthemValue::scaled(toughness, count));
+            assert_eq!(clause.count_uses_where_x, where_x);
+            assert!(clause.condition.is_none());
+        }
+
+        let clause = parse_clause(
+            "Creatures you control get +1/+0 for each experience counter you have.",
+        );
+        let AnthemSubjectAst::Filter(filter) = clause.subject else {
+            panic!("Minthara's recipients must remain a creature filter");
+        };
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(clause.power, AnthemValue::scaled(1,
+            AnthemCountExpression::PlayerCounters(PlayerFilter::You, crate::CounterType::Experience)));
+        assert_eq!(clause.toughness, AnthemValue::Fixed(0));
+    }
+
+    #[test]
+    fn player_counter_anthems_reject_unconsumed_and_mismatched_possession() {
+        for text in [
+            "This creature gets +1/+1 for each poison counter your opponents have nonsense.",
+            "This creature gets +1/+1 for each experience counter you have nonsense.",
+            "This creature gets +1/+1 for each poison counter your opponents control.",
+            "This creature gets +X/+X, where X is the number of poison counters your opponents have nonsense.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let get_idx = tokens.iter().position(|token| token.is_word("gets")).unwrap();
+            assert!(parse_anthem_clause(&tokens, get_idx, tokens.len()).is_err(), "{text}");
+        }
     }
 
     #[test]

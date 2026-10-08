@@ -68,14 +68,22 @@ pub fn parse_prevent_next_damage_clause(
         parse_target_phrase(shape.target_tokens)?
     };
 
-    Ok(Some(EffectAst::subject_verb_prevent_damage_with_options(
+    let mut effect = EffectAst::subject_verb_prevent_damage_with_options(
         amount,
         target,
         Until::EndOfTurn,
         shape.source_of_your_choice,
         shape.protects_you_and_permanents_you_control,
         Vec::new(),
-    )))
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+            combat_only, ..
+        }) = &mut subject.action
+    {
+        *combat_only = shape.combat_only;
+    }
+    Ok(Some(effect))
 }
 
 pub fn parse_double_counters_clause(
@@ -1268,10 +1276,33 @@ fn parse_counter_ability_target_phrase(
 pub(crate) fn parse_prevention_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
+    if tokens.len() == 1 && tokens[0].is_word("players") {
+        return Ok(TargetAst::Player(PlayerFilter::Any, None));
+    }
     if let Some(filter) = clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
         return Ok(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None));
     }
     parse_target_phrase(tokens)
+}
+
+fn filtered_prevention(
+    target: TargetAst,
+    source_filter: ObjectFilter,
+    of_chosen_color: bool,
+) -> EffectAst {
+    let mut effect = EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+        target, source_filter, Until::EndOfTurn,
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                of_chosen_color: chosen, ..
+            },
+        ) = &mut subject.action
+    {
+        *chosen = of_chosen_color;
+    }
+    effect
 }
 
 /// "sources", "red sources", "black sources and red sources", "sources of
@@ -1442,20 +1473,9 @@ pub fn parse_prevent_all_damage_clause(
                     )
                     .with_prevention_source_would_deal_surface(),
                 )),
-                Some(_) if of_chosen_color => Err(CardTextError::ParseError(format!(
-                    "unsupported chosen-color prevention with a protected target (clause: '{}')",
-                    clause_text
-                ))),
                 Some(target_tokens) => {
                     let target = parse_prevention_target_phrase(target_tokens)?;
-                    Ok(Some(
-                        EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
-                            target,
-                            source_filter,
-                            Until::EndOfTurn,
-                        )
-                        .with_prevention_source_would_deal_surface(),
-                    ))
+                    Ok(Some(filtered_prevention(target, source_filter, of_chosen_color).with_prevention_source_would_deal_surface()))
                 }
             }
         }
@@ -1523,19 +1543,7 @@ pub fn parse_prevent_all_damage_clause(
                     }
                     let (source_filter, of_chosen_color) =
                         parse_damage_sources_filter(source_tokens)?;
-                    if of_chosen_color {
-                        return Err(CardTextError::ParseError(
-                            "chosen-color target prevention needs its complete decision path"
-                                .into(),
-                        ));
-                    }
-                    Ok(Some(
-                        EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
-                            target,
-                            source_filter,
-                            Until::EndOfTurn,
-                        ),
-                    ))
+                    Ok(Some(filtered_prevention(target, source_filter, of_chosen_color)))
                 }
             }
         }

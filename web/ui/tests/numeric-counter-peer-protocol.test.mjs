@@ -45,9 +45,9 @@ const routes = [
 ];
 
 for (const route of routes) {
-  test(`${route.name} rejects noncurrent activation/combat/blind-exile peers before dispatch`, async () => {
-    for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22, 23, CURRENT_AUDIT_PROTOCOL_VERSION + 1, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
-      for (const type of [route.type, "apply_action", "signed_action_recovery_response", "crypto_material_request"]) {
+  test(`${route.name} rejects peers before current compiler/cache semantics can execute`, async () => {
+    for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, CURRENT_AUDIT_PROTOCOL_VERSION + 1, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
+      for (const type of [route.type, "match_start", "state_resync", "apply_action", "signed_action_recovery_response", "crypto_material_request"]) {
         const h = harness(route.name, route.end);
         await h.receive({ type, protocolVersion, entry: "entry", text: "text" });
         assert.deepEqual(h.calls, route.rejected);
@@ -55,8 +55,8 @@ for (const route of routes) {
     }
   });
 
-  test(`${route.name} dispatches current protocol24 through the same admission gate`, async () => {
-    assert.equal(PROTOCOL_VERSION, 24);
+  test(`${route.name} dispatches current protocol28 through the same admission gate`, async () => {
+    assert.equal(PROTOCOL_VERSION, 28);
     const h = harness(route.name, route.end);
     await h.receive({ type: route.type, protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, entry: "entry", text: "text" });
     assert.deepEqual(h.calls, [route.accepted]);

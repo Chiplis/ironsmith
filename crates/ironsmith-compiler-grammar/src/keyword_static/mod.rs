@@ -857,6 +857,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_lose_game_replacement_line" | "parse_token_creation_templates_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
+        // The rule name describes the changed characteristic, not the
+        // authored subject. "Enchanted land" must reach its complete tail.
+        "parse_land_type_addition_line" => Vec::new(),
         // "Each nonland permanent you control is all colors." (Leyline of the
         // Guildpact) and the older "All creatures are ..." lines share one
         // color-identity grammar whose subject can start with any object noun.
@@ -1526,6 +1529,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_filter_is_pt_creature_in_addition_and_has_line
         ),
         multi_static_ability_ast_passthrough_rule!(parse_filter_is_pt_creature_in_addition_line),
+        multi_static_ability_ast_passthrough_rule!(parse_conditional_copular_creature_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_type_color_addition_static_line
         ),
@@ -1598,6 +1602,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),
         single_static_ability_ast_rule!(parse_subject_is_card_types_line),
+        single_static_ability_ast_rule!(parse_subject_is_also_subtypes_line),
+        single_static_ability_ast_rule!(parse_subject_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
         multi_static_ability_ast_rule!(parse_all_are_pt_color_type_addition_line),
@@ -2370,6 +2376,11 @@ fn parse_static_ability_ast_line_lexed_unstacked(
         return parse_static_ability_ast_line_lexed_unstacked(body_tokens);
     }
     if let Some(abilities) = parse_filtered_toughness_assignment_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    // Keep optional-size/additive artifact-creature semantics and attached
+    // pronouns ahead of the older generic card-type identity wrapper.
+    if let Some(abilities) = parse_conditional_copular_creature_line(tokens)? {
         return Ok(Some(abilities));
     }
     // Bound the condition before reading the characteristic-setting subject.
@@ -5745,19 +5756,29 @@ pub fn parse_enter_as_copy_as_enters_line(
                 // addition to his other types": a name exception followed by
                 // a characteristic exception in one clause.
                 let mut exceptions = vec![exception];
-                if matches!(
-                    exceptions[0],
-                    keyword_static_lines::CopyExceptionShape::Name { .. }
-                ) && let Some(and_index) = exception_tokens.windows(2).position(|pair| {
-                    pair[0].is_word("and") && pair[1].is_any_word(&["it's", "it’s", "it"])
-                }) && let Some(
-                    characteristics @ keyword_static_lines::CopyExceptionShape::Characteristics {
-                        ..
-                    },
-                ) = keyword_static_lines::parse_copy_exception_tokens(
-                    &exception_tokens[and_index + 1..],
-                ) {
-                    exceptions.push(characteristics);
+                if let keyword_static_lines::CopyExceptionShape::Name { remainder_tokens, .. } = &exceptions[0] {
+                    let remainder = trim_lexed_commas(*remainder_tokens);
+                    if !remainder.is_empty() {
+                        let remainder = if remainder[0].is_word("and") {
+                            trim_lexed_commas(&remainder[1..])
+                        } else {
+                            return Err(CardTextError::ParseError(
+                                "unsupported complete enters-as-copy name exception tail".into(),
+                            ));
+                        };
+                        // A name exception must not discard a second exception.
+                        // Only the already supported complete characteristic
+                        // suffix may accompany it; other compound bodies stay
+                        // unsupported instead of merely retaining their prose.
+                        let Some(characteristics @ keyword_static_lines::CopyExceptionShape::Characteristics { .. }) =
+                            keyword_static_lines::parse_copy_exception_tokens(remainder)
+                        else {
+                            return Err(CardTextError::ParseError(
+                                "unsupported complete enters-as-copy name exception tail".into(),
+                            ));
+                        };
+                        exceptions.push(characteristics);
+                    }
                 }
                 for exception in exceptions {
                     match exception {
@@ -5827,6 +5848,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                         keyword_static_lines::CopyExceptionShape::Name {
                             name_tokens,
                             use_named_subject,
+                            ..
                         } => {
                             if use_named_subject {
                                 name_override = named_copy_subject.clone();
@@ -6098,6 +6120,28 @@ pub fn parse_choose_color_as_enters_line(
 #[cfg(test)]
 mod enter_as_copy_added_color_tests {
     use super::*;
+
+    #[test]
+    fn copy_name_exception_never_drops_unmodeled_compound_tails() {
+        for tail in [
+            "and it has flying",
+            "and it can't block",
+            ", it's legendary in addition to its other types",
+        ] {
+            let text = format!("You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror {tail}.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            assert!(parse_enter_as_copy_as_enters_line(&tokens).is_err(), "{text}");
+        }
+        let text = "You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror and it's a 4/4 Spider Human Hero in addition to its other types.";
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let ability = parse_enter_as_copy_as_enters_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, .. } = ability.payload else {
+            panic!("copy model");
+        };
+        assert_eq!(spec.name_override.as_deref(), Some("Mirror"));
+        assert_eq!(spec.set_base_power_toughness, Some((4, 4)));
+        assert_eq!(spec.added_subtypes, [Subtype::Spider, Subtype::Human, Subtype::Hero]);
+    }
 
     #[test]
     fn copy_exception_adds_a_color_alongside_types_subtypes_and_fixed_pt() {

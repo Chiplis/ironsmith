@@ -1056,6 +1056,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Unconditional source subtype definitions; rules-text origin is checked
+    /// by the static-effect processor before granting CDA layer precedence.
+    fn characteristic_defining_subtypes(&self) -> Option<&[crate::types::Subtype]> {
+        None
+    }
+
     /// Returns true if this grants abilities to other permanents.
     fn grants_abilities(&self) -> bool {
         false
@@ -1569,7 +1575,8 @@ impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAb
         ironsmith_core::functional_zones::static_ability_zone_defaults(
             Some(self.id()),
             self.is_source_only_graveyard_replacement()
-                || self.characteristic_defining_colors().is_some(),
+                || self.characteristic_defining_colors().is_some()
+                || self.characteristic_defining_subtypes().is_some(),
             self.grant_spec()
                 .filter(|spec| spec.filter.source)
                 .map(|spec| spec.zone),
@@ -2362,6 +2369,14 @@ impl StaticAbility {
             model.characteristic_defining_colors()
         } else {
             self.0.characteristic_defining_colors()
+        }
+    }
+
+    pub fn characteristic_defining_subtypes(&self) -> Option<&[crate::types::Subtype]> {
+        if let Some(model) = self.compiled_model() {
+            model.characteristic_defining_subtypes()
+        } else {
+            self.0.characteristic_defining_subtypes()
         }
     }
 

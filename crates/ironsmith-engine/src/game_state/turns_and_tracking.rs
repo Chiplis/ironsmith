@@ -1026,7 +1026,10 @@ impl GameState {
             .restriction_effects
             .iter_mut()
             .filter(|effect| {
-                effect.controller == player
+                matches!(&effect.duration,
+                    Until::PlayersNextUntapStep { player: crate::target::PlayerFilter::Specific(bound) }
+                        if *bound == player)
+                || (effect.controller == player
                     && effect.untap_step_object.is_none()
                     && matches!(
                         effect.duration,
@@ -1035,7 +1038,7 @@ impl GameState {
                             | Until::YourNextUpkeep
                             | Until::ControllersNextUntapStep
                             | Until::YourNextUntapStep
-                    )
+                    ))
             })
         {
             effect.duration = Until::YourNextTurnEnd;
@@ -1806,6 +1809,9 @@ impl GameState {
     }
 
     pub fn mark_combat_phase_started(&mut self) {
+        if let Some(combat) = self.combat.as_mut() {
+            combat.last_attack_declaration_step_players = None;
+        }
         self.turn_store.combat_phases_started_this_turn = self
             .turn_store
             .combat_phases_started_this_turn

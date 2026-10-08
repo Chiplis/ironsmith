@@ -3502,7 +3502,7 @@ pub(super) fn retained_temporary_registration_alternative_resolution_replaces_ex
         let store = &mut game.object_mut(spell).unwrap().temporary_static_ability_grants;
         assert_eq!(store.len(), 1, "casting registers the conditional runtime rider");
         let mut expired = store[0].clone();
-        expired.expires_end_of_turn = 0;
+        expired.expires_end_of_turn = Some(0);
         store.clear();
         store.push(expired);
         // Imported stack state can preserve expired registrations. Resolution

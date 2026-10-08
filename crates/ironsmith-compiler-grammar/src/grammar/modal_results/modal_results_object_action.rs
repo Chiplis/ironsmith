@@ -25,6 +25,21 @@ pub fn parse_if_result_predicate_lexed_tokens(
     let normalized = normalized_word_tokens(tokens);
     let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();
+    // "two or more of those cards have the same name" refers to the actual
+    // latest producer, without authoring an exile/mill/discard action.
+    let words = normalized.iter().map(OwnedLexToken::parser_text).collect::<Vec<_>>();
+    if let Some(first) = words.first()
+        && let Some(count) = crate::util::parse_number_word_u32(first)
+        && count >= 2
+    {
+        let tail = words[1..].strip_prefix(&["or", "more"]).unwrap_or(&words[1..]);
+        if tail == ["of", "those", "cards", "have", "same", "name"] {
+            return Some(IfResultPredicate::AffectedObjectsShare {
+                required_count: count, characteristic: ObjectCharacteristic::Name,
+            });
+        }
+    }
+
     // "Whenever you clash, ... If you won, ..." (Rebellion of the Flamekin,
     // Entangling Trap): the past tense names a clash result. It is read as a
     // clash-win follow-up; with no clash in the ability itself it refers to

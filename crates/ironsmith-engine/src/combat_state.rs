@@ -43,6 +43,12 @@ pub(crate) struct RetainedAttackingRole {
 /// Combat state tracking.
 #[derive(Debug, Clone, Default)]
 pub struct CombatState {
+    /// Direct-player declarations from the latest begun declare attackers
+    /// step in this combat. None is absent/uncommitted, Some(empty) is a
+    /// completed declaration with no directly attacked player. Retained after
+    /// that step ends; a "this step" consumer must require DeclareAttackers.
+    /// Reset at every new declaration-step entry, even in the same combat.
+    pub last_attack_declaration_step_players: Option<std::collections::BTreeSet<PlayerId>>,
     /// CR 509.1h: attackers are neither blocked nor unblocked until the whole
     /// declaration (including its costs) completes, even when no blockers exist.
     pub block_declaration_complete: bool,
@@ -462,6 +468,7 @@ pub fn new_combat() -> CombatState {
 
 /// Clears all combat state at end of combat.
 pub fn end_combat(combat: &mut CombatState) {
+    combat.last_attack_declaration_step_players = None;
     combat.block_declaration_complete = false;
     combat.attackers.clear();
     combat.blockers.clear();

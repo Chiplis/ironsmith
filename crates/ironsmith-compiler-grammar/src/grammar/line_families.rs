@@ -112,20 +112,14 @@ pub fn parse_visible_max_speed_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexTok
 }
 
 pub fn parse_station_threshold(tokens: &[OwnedLexToken]) -> Option<StationThresholdShape<'_>> {
-    let (pipe, _, _) =
-        primitives::find_prefix(tokens, || primitives::token_kind(TokenKind::Pipe).void())?;
-    let [threshold_token, plus_token] = tokens.get(..pipe)? else {
+    // This is the shared N+ surface, not proof that Station owns the row.
+    // Document dispatch additionally requires a preceding Station keyword;
+    // die continuations lower this same complete header as a result predicate.
+    let shape = super::document_shapes::parse_numeric_result_prefix_tokens(tokens)?;
+    let crate::effect::Comparison::GreaterThanOrEqual(threshold) = shape.comparison else {
         return None;
     };
-    if !matches!(threshold_token.kind, TokenKind::Number | TokenKind::Word)
-        || plus_token.kind != TokenKind::Plus
-    {
-        return None;
-    }
-    let threshold = crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(
-        threshold_token.parser_text(),
-    ))?;
-    let body_tokens = trim_commas(tokens.get(pipe + 1..)?);
+    let body_tokens = trim_commas(tokens.get(shape.body_start..)?);
     (!TokenWordView::new(body_tokens).is_empty()).then_some(StationThresholdShape {
         threshold,
         body_tokens,

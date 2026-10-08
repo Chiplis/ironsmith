@@ -1,0 +1,48 @@
+[
+  {
+    "name": "The Ur-Dragon",
+    "oracle_id": "87b22b09-4f6d-4bc5-9cfc-663e4c7c6981",
+    "mana_cost": "{4}{W}{U}{B}{R}{G}",
+    "type_line": "Legendary Creature — Dragon Avatar",
+    "oracle_text": "Eminence — As long as The Ur-Dragon is in the command zone or on the battlefield, other Dragon spells you cast cost {1} less to cast.\nFlying\nWhenever one or more Dragons you control attack, draw that many cards, then you may put a permanent card from your hand onto the battlefield.",
+    "power": "10",
+    "toughness": "10",
+    "colors": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield'); oracle-only fallback also failed: unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this creature is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'this permanent is in the command zone or on the battlefield')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "03badd1abdd66bc24c38462f7a93bbb44274ce241556b2b060fa7a6ad1b0e323"
+    },
+    "proposed_complete": true,
+    "status": "UNVALIDATED source restoration; fresh review pending",
+    "remaining": null
+  }
+]

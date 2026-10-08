@@ -25,7 +25,7 @@ use super::super::util::{
     parse_color, parse_number, parse_subject, parse_subtype_word, parse_target_phrase,
     span_from_tokens, trim_commas, trim_edge_punctuation_tokens,
 };
-use super::primitives;
+use super::{leaf, primitives};
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, ConditionalEffectAst, EffectAst, IfResultPredicate, PlayerAst,
@@ -193,6 +193,9 @@ pub mod subject_verb_registry_shapes;
 pub mod triple_sequence_shapes;
 #[path = "effects/typed_clause_heads.rs"]
 pub mod typed_clause_heads;
+#[cfg(test)]
+#[path = "effects/negated_untap_routing_tests.rs"]
+mod negated_untap_routing_tests;
 pub use sequence_pairs::*;
 #[path = "effects/sentence_prelude.rs"]
 mod sentence_prelude;
@@ -478,40 +481,43 @@ pub fn find_cant_sentence_negation_span_lexed(tokens: &[OwnedLexToken]) -> Optio
 
     while cursor < tokens.len() {
         let token = &tokens[cursor];
-        if token.as_word().is_some_and(is_cant_negation_word) {
+        // Clause-boundary callers retain authored case and curly apostrophes.
+        // Match the token's semantic spelling without discarding its surface.
+        let word = token.as_word().map(|_| token.parser_text());
+        if word.is_some_and(is_cant_negation_word) {
             return Some((cursor, cursor + 1));
         }
-        if token.as_word().is_some_and(is_dont_negation_word) {
+        if word.is_some_and(is_dont_negation_word) {
             if cursor >= 2
-                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
+                && parser_token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 1;
                 continue;
             }
             if tokens
                 .get(cursor + 1)
-                .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
+                .is_some_and(|next| next.as_word().map(|_| next.parser_text()).is_some_and(is_control_or_own_word))
             {
                 cursor += 1;
                 continue;
             }
             return Some((cursor, cursor + 1));
         }
-        if token.as_word().is_some_and(is_does_do_can_word)
+        if word.is_some_and(is_does_do_can_word)
             && tokens
                 .get(cursor + 1)
                 .is_some_and(|next| token_is_any_word(next, &["not"]))
         {
             if cursor >= 2
-                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
+                && parser_token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 2;
                 continue;
             }
-            if token.as_word().is_some_and(is_does_or_do_word)
+            if word.is_some_and(is_does_or_do_word)
                 && tokens
                     .get(cursor + 2)
-                    .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
+                    .is_some_and(|next| next.as_word().map(|_| next.parser_text()).is_some_and(is_control_or_own_word))
             {
                 cursor += 1;
                 continue;
@@ -593,7 +599,23 @@ pub fn prepare_cant_sentence_restriction_clause_lexed(
             _ => crate::effect::RestrictionDurationSurface::Default,
         })
         .unwrap_or_default();
-    let Some((duration, clause_tokens)) = parse_restriction_duration_lexed(tokens)? else {
+    // The named-player occurrence is represented only by a CantEffect.
+    // Generic duration readers must not lend it to characteristic changes,
+    // search permissions, or carried affirmative actions with no lifetime owner.
+    let named_step = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)
+        .filter(|parsed| parsed.duration == leaf::LeafDurationPhrase::PlayersNextUntapStep)
+        .map(|parsed| trim_lexed_commas(parsed.rest).to_vec())
+        .or_else(|| leaf::parse_leaf_restriction_duration_suffix_tokens(tokens)
+            .filter(|parsed| parsed.duration == leaf::LeafDurationPhrase::PlayersNextUntapStep)
+            .map(|parsed| trim_lexed_commas(parsed.rest).to_vec()));
+    let prepared = if let Some(body) = named_step {
+        Some((crate::effect::Until::PlayersNextUntapStep {
+            player: crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any)),
+        }, body))
+    } else {
+        parse_restriction_duration_lexed(tokens)?
+    };
+    let Some((duration, clause_tokens)) = prepared else {
         return Ok(None);
     };
     if clause_tokens.is_empty() {

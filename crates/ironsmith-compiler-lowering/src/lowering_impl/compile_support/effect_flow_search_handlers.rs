@@ -746,6 +746,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], inner_choices)
         }
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
+            if matches!(effects.as_slice(),
+                [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)])
+            {
+                // The optional wrapper names the one continuation chooser;
+                // it must not add a second may choice around the prompt.
+                let decider = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+                return Ok(Some((vec![Effect::new(
+                    crate::effects::RepeatProcessPromptEffect::new(
+                        ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,
+                    ).with_decider(Some(decider)),
+                )], Vec::new())));
+            }
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty may-by-player effect branch is unsupported".to_string(),
@@ -1487,7 +1499,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let (mut body_effects, choices, condition) = with_preserved_lowering_context(
                 ctx,
                 |_| {},
-                |ctx| compile_repeat_process_body(effects, *continue_effect_index, ctx),
+                |ctx| compile_repeat_process_body(effects, *continue_effect_index,
+                    matches!(continue_predicate, IfResultPredicate::ConditionMatched), ctx),
             )?;
             // Targets for a repeated process are declared once when the
             // ability is put on the stack. Synthetic TargetOnly declarations

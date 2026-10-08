@@ -6,6 +6,12 @@ mod dice_result_bindings;
 mod coin_result_bindings;
 #[path = "life_amount_bindings.rs"]
 mod life_amount_bindings;
+#[cfg(test)]
+#[path = "announced_x_tests.rs"]
+mod announced_x_tests;
+#[cfg(test)]
+#[path = "numeric_table_ownership_tests.rs"]
+mod numeric_table_ownership_tests;
 use crate::TagKey;
 use crate::cards::builders::{
     CardTextError, CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst,
@@ -232,7 +238,7 @@ pub fn annotate_effect_sequence_owned(
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
-    env.has_announced_x = config.has_announced_x;
+    env.has_announced_x |= config.has_announced_x;
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     env.milling_event_filter = config.milling_event_filter.clone();
     env.dice_event_grouped = config.dice_event_grouped;
@@ -2525,6 +2531,12 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "targeted"));
                     }
                 }
+                SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { target, .. },
+                ) => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    remember_explicit_object_target_binding(target, frame);
+                }
                 SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     source_target,
@@ -3522,6 +3534,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
@@ -4163,6 +4176,7 @@ fn annotate_effect_sequence_with_env_internal(
         let suppress_force_auto_tag_object_targets = suppress_for_power_self_damage
             || copy_spell_without_followup_reference
             || (effect_exports_damage_each_object_set(&effect) && !auto_tag_object_targets_for_env);
+        validate_die_result_successor(&effect, remaining.first())?;
         let assigned_effect_id =
             maybe_assign_effect_result_id(&effect, remaining, id_gen, config.clone());
 
@@ -4572,17 +4586,24 @@ fn maybe_assign_effect_result_id(
     // reading an outcome that no runtime instruction writes.
     if result_gate_surface(effect).is_none()
         && next_is_result_gate
-        && let Some(EffectAst::Conditionals(
-            ConditionalEffectAst::ResolvedIfResult { condition, .. }
-            | ConditionalEffectAst::ResolvedWhenResult { condition, .. },
-        )) = remaining.first()
+        && let Some(condition) = remaining.first().and_then(resolved_result_gate_id)
     {
         id_gen.next_effect_id = id_gen.next_effect_id.max(condition.0 + 1);
-        return Some(*condition);
+        return Some(condition);
     }
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
+}
+
+fn resolved_result_gate_id(effect: &EffectAst) -> Option<EffectId> {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+            if effects.len() == 1 => resolved_result_gate_id(&effects[0]),
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { condition, .. }
+            | ConditionalEffectAst::ResolvedWhenResult { condition, .. }) => Some(*condition),
+        _ => None,
+    }
 }
 
 fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
@@ -4656,8 +4677,27 @@ fn result_gate_surface(effect: &EffectAst) -> Option<(&IfResultPredicate, bool)>
 }
 
 fn result_gate_accepts_producer(gate: &EffectAst, producer: &EffectAst) -> bool {
+    if result_gate_surface(gate)
+        .is_some_and(|(predicate, _)| matches!(predicate, IfResultPredicate::DieValue(_)))
+    {
+        return local_random_result_bindings::Family::Die.compatible(producer);
+    }
     typed_result_gate_action(gate)
         .is_none_or(|action| effect_can_supply_object_memory_for_action(producer, action))
+}
+
+fn validate_die_result_successor(producer: &EffectAst, next: Option<&EffectAst>) -> Result<(), CardTextError> {
+    let is_die_row = |effect: &EffectAst| result_gate_surface(effect)
+        .is_some_and(|(predicate, _)| matches!(predicate, IfResultPredicate::DieValue(_)));
+    if next.is_some_and(is_die_row)
+        && !is_die_row(producer)
+        && !local_random_result_bindings::Family::Die.compatible(producer)
+    {
+        return Err(CardTextError::ParseError(
+            "numeric result row requires an immediate compatible die instruction".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// A result gate followed by authored `otherwise` makes the gate itself,
@@ -5862,7 +5902,12 @@ fn resolve_effect_references_in_effect(
     if let EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) = effect {
         let predicate = predicate.clone();
         let effects = std::mem::take(effects);
-        let condition = if if_result_predicate_is_searched_library(&predicate) {
+        let condition = if matches!(predicate, IfResultPredicate::DieValue(_)) {
+            // The typed header must consume exactly its roll, never the
+            // latest draw/search result or an ambient triggering quantity.
+            state.die_result_producers.last().copied().flatten()
+                .filter(|id| Some(*id) == state.last_effect_id)
+        } else if if_result_predicate_is_searched_library(&predicate) {
             state.last_library_search_effect_id.or(state.last_effect_id)
         } else {
             state.last_effect_id
@@ -6169,6 +6214,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
         let (effect, remaining) = current_and_remaining
             .split_first_mut()
             .expect("effect index is within the resolution sequence");
+        validate_die_result_successor(effect, remaining.first())?;
         let assigned_effect_id = maybe_assign_effect_result_id(
             effect,
             remaining,
@@ -6514,7 +6560,7 @@ fn advance_reference_env_for_effect(
             let mut out_env = nested.final_env;
             if matches!(
                 predicate,
-                IfResultPredicate::Value(_)
+                IfResultPredicate::Value(_) | IfResultPredicate::DieValue(_)
                     | IfResultPredicate::PriorEffectResult(_)
                     | IfResultPredicate::AffectedObjectMatchesCardType { .. }
             ) {
@@ -6529,6 +6575,11 @@ fn advance_reference_env_for_effect(
                 out_env.last_it_choice_is_set = env.last_it_choice_is_set;
                 out_env.last_player_filter = env.last_player_filter.clone();
                 out_env.source_object_antecedent = env.source_object_antecedent;
+            }
+            if matches!(predicate, IfResultPredicate::DieValue(_)) {
+                // A roll in one consequence is local to that row. Sibling
+                // rows continue testing the original table's instruction.
+                out_env.die_result_producers = env.die_result_producers.clone();
             }
             out_env.last_effect_id = env.last_effect_id.clone();
             out_env.bind_unbound_x_to_last_effect = env.bind_unbound_x_to_last_effect;
@@ -9331,6 +9382,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => 0,
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count }) =>
+            bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
             predicate: Some(predicate),
             ..

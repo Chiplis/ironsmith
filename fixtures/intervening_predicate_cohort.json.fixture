@@ -1,0 +1,81 @@
+[
+  {
+    "name": "Aurora Champion",
+    "oracle_id": "a4499cf9-04a0-45c5-9c73-19f8e7e95da6",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Elf Warrior",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Whenever this creature attacks, if your team controls another Warrior, tap target creature.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; tests UNRUN"
+  },
+  {
+    "name": "Bull-Rush Bruiser",
+    "oracle_id": "d5a7412a-2258-4d3e-9e0f-a150cc69081e",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Minotaur Warrior",
+    "power": "4",
+    "toughness": "3",
+    "oracle_text": "Whenever this creature attacks, if your team controls another Warrior, this creature gains first strike until end of turn.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; tests UNRUN"
+  },
+  {
+    "name": "Sickle Dancer",
+    "oracle_id": "836bfcad-014a-40cc-ab79-906fcab723a0",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Human Warrior",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Whenever this creature attacks, if your team controls another Warrior, this creature gets +1/+1 until end of turn.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; tests UNRUN"
+  },
+  {
+    "name": "Dragonfly Swarm",
+    "oracle_id": "83abf1d0-04e4-49e5-bf63-59f77829ffd1",
+    "mana_cost": "{1}{U}{R}",
+    "type_line": "Creature — Dragon Insect",
+    "power": "*",
+    "toughness": "3",
+    "oracle_text": "Flying, ward {1} (Whenever this creature becomes the target of a spell or ability an opponent controls, counter it unless that player pays {1}.)\nThis creature's power is equal to the number of noncreature, nonland cards in your graveyard.\nWhen this creature dies, if there's a Lesson card in your graveyard, draw a card.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; tests UNRUN"
+  },
+  {
+    "name": "Walltop Sentries",
+    "oracle_id": "fb3a0910-a582-41ef-b5b9-3cda1f1cd5ce",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Human Soldier Ally",
+    "power": "2",
+    "toughness": "3",
+    "oracle_text": "Reach, deathtouch\nWhen this creature dies, if there's a Lesson card in your graveyard, you gain 2 life.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; tests UNRUN"
+  },
+  {
+    "name": "Consul's Lieutenant",
+    "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+    "mana_cost": "{W}{W}",
+    "type_line": "Creature — Human Soldier",
+    "power": "2",
+    "toughness": "1",
+    "oracle_text": "First strike\nRenown 1 (When this creature deals combat damage to a player, if it isn't renowned, put a +1/+1 counter on it and it becomes renowned.)\nWhenever this creature attacks, if it's renowned, other attacking creatures you control get +1/+1 until end of turn.",
+    "proposed_complete": false,
+    "status": "HELD; no admission or source credit",
+    "remaining": "Contracted renowned recognition alone is insufficient: SourceIsRenowned reads a live battlefield flag erased on departure; ObjectSnapshot does not carry renowned designation for resolution-time last-known information. A general it predicate also needs reference-aware renowned binding."
+  },
+  {
+    "name": "The Notary Hobbits",
+    "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Legendary Creature — Halfling Advisor",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "When The Notary Hobbits enter, if they're not a token, create two tokens that are copies of them, except the tokens aren't legendary.\n{T}: Add {C} for each Halfling you control.",
+    "proposed_complete": false,
+    "status": "HELD; no admission or source credit",
+    "remaining": "Plural source pronouns must bind the not-token condition and copied object consistently while preserving the nonlegendary copy exception and copy-of-copy trigger suppression; no generic they-to-source rewrite is safe."
+  }
+]

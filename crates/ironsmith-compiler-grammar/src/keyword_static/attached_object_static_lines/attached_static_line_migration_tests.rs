@@ -33,9 +33,20 @@ fn otherwise_attached_damage_prevention_keeps_the_negated_typed_condition() {
     let debug = format!("{abilities:#?}");
     assert!(debug.contains("DoubleStrike"), "{debug}");
     assert!(
-        debug.contains("PreventAllDamageDealtByThisPermanent"),
+        debug.contains("ConditionalStaticAbility") && debug.contains("PreventMatchingDamage"),
         "{debug}"
     );
+    let StaticAbilityAst::ConditionalStaticAbility { ability, .. } = &abilities[1]
+        else { panic!("expected conditional Aura-owned prevention: {debug}"); };
+    let StaticAbilityAst::Static(prevention) = ability.as_ref()
+        else { panic!("expected canonical static prevention: {debug}"); };
+    let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = &prevention.payload
+        else { panic!("expected matching damage prevention: {debug}"); };
+    assert_eq!(spec.source_filter.tagged_constraints, vec![ironsmith_core::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::Enchanted.bind().into(),
+        relation: ironsmith_core::TaggedOpbjectRelation::IsTaggedObject,
+    }]);
+    assert!(spec.source_filter.with_attached_object.is_none());
     assert!(debug.contains("Not("), "{debug}");
     assert!(debug.contains("AttachedToSourceMatches"), "{debug}");
 

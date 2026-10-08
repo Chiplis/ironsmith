@@ -83,6 +83,7 @@ pub enum CopyExceptionShape<'a> {
     Name {
         name_tokens: &'a [OwnedLexToken],
         use_named_subject: bool,
+        remainder_tokens: &'a [OwnedLexToken],
     },
     Abilities {
         ability_tokens: &'a [OwnedLexToken],
@@ -514,13 +515,15 @@ fn parse_copy_name_exception_lexed<'a>(
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::sentence_end()))
-        .void()
+    let remainder_tokens = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ())
+        .take()
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(CopyExceptionShape::Name {
         name_tokens: trim_lexed_commas(name_tokens),
         use_named_subject: primitives::parse_prefix(name_tokens, primitives::kw("this")).is_some(),
+        remainder_tokens,
     })
 }
 

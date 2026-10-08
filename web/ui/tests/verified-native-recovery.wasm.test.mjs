@@ -4,14 +4,20 @@ import { webcrypto } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import init, { WasmGame } from '../../wasm_demo/pkg/engine.js';
 import { recoverVerifiedRuntime } from '../src/lib/local-runtime-recovery.js';
-import { publicCheckpointHash } from '../src/lib/multiplayer-audit.js';
+import { publicCheckpointHash, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION } from '../src/lib/multiplayer-audit.js';
 
 await init({ module_or_path: await readFile(new URL('../../wasm_demo/pkg/engine_bg.wasm', import.meta.url)) });
 
 for (const poisonSaved of [false, true]) {
   test(`real native recovery rejects corrupt current state and uses ${poisonSaved ? 'genesis' : 'a local savepoint'}`, async () => {
     const game = new WasmGame(), handles = [], failures = [];
-    const hash = () => publicCheckpointHash(game.exportPublicAuditCheckpoint(), webcrypto);
+    const hash = () => {
+      const checkpoint = game.exportPublicAuditCheckpoint();
+      assert.equal(CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION, 10);
+      assert.equal(checkpoint.version, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION);
+      assert.ok(Object.hasOwn(checkpoint, 'lastAttackDeclarationStepPlayers'));
+      return publicCheckpointHash(checkpoint, webcrypto);
+    };
     const retain = seq => {
       const runtimeHandle = game.createRuntimeSavepoint();
       handles.push(runtimeHandle);

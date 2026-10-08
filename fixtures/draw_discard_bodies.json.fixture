@@ -1,0 +1,34 @@
+[
+  {
+    "oracle_id": "5a747256-4215-4334-98ab-0c2e4ed92e47",
+    "name": "Casting of Bones",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nWhen enchanted creature dies, draw three cards, then discard one of them.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ],
+    "keywords": [
+      "Enchant"
+    ]
+  },
+  {
+    "oracle_id": "1f612df3-53b6-4317-9d63-1f903ee3f0c4",
+    "name": "Soldevi Sage",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature \u2014 Human Wizard",
+    "oracle_text": "{T}, Sacrifice two lands: Draw three cards, then discard one of them.",
+    "power": "1",
+    "toughness": "1",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "keywords": []
+  }
+]

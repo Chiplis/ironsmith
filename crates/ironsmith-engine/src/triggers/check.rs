@@ -3955,6 +3955,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         let mut fired = false;
         let mut matches: Vec<TriggeredAbilityEntry> = Vec::new();
         let mut counter_groups: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
+        let mut attack_groups = std::collections::HashSet::new();
         for trigger_event in events.iter().copied() {
             for &source in candidate_sources {
                 let mut ctx = TriggerContext::for_delayed_source(
@@ -4123,6 +4124,17 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                             continue;
                         }
                         counter_groups.insert(key, matches.len());
+                    }
+                    if let Some(group @ (
+                        crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerAttackActor(_)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerAttackDefender(_)
+                    )) = delayed.trigger.simultaneous_trigger_key(&entry.triggering_event)
+                        && !attack_groups.insert((source, group))
+                    {
+                        // The declaration receipt already carries every participant.
+                        // Scope deduplication to this registration and this action:
+                        // later combats and identical registrations remain distinct.
+                        continue;
                     }
                     matches.push(entry);
                 }

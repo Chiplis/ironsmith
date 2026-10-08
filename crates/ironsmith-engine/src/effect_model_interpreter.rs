@@ -313,7 +313,8 @@ where
                 convert_effects(payload.if_true.iter().cloned(), hooks)?,
                 convert_effects(payload.if_false.iter().cloned(), hooks)?,
             )
-            .with_surface(payload.surface),
+            .with_surface(payload.surface)
+            .with_condition_result(payload.capture_condition_result),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::IfEffect<M::Effect>>(&effect) {
@@ -790,13 +791,15 @@ where
             payload.target.clone(),
             payload.until.clone(),
         )
+        .with_filter(payload.damage_filter.clone())
         .with_follow_up_effects(convert_effects(
             payload.follow_up_effects.iter().cloned(),
             hooks,
         )?);
         if payload.combat_only {
-            prevent = prevent.with_filter(crate::prevention::DamageFilter::combat());
+            prevent.damage_filter.combat_only = true;
         }
+        prevent.source_color_of_your_choice = payload.source_color_of_your_choice;
         return Ok(Effect::new(prevent));
     }
     if let Some(payload) =
@@ -807,6 +810,7 @@ where
             payload.target.clone(),
             payload.until.clone(),
         )
+        .with_filter(payload.damage_filter.clone())
         .with_follow_up_effects(convert_effects(
             payload.follow_up_effects.iter().cloned(),
             hooks,
@@ -831,6 +835,11 @@ where
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RemoveAnyCountersAmongEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RemoveAnyCountersFromSourceEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1295,7 +1304,7 @@ where
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RepeatProcessPromptEffect>(&effect) {
         return Ok(Effect::new(crate::effects::RepeatProcessPromptEffect::new(
             payload.kind,
-        )));
+        ).with_decider(payload.decider.clone())));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RearrangeLookedCardsInLibraryEffect>(&effect)

@@ -2818,8 +2818,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
             amount,
             target,
             duration,
-            source_of_your_choice,
-            protect_you_and_permanents_you_control,
+            combat_only,
             follow_up_effects,
             ..
         }) => {
@@ -2835,7 +2834,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                 ));
                 return true;
             }
-            if sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
+            if !*combat_only && sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
                 let replacement = EffectAst::subject_verb_prevent_damage_to_target_put_counters(
                     Some(amount.clone()),
                     target.clone(),
@@ -2850,15 +2849,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                     Value::EventValue(crate::effect::EventValueSpec::Amount),
                     TargetAst::AnyTarget(None),
                 );
-                let replacement = EffectAst::subject_verb_prevent_damage_with_options(
-                    amount.clone(),
-                    target.clone(),
-                    duration.clone(),
-                    *source_of_your_choice,
-                    *protect_you_and_permanents_you_control,
-                    vec![follow_up],
-                );
-                *effects.last_mut().expect("checked") = replacement;
+                follow_up_effects.push(follow_up);
                 return true;
             }
             if matches!(target, TargetAst::AnyTarget(Some(_)))

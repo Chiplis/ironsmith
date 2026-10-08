@@ -111,6 +111,8 @@ pub struct OntoBattlefieldDestinationShape {
     pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
     pub rest_graveyard_target: Option<Vec<OwnedLexToken>>,
     pub controller: Option<BattlefieldControllerShape>,
+    /// A contextual player is not interchangeable with each card's owner.
+    pub relative_controller: bool,
     pub supported_tail: bool,
 }
 

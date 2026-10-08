@@ -9,6 +9,7 @@ pub struct PreventNextDamageShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
     pub source_of_your_choice: bool,
     pub protects_you_and_permanents_you_control: bool,
+    pub combat_only: bool,
 }
 #[derive(Debug, Clone)]
 pub struct PreventNextTimeDamageShape<'a> {
@@ -391,9 +392,20 @@ fn parse_prevent_next_damage_lexed<'a>(
     opt(primitives::kw("the")).parse_next(input)?;
     primitives::kw("next").parse_next(input)?;
     let amount_tokens = any.void().take().parse_next(input)?;
-    primitives::phrase(&["damage", "that", "would", "be", "dealt", "to"]).parse_next(input)?;
-    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
-    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::phrase(&["damage", "that", "would", "be", "dealt"]).parse_next(input)?;
+    let duration_first = opt(primitives::phrase(&["this", "turn"]))
+        .parse_next(input)?.is_some();
+    primitives::kw("to").parse_next(input)?;
+    let target_tokens = if duration_first {
+        repeat_till(1.., any.void(), peek(alt((
+            primitives::kw("by").void(), primitives::sentence_end(),
+        )))).map(|((), _)| ()).take().parse_next(input)?
+    } else {
+        let target = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+        primitives::phrase(&["this", "turn"]).parse_next(input)?;
+        target
+    };
     let source_of_your_choice = opt((primitives::kw("by"), source_of_your_choice))
         .parse_next(input)?
         .is_some();
@@ -409,6 +421,7 @@ fn parse_prevent_next_damage_lexed<'a>(
         target_tokens,
         source_of_your_choice,
         protects_you_and_permanents_you_control,
+        combat_only,
     })
 }
 

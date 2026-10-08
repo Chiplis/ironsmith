@@ -140,6 +140,11 @@ pub(super) fn read_from_among_them(
     if let Some(shape) = from_among_shape
         && shape.destination == cca_shapes::FromAmongDestinationShape::Battlefield
     {
+        if cca_shapes::has_relative_collection_entry_controller(tokens) {
+            return Err(CardTextError::ParseError(
+                "contextual-controller collection entry requires an actor-owned selection program".into(),
+            ));
+        }
         let filter = crate::effect_sentences::parse_looked_card_choice_filter(shape.filter_tokens)
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(

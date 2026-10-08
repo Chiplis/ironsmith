@@ -28,7 +28,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::rules::state_based::check_state_based_actions;
 use crate::triggers::TriggerQueue;
-use crate::turn::{execute_cleanup_step, execute_untap_step_with};
+use crate::turn::execute_cleanup_step;
 
 /// What the caller should do next after calling [`TurnRunner::advance`].
 #[derive(Debug)]
@@ -789,6 +789,9 @@ pub struct TurnRunner {
     pending_attacking_bands: Option<Vec<Vec<ObjectId>>>,
     /// Mandatory choices for permanents that may remain tapped this untap step.
     pending_untap_choices: Option<PendingUntapChoices>,
+    /// Original occurrence boundary while optional untap choices suspend a
+    /// lane. Retried actions use this receipt rather than newly registered state.
+    pending_untap_boundary: Option<crate::turn::UntapStepBoundary>,
     pending_attraction_choices: Option<PendingUntapChoices>,
     /// Choices made while a restart's deferred cards enter (CR 726.4).
     pending_restart_entry_choices: Option<PendingUntapChoices>,
@@ -865,6 +868,7 @@ impl TurnRunner {
             pending_attackers: None,
             pending_attacking_bands: None,
             pending_untap_choices: None,
+            pending_untap_boundary: None,
             pending_attraction_choices: None,
             pending_restart_entry_choices: None,
             pending_attacker_optional_costs: None,
@@ -935,11 +939,17 @@ impl TurnRunner {
         game: &mut GameState,
         tq: &mut TriggerQueue,
     ) -> Result<TurnAction, GameLoopError> {
+        let retrying_untap_choice = self.has_pending_untap_continuation();
         let runner_checkpoint = self.clone();
         let game_checkpoint = game.clone();
         let queue_checkpoint = tq.clone();
         let result = self.advance_inner(game, tq);
-        if matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution()) {
+        if (retrying_untap_choice && result.is_err())
+            || matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution())
+        {
+            // Retain the accepted prefix and submitted response together with
+            // the original untap boundary. A replacement error must not turn
+            // a resumed step into a fresh optional-choice collection.
             *self = runner_checkpoint;
             game.restore_execution_checkpoint(game_checkpoint, false);
             *tq = queue_checkpoint;
@@ -970,7 +980,7 @@ impl TurnRunner {
         }
         let active_player = game.turn.active_player;
         let skipped_state = match self.state {
-            TurnState::Untap => Some((Step::Untap, false)),
+            TurnState::Untap if self.pending_untap_boundary.is_none() => Some((Step::Untap, false)),
             TurnState::Upkeep => Some((Step::Upkeep, false)),
             TurnState::Draw => Some((Step::Draw, true)),
             TurnState::BeginCombat => Some((Step::BeginCombat, false)),
@@ -1061,6 +1071,7 @@ impl TurnRunner {
                 }
 
                 self.pending_untap_choices = None;
+                self.pending_untap_boundary = None;
                 self.pending_boolean = None;
                 if let Some(prompt) = self.run_untap_step_with_choices(game, Vec::new())? {
                     self.state = TurnState::Untap;
@@ -1350,6 +1361,12 @@ impl TurnRunner {
             }
 
             TurnState::DeclareAttackersDecision => {
+                // An added declaration step can share the same combat phase.
+                // Synchronize live combat, then invalidate only step evidence;
+                // phase-wide melee history and existing attackers remain intact.
+                self.sync_combat_from_game(game);
+                self.combat.last_attack_declaration_step_players = None;
+                game.combat = Some(self.combat.clone());
                 game.turn.step = Some(Step::DeclareAttackers);
                 game.reset_priority_for_new_window();
                 self.pending_attacker_optional_costs = None;
@@ -2202,6 +2219,12 @@ impl TurnRunner {
     /// skipped phase's exact continuation. Native savepoints retain both.
     pub fn has_pending_mana_loss_continuation(&self) -> bool {
         self.pending_mana_loss_choices.is_some() || self.skipped_phase_boundary.is_some()
+    }
+
+    /// An actual untap occurrence is suspended with a retained prompt/prefix.
+    /// Hosts use this owner to keep a failed response retryable as one command.
+    pub fn has_pending_untap_continuation(&self) -> bool {
+        self.pending_untap_boundary.is_some() && self.pending_untap_choices.is_some()
     }
 
     /// True while a turn-based operation is waiting on a nested player choice.
@@ -3121,9 +3144,14 @@ impl TurnRunner {
         answers: Vec<AttackCostAnswer>,
     ) -> Result<Option<DecisionContext>, GameLoopError> {
         let mut hypothetical = game.clone();
+        if self.pending_untap_boundary.is_none() {
+            self.pending_untap_boundary = Some(crate::turn::capture_untap_step_boundary(&mut hypothetical)
+                .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?);
+        }
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
-        execute_untap_step_with(&mut hypothetical, &mut dm)
-            .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+        crate::turn::execute_untap_step_with_boundary(
+            &mut hypothetical, &mut dm, self.pending_untap_boundary.as_ref().unwrap(),
+        ).map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
         if let Some(prompt) = dm.pending_prompt.take() {
             self.pending_untap_choices = Some(PendingUntapChoices {
                 answers,
@@ -3133,6 +3161,7 @@ impl TurnRunner {
             return Ok(Some(prompt));
         }
         *game = hypothetical;
+        self.pending_untap_boundary = None;
         Ok(None)
     }
 

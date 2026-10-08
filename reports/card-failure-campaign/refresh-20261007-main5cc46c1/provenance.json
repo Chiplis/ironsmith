@@ -1,0 +1,409 @@
+{
+  "binary": {
+    "binary_bytes": 304607288,
+    "binary_path": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/target/release/sync_card_status_db",
+    "binary_sha256": "1805d50224a25e4251c85049fb3e438edfceba4f5860e34d8a77fe6f8a1a00c3",
+    "build_completed": true,
+    "build_log_sha256": "e3a958a088918b122dd32a10d19144c53c1ff1864094e6277f2b911034cb8a8e",
+    "cargo_run_completed": true,
+    "cargo_verbose": "cargo 1.99.0 (5f94df478 2026-08-27)\nrelease: 1.99.0\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Debian 13.0.0 (trixie) [64-bit]\n",
+    "completed_build_log_line": "Finished `release` profile [optimized] target(s) in 31m 46s",
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "256",
+      "CARGO_PROFILE_RELEASE_DEBUG": "0",
+      "CARGO_PROFILE_RELEASE_OPT_LEVEL": "1",
+      "RAYON_NUM_THREADS": "1"
+    },
+    "exit_code": 0,
+    "finished_at": "2026-10-07T13:34:12.785232+00:00",
+    "integrated_build_and_run_command": [
+      "cargo",
+      "run",
+      "--locked",
+      "-p",
+      "ironsmith-tools",
+      "--bin",
+      "sync_card_status_db",
+      "--release",
+      "--",
+      "--cards",
+      "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/data/cards-current.json",
+      "--db-path",
+      "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/audit/status.sqlite3"
+    ],
+    "observed_at": "2026-10-07T12:56:20.285530+00:00",
+    "rustc_verbose": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "source": {
+      "commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "status": "",
+      "tree": "2ef96adada1e40b7f39922f24a1e4788de1a7386"
+    }
+  },
+  "bulk_metadata": {
+    "compressed_size": 78779281,
+    "description": "A JSON file containing every card object on Scryfall in English or the printed language if the card is only available in one language.",
+    "id": "e2ef41e3-5778-4bc2-af3f-78eca4dd9c23",
+    "jsonl_download_uri": "https://data.scryfall.io/default-cards/default-cards-20261007090547.jsonl.gz",
+    "name": "Default Cards",
+    "object": "bulk_data",
+    "type": "default_cards",
+    "updated_at": "2026-10-07T09:05:47.951+00:00",
+    "uri": "https://api.scryfall.com/bulk-data/e2ef41e3-5778-4bc2-af3f-78eca4dd9c23"
+  },
+  "changed_scryfall_fields": {
+    "changed_top_level_fields": {
+      "all_parts": 38,
+      "arena_id": 2,
+      "artist": 66,
+      "artist_ids": 66,
+      "booster": 4,
+      "border_color": 62,
+      "card_back_id": 1,
+      "card_faces": 1,
+      "cardmarket_id": 107,
+      "collector_number": 109,
+      "edhrec_rank": 31230,
+      "finishes": 12,
+      "flavor_name": 1,
+      "flavor_text": 41,
+      "foil": 6,
+      "frame": 4,
+      "frame_effects": 82,
+      "games": 101,
+      "highres_image": 3,
+      "id": 109,
+      "illustration_id": 66,
+      "image_status": 3,
+      "image_updated_at": 122,
+      "image_uris": 122,
+      "keywords": 1,
+      "legalities": 2,
+      "mtgo_foil_id": 2,
+      "mtgo_id": 101,
+      "multiverse_ids": 18,
+      "nonfoil": 8,
+      "penny_rank": 17220,
+      "preview": 17,
+      "prices": 23040,
+      "promo": 98,
+      "promo_types": 105,
+      "purchase_uris": 109,
+      "rarity": 4,
+      "related_uris": 18,
+      "released_at": 28,
+      "reprint": 18,
+      "resource_id": 83,
+      "rulings_uri": 109,
+      "scryfall_set_uri": 106,
+      "scryfall_uri": 109,
+      "security_stamp": 7,
+      "set": 106,
+      "set_id": 106,
+      "set_name": 106,
+      "set_search_uri": 106,
+      "set_type": 105,
+      "set_uri": 106,
+      "story_spotlight": 2,
+      "tcgplayer_id": 108,
+      "uri": 109,
+      "variation": 1,
+      "variation_of": 1,
+      "watermark": 12
+    },
+    "note": "These are source record differences, not compiler outcomes."
+  },
+  "full_local_artifacts": {
+    "audit/snapshot.json": {
+      "bytes": 47132936,
+      "sha256": "46124348e86cfd4a0c80f3a502dd78ad5ac1c911f96d06425ae1cef24c3cb183"
+    },
+    "audit/status.sqlite3": {
+      "bytes": 1352282112,
+      "sha256": "7758d41ea0030af66764ec90f7560ac2a02c96eeab75c78220cc9c00f0597411"
+    },
+    "audit/stderr.log": {
+      "bytes": 2358056,
+      "sha256": "b7a1ed1bbdd2e6df2a1d0edfe26d0e7f67fc5d9c0f1dcd76ac38081c05d7dd31"
+    },
+    "audit/stdout.log": {
+      "bytes": 962,
+      "sha256": "6372a83c660fb49b0cd4fa73cb9dc558b742288bf853c02ffa131eddc6cd5843"
+    },
+    "build.stderr.log": {
+      "bytes": 66782,
+      "sha256": "e3a958a088918b122dd32a10d19144c53c1ff1864094e6277f2b911034cb8a8e"
+    },
+    "changed-compiled-definitions.json": {
+      "bytes": 685336,
+      "sha256": "a238901f8645dbcd74c3ccc9d99ca51fcacf34da60568a60bcb8c7efefa898f1"
+    },
+    "harness.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "harness.stdout.log": {
+      "bytes": 906,
+      "sha256": "a381c8997cbbcf86452595fdac44e335752f938e1586934c8cf13ab3660bc861"
+    },
+    "original-identity-comparison.json": {
+      "bytes": 8697832,
+      "sha256": "d3623da4f551b63a2fa7cf3f7f75be9d5be88e99e83cce26b1e905fcb7b6134b"
+    }
+  },
+  "offline_tag_join": {
+    "authoritative_status_counts": {
+      "compiled_with_allow_unsupported": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      },
+      "parse_failed": {
+        "compile_entries": 55,
+        "unique_oracle_ids": 54
+      }
+    },
+    "diagnostic_category_counts": {
+      "allow_unsupported_fallback": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      },
+      "parser_failure": {
+        "compile_entries": 40,
+        "unique_oracle_ids": 40
+      },
+      "semantic_output_failure": {
+        "compile_entries": 14,
+        "unique_oracle_ids": 13
+      },
+      "unsupported_mechanic": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      }
+    },
+    "failing_compile_entries": 56,
+    "note": "Authoritative parse_failed includes semantic-output-marker rejections and generated unsupported mechanics. These are not extra failures and are distinct from accepted semantic_mismatch heuristic flags. The primary unresolved gate is unchanged: strict_compiled with no parse error, parse loss or unimplemented content. One Oracle identity can have multiple alias entry outcomes, so status/category unique counts are not additive.",
+    "tag_provenance": {
+      "download_uri": "https://data.scryfall.io/oracle-tags/oracle-tags-20261003090035.jsonl.gz",
+      "functional_selection_sha256": "fd85705c197a2654c38e421b07545e7e1a45af417665a7d37118e60fdb5632e4",
+      "metadata_sha256": "56373622482be80972a84ee2cdc71784eaecb825e0202fe8bdc414fe64ddb39c",
+      "raw_file": "oracle-tags-20261003090035.jsonl.gz",
+      "raw_sha256": "1a6c699e871041a077a7f20f964fb1a9679906fb2184e7941b8bc2ea9c43c6a1",
+      "source_uri": "https://api.scryfall.com/bulk-data/bd8df61e-5d0a-47a2-9086-40137a645b98",
+      "updated_at": "2026-10-03T09:00:35.876+00:00"
+    },
+    "tag_scope": "Pinned October 3 selected functional categories; card-level overlapping triage hints, not root-cause or runtime correctness proof. Ancestor-only labels are derived.",
+    "unique_rehold_identities": 55
+  },
+  "refresh": {
+    "authorizations": [
+      "One-time recompile/card resync requested October 7 12:11 UTC.",
+      "Latest-main work approved October 7 12:02 UTC."
+    ],
+    "build_environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "256",
+      "CARGO_PROFILE_RELEASE_DEBUG": "0",
+      "CARGO_PROFILE_RELEASE_OPT_LEVEL": "1",
+      "RAYON_NUM_THREADS": "1"
+    },
+    "completed": true,
+    "historical_counts_are_not_current_measurements": true,
+    "initial_preflight_events": [
+      "Tracked Python bytecode regenerated by downloader import; restored exact HEAD bytes before compilation and disabled bytecode writes.",
+      "No Rust toolchain in fresh executor; official minimal Rust 1.99.0 installed only inside ignored validation report area. No compiler started during either preflight."
+    ],
+    "input_sha256": {
+      "Cargo.lock": "6c9c3a63e0c4e29dd4c2fb58f04b136d2aa21f6fb99801411e2e9fd05d2bead2",
+      "crates/ironsmith-tools/src/bin/sync_card_status_db.rs": "331e77912b9a244831797f59efc3caa04e66117d3447ccf6c607ad627d4946cf",
+      "crates/ironsmith-tools/src/tooling.rs": "07a6f500d143bbec0014756accb1d51b4247893a54e9db3e6bf5314d271151c8",
+      "fixtures/card-failure-campaign/baseline-e8740178.snapshot.json.gz": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "fixtures/card-failure-campaign/baseline-summary.json": "a4a4fcc4e52a0b1a3d2f8d02705a6c915fe7e4d8b8e8228651a05c942d47ad10",
+      "fixtures/card-failure-campaign/cards-20261003.json.xz": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+      "fixtures/card-failure-campaign/source-coverage.json": "d7ac5e876b1dace5d7fa6f16f94edf988b5988497e8a810c7c223385bea9dcd0",
+      "scripts/card_failure_campaign.py": "ca9b346f2427d10beb879110490dfad3ceff471d811097466fd6e74bb63aec90",
+      "scripts/download_scryfall_cards.py": "673033fd72aeae43d7db7fe6f1a84fc9c0dfdffc9ce88ea74eea3ac3683f92a1",
+      "scripts/stream_scryfall_blocks.py": "3c86e0b585bcf5a60df6efe2ef3ef685665ac5f401ee72c9b2ca88546aa0977f"
+    },
+    "no_further_compiler_or_test_execution": true,
+    "no_recurring_build_or_test_override": true,
+    "operation": "one-time current-default-cards authoritative compile refresh",
+    "profile_reason": "Same low-memory release overrides recorded by successful historical stack-07 build; no source changes.",
+    "python_version": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "remote_main_final": {
+      "command": [
+        "git",
+        "ls-remote",
+        "origin",
+        "refs/heads/main"
+      ],
+      "observed_at": "2026-10-07T13:35:40.139069+00:00",
+      "observed_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "still_matches_audited_source": true
+    },
+    "remote_main_preflight": {
+      "advanced_from_requested_base": false,
+      "command": [
+        "git",
+        "ls-remote",
+        "origin",
+        "refs/heads/main"
+      ],
+      "observed_at_utc_approximate": "2026-10-07T12:14:28Z",
+      "observed_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1"
+    },
+    "source": {
+      "commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "status": "",
+      "tree": "2ef96adada1e40b7f39922f24a1e4788de1a7386"
+    },
+    "toolchain_install_source": "https://sh.rustup.rs",
+    "toolchain_version": "1.99.0-x86_64-unknown-linux-gnu"
+  },
+  "run": {
+    "audit_mode": "authoritative_full_corpus",
+    "build_manifest": null,
+    "cargo_version": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "checkout_state_at_start": {
+      "commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "status": "",
+      "tree": "2ef96adada1e40b7f39922f24a1e4788de1a7386"
+    },
+    "cleared_ironsmith_environment_keys": [],
+    "command": [
+      "cargo",
+      "run",
+      "--locked",
+      "-p",
+      "ironsmith-tools",
+      "--bin",
+      "sync_card_status_db",
+      "--release",
+      "--",
+      "--cards",
+      "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/data/cards-current.json",
+      "--db-path",
+      "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/audit/status.sqlite3"
+    ],
+    "completed": true,
+    "dataset_sha256": "de4cedd51e320d2983d80b38713213c0273fc7272d5e2a89908ec050061aeca5",
+    "environment": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_PROFILE_DEV_DEBUG": null,
+      "CARGO_PROFILE_RELEASE_DEBUG": "0",
+      "CARGO_TARGET_DIR": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/target",
+      "RAYON_NUM_THREADS": "1",
+      "RUSTFLAGS": null
+    },
+    "exit_code": 0,
+    "finished_at": "2026-10-07T13:34:12.785232+00:00",
+    "processes": 1,
+    "repo": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007",
+    "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "schema_version": 1,
+    "shards": [
+      {
+        "canonical_names_sha256": "a87aae7335c88574841edb5e65899b554e61e81a7e3348f005e81339509e7dd0",
+        "card_count": 32209,
+        "command": [
+          "cargo",
+          "run",
+          "--locked",
+          "-p",
+          "ironsmith-tools",
+          "--bin",
+          "sync_card_status_db",
+          "--release",
+          "--",
+          "--cards",
+          "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/data/cards-current.json",
+          "--db-path",
+          "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/audit/status.sqlite3"
+        ],
+        "directory": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/audit",
+        "exit_code": 0,
+        "index": 0
+      }
+    ],
+    "snapshot_sha256": "46124348e86cfd4a0c80f3a502dd78ad5ac1c911f96d06425ae1cef24c3cb183",
+    "source": {
+      "commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "status": "",
+      "tree": "2ef96adada1e40b7f39922f24a1e4788de1a7386"
+    },
+    "started_at": "2026-10-07T12:21:39.944056+00:00"
+  },
+  "scripts": {
+    "analyze_refresh.py": {
+      "sha256": "657b0668cea08db749f97d3cd54b8ab0a4d0829f9f4f646f0f40a2e99402945f"
+    },
+    "enrich_prior_and_causes.py": {
+      "sha256": "f1b6456a09c0d8e23ceccdc6ff1cf383ff7ba9060242f6413954dbce46d54c75"
+    },
+    "prepare_packet.py": {
+      "sha256": "0c001c2da827d6fa4ec7790d2a5de198ed0d095ec5a95203048043f93e12558a"
+    },
+    "render_report.py": {
+      "sha256": "da6cba467e93167b4c3f5d69b7319478e3a1a32a30a32ae969d0f5d5de0d3e01"
+    },
+    "reproduce-download.py": {
+      "sha256": "b1126a610e3140451aa2ce284cf32e7b219f87bdf302e945e648789cc2ee6cc0"
+    },
+    "run-refresh.sh": {
+      "sha256": "cdce04bc21b3ccd168bb0760879810d1f80f0b05ac4a5cfc1c7f993f06755a19"
+    }
+  },
+  "semantic_projection_rule": {
+    "digest": "SHA-256 of name-sorted records encoded as UTF-8 canonical JSON with sorted keys, ensure_ascii=false and compact separators. Complete fields consumed by the canonical loader are included.",
+    "faces": "same fields for all card_faces",
+    "fields": [
+      "name",
+      "oracle_id",
+      "oracle_text",
+      "mana_cost",
+      "type_line",
+      "power",
+      "toughness",
+      "loyalty",
+      "defense",
+      "color_indicator",
+      "colors",
+      "attraction_lights",
+      "layout",
+      "first_printed_set_name"
+    ],
+    "function": "analyze_refresh.py semantic(c)"
+  },
+  "supplemental_new_cohort": {
+    "counts": [
+      {
+        "current_main_supported": 2,
+        "current_main_unresolved": 11,
+        "family_id": "copular-characteristic-statics",
+        "identities": 13
+      },
+      {
+        "current_main_supported": 0,
+        "current_main_unresolved": 3,
+        "family_id": "battlefield-destination-references",
+        "identities": 3
+      },
+      {
+        "current_main_supported": 6,
+        "current_main_unresolved": 5,
+        "family_id": "temporary-prevention-bindings",
+        "identities": 11
+      }
+    ],
+    "local_cohort_head": "b39a94f1799ace53f0a4562acfaeb1f5577145ac",
+    "local_cohort_source_path": "/workspace/scratch/bc560e8d90ff/ironsmith-next-series-01",
+    "local_fixture_sha256": {
+      "fixtures/battlefield_destination_references.json.fixture": "47c7e2029dbf2267deaf967c90888ca424b41dfd97d7ba536432a28498fd5490",
+      "fixtures/copular_characteristic_statics.json.fixture": "f3b8aa59659bce274023070d39e9f200f323d0ff46fcd56761eda02b92cfdff6",
+      "fixtures/temporary_prevention_bindings.json.fixture": "031a4ca600119f325a0e1ffb477b089d0bcbe9ac511ce855aeb552f560f411b8"
+    },
+    "local_ledger_sha256": "3ba5d4e70774198c78ec98df0b03b6b01868a65467f5a08c5a10847a4ce8e8c4",
+    "measurement_source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "scope": "Read-only identity join against the completed clean-main audit. Current local source changes and fixture executable scenarios remain UNRUN; main outcomes do not validate or reject the new implementations.",
+    "selection": "The three current local source-family baseline_entries lists select 13 + 3 + 11 proposed identities; fixture partial/control rows are not treated as part of the 27 cohort."
+  }
+}

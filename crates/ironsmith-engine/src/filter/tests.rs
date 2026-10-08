@@ -528,6 +528,7 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
     game.combat = Some(crate::combat_state::CombatState {
         block_declaration_complete: true,
         attacked_permanent_types: Default::default(),
+        last_attack_declaration_step_players: None,
         attackers: vec![crate::combat_state::AttackerInfo {
             creature: attacker.id,
             target: crate::combat_state::AttackTarget::Player(bob),

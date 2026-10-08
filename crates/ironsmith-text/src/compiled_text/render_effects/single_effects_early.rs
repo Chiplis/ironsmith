@@ -5911,14 +5911,23 @@ pub(super) fn describe_simple_exiled_card_target(spec: &ChooseSpec) -> Option<St
     Some(format!("target {base}"))
 }
 
-pub(super) fn describe_source_card_from_exile_target(spec: &ChooseSpec) -> Option<&'static str> {
+pub(super) fn describe_source_card_from_qualified_zone_target(spec: &ChooseSpec) -> Option<&'static str> {
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
-    if filter.source && filter.zone == Some(Zone::Exile) {
-        Some("this card from exile")
-    } else {
-        None
+    if !filter.source { return None; }
+    if filter.zone == Some(Zone::Graveyard) {
+        let mut remainder = filter.clone();
+        remainder.zone = None;
+        remainder.owner = None;
+        if !remainder.is_source_only() { return None; }
+    }
+    match (filter.zone, &filter.owner) {
+        (Some(Zone::Exile), _) => Some("this card from exile"),
+        (Some(Zone::Graveyard), Some(PlayerFilter::You)) => Some("this card from your graveyard"),
+        (Some(Zone::Graveyard), None) =>
+            Some("this card from its owner's graveyard"),
+        _ => None,
     }
 }
 

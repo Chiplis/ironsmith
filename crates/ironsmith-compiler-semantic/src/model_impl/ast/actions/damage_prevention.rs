@@ -69,6 +69,7 @@ pub enum DamagePreventionActionAst {
         amount: Value,
         target: TargetAst,
         duration: Until,
+        combat_only: bool,
         source_of_your_choice: bool,
         protect_you_and_permanents_you_control: bool,
         follow_up_effects: Vec<EffectAst>,
@@ -92,6 +93,7 @@ pub enum DamagePreventionActionAst {
         duration: Until,
         source_filter: ObjectFilter,
         source_would_deal_surface: bool,
+        of_chosen_color: bool,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,

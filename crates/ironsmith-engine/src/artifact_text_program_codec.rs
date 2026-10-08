@@ -96,6 +96,13 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             source: model.source.clone(), effect: Box::new(encode_runtime_effect((*model.effect).clone())?),
         });
     }
+    if let Some(model) = effect.downcast_ref::<RepeatProcessPromptEffect>() {
+        if model.fallback != crate::decision::FallbackStrategy::Decline {
+            return Err(unsupported("native repeat prompt fallback needs an explicit transport model"));
+        }
+        return encoded("RepeatProcessPromptEffect", ironsmith_core::RepeatProcessPromptEffect::new(model.kind)
+            .with_decider(model.decider.clone()));
+    }
     if let Some(model) = effect.downcast_ref::<MayEffect>() {
         if model.fallback != crate::decision::FallbackStrategy::Decline {
             return Err(unsupported("native optional-action fallback needs an explicit transport model"));
@@ -120,6 +127,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
         return encoded("ConditionalEffect", ironsmith_core::ConditionalEffect {
             condition: model.condition.clone(), if_true: children(&model.if_true)?,
             if_false: children(&model.if_false)?, surface: model.surface,
+            capture_condition_result: model.capture_condition_result,
         });
     }
     if let Some(model) = effect.downcast_ref::<IfEffect>() {
@@ -176,6 +184,11 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
     if let Some(model) = effect.downcast_ref::<ForEachTaggedPlayerEffect>() {
         return encoded("ForEachTaggedPlayerEffect", ironsmith_core::ForEachTaggedPlayerEffect {
             tag: model.tag.clone(), effects: children(&model.effects)?, require_evidence: model.require_evidence,
+        });
+    }
+    if let Some(model) = effect.downcast_ref::<RepeatProcessEffect>() {
+        return encoded("RepeatProcessEffect", ironsmith_core::RepeatProcessEffect {
+            effects: children(&model.effects)?, condition: model.condition, predicate: model.predicate.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<RepeatEffectsEffect>() {

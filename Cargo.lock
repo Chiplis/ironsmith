@@ -1647,6 +1647,7 @@ dependencies = [
  "ironsmith-card-catalog",
  "ironsmith-card-source",
  "ironsmith-compiled-artifact",
+ "ironsmith-compiler",
  "ironsmith-compiler-runtime",
  "ironsmith-core",
  "ironsmith-dynamic-compile",

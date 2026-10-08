@@ -256,6 +256,16 @@ pub enum Until {
     /// A fixed resolving controller's next untap step, distinct from the
     /// affected permanent's current controller after a control change.
     YourNextUntapStep,
+    /// Ends as the exact affected object's current controller's next actual
+    /// untap step begins, before phasing. Skipped steps do not begin.
+    UntilControllersNextUntapStep {
+        object: ContinuousDurationObject,
+    },
+    /// A rule applying during a named player's next actual untap step.
+    /// Resolution freezes the player to Specific; the affected set stays live.
+    PlayersNextUntapStep {
+        player: PlayerFilter,
+    },
 }
 
 impl Until {
@@ -310,6 +320,12 @@ pub enum EffectPredicate {
     Value(crate::effect_model::Comparison),
     Chosen,
     WasDeclined,
+    /// A qualifying subset of one exact producer's affected objects shares
+    /// the characteristic. Empty/short collections cannot satisfy the gate.
+    AffectedObjectsShare {
+        required_count: u32,
+        characteristic: crate::ObjectCharacteristic,
+    },
 }
 
 /// Authored grammatical subject for a prior-result predicate.
@@ -697,6 +713,13 @@ pub enum DelayedTriggerSpec {
         cause_controller: Option<PlayerFilter>,
         effect_like_only: bool,
         one_or_more: bool,
+    },
+    /// Append-only: preserve published delayed-trigger variant ordinals.
+    /// One player declaration, grouped independently of individual attackers.
+    PlayerAttackDeclaration {
+        attacker: PlayerFilter,
+        defender: PlayerFilter,
+        grouping: crate::trigger_model::PlayerAttackGrouping,
     },
 }
 
@@ -1675,6 +1698,10 @@ pub struct ConditionalEffect<E> {
     pub if_true: Vec<E>,
     pub if_false: Vec<E>,
     pub surface: ConditionalSurface,
+    /// Internal continuation receipt: report the condition's selected branch
+    /// before its effects run, independently of their success or state changes.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub capture_condition_result: bool,
 }
 
 impl<E> ConditionalEffect<E> {
@@ -1688,6 +1715,7 @@ impl<E> ConditionalEffect<E> {
             if_true,
             if_false,
             surface: ConditionalSurface::LeadingIf,
+            capture_condition_result: false,
         }
     }
 
@@ -1704,6 +1732,7 @@ impl<E> ConditionalEffect<E> {
             if_true: effects,
             if_false: vec![],
             surface: ConditionalSurface::TrailingUnless,
+            capture_condition_result: false,
         }
     }
 
@@ -1715,7 +1744,13 @@ impl<E> ConditionalEffect<E> {
             if_true: effects,
             if_false: vec![],
             surface: ConditionalSurface::TrailingIf,
+            capture_condition_result: false,
         }
+    }
+
+    pub fn with_condition_result(mut self, capture: bool) -> Self {
+        self.capture_condition_result = capture;
+        self
     }
 
     pub fn with_surface(mut self, surface: ConditionalSurface) -> Self {

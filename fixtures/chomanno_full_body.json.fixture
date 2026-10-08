@@ -1,0 +1,10 @@
+{
+  "name": "Cho-Manno, Revolutionary",
+  "oracle_id": "91af5e35-b3b8-43ce-b1ea-997ed74e4ad2",
+  "mana_cost": "{2}{W}{W}",
+  "type_line": "Legendary Creature — Human Rebel",
+  "oracle_text": "Prevent all damage that would be dealt to Cho-Manno.",
+  "power": "2",
+  "toughness": "2",
+  "scryfall_uri": "https://scryfall.com/card/10e/12/cho-manno-revolutionary?utm_source=api"
+}

@@ -1073,57 +1073,14 @@ pub fn split_leading_result_prefix_lexed<'a>(
 pub fn split_leading_numeric_result_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(IfResultPredicate, &[OwnedLexToken])> {
-    let first = tokens.first()?;
-    let pipe_idx = structure_token_kind_index(tokens, TokenKind::Pipe)?;
-    if pipe_idx != 1 && pipe_idx < 3 {
-        return None;
-    }
-
-    let compact_range = compact_ascii_numeric_range(first);
-    let predicate = if pipe_idx == 1 {
-        if let Some((min, max)) = compact_range {
-            IfResultPredicate::Value(Comparison::BetweenInclusive(min, max))
-        } else {
-            let min = match first.kind {
-                TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
-                _ => return None,
-            };
-            IfResultPredicate::Value(Comparison::Equal(min))
-        }
-    } else {
-        let min = match first.kind {
-            TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
-            _ => return None,
-        };
-        let second = tokens.get(1)?;
-        let third = tokens.get(2)?;
-        if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
-            return None;
-        }
-        let max = match third.kind {
-            TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
-            _ => return None,
-        };
-        if min > max {
-            return None;
-        }
-        IfResultPredicate::Value(Comparison::BetweenInclusive(min, max))
-    };
-
-    let trailing_tokens = trim_lexed_commas(&tokens[pipe_idx + 1..]);
+    let shape = super::document_shapes::parse_numeric_result_prefix_tokens(tokens)?;
+    let predicate = IfResultPredicate::DieValue(shape.comparison);
+    let trailing_tokens = trim_lexed_commas(&tokens[shape.body_start..]);
     if trailing_tokens.is_empty() {
         return None;
     }
 
     Some((predicate, trailing_tokens))
-}
-
-fn compact_ascii_numeric_range(token: &OwnedLexToken) -> Option<(i32, i32)> {
-    if token.kind != TokenKind::Word {
-        return None;
-    }
-    let (min, max) = crate::word_primitives::parse_ascii_numeric_range(token.parser_text())?;
-    (min <= max).then_some((min, max))
 }
 
 pub fn split_trailing_if_clause_lexed<'a>(

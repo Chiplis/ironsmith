@@ -58,6 +58,9 @@ pub(crate) fn rewrite_continuous_target_words(target: &EffectTarget, change: Tex
 pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<Until, Error> {
     Ok(match until {
         Until::TurnsPass(value) => Until::TurnsPass(rewrite_value_words(value, change)?),
+        Until::PlayersNextUntapStep { player } => Until::PlayersNextUntapStep {
+            player: rewrite_player_filter_words(player, change)?,
+        },
         Until::ForAsLongAs(predicate) => {
             fn check(predicate: &ironsmith_core::ContinuousDurationPredicate) {
                 use ironsmith_core::ContinuousDurationPredicate as P;
@@ -76,7 +79,8 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
         | Until::YourNextTurn | Until::YourNextTurnEnd | Until::YourNextUpkeep
         | Until::ControllersNextUntapStep | Until::NextEndStep | Until::EndOfCombat
         | Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis
-        | Until::ObjectIsCast { .. } | Until::YourNextUntapStep => until.clone(),
+        | Until::ObjectIsCast { .. } | Until::YourNextUntapStep
+        | Until::UntilControllersNextUntapStep { .. } => until.clone(),
     })
 }
 

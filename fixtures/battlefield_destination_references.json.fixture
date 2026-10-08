@@ -1,0 +1,100 @@
+[
+  {
+    "name": "Charmed Griffin",
+    "oracle_id": "6a58f2a6-ff5e-4823-b3a7-49df14d64ffe",
+    "layout": "normal",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature — Griffin",
+    "oracle_text": "Flying\nWhen this creature enters, each other player may put an artifact or enchantment card onto the battlefield from their hand.",
+    "power": "3",
+    "toughness": "3",
+    "colors": ["W"],
+    "color_identity": ["W"],
+    "keywords": ["Flying"]
+  },
+  {
+    "name": "Dubious Challenge",
+    "oracle_id": "f73bf7c5-e43d-4684-8588-2fb400f2ca31",
+    "layout": "normal",
+    "mana_cost": "{3}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top ten cards of your library, exile up to two creature cards from among them, then shuffle. Target opponent may choose one of the exiled cards and put it onto the battlefield under their control. Put the rest onto the battlefield under your control.",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "keywords": []
+  },
+  {
+    "name": "Endless Whispers",
+    "oracle_id": "47630b28-c0bc-4911-8d76-33c6fcabf2d7",
+    "layout": "normal",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "Each creature has \"When this creature dies, choose target opponent. That player puts this card from its owner's graveyard onto the battlefield under their control at the beginning of the next end step.\"",
+    "colors": ["B"],
+    "color_identity": ["B"],
+    "keywords": []
+  },
+  {
+    "name": "Prince of Thralls",
+    "oracle_id": "e7f3b4bb-ebf5-4e59-8f0b-aa26f78e9edc",
+    "layout": "normal",
+    "mana_cost": "{4}{U}{B}{B}{R}",
+    "type_line": "Creature — Demon",
+    "oracle_text": "Whenever a permanent an opponent controls is put into a graveyard, put that card onto the battlefield under your control unless that opponent pays 3 life.",
+    "power": "7",
+    "toughness": "7",
+    "colors": ["B", "R", "U"],
+    "color_identity": ["B", "R", "U"],
+    "keywords": []
+  },
+  {
+    "name": "Tempting Wurm",
+    "oracle_id": "a2976426-108b-43a6-ab04-f71afac79893",
+    "layout": "normal",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Wurm",
+    "oracle_text": "When this creature enters, each opponent may put any number of artifact, creature, enchantment, and/or land cards from their hand onto the battlefield.",
+    "power": "5",
+    "toughness": "5",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "keywords": []
+  },
+  {
+    "name": "The Beamtown Bullies",
+    "oracle_id": "62d394e1-6e7d-4703-8fd8-494f0f043876",
+    "layout": "normal",
+    "mana_cost": "{1}{B}{R}{G}",
+    "type_line": "Legendary Creature — Ogre Devil Warrior",
+    "oracle_text": "Vigilance, haste\n{T}: Target opponent whose turn it is puts target nonlegendary creature card from your graveyard onto the battlefield under their control. It gains haste. Goad it. At the beginning of the next end step, exile it. (Until your next turn, that creature attacks each combat if able and attacks a player other than you if able.)",
+    "power": "4",
+    "toughness": "4",
+    "colors": ["B", "G", "R"],
+    "color_identity": ["B", "G", "R"],
+    "keywords": ["Goad", "Vigilance", "Haste"]
+  },
+  {
+    "name": "Trove Warden",
+    "oracle_id": "9056eba4-612b-4e82-8689-fe098241b007",
+    "layout": "normal",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Cat Beast",
+    "oracle_text": "Vigilance\nLandfall — Whenever a land you control enters, exile target permanent card with mana value 3 or less from your graveyard.\nWhen this creature dies, put each permanent card exiled with it onto the battlefield under the control of that card's owner.",
+    "power": "3",
+    "toughness": "4",
+    "colors": ["W"],
+    "color_identity": ["W"],
+    "keywords": ["Vigilance", "Landfall"]
+  },
+  {
+    "name": "Verdant Mastery",
+    "oracle_id": "b392fabc-51f2-4ae4-b21c-1c662e4c6953",
+    "layout": "normal",
+    "mana_cost": "{5}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "You may pay {3}{G} rather than pay this spell's mana cost.\nSearch your library for up to four basic land cards and reveal them. Put one of them onto the battlefield tapped under an opponent's control if the {3}{G} cost was paid. Put two of them onto the battlefield tapped under your control and the rest into your hand. Then shuffle.",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "keywords": []
+  }
+]

@@ -1108,9 +1108,10 @@ impl AnthemValueRuntimeExt for AnthemValue {
                     count,
                     AnthemCountExpression::UnspentMana { .. }
                         | AnthemCountExpression::TotalUnspentMana(_)
+                        | AnthemCountExpression::PlayerCounters(_, _)
                 ) {
                     i32::try_from(i128::from(*multiplier) * i128::from(resolved))
-                        .expect("checked mana anthem modifier domain")
+                        .expect("checked scalar anthem modifier domain")
                 } else {
                     multiplier * resolved
                 }
@@ -1125,10 +1126,11 @@ impl AnthemValueRuntimeExt for AnthemValue {
                     count,
                     AnthemCountExpression::UnspentMana { .. }
                         | AnthemCountExpression::TotalUnspentMana(_)
+                        | AnthemCountExpression::PlayerCounters(_, _)
                 ) {
                     let exact =
                         (i128::from(*multiplier) * i128::from(resolved)).min(i128::from(*maximum));
-                    i32::try_from(exact).expect("checked mana anthem modifier domain")
+                    i32::try_from(exact).expect("checked scalar anthem modifier domain")
                 } else {
                     (multiplier * resolved).min(*maximum)
                 }
@@ -1285,6 +1287,21 @@ fn matching_counter_source_location(
         .then_some((left_counter, left_location))
 }
 
+fn describe_player_counter_anthem_subject(
+    player: &PlayerFilter,
+    counter_type: CounterType,
+    plural: bool,
+) -> String {
+    let holder = match player {
+        PlayerFilter::You => "you have".to_string(),
+        PlayerFilter::Opponent => "your opponents have".to_string(),
+        PlayerFilter::Any => "all players have".to_string(),
+        other => format!("{} has", other.description()),
+    };
+    let noun = if plural { "counters" } else { "counter" };
+    format!("{} {noun} {holder}", counter_type.description())
+}
+
 fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
         AnthemCountExpression::MatchingFilter(filter) => {
@@ -1400,6 +1417,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             crate::target::PlayerFilter::Any => "a player's speed".to_string(),
             _ => "that player's speed".to_string(),
         },
+        AnthemCountExpression::PlayerCounters(player, counter_type) => {
+            describe_player_counter_anthem_subject(player, *counter_type, false)
+        }
         AnthemCountExpression::TotalUnspentMana(player) => {
             format!("the unspent mana {} have", player.description())
         }
@@ -1616,6 +1636,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
                 other.description()
             ),
         }),
+        AnthemCountExpression::PlayerCounters(player, counter_type) => {
+            Some(describe_player_counter_anthem_subject(player, *counter_type, false))
+        }
         AnthemCountExpression::TotalUnspentMana(player) => {
             Some(format!("unspent mana {} have", player.description()))
         }
@@ -1645,6 +1668,10 @@ fn describe_anthem_for_each_graveyard_count_expression(
 
 fn describe_anthem_where_x_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
+        AnthemCountExpression::PlayerCounters(player, counter_type) => format!(
+            "the number of {}",
+            describe_player_counter_anthem_subject(player, *counter_type, true),
+        ),
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
             format!(
                 "the greatest mana value among {}",
@@ -3140,12 +3167,52 @@ fn entered_battlefield_this_turn_count(
         .count() as i32
 }
 
+/// Exact player-side aggregate shared by discovery admission and evaluation.
+/// Player filters use the ability controller, never the affected creature's
+/// owner; only poison is shared by Two-Headed Giant teammates.
+fn player_counter_anthem_count(
+    player_filter: &PlayerFilter,
+    counter_type: CounterType,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> u128 {
+    let context = game.filter_context_for(controller, Some(source));
+    let mut seen_teams = std::collections::HashSet::new();
+    game.players
+        .iter()
+        .filter(|player| {
+            player.is_in_game()
+                && crate::filter::player_filter_matches_game(
+                    player_filter,
+                    player.id,
+                    game,
+                    &context,
+                )
+        })
+        .filter(|player| {
+            counter_type != CounterType::Poison
+                || game.two_headed_giant().is_none()
+                || game
+                    .team_index_for(player.id)
+                    .is_none_or(|team| seen_teams.insert(team))
+        })
+        .map(|player| u128::from(player.counter_count(counter_type)))
+        .sum()
+}
+
 pub(crate) fn resolve_anthem_count_expression_checked(
     count: &AnthemCountExpression,
     game: &GameState,
     source: ObjectId,
     controller: PlayerId,
 ) -> Result<i32, crate::effects::ExecutionError> {
+    if let AnthemCountExpression::PlayerCounters(player, counter_type) = count {
+        return crate::events::damage::checked_scalar_count(
+            player_counter_anthem_count(player, *counter_type, game, source, controller),
+            "player-counter anthem count",
+        );
+    }
     let (player_filter, symbol) = match count {
         AnthemCountExpression::TotalUnspentMana(player) => (player, None),
         AnthemCountExpression::UnspentMana { player, symbol } => (player, Some(*symbol)),
@@ -3342,6 +3409,16 @@ pub(crate) fn resolve_anthem_count_expression(
             })
             .map(|player| game.commander_cast_count_for_player(player.id) as i32)
             .sum(),
+        AnthemCountExpression::PlayerCounters(player_filter, counter_type) => {
+            i32::try_from(player_counter_anthem_count(
+                player_filter,
+                *counter_type,
+                game,
+                source,
+                controller,
+            ))
+            .expect("checked player-counter anthem count domain")
+        }
         AnthemCountExpression::PlayerSpeed(player_filter) => game
             .players
             .iter()
@@ -4086,6 +4163,39 @@ impl StaticAbilityKind for Anthem {
                 } => (*multiplier, count, Some(*maximum)),
                 _ => continue,
             };
+            // This existing scalar admission hook also protects the appended
+            // player-counter family before any infallible effect generation.
+            if let AnthemCountExpression::PlayerCounters(player, counter_type) = count {
+                needs_pt = true;
+                let exact_count = player_counter_anthem_count(
+                    player,
+                    *counter_type,
+                    game,
+                    source,
+                    controller,
+                );
+                let exact_count = i128::try_from(exact_count)
+                    .expect("player count bounded by addressable game storage");
+                if i32::try_from(exact_count).is_err() {
+                    return Err(
+                        crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
+                            resource: "player-counter anthem count",
+                            value: exact_count,
+                        },
+                    );
+                }
+                let exact = exact_count * i128::from(multiplier);
+                let exact = cap.map_or(exact, |cap| exact.min(i128::from(cap)));
+                if i32::try_from(exact).is_err() {
+                    return Err(
+                        crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
+                            resource: "player-counter anthem modifier",
+                            value: exact,
+                        },
+                    );
+                }
+                continue;
+            }
             if !matches!(
                 count,
                 AnthemCountExpression::UnspentMana { .. }
@@ -5813,6 +5923,11 @@ impl PartialEq for AddSubtypesForFilter {
 impl StaticAbilityKind for AddSubtypesForFilter {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AddSubtypes
+    }
+
+    fn characteristic_defining_subtypes(&self) -> Option<&[Subtype]> {
+        (self.condition.is_none() && self.filter.is_source_only() && !self.subtypes.is_empty())
+            .then_some(self.subtypes.as_slice())
     }
 
     fn display(&self) -> String {

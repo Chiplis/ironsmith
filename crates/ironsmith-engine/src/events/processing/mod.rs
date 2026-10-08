@@ -7043,13 +7043,25 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
             return false;
         }
 
+        // CR 608.2h/609.7b: the live incarnation is authoritative, even when
+        // it no longer has a quality retained by the ability's older snapshot.
+        // Phasing is absence for this query, as in DamageFromSourceMatcher.
+        let live_source = ctx.game.object(damage.source)
+            .filter(|_| !ctx.game.is_phased_out(damage.source));
+        let source_lki = if live_source.is_none() {
+            ctx.game.turn_store.turn_history.source_last_known_snapshot(damage.source)
+                .filter(|snapshot| snapshot.object_id == damage.source)
+                .or_else(|| self.source_snapshot.as_ref()
+                    .filter(|snapshot| snapshot.object_id == damage.source))
+        } else { None };
+
         // CR 801.13b keys range to whichever side the prevention effect
         // specifies: source, recipient, or both when neither is specified.
         let range_exempt = ctx.game.source_is_exempt_from_range(Some(shield.source));
         let source_in_range = range_exempt
-            || ctx.game.object(damage.source).map_or_else(
+            || live_source.map_or_else(
                 || {
-                    self.source_snapshot.as_ref().is_some_and(|snapshot| {
+                    source_lki.is_some_and(|snapshot| {
                         ctx.game
                             .player_is_within_range(shield.controller, snapshot.controller)
                     })
@@ -7137,32 +7149,34 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
             .game
             .filter_context_for(shield.controller, Some(shield.source));
         if let Some(source_filter) = &shield.damage_filter.from_source {
-            let current_matches = ctx
-                .game
-                .object(damage.source)
-                .is_some_and(|source| source_filter.matches(source, &filter_ctx, ctx.game));
-            let lki_matches = self
-                .source_snapshot
-                .as_ref()
-                .filter(|snapshot| snapshot.object_id == damage.source)
-                .is_some_and(|snapshot| {
+            let matches = if let Some(source) = live_source {
+                source_filter.matches(source, &filter_ctx, ctx.game)
+            } else {
+                source_lki.is_some_and(|snapshot| {
                     source_filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
-                });
-            if !current_matches && !lki_matches {
+                })
+            };
+            if !matches {
                 return false;
             }
         }
 
         let (source_colors, source_card_types) =
-            if let Some(characteristics) = ctx.game.calculated_characteristics(damage.source) {
+            if live_source.is_some() {
+                // PreparedEventContext already checked continuous discovery.
+                // A missing current view must never revive a stale snapshot.
+                let Some(characteristics) = ctx.game.calculated_characteristics(damage.source) else {
+                    return false;
+                };
                 (characteristics.colors, characteristics.card_types.to_vec())
-            } else if let Some(snapshot) = self
-                .source_snapshot
-                .as_ref()
-                .filter(|snapshot| snapshot.object_id == damage.source)
-            {
+            } else if let Some(snapshot) = source_lki {
                 (snapshot.colors, snapshot.card_types.clone())
             } else {
+                if shield.damage_filter.from_colors.is_some()
+                    || shield.damage_filter.from_card_types.is_some()
+                {
+                    return false;
+                }
                 (crate::color::ColorSet::COLORLESS, Vec::new())
             };
         shield.damage_filter.matches(

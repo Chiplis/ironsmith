@@ -1,0 +1,20 @@
+[
+  {
+    "oracle_id": "33a90122-7280-4481-9b97-5879194cae40",
+    "name": "Dalkovan Encampment",
+    "text": "Type: Land\nThis land enters tapped unless you control a Swamp or a Mountain.\n{T}: Add {W}.\n{2}{W}, {T}: Whenever you attack this turn, create two 1/1 red Warrior creature tokens that are tapped and attacking. Sacrifice them at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "oracle_id": "2458aa66-5b20-4811-a4a4-8375ad0a6498",
+    "name": "Jaya, Fiery Negotiator",
+    "text": "Type: Legendary Planeswalker — Jaya\nMana cost: {2}{R}{R}\nLoyalty: 4\n+1: Create a 1/1 red Monk creature token with prowess.\n−1: Exile the top two cards of your library. Choose one of them. You may play that card this turn.\n−2: Choose target creature an opponent controls. Whenever you attack this turn, Jaya deals damage equal to the number of attacking creatures to that creature.\n−8: You get an emblem with \"Whenever you cast a red instant or sorcery spell, copy it twice. You may choose new targets for the copies.\"",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "oracle_id": "3cd3cdc9-2ed2-4cdf-b58a-12c3a2ef218b",
+    "name": "Roads Go Ever, Ever On",
+    "text": "Type: Enchantment — Saga\nMana cost: {1}{W}\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after IV.)\nI — Search your library for up to two basic Plains cards, exile them, then shuffle. You gain 2 life.\nII, III — Put a card exiled with this Saga into its owner's hand.\nIV — Whenever you attack this turn, target creature you control gets +1/+1 until end of turn for each Plains you control.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

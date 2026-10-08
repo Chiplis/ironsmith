@@ -39,3 +39,21 @@ fn distinguishes_pronoun_and_explicit_player_destinations() {
         );
     }
 }
+
+// UNRUN: the source-owner and contextual-player readings cannot alias.
+#[test]
+fn owner_and_relative_player_controller_prefixes_are_distinct() {
+    for phrase in ["under their control", "under that player's control"] {
+        let tokens = lex_line(phrase, 0).unwrap();
+        assert!(parse_battlefield_controller_prefix(&tokens).is_none(), "{phrase} is not per-card ownership");
+        assert!(parse_relative_battlefield_controller_prefix(&tokens).unwrap().is_empty());
+    }
+    for phrase in ["under its owner's control", "under their owners' control",
+        "under control of that card's owner"] {
+        let tokens = lex_line(phrase, 0).unwrap();
+        let owner = parse_battlefield_controller_prefix(&tokens).unwrap();
+        assert_eq!(owner.controller, BattlefieldControllerShape::Owner);
+        assert!(owner.rest.is_empty());
+        assert!(parse_relative_battlefield_controller_prefix(&tokens).is_none());
+    }
+}

@@ -1,0 +1,57 @@
+[
+  {
+    "oracle_id": "e100f9fc-b6fb-42ab-b9b3-796bede6804d",
+    "name": "Kalemne, Disciple of Iroas",
+    "mana_cost": "{2}{R}{W}",
+    "type_line": "Legendary Creature — Giant Soldier",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Double strike, vigilance\nWhenever you cast a creature spell with mana value 5 or greater, you get an experience counter.\nKalemne gets +1/+1 for each experience counter you have.",
+    "current_oracle_text": "Double strike, vigilance\nWhenever you cast a creature spell with mana value 5 or greater, you get an experience counter.\nKalemne gets +1/+1 for each experience counter you have.",
+    "current_raw_oracle_text": "Double strike, vigilance\nWhenever you cast a creature spell with mana value 5 or greater, you get an experience counter.\nKalemne gets +1/+1 for each experience counter you have."
+  },
+  {
+    "oracle_id": "5b3326a5-18c5-4d45-90e1-f6d00ca2bced",
+    "name": "Kelsien, the Plague",
+    "mana_cost": "{R}{W}{B}",
+    "type_line": "Legendary Creature — Human Assassin",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Vigilance, haste\nKelsien gets +1/+1 for each experience counter you have.\n{T}: Kelsien deals 1 damage to target creature you don't control. When that creature dies this turn, you get an experience counter.",
+    "current_oracle_text": "Vigilance, haste\nKelsien gets +1/+1 for each experience counter you have.\n{T}: Kelsien deals 1 damage to target creature you don't control. When that creature dies this turn, you get an experience counter.",
+    "current_raw_oracle_text": "Vigilance, haste\nKelsien gets +1/+1 for each experience counter you have.\n{T}: Kelsien deals 1 damage to target creature you don't control. When that creature dies this turn, you get an experience counter."
+  },
+  {
+    "oracle_id": "fad0c174-4c4a-4662-bd1f-224886e826e1",
+    "name": "Minthara, Merciless Soul",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Legendary Creature — Elf Cleric",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Minthara has ward {X}, where X is the number of experience counters you have.\nAt the beginning of your end step, if a permanent you controlled left the battlefield this turn, you get an experience counter.\nCreatures you control get +1/+0 for each experience counter you have.",
+    "current_oracle_text": "Minthara has ward {X}, where X is the number of experience counters you have.\nAt the beginning of your end step, if a permanent you controlled left the battlefield this turn, you get an experience counter.\nCreatures you control get +1/+0 for each experience counter you have.",
+    "current_raw_oracle_text": "Minthara has ward {X}, where X is the number of experience counters you have.\nAt the beginning of your end step, if a permanent you controlled left the battlefield this turn, you get an experience counter.\nCreatures you control get +1/+0 for each experience counter you have."
+  },
+  {
+    "oracle_id": "e7c4bc25-806c-4a75-85bf-a0e66308d5d8",
+    "name": "Mycosynth Fiend",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Phyrexian Horror",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "This creature gets +1/+1 for each poison counter your opponents have.",
+    "current_oracle_text": "This creature gets +1/+1 for each poison counter your opponents have.",
+    "current_raw_oracle_text": "This creature gets +1/+1 for each poison counter your opponents have."
+  },
+  {
+    "oracle_id": "7b1599c0-bb4f-48f8-a358-dc60166b13e7",
+    "name": "Vishgraz, the Doomhive",
+    "mana_cost": "{2}{W}{B}{G}",
+    "type_line": "Legendary Creature — Phyrexian Insect",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Menace, toxic 1 (Players dealt combat damage by this creature also get a poison counter.)\nWhen Vishgraz enters, create three 1/1 colorless Phyrexian Mite artifact creature tokens with toxic 1 and \"This token can't block.\"\nVishgraz gets +1/+1 for each poison counter your opponents have.",
+    "current_oracle_text": "Menace, toxic 1\nWhen Vishgraz enters, create three 1/1 colorless Phyrexian Mite artifact creature tokens with toxic 1 and \"This token can't block.\"\nVishgraz gets +1/+1 for each poison counter your opponents have.",
+    "current_raw_oracle_text": "Menace, toxic 1 (Players dealt combat damage by this creature also get a poison counter.)\nWhen Vishgraz enters, create three 1/1 colorless Phyrexian Mite artifact creature tokens with toxic 1 and \"This token can't block.\"\nVishgraz gets +1/+1 for each poison counter your opponents have."
+  }
+]

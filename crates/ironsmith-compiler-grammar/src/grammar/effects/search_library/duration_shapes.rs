@@ -84,8 +84,8 @@ fn comma_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     None
 }
 
-fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
-    match duration {
+fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
+    Some(match duration {
         leaf::LeafDurationPhrase::ThisTurn | leaf::LeafDurationPhrase::UntilEndOfTurn => {
             Until::EndOfTurn
         }
@@ -95,9 +95,11 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
         leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
         leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
+        leaf::LeafDurationPhrase::UntilControllersNextUntapStep => return None,
+        leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
         leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
-    }
+    })
 }
 
 pub fn parse_search_restriction_duration_shape_lexed(
@@ -108,8 +110,9 @@ pub fn parse_search_restriction_duration_shape_lexed(
     }
 
     if let Some(parsed) = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens) {
+        let Some(duration) = until_from_leaf(parsed.duration) else { return Ok(None); };
         return Ok(Some(SearchRestrictionDurationShape {
-            duration: until_from_leaf(parsed.duration),
+            duration,
             remainder: trim_lexed_commas(parsed.rest).to_vec(),
             placement: SearchRestrictionDurationPlacement::Prefix,
         }));
@@ -143,10 +146,11 @@ pub fn parse_search_restriction_duration_shape_lexed(
     }
 
     if let Some(parsed) = leaf::parse_leaf_restriction_duration_suffix_tokens(tokens) {
+        let Some(duration) = until_from_leaf(parsed.duration) else { return Ok(None); };
         let remainder = trim_lexed_commas(parsed.rest).to_vec();
         if !remainder.is_empty() {
             return Ok(Some(SearchRestrictionDurationShape {
-                duration: until_from_leaf(parsed.duration),
+                duration,
                 remainder,
                 placement: SearchRestrictionDurationPlacement::Suffix,
             }));

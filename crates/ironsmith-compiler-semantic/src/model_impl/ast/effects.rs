@@ -666,6 +666,7 @@ impl EffectAst {
                 amount,
                 target,
                 duration,
+                combat_only: false,
                 source_of_your_choice,
                 protect_you_and_permanents_you_control,
                 follow_up_effects,
@@ -809,6 +810,7 @@ impl EffectAst {
                     duration,
                     source_filter,
                     source_would_deal_surface: false,
+                    of_chosen_color: false,
                 },
             ),
         )

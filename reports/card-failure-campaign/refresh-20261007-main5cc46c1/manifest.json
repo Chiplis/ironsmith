@@ -1,0 +1,83 @@
+{
+  "dataset_sha256": "de4cedd51e320d2983d80b38713213c0273fc7272d5e2a89908ec050061aeca5",
+  "files": {
+    "README.md": {
+      "bytes": 14085,
+      "sha256": "b2cf6c6ffee92e2729ad81dd30e78018b2b67ea3c6b2d4d764c6b23d613dc313"
+    },
+    "analyze_refresh.py": {
+      "bytes": 15419,
+      "sha256": "657b0668cea08db749f97d3cd54b8ab0a4d0829f9f4f646f0f40a2e99402945f"
+    },
+    "baseline-and-proposal-comparison.json.gz": {
+      "bytes": 195494,
+      "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+    },
+    "current-failures.json.gz": {
+      "bytes": 468167,
+      "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+    },
+    "current-family-counts.json": {
+      "bytes": 45457,
+      "sha256": "5add838ed65515f7303d7ad76b1834e6f81b173a79486345a2ab3fe4663164a9"
+    },
+    "diagnostic-cause-clusters.json.gz": {
+      "bytes": 155727,
+      "sha256": "76012a455e19e8348bd4a944d26775f80d5f6523fe0d0b7cfd418fe79b37118b"
+    },
+    "enrich_prior_and_causes.py": {
+      "bytes": 3474,
+      "sha256": "f1b6456a09c0d8e23ceccdc6ff1cf383ff7ba9060242f6413954dbce46d54c75"
+    },
+    "entry-regression-signals.json.gz": {
+      "bytes": 49888,
+      "sha256": "123a454b4315b1b99f5c0b976b75f36885e95152ed5806c01a2a539329a89ae1"
+    },
+    "linked-face-coverage.json.gz": {
+      "bytes": 49454,
+      "sha256": "ede88b3fe30b6846ef98ddbe4273bd13f76fc29fbd27eac4440bc8bfdcc23289"
+    },
+    "new-cohort-27-main-status.json.gz": {
+      "bytes": 3990,
+      "sha256": "3bd5f643e5df3e62ef001d3663fbfc55c06ae59987416d87f7dffd230e81a220"
+    },
+    "prior-55-status-and-tags.json.gz": {
+      "bytes": 22212,
+      "sha256": "12f7b44a5d91eb6a65822c0196e24e006a08bbfc4c1965bb5575ab994508b5f3"
+    },
+    "prior-proposals-55-unresolved.json.gz": {
+      "bytes": 20656,
+      "sha256": "b0fa38345f7f9195013d3c74360742381c89c994d3866f71137c76c36ca9fcc1"
+    },
+    "provenance.json": {
+      "bytes": 16800,
+      "sha256": "00c2832be6a0725276fbfdac7af707b4187b630807307a68e7c15fcaef0b6818"
+    },
+    "runtime-bridge-blockers.json.gz": {
+      "bytes": 3067,
+      "sha256": "e7e3930dceaf5f51d2fe74041226ef129b11b40a2b009044f7887b9b18fbdd30"
+    },
+    "semantic-mismatch-signals.json.gz": {
+      "bytes": 205494,
+      "sha256": "caa023b806d2467a1fba153f8efd934fd5b3e792c0674877194b1a7ca3909d01"
+    },
+    "source-family-results.json.gz": {
+      "bytes": 4402,
+      "sha256": "fcac3cee82717a68ee6a4ab137ccca85265fd28757bbecb3e04791228d1c575d"
+    },
+    "strict-lossy-results.json.gz": {
+      "bytes": 1213,
+      "sha256": "50204ba343d72f195bd45daa9c7a57259358594d6c8a28c6677bfd1e8e213f84"
+    },
+    "summary.json": {
+      "bytes": 10082,
+      "sha256": "981480eb73b8bcedcb3136841070ced5a8ea45f29a04df91cfc5666ff533dd12"
+    },
+    "tag-enriched-diagnostic-priorities.json.gz": {
+      "bytes": 88731,
+      "sha256": "bedf6cc8d5dc6de7a141bfcf45345946fed0b70f862c4dfef7f4b29464294624"
+    }
+  },
+  "note": "Manifest excludes itself. All work is local; no publication/upload. The single compiler/corpus refresh is complete; source implementation policy has resumed.",
+  "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1"
+}

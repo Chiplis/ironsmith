@@ -172,7 +172,7 @@ pub(super) fn read_leading_result_prefix(
         };
         if matches!(
             &prefix.predicate,
-            crate::cards::builders::IfResultPredicate::Value(_)
+            crate::cards::builders::IfResultPredicate::DieValue(_)
         ) {
             bind_numeric_result_counter_amounts(&mut trailing_effects);
         }

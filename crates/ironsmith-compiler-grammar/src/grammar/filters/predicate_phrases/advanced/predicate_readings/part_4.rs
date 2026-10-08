@@ -348,6 +348,30 @@ pub(super) fn read_you_control_or_player_controls(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
+    // A team's battlefield is a union of controllers, not the permanents
+    // controlled by the ability's controller alone. Keep this bounded to one
+    // other named subtype; do not consume unsupported quantities or tails.
+    let team_clause = LexedClause::new(predicate_tokens).trimmed();
+    let words = team_clause.word_refs();
+    if team_clause.tokens().len() == words.len()
+        && let ["your", "team", "controls", "another", subtype] = words.as_slice()
+        && let Some(subtype) = parse_subtype_word(subtype)
+    {
+        let filter = ObjectFilter::default()
+            .with_subtype(subtype)
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::your_team());
+        // `other` is relative to announced targets in some contexts. Compare
+        // the full set with its exact-source subset instead: the latter is
+        // zero or one, never a target, snapshot, or new blink incarnation.
+        let mut source_filter = filter.clone();
+        source_filter.source = true;
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThan,
+            right: Value::Count(source_filter),
+        }));
+    }
     if non_article_token_words_starts_with_any(predicate_tokens, YOU_CONTROL_PREFIXES) {
         if let Some(predicate) =
             parse_you_control_conjoined_predicate(predicate_tokens).transpose()?

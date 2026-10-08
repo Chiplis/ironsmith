@@ -939,6 +939,9 @@ pub(super) fn run_station_threshold_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("station-threshold-line");
+    if !is_owned_station_threshold(ctx.preprocessed, ctx.idx, ctx.line) {
+        return ParseOutcome::NoMatch;
+    }
     let Some(shape) = line_grammar::parse_station_threshold_line(&ctx.line.tokens) else {
         return ParseOutcome::NoMatch;
     };
@@ -2081,7 +2084,7 @@ fn has_specialized_document_line_shape(ctx: &LineDispatchContext<'_>) -> bool {
         || line_grammar::parse_special_line(tokens).is_some()
         || line_grammar::parse_champion_line(tokens).is_some()
         || line_grammar::parse_station_keyword_line(tokens, &ctx.line.info.source_tokens).is_some()
-        || line_grammar::parse_station_threshold_line(tokens).is_some()
+        || is_owned_station_threshold(ctx.preprocessed, ctx.idx, ctx.line)
         || line_grammar::parse_escape_enters_with_line(tokens).is_some()
         || line_grammar::parse_surge_line(tokens).is_some()
         || line_grammar::parse_freerunning_line(tokens).is_some()

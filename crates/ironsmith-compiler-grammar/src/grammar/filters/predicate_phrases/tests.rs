@@ -6,6 +6,56 @@ use crate::lexer::lex_line;
 
 const IF_WORD: &str = "if";
 
+#[test]
+fn contracted_graveyard_existence_keeps_owner_zone_and_subtype() {
+    for text in ["there's a Lesson card in your graveyard", "there is a Lesson card in your graveyard"] {
+        let tokens = lex_line(text, 0).unwrap();
+        let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) =
+            parse_predicate(&tokens).unwrap() else { panic!("{text}") };
+        assert_eq!(player, PlayerAst::You);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.subtypes, vec![crate::types::Subtype::Lesson]);
+        assert!(filter.card_types.is_empty());
+    }
+    let tokens = lex_line("there's an instant card and a sorcery card in your graveyard", 0).unwrap();
+    assert!(matches!(parse_predicate(&tokens).unwrap(), PredicateAst::And(_, _)));
+    for text in [
+        "there's a Lesson card in your opponent's graveyard",
+        "there's a Lesson card in your graveyard with an unknown qualification",
+        "there's a Lesson card in your graveyard and a missing predicate",
+        "there's a Lesson card in your graveyard {2}",
+    ] {
+        assert!(parse_predicate(&lex_line(text, 0).unwrap()).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn team_other_subtype_existence_is_a_scoped_count_not_one_players_control() {
+    let tokens = lex_line("your team controls another Warrior", 0).unwrap();
+    let expected = ObjectFilter::default()
+        .with_subtype(crate::types::Subtype::Warrior)
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::your_team());
+    let mut source = expected.clone();
+    source.source = true;
+    assert_eq!(parse_predicate(&tokens).unwrap(), PredicateAst::ValueComparison {
+        left: Value::Count(expected),
+        operator: ValueComparisonOperator::GreaterThan,
+        right: Value::Count(source),
+    });
+    for text in [
+        "your team controls another unknownsubtype",
+        "your team controls exactly another Warrior",
+        "your team controls another Warrior with an unknown qualification",
+        "your team controls another Warrior or a missing predicate",
+        "your team controls another Warrior and a missing predicate",
+        "your team controls another Warrior {2}",
+    ] {
+        assert!(parse_predicate(&lex_line(text, 0).unwrap()).is_err(), "{text}");
+    }
+}
+
 fn predicate_tokens_after_if(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     tokens
         .iter()

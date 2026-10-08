@@ -79,6 +79,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_compound_count_filter(input)),
     },
     Reading {
+        id: RuleId::new("player-counter-count"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_player_counter_count(input)),
+    },
+    Reading {
         id: RuleId::new("source-counter-count"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -227,6 +233,19 @@ fn read_compound_count_filter(
     }
     Ok(None)
 }
+fn read_player_counter_count(
+    input: &ForEachPhrase<'_>,
+) -> Result<Option<AnthemCountExpression>, CardTextError> {
+    let words = crate::lexer::token_word_refs(input.tokens);
+    if let Some((value, consumed)) = parse_for_each_count_value_words(&words)
+        && consumed == words.len()
+        && matches!(value.unhinted(), Value::PlayerCounters(_, _))
+    {
+        return Ok(anthem_count_expression_from_value(value));
+    }
+    Ok(None)
+}
+
 fn read_source_counter_count(
     input: &ForEachPhrase<'_>,
 ) -> Result<Option<AnthemCountExpression>, CardTextError> {

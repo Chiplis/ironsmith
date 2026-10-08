@@ -665,6 +665,9 @@ pub fn parse_repeat_this_process_clause(
             clause_shapes::RepeatProcessShape::May => {
                 EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
             }
+            clause_shapes::RepeatProcessShape::Additional(count) => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count })
+            }
         }),
     )
 }

@@ -42,6 +42,15 @@ pub(super) fn needs_shared_recipient_allocation(tokens: &[OwnedLexToken]) -> boo
 pub fn parse_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The complete fixed-to-you production already has a canonical typed
+    // payload. Keep its language disjoint from this more general production;
+    // otherwise registry ambiguity hides the static reading of an `if` line.
+    // Only a successful full specialist parse excludes an input here, so new
+    // recipients, combat restrictions, thresholds, and source predicates stay
+    // available to the general matcher.
+    if parse_prevent_damage_to_you_from_source_filter_line(tokens)?.is_some() {
+        return Ok(None);
+    }
     let words = parser_token_word_refs(tokens);
     if words
         .windows(2)
@@ -164,8 +173,9 @@ pub fn parse_permanent_self_damage_prevention_line(
     })))
 }
 
-/// Persistent prevention over a source/recipient relation. The self-recipient
-/// family and unqualified attached prevention retain their established owners.
+/// Persistent prevention over a source/recipient relation. Unqualified attached
+/// source prevention also uses this canonical Aura-owned payload, rather than
+/// granting a replacement ability to the enchanted creature.
 pub fn parse_persistent_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

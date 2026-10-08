@@ -1,30 +1,74 @@
 # Full-corpus card-failure campaign
 
-## Current workflow: implementation first (2026-10-03)
+## Current measured baseline and closed execution gate (2026-10-07)
 
 At the user's request, defer **all builds, compilation probes, corpus replays,
 and test execution** until reviewed source changes plausibly cover all or at
-least a majority of the remaining frozen failures. Author regression tests and
+least a majority of the original frozen residual failures, excluding semantic
+holds and partial bodies. Author regression tests and
 review source now; do not run them. The following audit commands document the
 later validation phase, not instructions to execute at each draft.
 
 `fixtures/card-failure-campaign/workflow.json` records the requested policy.
-`source-coverage.json` is the per-entry identity matrix. It separates the 40
-measured unique compile recoveries from additional proposed source coverage.
+`source-coverage.json` preserves the original frozen failure identity matrix.
+`current-residual-source-coverage.json` records the completed clean-main refresh,
+current residual scope, inherited re-holds, and current source proposals.
 A placeholder, rejection, no-op, ignored clause, or dropped semantic requirement
 never counts as coverage. Shared failure cards are deduplicated by Oracle ID.
 
-The current measured remainder is 3,193 unique cards; a majority is at least
-1,597 of those identities. This is a source-review checkpoint, not permission
-to declare cards correct. The eventual frozen full-corpus replay, face coverage,
-regression comparisons and runtime scenarios remain required. Publish the
-cumulative draft stack as **UNVALIDATED** where these gates are deferred.
+The one-time authoritative refresh on main
+`5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1` completed for **32,209 entries /
+32,138 unique Oracle IDs**. There are **1,997 parse-failed entries / 1,994 unique
+IDs**, **7 permissive fallback IDs**, and **4 strict-but-lossy IDs**: **2,005
+unique unresolved identities / 2,008 entries**. Strict/no-loss supported entries
+total **30,201**. The [measurement packet](../reports/card-failure-campaign/refresh-20261007-main5cc46c1/README.md)
+pins the official October 7 snapshot, compiler source/tree, binary, and evidence.
+
+Of the original 3,233 unresolved identities, **1,379 now satisfy the compile
+gate** and **1,854 remain unresolved**. Another **151 formerly supported
+identities regressed** and are part of the current 2,005-ID scope. Original and
+fresh compiler-facing source fields are unchanged. The 1,343 semantic-mismatch
+heuristic flags (1,341 strict-compiled and 2 permissive) are separate from the
+88 marker-rejected semantic-output failures; flags can overlap lossiness.
+Compiler acceptance is not gameplay proof, and linked faces remain unmeasured.
+
+The completed refresh re-held **55 inherited IDs / 56 entries**. Reviewed counter
+and static-prevention corrections now restore ten original-failure source
+proposals, leaving **45 IDs / 46 entries** re-held with their historical evidence
+preserved. The eligible original-failure source union is **1,238 unique / 1,242
+entries**, including already-supported identities. Current residual source scope
+is **96 IDs / 97 entries**: 19 prior proposals, 61 source-counter IDs / 62 entries,
+and 16 static-prevention IDs. It comprises **40 full-body source proposals** and
+**56 shared blocker repair proposed identities**; neither tier is runtime proof.
+
+Of the **151 measured regressions**, **67 have source proposals** and **84 remain
+unaddressed**. They add no original-majority credit. **Eight already-supported
+semantic corrections** remain separate, making **104 touched IDs / 105 entries**,
+not 104 recoveries. All **13 neighboring fixture partials** and all other holds
+remain excluded. The [combined admission](card-failure-next-series-01-source-admission.md)
+pins exact identities, source reviews, fixture hashes and the reviewed artifact12 /
+public digest8 / signed audit25 / Manabrew3 boundary. No new-source recovery is measured.
+
+The active execution criterion remains **1,597 source-eligible identities out
+of the original frozen 3,193 residual identities**, excluding semantic holds,
+re-held identities, and partial bodies. The reconciled **1,238** source-eligible
+identities leave **359** short. The broad execution gate is
+**CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY**. The **96/2,005** residual proposal scope
+guides repair prioritization; it does not replace that stopping condition.
+A mathematical majority of 2,005 would be 1,003, with a difference of 907 from
+96, but those numbers have no execution authority or gating role.
+
+The one-time clean-main override is completed and consumed; it authorizes no
+execution of the new source stack. Historical stack07's **40 measured recoveries
+/ 3,193 remaining** are preserved, and its **1,597 source threshold remains the
+active criterion**. The eventual authorized corpus, face, regression, and runtime
+checks remain required; the source stack is **UNVALIDATED**.
 
 The optimized build at `657aa12d` was interrupted with exit 130 when this change
 arrived. Its cache and all earlier completed test evidence are preserved; no
 second-batch full-corpus result exists.
 
-## Frozen scope and present status
+## Original frozen baseline and historical measurement
 
 The original engine baseline is commit
 `e8740178a7f7367ffa3147e7642607042079237c`.

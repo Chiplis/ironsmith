@@ -2325,7 +2325,9 @@ pub(crate) fn resolve_turn_history_count(
                 {
                     continue;
                 }
-                seen.insert(historical_identity(event.attacker, Some(snapshot)));
+                // Repeated attacks by one incarnation count once. A blink
+                // creates a new object even though its physical stable ID survives.
+                seen.insert(event.attacker);
             }
             seen.len() as i32
         }

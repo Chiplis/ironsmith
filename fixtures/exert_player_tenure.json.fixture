@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Oketra's Avenger",
+    "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Human Warrior",
+    "power": "3",
+    "toughness": "1",
+    "oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn. (An exerted creature won't untap during your next untap step.)",
+    "scryfall_uri": "https://scryfall.com/card/hou/17/oketras-avenger?utm_source=api",
+    "validation_status": "UNRUN: source-only full-body gate; no accounting admission"
+  }
+]

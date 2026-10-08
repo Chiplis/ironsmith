@@ -398,6 +398,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             })
             | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { target, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. },
             )
             | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
@@ -883,6 +886,11 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             })
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::PreventDamageEach { filter, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    source_filter: filter, ..
+                },
             )
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                 filter,

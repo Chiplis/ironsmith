@@ -364,6 +364,9 @@ impl<T: Clone + PartialEq> RefState<T> {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReferenceImports {
+    /// X already belongs to this spell or activation's announced payment.
+    /// Result branches must not reinterpret it as their local outcome.
+    pub has_announced_x: bool,
     pub last_object_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
@@ -383,7 +386,8 @@ pub struct ReferenceImports {
 
 impl ReferenceImports {
     pub fn is_empty(&self) -> bool {
-        self.last_value_comparison.is_none()
+        !self.has_announced_x
+            && self.last_value_comparison.is_none()
             && self.last_object_tag.is_none()
             && self.recent_object_target_bindings.is_empty()
             && self.snapshot_tag_aliases.is_empty()
@@ -407,6 +411,7 @@ impl ReferenceImports {
 
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
+            has_announced_x: frame.has_announced_x,
             last_object_tag: frame.last_object_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
@@ -531,7 +536,7 @@ impl ReferenceEnv {
             color_result_producers: Default::default(),
             reveal_result_producers: Default::default(),
             bind_unbound_x_to_last_effect,
-            has_announced_x: false,
+            has_announced_x: imports.has_announced_x,
         }
     }
 
@@ -647,6 +652,7 @@ impl ReferenceEnv {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReferenceExports {
+    pub has_announced_x: bool,
     pub last_object_tag: RefState<TagKey>,
     pub last_value_comparison: RefState<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
@@ -662,6 +668,7 @@ pub struct ReferenceExports {
 impl Default for ReferenceExports {
     fn default() -> Self {
         Self {
+            has_announced_x: false,
             last_object_tag: RefState::Unknown,
             last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
@@ -679,6 +686,7 @@ impl Default for ReferenceExports {
 impl ReferenceExports {
     pub fn from_env(env: &ReferenceEnv) -> Self {
         Self {
+            has_announced_x: env.has_announced_x,
             last_object_tag: env.last_object_tag.clone(),
             last_value_comparison: env.last_value_comparison.clone(),
             recent_object_target_bindings: env.recent_object_target_bindings.clone(),
@@ -694,6 +702,7 @@ impl ReferenceExports {
 
     pub fn join(left: &Self, right: &Self) -> Self {
         Self {
+            has_announced_x: left.has_announced_x && right.has_announced_x,
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
             last_value_comparison: RefState::join(
                 &left.last_value_comparison,
@@ -719,6 +728,7 @@ impl ReferenceExports {
 
     pub fn to_imports(&self) -> ReferenceImports {
         ReferenceImports {
+            has_announced_x: self.has_announced_x,
             last_object_tag: self.last_object_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),

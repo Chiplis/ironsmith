@@ -212,3 +212,36 @@ test('a replay that starts after an unseeded replica fails closed', async () => 
   const replica = createLocalAnalysisReplica(() => new Game());
   await assert.rejects(replica.hydrate({ epoch: 1, identityOrigin: { object: 1 }, base: 3, operations: [] }), /unseeded replica/);
 });
+
+// UNRUN: retain a trusted exact image when the session owns every native slot.
+test('a seeded replica with full native branch capacity keeps its exact reset image', async () => {
+  class LimitedGame extends Game {
+    createRuntimeSavepoint() {
+      if (this.handles.size === 2) throw Error('too many live runtime savepoints');
+      return super.createRuntimeSavepoint();
+    }
+  }
+  const original = new LimitedGame(), journal = createLocalAnalysisJournal(original, 10);
+  journal.game.createRuntimeSavepoint();
+  journal.game.createRuntimeSavepoint();
+  journal.game.edit('history', ['before seed']);
+  const image = { state: structuredClone(original.state), handles: structuredClone(original.handles), nextHandle: original.nextHandle };
+  const seeded = seededLocalReplay(journal.capture(), image);
+  journal.game.edit('choices', { after: true });
+  const replay = { ...seeded, operations: journal.capture().operations.slice(seeded.base) };
+  let restores = 0;
+  const replica = createLocalAnalysisReplica(() => { throw Error('seed must rebuild the truncated journal'); }, {
+    restoreSeed: async seed => {
+      restores++;
+      return Object.assign(new LimitedGame(), structuredClone(seed));
+    },
+  });
+  let restored = await replica.hydrate(replay);
+  for (let preview = 0; preview < 2; preview++) {
+    restored.edit('history', ['speculation']);
+    restored = await replica.resetWorkingState();
+    assert.deepEqual(restored.state, original.state);
+    assert.deepEqual(restored.handles, original.handles);
+  }
+  assert.equal(restores, 3);
+});

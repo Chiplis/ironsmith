@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Revelation",
+    "oracle_id": "251ff4e4-3be4-424e-8dd7-eb4ede7b415c",
+    "mana_cost": "{G}",
+    "type_line": "World Enchantment",
+    "oracle_text": "Players play with their hands revealed.",
+    "scryfall_uri": "https://scryfall.com/card/chr/68/revelation?utm_source=api"
+  },
+  {
+    "name": "Wandering Eye",
+    "oracle_id": "59015068-6868-4235-981b-96137123c685",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Illusion",
+    "oracle_text": "Flying\nPlayers play with their hands revealed.",
+    "power": "1",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/nem/50/wandering-eye?utm_source=api"
+  }
+]

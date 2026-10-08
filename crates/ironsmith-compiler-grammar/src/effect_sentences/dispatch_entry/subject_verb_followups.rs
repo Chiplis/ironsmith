@@ -2001,6 +2001,11 @@ fn pre_rule_text_change_destination_exclusion(
 }
 
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!(
+        "damage-amount-replacement",
+        &[],
+        pre_rule_damage_amount_replacement
+    ),
     pre_followup_rule!("typed-text-change-destination-exclusion", &["the"], pre_rule_text_change_destination_exclusion),
     pre_followup_rule!(
         "damage-life-floor",
@@ -2408,7 +2413,8 @@ use subject_verb_followups_choice_programs::{
 #[path = "subject_verb_followups/subject_verb_followups_combat.rs"]
 mod subject_verb_followups_combat_programs;
 use subject_verb_followups_combat_programs::{
-    normalize_anaphoric_damage_self_replacement, primary_damage_source_from_effect,
+    normalize_anaphoric_damage_self_replacement, pre_rule_damage_amount_replacement,
+    primary_damage_source_from_effect,
     replace_anaphoric_damage_source_in_effects, sole_damage_payload,
 };
 #[path = "subject_verb_followups/subject_verb_followups_permission.rs"]

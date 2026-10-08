@@ -157,14 +157,19 @@ export function createLocalAnalysisReplica(createGame, { restoreSeed = null } = 
       }
       // Analysis is allowed to mutate this working branch. The next hydrate
       // resumes the exact canonical state, including continuations and RNG.
-      // Do not retain a seed image: it is as large as the whole engine heap.
-      lastJournal = journal.seed ? { ...journal, seed: undefined } : journal;
-      try { canonical = game.createRuntimeSavepoint(); }
+      lastJournal = journal;
+      try {
+        canonical = game.createRuntimeSavepoint();
+        // The native branch now owns the reset state, so release the large
+        // seed image. If every branch slot belongs to the session, keep the
+        // image instead: its truncated journal cannot rebuild without it.
+        if (journal.seed) lastJournal = { ...journal, seed: undefined };
+      }
       catch (error) {
         rebuild = true;
         if (!errorMessage(error).includes('too many live runtime savepoints')) throw error;
-        // All branch slots belong to the actual session. Rebuild from its log
-        // on the next request rather than discard a branch or partial state.
+        // All branch slots belong to the actual session. Rebuild from the
+        // retained seed and log on the next request without discarding a branch.
       }
       return game;
     },

@@ -66,6 +66,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("static-condition-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("typed-attack-history-threshold-condition"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_typed_attack_history_threshold_condition(input)),
+    },
+    Reading {
         id: RuleId::new("battlefield-population-condition"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -218,6 +224,39 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_conjoined_static_condition(input)),
     },
 ];
+
+fn read_typed_attack_history_threshold_condition(
+    input: &ConditionClause<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if !input.tokens.iter().all(|token| token.as_word().is_some() || token.kind == TokenKind::Number) {
+        return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(input.tokens);
+    let ["you", "attacked", "with", count, "or", "more", tail @ ..] = words.as_slice() else {
+        return Ok(None);
+    };
+    let [descriptor @ .., "this", "turn"] = tail else { return Ok(None); };
+    let Some(count) = crate::util::parse_number_word_u32(count).and_then(|n| i32::try_from(n).ok()) else {
+        return Ok(None);
+    };
+    // A compound subtype phrase needs an explicit intersection owner, not
+    // the filter's implicit any-subtype union.
+    let subtype_word = match descriptor {
+        [subtype] | [subtype, "creature" | "creatures"] => *subtype,
+        _ => return Ok(None),
+    };
+    let Some(subtype) = crate::util::parse_subtype_flexible(subtype_word).filter(Subtype::is_creature_type) else {
+        return Ok(None);
+    };
+    Ok(Some(PredicateAst::ValueComparison {
+        left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::creature().with_subtype(subtype),
+        }),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count),
+    }))
+}
 
 /// The input's reading, if a rule has one. Every admitted reading runs.
 pub(super) fn read(input: &ConditionClause<'_>) -> ParseOutcome<RuleMatch<PredicateAst>> {
@@ -726,4 +765,33 @@ fn read_battlefield_population_condition(
         ),
     };
     Ok(Some(condition))
+}
+
+#[cfg(test)]
+mod typed_attack_history_tests {
+    use super::*;
+    #[test]
+    fn typed_attack_threshold_retains_number_subtype_and_history_scope() {
+        let tokens = crate::lexer::lex_line("you attacked with three or more Merfolk this turn", 0).unwrap();
+        assert_eq!(parse_static_condition_clause(&tokens).unwrap(), PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+                player: PlayerFilter::You,
+                filter: ObjectFilter::creature().with_subtype(Subtype::Merfolk),
+            }),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(3),
+        });
+        for text in [
+            "you attacked with three or more Merfolk this turn unless they died",
+            "you attacked with three or more Merfolk this combat",
+            "you attacked with three or more Merfolk or Elves this turn",
+            "you attacked with three or more Merfolk you control this turn",
+            "you attacked with three or more Merfolk Wizards this turn",
+            "you attacked with three or more creature Merfolk creatures this turn",
+            "you attacked with three or more Merfolk + this turn",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_static_condition_clause(&tokens).is_err(), "unsupported residue was accepted: {text}");
+        }
+    }
 }

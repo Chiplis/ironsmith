@@ -633,6 +633,9 @@ fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum IfResultPredicate {
     Did,
+    /// Compiler-owned repeat gate. Lowering captures the preceding live
+    /// condition before branch execution, rather than its child outcome.
+    ConditionMatched,
     /// The preceding clash was won by the controller of the resolving spell
     /// or ability. Clash effects return `1` for a win and `0` otherwise, but
     /// this distinct AST surface keeps "if you win" from being flattened into
@@ -666,4 +669,12 @@ pub enum IfResultPredicate {
     PriorEffectResult(ironsmith_core::PriorEffectResultSurface),
     WasDeclined,
     Value(ironsmith_core::Comparison),
+    /// A printed numeric die-result row. Retain its producer family until
+    /// reference resolution; a generic numeric outcome is not a die roll.
+    /// Lowering uses the existing runtime numeric-result predicate.
+    DieValue(ironsmith_core::Comparison),
+    AffectedObjectsShare {
+        required_count: u32,
+        characteristic: ironsmith_core::ObjectCharacteristic,
+    },
 }

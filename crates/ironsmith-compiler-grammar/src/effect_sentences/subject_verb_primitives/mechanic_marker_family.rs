@@ -605,6 +605,7 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         "cant-effect",
         370,
         PostDiagnostic,
+        // The typed Restriction head also dispatches through this family key.
         &[LexRuleHeadHint::Single("cant")],
         parse_sentence_cant_effect
     ),

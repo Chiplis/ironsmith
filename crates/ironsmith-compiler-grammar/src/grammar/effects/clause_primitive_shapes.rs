@@ -77,11 +77,12 @@ pub enum RetargetConstraintShape {
     AnyPlayerTarget,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RepeatProcessShape {
     Required,
     Once,
     May,
+    Additional(Value),
 }
 
 pub(super) fn trim_shape_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

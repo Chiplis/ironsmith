@@ -2262,7 +2262,7 @@
             }
             Zone::Battlefield => {
                 let source_from_exile_target =
-                    describe_source_card_from_exile_target(&move_to_zone.target);
+                    describe_source_card_from_qualified_zone_target(&move_to_zone.target);
                 let target = if let Some(target) = source_from_exile_target {
                     target.to_string()
                 } else if let ChooseSpec::All(filter) = &move_to_zone.target
@@ -2423,12 +2423,16 @@
     if let Some(put_onto_battlefield) =
         effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
     {
-        let target = describe_source_card_from_exile_target(&put_onto_battlefield.target)
+        let target = describe_source_card_from_qualified_zone_target(&put_onto_battlefield.target)
             .map(str::to_string)
             .unwrap_or_else(|| describe_choose_spec(&put_onto_battlefield.target));
         let mut text = format!("Put {target} onto the battlefield");
         if put_onto_battlefield.tapped {
             text.push_str(" tapped");
+        }
+        if !matches!(&put_onto_battlefield.controller, PlayerFilter::You) {
+            text.push_str(&format!(" under {} control",
+                describe_possessive_player_filter(&put_onto_battlefield.controller)));
         }
         return text;
     }
@@ -6969,6 +6973,23 @@
         return describe_effect(&with_id.effect);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+        let mut gate = repeat.effects.last();
+        while let Some(inner) = gate.and_then(|effect| effect.transparent_child_effect()) {
+            gate = Some(inner);
+        }
+        if let Some(gate) = gate.and_then(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+            && gate.capture_condition_result
+        {
+            let body = describe_effect_list(&repeat.effects[..repeat.effects.len() - 1]);
+            let branch = describe_effect_list(&gate.if_true);
+            let continuation = if branch.trim().is_empty() {
+                "repeat this process".to_string()
+            } else {
+                format!("{} and repeat this process", branch.trim().trim_end_matches('.'))
+            };
+            return format!("{}. If {}, {}", body.trim().trim_end_matches('.'),
+                describe_condition(&gate.condition), continuation);
+        }
         if let Some(rendered) = describe_prior_result_action_and_repeat_process(repeat) {
             return rendered;
         }
@@ -6994,7 +7015,8 @@
         if body.is_empty() {
             return "Repeat this process".to_string();
         }
-        if body.ends_with("You may repeat this process any number of times")
+        if body.ends_with("may repeat this process any number of times")
+            || body.ends_with("You may repeat this process any number of times")
             || body.ends_with("you may repeat this process any number of times")
             || body.ends_with("You may repeat this process")
             || body.ends_with("you may repeat this process")
@@ -7017,7 +7039,7 @@
         }
         if matches!(
             repeat.predicate,
-            EffectPredicate::PriorEffectResult(_)
+            EffectPredicate::PriorEffectResult(_) | EffectPredicate::AffectedObjectsShare { .. }
         ) {
             return format!(
                 "{body}. If {}, repeat this process",
@@ -7030,7 +7052,11 @@
         return format!("{body}. Repeat this process");
     }
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
-        return prompt.description().to_string();
+        return if let Some(player) = &prompt.decider {
+            format!("{} may repeat this process any number of times", describe_player_filter(player))
+        } else {
+            prompt.description().to_string()
+        };
     }
     if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
         return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));

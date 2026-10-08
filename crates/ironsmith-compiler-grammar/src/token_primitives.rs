@@ -28,8 +28,8 @@ pub enum TurnDurationPhrase {
     UntilYourNextTurnEnd,
 }
 
-fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Until {
-    match duration {
+fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Option<Until> {
+    Some(match duration {
         LeafDurationPhrase::ThisTurn | LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
         LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
         LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
@@ -37,9 +37,12 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Until {
         LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
         LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
+        LeafDurationPhrase::UntilControllersNextUntapStep => return None,
+        // Only the complete Cant sentence owner may bind this player rule.
+        LeafDurationPhrase::PlayersNextUntapStep => return None,
         LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         LeafDurationPhrase::Forever => Until::Forever,
-    }
+    })
 }
 
 pub fn iter_contains<I, T>(items: I, expected: &T) -> bool
@@ -262,12 +265,29 @@ pub fn parse_simple_restriction_duration_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<(Until, &[OwnedLexToken])> {
     let parsed = parse_leaf_restriction_duration_prefix_tokens(tokens)?;
-    Some((until_from_leaf_duration(parsed.duration), parsed.rest))
+    Some((until_from_leaf_duration(parsed.duration)?, parsed.rest))
 }
 
 pub fn parse_simple_restriction_duration_suffix(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], Until)> {
     let parsed = parse_leaf_restriction_duration_suffix_tokens(tokens)?;
-    Some((parsed.rest, until_from_leaf_duration(parsed.duration)))
+    Some((parsed.rest, until_from_leaf_duration(parsed.duration)?))
+}
+
+
+#[cfg(test)]
+mod next_step_owner_tests {
+    use super::*;
+
+    #[test]
+    fn new_next_step_owners_are_not_generic_durations() {
+        for timing in ["during that player's next untap step", "until its controller's next untap step"] {
+        let prefix = crate::lexer::lex_line(&format!("{timing}, target creature has base power 5"), 0).unwrap();
+        let suffix = crate::lexer::lex_line(&format!("target creature has base power 5 {timing}"), 0).unwrap();
+        assert!(parse_simple_restriction_duration_prefix(&prefix).is_none());
+        assert!(parse_simple_restriction_duration_suffix(&suffix).is_none());
+        assert!(crate::grammar::effects::chain_carry::parse_carry_duration_prefix_tokens(&prefix).is_none());
+        }
+    }
 }

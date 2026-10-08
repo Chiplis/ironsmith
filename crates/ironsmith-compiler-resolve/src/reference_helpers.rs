@@ -2065,7 +2065,7 @@ fn resolve_choose_spec_it_tag_preserving_selection(
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(resolve_it_tag_key(tag, refs)?)),
         ChooseSpec::Object(filter) => {
             let resolved = resolve_it_tag(filter, refs)?;
-            if resolved.source && resolved.zone != Some(Zone::Exile) {
+            if resolved.source && resolved.zone.is_none() {
                 Ok(source_reference_hinted_spec(
                     ChooseSpec::Source,
                     resolved.source_surface.clone(),
@@ -2203,7 +2203,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::LifeGainedThisTurn(player) => Ok(Value::LifeGainedThisTurn(
             resolve_contextual_player_filter(player, refs)?,
         )),
-        Value::X if refs.bind_unbound_x_to_last_effect => {
+        Value::X if refs.bind_unbound_x_to_last_effect && !refs.has_announced_x => {
             if let Some(id) = refs.known_last_effect_id() {
                 Ok(Value::EffectValue(id))
             } else {

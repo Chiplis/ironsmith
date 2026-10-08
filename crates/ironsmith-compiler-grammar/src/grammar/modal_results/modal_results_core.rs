@@ -6,11 +6,35 @@ use super::*;
 pub(super) fn parse_direct_prior_effect_result_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<PriorEffectResultSurface> {
-    if counted_shared_characteristic(tokens).is_some() {
-        // Cross-object cardinality and pairwise characteristic sharing belong
-        // to the typed predicate grammar. The direct action/filter grammar
-        // cannot represent either fact and therefore is not a candidate.
-        return None;
+    if let Some((count, characteristic)) = counted_shared_characteristic(tokens) {
+        // Count and pairwise sharing are collection constraints. Remove only
+        // those proven words before parsing the independent card filter.
+        let normalized = normalized_word_tokens(tokens);
+        let words = normalized.iter().map(OwnedLexToken::parser_text).collect::<Vec<_>>();
+        let relative = words.windows(2).position(|pair| matches!(pair, ["that", "share" | "shares"]))?;
+        let tail = words.len().checked_sub(4)?;
+        if relative <= 1 || tail <= relative + 2 || words[tail + 2..] != ["this", "way"]
+            || !matches!(words[tail], "were" | "was" | "are" | "is") { return None; }
+        let relation_matches = match characteristic {
+            ObjectCharacteristic::Color => words[relative + 2..tail] == ["color"],
+            ObjectCharacteristic::CardType => words[relative + 2..tail] == ["card", "type"],
+            ObjectCharacteristic::PermanentType => words[relative + 2..tail] == ["permanent", "type"],
+            ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Creature) => words[relative + 2..tail] == ["creature", "type"],
+            ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Land) => words[relative + 2..tail] == ["land", "type"],
+            ObjectCharacteristic::ManaValue => words[relative + 2..tail] == ["mana", "value"],
+            _ => false,
+        };
+        if !relation_matches { return None; }
+        let (action, action_start) = crate::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(&words[tail..tail + 2])?;
+        if action_start != 0 { return None; }
+        let mut filter = crate::grammar::primitives::probe_shape(
+            super::super::filters::parse_object_filter_with_grammar_entrypoint_lexed(&normalized[1..relative], false),
+        )?;
+        filter.zone = None;
+        filter.set_prior_effect_action_surface(None);
+        return Some(PriorEffectResultSurface::new(action, filter,
+            PriorEffectResultActor::Passive, PriorEffectResultQuantifier::OneOrMore)
+            .with_count_sharing(count, characteristic));
     }
     let words = normalized_word_tokens(tokens);
     let normalized_words = words

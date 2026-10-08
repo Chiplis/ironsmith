@@ -226,6 +226,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         // delayed bodies inherit a selected actor at registration time.
         let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
             kinds.iter().any(|kind| matches!(kind, crate::events::EventKind::CreatureAttacked
+                | crate::events::EventKind::PlayerAttackDeclaration
                 | crate::events::EventKind::CreatureAttackedAndUnblocked
                 | crate::events::EventKind::CreatureBecameBlocked | crate::events::EventKind::Damage)));
         let needs_defender = self.effects.all_effects().iter()

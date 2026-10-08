@@ -1,0 +1,148 @@
+[
+  {
+    "oracle_id": "089788ce-d06c-4a85-915c-82e2cb5b0103",
+    "name": "Candletrap",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature has defender.\nPrevent all combat damage that would be dealt by enchanted creature.\nCoven — {2}{W}, Sacrifice this Aura: Exile enchanted creature. Activate only if you control three or more creatures with different powers.",
+    "layout": "normal",
+    "subset": "attached_source_hold"
+  },
+  {
+    "oracle_id": "5a6c81b8-71f0-468b-85ad-d87e9a712ecf",
+    "name": "Defang",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt by enchanted creature.",
+    "layout": "normal",
+    "subset": "attached_source_hold"
+  },
+  {
+    "oracle_id": "2172b724-9004-488e-88d3-a5fc48c50e41",
+    "name": "Demonic Torment",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature can't attack.\nPrevent all combat damage that would be dealt by enchanted creature.",
+    "layout": "normal",
+    "subset": "attached_source_hold"
+  },
+  {
+    "oracle_id": "fe9106e3-c637-4995-9dc1-cae0be31f23b",
+    "name": "Guardian Seraph",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.",
+    "power": "3",
+    "toughness": "4",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "20418984-bc6d-42e5-ada6-30b5281925c0",
+    "name": "Heart-Shaped Herb",
+    "mana_cost": "{4}",
+    "type_line": "Artifact",
+    "oracle_text": "If a source an opponent controls would deal damage to you, prevent 1 of that damage.\n{2}, {T}, Sacrifice this artifact: You may sacrifice a creature. If you do, return that card to the battlefield under its owner's control with three +1/+1 counters on it and you become the monarch.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "bdf497b5-166f-46a7-8e18-ae0b8f97768c",
+    "name": "Muzzle",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nPrevent all damage that would be dealt by enchanted creature.",
+    "layout": "normal",
+    "subset": "attached_source_hold"
+  },
+  {
+    "oracle_id": "c420d9c8-dc54-46b8-bd22-39c21019c3d7",
+    "name": "Orbs of Warding",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "You have hexproof. (You can't be the target of spells or abilities your opponents control.)\nIf a creature would deal damage to you, prevent 1 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "c5f611c9-9e6e-4719-ad71-8686327a8564",
+    "name": "Protection of the Hekma",
+    "mana_cost": "{4}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a source an opponent controls would deal damage to you, prevent 1 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "c1612eef-5059-46fd-a5fd-c8ebf6779a6e",
+    "name": "Sphere of Duty",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a green source would deal damage to you, prevent 2 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "e45de1f7-ad45-494d-855e-3e11f109909d",
+    "name": "Sphere of Grace",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a black source would deal damage to you, prevent 2 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "a8da7c57-c60f-42b1-b611-64a0a43295f2",
+    "name": "Sphere of Law",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a red source would deal damage to you, prevent 2 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "790d3ee2-8b93-464c-9b16-afe62db0048c",
+    "name": "Sphere of Purity",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If an artifact would deal damage to you, prevent 1 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "de85c961-622d-4d70-8cd7-f722c1ac5ed1",
+    "name": "Sphere of Reason",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a blue source would deal damage to you, prevent 2 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "e6325604-cdce-4872-af03-e436631004de",
+    "name": "Sphere of Truth",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "If a white source would deal damage to you, prevent 2 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  },
+  {
+    "oracle_id": "cb5ab978-d9b1-4f2f-bf3a-5e28e96b9e2e",
+    "name": "Temporal Isolation",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Flash\nEnchant creature\nEnchanted creature has shadow. (It can block or be blocked by only creatures with shadow.)\nPrevent all damage that would be dealt by enchanted creature.",
+    "layout": "normal",
+    "subset": "attached_source_hold"
+  },
+  {
+    "oracle_id": "e5fa232a-c8f2-4532-88bf-60d1223181b0",
+    "name": "Urza's Armor",
+    "mana_cost": "{6}",
+    "type_line": "Artifact",
+    "oracle_text": "If a source would deal damage to you, prevent 1 of that damage.",
+    "layout": "normal",
+    "subset": "fixed_to_you_regression"
+  }
+]

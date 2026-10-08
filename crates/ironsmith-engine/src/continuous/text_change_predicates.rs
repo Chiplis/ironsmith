@@ -374,7 +374,8 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
             *filter = rewrite_filter_words(filter, change)?;
         }
         AnthemCountExpression::CommanderCastCount(player) | AnthemCountExpression::PlayerSpeed(player)
-        | AnthemCountExpression::UnspentMana { player, .. } | AnthemCountExpression::TotalUnspentMana(player) => {
+        | AnthemCountExpression::UnspentMana { player, .. } | AnthemCountExpression::TotalUnspentMana(player)
+        | AnthemCountExpression::PlayerCounters(player, _) => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         AnthemCountExpression::GraveyardsWithAtLeastCards { .. } | AnthemCountExpression::ColorsOfAffected

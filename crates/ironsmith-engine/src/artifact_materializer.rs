@@ -500,6 +500,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RemoveAnyCountersAmongEffect" => {
             decode_as::<T, ironsmith_core::RemoveAnyCountersAmongEffect>(effect)
         }
+        "RemoveAnyCountersFromSourceEffect" => {
+            decode_as::<T, ironsmith_core::RemoveAnyCountersFromSourceEffect>(effect)
+        }
         "RemoveCountersEffect" => decode_as::<T, ironsmith_core::RemoveCountersEffect>(effect),
         "BecomeBlockedEffect" => decode_as::<T, ironsmith_core::BecomeBlockedEffect>(effect),
         "RemoveFromCombatEffect" => decode_as::<T, ironsmith_core::RemoveFromCombatEffect>(effect),
@@ -1503,6 +1506,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::RegisterManaSpendPermissionEffect,
             crate::effects::RegisterNextBatchEnterWithCountersEffect,
             crate::effects::RemoveAnyCountersAmongEffect,
+            crate::effects::RemoveAnyCountersFromSourceEffect,
             crate::effects::RemoveCountersEffect,
             crate::effects::RemoveUpToAnyCountersEffect,
             crate::effects::RenownEffect,
@@ -1621,6 +1625,32 @@ pub fn encode_runtime_effect(
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel {
                 detail: error.to_string(),
             });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::PreventDamageEffect>() {
+        let converted = ironsmith_core::PreventDamageEffect {
+            amount: payload.amount.clone(), target: payload.target.clone(),
+            until: payload.duration.clone(), damage_filter: payload.damage_filter.clone(),
+            source_of_your_choice: payload.source_of_your_choice,
+            protect_you_and_permanents_you_control: payload.protect_you_and_permanents_you_control,
+            follow_up_effects: payload.follow_up_effects.iter().cloned()
+                .map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("PreventDamageEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>() {
+        let converted = ironsmith_core::PreventAllDamageToTargetEffect {
+            target: payload.target.clone(), until: payload.duration.clone(),
+            combat_only: payload.damage_filter.combat_only,
+            damage_filter: payload.damage_filter.clone(),
+            source_color_of_your_choice: payload.source_color_of_your_choice,
+            follow_up_effects: payload.follow_up_effects.iter().cloned()
+                .map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("PreventAllDamageToTargetEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     if let Some(payload) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
         let converted = payload.clone().try_map_cost(encode_runtime_cost)?;
@@ -1842,6 +1872,11 @@ pub fn restore_runtime_aura_metadata(
             }
         })
 }
+/// Decode an already trusted current model; this raw type has no release or
+/// compiler-provenance envelope. Never use it as fallback for a rejected cached
+/// artifact. Cached compiled-card definitions must pass materialize_artifact
+/// admission, or be regenerated from complete source by the current compiler.
+/// Existing trusted native retention remains owned by its savepoint/build gate.
 pub fn materialize_definition(
     definition: wire::WireCardDefinition,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {

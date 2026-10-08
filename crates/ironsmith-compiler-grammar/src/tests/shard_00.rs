@@ -1248,7 +1248,7 @@ pub(super) fn rewrite_structure_leading_result_prefix_parser_splits_numeric_rang
     );
     assert_eq!(
         prefix.predicate,
-        crate::cards::builders::IfResultPredicate::Value(
+        crate::cards::builders::IfResultPredicate::DieValue(
             crate::effect::Comparison::BetweenInclusive(1, 9)
         )
     );
@@ -1264,7 +1264,7 @@ pub(super) fn rewrite_structure_leading_result_prefix_parser_splits_numeric_rang
             .expect("structure helper should detect compact ASCII numeric result prefix");
     assert_eq!(
         compact_ascii_prefix.predicate,
-        crate::cards::builders::IfResultPredicate::Value(
+        crate::cards::builders::IfResultPredicate::DieValue(
             crate::effect::Comparison::BetweenInclusive(10, 19)
         )
     );

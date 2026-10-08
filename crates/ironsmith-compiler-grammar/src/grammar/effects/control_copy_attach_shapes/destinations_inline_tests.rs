@@ -98,3 +98,21 @@ fn library_placement_keeps_target_player_words_out_of_destination_surface() {
         Some(crate::cards::builders::PlayerAst::You),
     );
 }
+
+// UNRUN. Full consumption remains the caller's obligation for a prefix shape.
+#[test]
+fn battlefield_destination_retains_relative_controller_and_unknown_tail() {
+    for phrase in ["battlefield under their control", "battlefield tapped under that player's control"] {
+        let tokens = lex_line(phrase, 0).unwrap();
+        let parsed = parse_onto_battlefield_destination_shape(&tokens).unwrap();
+        assert!(parsed.relative_controller && parsed.controller.is_none() && parsed.supported_tail);
+    }
+    for phrase in ["battlefield under their control instead draw a card",
+        "battlefield under the control of that card's owner instead draw a card"] {
+        let tokens = lex_line(phrase, 0).unwrap();
+        let parsed = parse_onto_battlefield_destination_shape(&tokens).unwrap();
+        assert!(!parsed.supported_tail, "{phrase}");
+    }
+    let tokens = lex_line("battlefield under the control of that card's owner {R}", 0).unwrap();
+    assert!(parse_onto_battlefield_destination_shape(&tokens).is_none());
+}
