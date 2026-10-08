@@ -186,9 +186,57 @@ pub fn parse_craft_line_lexed(
             ChoiceCount::at_least(minimum as usize),
         )],
         CraftMaterialKind::Unsupported => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported craft material clause '{material_text}'"
-            )));
+            match keyword_activated_grammar::parse_craft_filtered_material_tokens(
+                spec.material_tokens,
+            ) {
+                Some(keyword_activated_grammar::CraftFilteredMaterial::ShareCardType {
+                    count,
+                }) => {
+                    let mut filter = craft_any_battlefield_or_graveyard_filter();
+                    filter.shares_card_type = true;
+                    vec![(filter, ChoiceCount::exactly(count as usize))]
+                }
+                Some(keyword_activated_grammar::CraftFilteredMaterial::OrMore {
+                    minimum,
+                    filter_tokens,
+                }) => {
+                    let mut material =
+                        crate::object_filters::parse_object_filter_lexed(filter_tokens, false)
+                            .map_err(|_| {
+                                CardTextError::ParseError(format!(
+                                    "unsupported craft material clause '{material_text}'"
+                                ))
+                            })?;
+                    // A whole-selection relation inside one union branch
+                    // would never constrain the chosen set.
+                    if material.distinct_names
+                        || material.shares_name
+                        || material.shares_color
+                        || material.shares_land_type
+                        || material.shares_card_type
+                        || material.distinct_mana_values
+                        || material.distinct_powers
+                        || material.one_per_card_type
+                    {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported craft material relation '{material_text}'"
+                        )));
+                    }
+                    // The mechanic supplies the zones and their scopes.
+                    material.zone = None;
+                    material.controller = None;
+                    material.owner = None;
+                    vec![(
+                        craft_battlefield_or_graveyard_filter(material),
+                        ChoiceCount::at_least(minimum as usize),
+                    )]
+                }
+                None => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported craft material clause '{material_text}'"
+                    )));
+                }
+            }
         }
     };
     let base_cost = parse_compiler_activation_cost(spec.cost_tokens)?;

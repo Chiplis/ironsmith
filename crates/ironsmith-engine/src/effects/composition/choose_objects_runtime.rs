@@ -1899,7 +1899,10 @@ pub(crate) fn run_choose_objects(
                     min,
                     max,
                 );
-                if (effect.filter.shares_name || effect.filter.shares_color || relation_cost)
+                if (effect.filter.shares_name
+                    || effect.filter.shares_color
+                    || effect.filter.shares_card_type
+                    || relation_cost)
                     && !super::selection_relations::allows(
                         game,
                         &effect.filter,

@@ -2532,6 +2532,15 @@ pub struct ObjectFilter {
     /// must contain a color. Colorless objects do not share a color.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shares_color: bool,
+    /// Requires at least one activated ability, mana abilities included
+    /// ("four or more nonlands with activated abilities", CR 602.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub has_activated_ability: bool,
+    /// Selection-set constraint: all chosen objects share at least one card
+    /// type ("two that share a card type"). Never changes whether an
+    /// individual object matches.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_card_type: bool,
     /// Exact latest successfully drawn incarnation for a matching player this
     /// turn. Never falls back when that card leaves its current zone.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3206,6 +3215,7 @@ impl ObjectFilter {
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
             || self.has_non_mana_activated_ability
+            || self.has_activated_ability
             || self.no_abilities
             || self.no_x_in_cost
             || self.has_x_in_cost
@@ -5895,6 +5905,9 @@ impl ObjectFilter {
         }
         if self.shares_color {
             parts.push("that share a color".to_string());
+        }
+        if self.shares_card_type {
+            parts.push("that share a card type".to_string());
         }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());

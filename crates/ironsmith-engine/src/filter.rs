@@ -3712,6 +3712,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_non_mana_activated_ability && !subject.tail_has_non_mana_activated_ability() {
             return false;
         }
+        if self.has_activated_ability
+            && !subject
+                .tail_abilities()
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
+        {
+            return false;
+        }
         if !self.could_produce_mana.is_empty()
             && !subject_could_produce_any_mana_symbol(subject, &self.could_produce_mana, game)
         {
@@ -5670,6 +5678,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.shares_color {
             parts.push("that share a color".to_string());
         }
+        if self.shares_card_type {
+            parts.push("that share a card type".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -5961,6 +5972,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.has_non_mana_activated_ability {
             parts.push("with an activated ability that isn't a mana ability".to_string());
+        }
+        if self.has_activated_ability {
+            parts.push("with activated abilities".to_string());
         }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {

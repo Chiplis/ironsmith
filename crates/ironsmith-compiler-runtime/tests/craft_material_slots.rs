@@ -110,8 +110,7 @@ fn open_ended_and_slot_materials_compile_on_both_routes() {
 #[test]
 fn unsupported_compound_materials_still_fail_closed() {
     for clause in [
-        "two that share a card type",
-        "four or more nonlands with activated abilities",
+        "four or more creatures with different names",
         "two artifacts and two creatures",
         "zero or more creatures",
     ] {

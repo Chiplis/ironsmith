@@ -1,0 +1,14 @@
+[
+ {
+  "name": "The Enigma Jewel",
+  "oracle_id": "c0d2bdd9-1e68-4d3a-83f8-ec2ba440a494",
+  "oracle_text": "The Enigma Jewel enters tapped.\n{T}: Add {C}{C}. Spend this mana only to activate abilities.\nCraft with four or more nonlands with activated abilities {8}{U}",
+  "text": "Mana cost: {U}\nType: Legendary Artifact\nThe Enigma Jewel enters tapped.\n{T}: Add {C}{C}. Spend this mana only to activate abilities.\nCraft with four or more nonlands with activated abilities {8}{U}"
+ },
+ {
+  "name": "Eye of Ojer Taq",
+  "oracle_id": "0b1557e8-3dd6-4276-8b8e-505e7ea944ec",
+  "oracle_text": "{T}: Add one mana of any color.\nCraft with two that share a card type {6}",
+  "text": "Mana cost: {3}\nType: Artifact\n{T}: Add one mana of any color.\nCraft with two that share a card type {6}"
+ }
+]

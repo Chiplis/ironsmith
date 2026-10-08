@@ -182,6 +182,46 @@ fn parse_red_instant_or_sorcery_material<'a>(
     Ok(CraftMaterialKind::RedInstantOrSorcery { minimum })
 }
 
+/// Craft material phrases whose material is a general object description or a
+/// whole-selection relation. The caller reads `filter_tokens` with the
+/// ordinary object-filter grammar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CraftFilteredMaterial<'a> {
+    /// "four or more nonlands with activated abilities"
+    OrMore {
+        minimum: u32,
+        filter_tokens: &'a [OwnedLexToken],
+    },
+    /// "two that share a card type"
+    ShareCardType { count: u32 },
+}
+
+pub fn parse_craft_filtered_material_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<CraftFilteredMaterial<'_>> {
+    if let Some((count, _)) = primitives::parse_prefix(tokens, parse_share_card_type_material) {
+        return (count >= 2).then_some(CraftFilteredMaterial::ShareCardType { count });
+    }
+    let (minimum, rest) = primitives::parse_prefix(tokens, parse_or_more_prefix)?;
+    (minimum > 0 && !rest.is_empty()).then_some(CraftFilteredMaterial::OrMore {
+        minimum,
+        filter_tokens: rest,
+    })
+}
+
+fn parse_share_card_type_material<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["that", "share", "a", "card", "type"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(count)
+}
+
+fn parse_or_more_prefix<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    let minimum = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["or", "more"]).parse_next(input)?;
+    Ok(minimum)
+}
+
 fn is_craft_suffix_boundary(token: &OwnedLexToken) -> bool {
     matches!(token.kind, TokenKind::LParen | TokenKind::Period)
 }

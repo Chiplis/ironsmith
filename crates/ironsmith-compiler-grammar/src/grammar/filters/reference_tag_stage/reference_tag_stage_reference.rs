@@ -632,6 +632,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
     let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
+    let has_any_activated_ability = has_any_activated_ability_phrase(&all_words);
     if parse_phrase_whole(
         &non_article_parser_word_refs(&base_tokens),
         ACTIVATED_ABILITY_WORDS,
@@ -683,7 +684,9 @@ pub(in super::super) fn parse_object_filter_inner(
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
     } else if (parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
         || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some())
-        && (!(has_tap_activated_ability || has_non_mana_activated_ability)
+        && (!(has_tap_activated_ability
+            || has_non_mana_activated_ability
+            || has_any_activated_ability)
             || crate::word_primitives::parse_any_sequence_prefix(
                 &ability_words,
                 &[&["activated", "ability"], &["activated", "abilities"]],
@@ -1248,6 +1251,9 @@ pub(in super::super) fn parse_object_filter_inner(
     }
     if has_non_mana_activated_ability {
         filter.has_non_mana_activated_ability = true;
+    }
+    if has_any_activated_ability {
+        filter.has_activated_ability = true;
     }
 
     let mut referenced_zones = Vec::new();

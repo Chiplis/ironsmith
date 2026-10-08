@@ -4893,6 +4893,7 @@ fn filter_applicability_cacheable(filter: &ObjectFilter, layer: Layer) -> bool {
 fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
+        || filter.has_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -5641,6 +5642,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.shares_land_type
         || filter.shares_name
         || filter.shares_color
+        || filter.shares_card_type
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()

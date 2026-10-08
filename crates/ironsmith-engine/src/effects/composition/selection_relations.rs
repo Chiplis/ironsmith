@@ -4,7 +4,7 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 
 pub(crate) fn has_relations(filter: &ObjectFilter) -> bool {
-    filter.distinct_names || filter.shares_name || filter.shares_color
+    filter.distinct_names || filter.shares_name || filter.shares_color || filter.shares_card_type
 }
 
 fn names(game: &GameState, id: ObjectId) -> Vec<String> {
@@ -59,6 +59,16 @@ pub(crate) fn allows(
             colors = colors.intersection(game.current_colors(*id).unwrap_or_default());
         }
         if colors.is_empty() {
+            return false;
+        }
+    }
+    if filter.shares_card_type {
+        let mut shared = game.current_card_types(known[0]).unwrap_or_default();
+        for id in known.iter().skip(1) {
+            let types = game.current_card_types(*id).unwrap_or_default();
+            shared.retain(|card_type| types.contains(card_type));
+        }
+        if shared.is_empty() {
             return false;
         }
     }

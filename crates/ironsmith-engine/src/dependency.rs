@@ -232,6 +232,8 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.noncommander
         && !filter.has_tap_activated_ability
         && !filter.has_non_mana_activated_ability
+        && !filter.has_activated_ability
+        && !filter.shares_card_type
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
@@ -2696,6 +2698,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
 fn filter_mentions_card_types(filter: &ObjectFilter, types: &[crate::types::CardType]) -> bool {
     filter.type_or_subtype_union
         || filter.one_per_card_type
+        || filter.shares_card_type
         || types.iter().any(|card_type| {
             filter.card_types.contains(card_type)
                 || filter.all_card_types.contains(card_type)
@@ -2771,6 +2774,7 @@ fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
 fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
+        || filter.has_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
