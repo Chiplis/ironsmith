@@ -148,6 +148,49 @@ pub fn parse_copular_animation_shape(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopularPredicatePairShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub first_tokens: &'a [OwnedLexToken],
+    pub second_tokens: &'a [OwnedLexToken],
+}
+
+/// "That creature is black and is a Nightmare in addition to its other
+/// creature types.": one subject, two copular predicates joined by
+/// "and is" / "and are" with the same copula.
+pub fn parse_copular_predicate_pair_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CopularPredicatePairShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (copula, copula_word, after_copula) = primitives::find_prefix(tokens, || {
+        alt((
+            primitives::kw("is").value("is"),
+            primitives::kw("are").value("are"),
+        ))
+    })?;
+    if copula == 0 {
+        return None;
+    }
+    let (second_copula, (), second_tokens) = primitives::find_prefix(after_copula, || {
+        (
+            opt(primitives::comma()),
+            primitives::kw("and"),
+            primitives::kw(copula_word),
+        )
+            .void()
+    })?;
+    let first_tokens = trim_lexed_commas(after_copula.get(..second_copula)?);
+    let second_tokens = trim_lexed_commas(second_tokens);
+    if first_tokens.is_empty() || second_tokens.is_empty() {
+        return None;
+    }
+    Some(CopularPredicatePairShape {
+        subject_tokens: trim_lexed_commas(&tokens[..copula]),
+        first_tokens,
+        second_tokens,
+    })
+}
+
 /// "It's a Forest land." / "He's a Spirit in addition to his other types." /
 /// "They're black Zombies in addition to their other colors and types.":
 /// split a contracted pronoun copula into the pronoun subject the become
