@@ -1,6 +1,6 @@
 # p11-other — card-failure campaign cf8 summary
 
-158 cards: **33 source-proposed**, **125 blocked**, 0 already-on-main, 0 untriaged.
+158 cards: **41 source-proposed**, **117 blocked**, 0 already-on-main, 0 untriaged.
 
 All work is source-only and UNBUILT (per brief). The prebuilt `compile_oracle_text` was used for probing until it disappeared mid-session (main checkout rebuilding); clusters fixed after that point (blocker-count, block-alone, without-either-keyword, possessive switch) are verified by code reading only. A probe run at session start showed none of the 158 cards compiled on the binary, so none are already-on-main.
 
@@ -49,6 +49,22 @@ Second-pass tests (unrun): `top_of_library_conditions.rs`, `source_damage_histor
 - **Player-scoped restrictions, search filters, dice/Attractions:** each card needs a different missing piece (listed per card). Shared blockers: player-subject attack restrictions with a 'their next turn' duration; a keyword list longer than two in `FilterTailDecoration`; and the English-noun subtype exclusions (Plan, Sphere). Dice/Attractions need Attraction-visit rolls outside the turn structure, planar-die actions and die-roll replacements.
 
 Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive match (condition_eval, text_change_predicates, condition_rendering::describe_condition) was updated, and the other sites use wildcards. (2) `BattlefieldFlags` gains a `HashSet` field (Default; the struct is not serialized). (3) Every first damage dealt by a permanent now runs `mark_source_designation_changed` (once per object lifetime).
+
+## Round 3 (on cf8/integration)
+
+| Mechanism | Cards | Implementation |
+|---|---|---|
+| regeneration reflexive trigger (CR 701.19, 603.12) | Matopi Golem, Skeleton Scavengers | Bundle reading 'Regenerate X. When it regenerates this way, Y' -> `Regenerate{follow_up:[WhenResult(Y)]}`. Lowering emits `ReflexiveTriggerEffect` keyed to `RegenerateEffect::SHIELD_USED_ID`, and the engine tags the shield's damage removal with that id. Replacement programs already run with the replacement's own source and controller (`execute_replacement_payload_with_outputs`), so the trigger belongs to the shield's controller and sees the regenerated permanent as 'it'. |
+| library-top card reference (filter-reference, no new ObjectFilter field) | Conspicuous Snoop, Skill Borrower, Crown of Convergence | A reserved runtime tag `TOP_OF_YOUR_LIBRARY_TAG` / `CompilerReferenceTag::TopOfYourLibrary`. The engine filter matcher resolves it from the live library top of the context player (next to `EXILED_BY_YOU_TAG`). Static lines headed 'as long as the top card of your library is …' that say 'that card' rebind their it-tags to it (`keyword_static::bind_that_card_to_library_top`). |
+| repeat-process cumulative count | Demonlord Belzenlok | New prior-effect action 'put into your hand' -> `PutIntoHand`. The damage multiplier reads the `RepeatProcess` aggregate, since `RepeatProcess` itself produces the prior-effect memory and spans all iterations. |
+| 'with' keyword lists > 2 | Mwonvuli Beast Tracker | `FilterTailDecoration::WithAnyKeyword([Option<_>; 8])` (stays Copy) -> `any_of`. |
+| outside-the-game shuffle | Research // Development | 'shuffle up to N cards you own from outside the game into your library'. |
+
+Repeat-process ownership: the bounded loop is the existing core `RepeatProcessEffect` (+ `ForEachEffectAst::RepeatProcess` and resolve's `rewrite_repeat_process*`). No `repeat_process.rs` duplicate was created, so p05 should reuse that type. Crooked Scales still needs a trace; Forgotten Lore and Shrouded Lore need a set of choices that accumulates across loop iterations.
+
+Not done this round:
+- **Owned by other packages:** player 'during their next turn' restrictions (p10), and play-from-another-player permissions (p05).
+- **Dice/Attractions:** need an effect form of the roll-to-visit action. The turn-runner version takes the trigger queue directly.
 
 ## Blocked, grouped by missing mechanic
 
@@ -106,22 +122,21 @@ Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive ma
 - **opponent-who-didnt**: Hollow Marauder, Zoyowa Lava-Tongue
 - **opponents-discard**: Everything Pizza
 - **otherwise-branch**: Stolen Vitality
-- **outside-game-wish**: Research // Development
 - **player-chooses-name**: Petra Sphinx, Vexing Arcanix
 - **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin, Keen-Eared Sentry, Mirri, Weatherlight Duelist
 - **player-restriction-unless**: Antagonism
 - **power-parity-condition**: Kianne, Corrupted Memory
 - **rad-counters**: Vexing Radgull
 - **redirect-damage**: Nova Pentacle
-- **regeneration-trigger**: Matopi Golem, Skeleton Scavengers, Soldevi Sentry
-- **repeat-process**: Crooked Scales, Forgotten Lore, Shrouded Lore, Demonlord Belzenlok
+- **regeneration-trigger**: Soldevi Sentry
+- **repeat-process**: Crooked Scales, Forgotten Lore, Shrouded Lore
 - **reveal-conditional**: Omnath, Locus of All
 - **reveal-hand-and-top**: Psychotic Episode
 - **reveal-hand-count**: Blood Oath, Thought Hemorrhage
 - **reveal-reference**: Keen Duelist, Parker Luck
 - **same-action**: The Wedding of River Song
 - **same-name-play-trigger**: Search the City
-- **search-filter**: Light-Paws, Emperor's Voice, Mimeofacture, Monument to Perfection, Mwonvuli Beast Tracker, The Masters of Evil
+- **search-filter**: Light-Paws, Emperor's Voice, Mimeofacture, Monument to Perfection, The Masters of Evil
 - **shared-color-condition**: Common Cause
 - **shuffle-zones**: Sway of the Stars, The Great Aurora
 - **skip-replacement**: Fasting, Island Sanctuary
@@ -130,7 +145,7 @@ Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive ma
 - **surveil-count**: Starving Revenant
 - **target-change-contest**: Psychic Battle
 - **token-followups**: Phantom Steed, Preston Garvey, Minuteman
-- **top-of-library-static**: Conspicuous Snoop, Crown of Convergence, Skill Borrower, Volrath's Shapeshifter
+- **top-of-library-static**: Volrath's Shapeshifter
 - **trigger-suppression**: Hushbringer
 - **triggered-ability-counter**: Strict Proctor
 - **turn-history-zone-move-count**: Anzrag's Rampage, Structural Assault
