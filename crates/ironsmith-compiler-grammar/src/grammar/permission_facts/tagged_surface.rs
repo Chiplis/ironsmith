@@ -573,6 +573,26 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionTargetSurface::Other,
                 Some(1),
             )),
+            // "You may play up to two of those cards until the end of your
+            // next turn." (March of Reckless Joy): the collection keeps a
+            // shared use budget; no card is selected when the grant is made.
+            (
+                primitives::phrase(&["up", "to"]),
+                primitives::number_token,
+                primitives::kw("of"),
+                alt((
+                    primitives::phrase(&["those", "cards"]).void(),
+                    primitives::kw("them").void(),
+                )),
+            )
+                .map(|(_, count, _, ())| {
+                    (
+                        TaggedPermissionReference::LastTagged,
+                        false,
+                        TaggedPermissionTargetSurface::Other,
+                        Some(count),
+                    )
+                }),
             primitives::any_phrase(&[
                 &["spells", "from", "among", "them"],
                 &["them"],
@@ -812,6 +832,17 @@ fn parse_permission_turn_duration_lexed<'a>(
     alt((
         primitives::phrase(&["until", "your", "next", "end", "step"])
             .value(PermissionLifetimeFact::UntilYourNextEndStep),
+        // "They may play those cards until the end of their next turn." /
+        // "its owner may play it until the end of their next turn.": in a
+        // permission tail, the possessive names the permission holder (the
+        // subject of "may play"), exactly what "your" names when the holder
+        // is "you". The grant's next-turn lifetime is computed for that
+        // holder, so it is the same holder-relative lifetime.
+        primitives::any_phrase(&[
+            &["until", "the", "end", "of", "their", "next", "turn"],
+            &["until", "end", "of", "their", "next", "turn"],
+        ])
+        .value(PermissionLifetimeFact::UntilYourNextTurn),
         leaf::parse_leaf_turn_duration_phrase_lexed.map(lifetime_from_turn_duration),
     ))
     .parse_next(input)
