@@ -95,7 +95,7 @@ fn witness(game: &mut GameState, owner: PlayerId, controller: PlayerId, zone: Zo
         .power_toughness(PowerToughness::fixed(2, 2)).build();
     let id = game.create_object_from_definition(&definition, owner, zone);
     let object = game.object_mut(id).unwrap();
-    object.controller = controller;
+    object.initial_controller = controller;
     if token { object.kind = ObjectKind::Token; }
     if zone == Zone::Stack { game.push_to_stack(StackEntry::new(id, controller)); }
     id
@@ -139,10 +139,10 @@ fn native_direct_and_materialized_scopes_follow_control_ownership_and_source_lif
             for id in &no { assert!(!game.current_has_subtype(*id, Subtype::Dragon), "{:?} {id:?}", row["name"]); }
             assert!(game.current_has_subtype(controlled, Subtype::Bear));
             assert!(game.current_has_subtype(token_sliver, Subtype::Sliver));
-            game.object_mut(controlled).unwrap().controller = B;
+            game.set_current_controller(controlled, B).unwrap();
             game.refresh_continuous_state().unwrap();
             assert!(!game.current_has_subtype(controlled, Subtype::Dragon), "battlefield scope is live control");
-            game.object_mut(controlled).unwrap().controller = A;
+            game.set_current_controller(controlled, A).unwrap();
             game.move_object_by_effect(source, Zone::Exile).unwrap();
             game.refresh_continuous_state().unwrap();
             for id in yes { assert!(!game.current_has_subtype(id, Subtype::Dragon)); }

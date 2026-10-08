@@ -175,11 +175,11 @@ fn frozen_kheru_casts_face_down_pays_full_morph_and_grants_exact_free_cast_after
             assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             let cast = game.find_object_by_stable_id(target_stable).unwrap();
             assert_eq!(game.object(cast).unwrap().zone, Zone::Stack);
-            assert_eq!(game.object(cast).unwrap().controller, A);
+            assert_eq!(game.controller_of_id(cast), Some(A));
             resolve_stack_entry(&mut game).unwrap();
             let creature = game.find_object_by_stable_id(target_stable).unwrap();
             assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-            assert_eq!(game.object(creature).unwrap().controller, A);
+            assert_eq!(game.controller_of_id(creature), Some(A));
             assert_eq!(game.object(creature).unwrap().owner, B);
         }
     }

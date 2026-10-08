@@ -14,9 +14,9 @@ use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
 };
 use super::super::object_filters::parse_object_filter_lexed;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::super::util::parse_subtype_word;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::super::util::{
     parse_card_type as parse_shared_card_type, parse_supertype_word as parse_shared_supertype_word,
 };
@@ -366,7 +366,7 @@ fn parse_value_mana_value_segment(clause: LexedClause<'_>) -> Option<Value> {
     parse_value_mana_value_segment_shape(clause).map(value_from_mana_value_segment_shape)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeLineCst {
     pub supertypes: Vec<Supertype>,
@@ -477,7 +477,7 @@ pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_tokens_text(raw, true)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_tokens_text(raw, false)
 }
@@ -740,17 +740,17 @@ pub fn parse_type_line_with(
     Ok((supertypes, card_types, subtypes))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_card_type_word_for_rewrite(word: &str) -> Option<CardType> {
     parse_shared_card_type(&word.to_ascii_lowercase())
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_supertype_word_for_rewrite(word: &str) -> Option<Supertype> {
     parse_shared_supertype_word(word)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardTextError> {
     let (supertypes, card_types, subtypes) = parse_type_line_with(
         raw,

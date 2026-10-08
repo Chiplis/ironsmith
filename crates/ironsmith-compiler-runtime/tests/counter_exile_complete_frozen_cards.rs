@@ -225,7 +225,7 @@ fn frozen_instants_actually_counter_permanents_and_preserve_nonpermanent_gate_be
                 let stack = game.find_object_by_stable_id(stable).unwrap();
                 assert_eq!(game.object(stack).unwrap().zone, Zone::Stack);
                 assert_eq!(game.object(stack).unwrap().caster_mana_spent_to_cast, Some(0));
-                assert_eq!(game.object(stack).unwrap().controller, A);
+                assert_eq!(game.controller_of_id(stack), Some(A));
                 assert_eq!(game.object(stack).unwrap().owner, B);
                 assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             }
@@ -262,7 +262,7 @@ fn full_frozen_permissions_survive_source_departure_but_preserve_timing_and_addi
             resolve_stack_entry(&mut game).unwrap();
             let creature = game.find_object_by_stable_id(stable).unwrap();
             assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-            assert_eq!(game.object(creature).unwrap().controller, A);
+            assert_eq!(game.controller_of_id(creature), Some(A));
             assert_eq!(game.object(creature).unwrap().owner, B);
         }
     }
@@ -301,7 +301,7 @@ fn full_spelljack_plays_the_countered_land_face_and_full_decree_only_casts() {
             if allow_land {
                 act(&mut game, A, land);
                 assert!(game.battlefield.iter().any(|id| game.object(*id).is_some_and(|object|
-                    object.name.as_str() == "Countered modal land" && object.controller == A && object.owner == B)));
+                    object.name.as_str() == "Countered modal land" && game.controller_of(object) == A && object.owner == B)));
                 assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             } else {
                 let mut forged = game.clone();
