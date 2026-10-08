@@ -142,6 +142,11 @@ pub(super) fn read_source_power_threshold_predicate(
     }
     Ok(None)
 }
+pub(super) fn read_each_quality_control_predicate(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    parse_each_quality_control_predicate(input.predicate_tokens)
+}
 pub(super) fn read_basic_land_types_among_lands_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -508,6 +513,17 @@ pub(super) const READINGS: &[Reading] = &[
             }))
         },
         read: |input| input.outcome(read_source_power_threshold_predicate(input)),
+    },
+    Reading {
+        id: RuleId::new("each-quality-control-predicate"),
+        head: HeadDiscriminator::Any,
+        admits: |input| {
+            input
+                .predicate_tokens
+                .first()
+                .is_some_and(|token| token.is_word("you"))
+        },
+        read: |input| input.outcome(read_each_quality_control_predicate(input)),
     },
     Reading {
         id: RuleId::new("basic-land-types-among-lands-predicate"),

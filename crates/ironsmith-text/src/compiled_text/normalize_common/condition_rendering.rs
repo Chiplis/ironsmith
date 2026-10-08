@@ -1474,6 +1474,9 @@ pub(crate) fn describe_coin_result_comparison_for(
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if let Some(text) = describe_each_quality_control_condition(condition) {
+        return text;
+    }
     if let Condition::CountComparison {
         count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
@@ -7261,4 +7264,92 @@ fn describe_damage_presence_comparison(
         }
         _ => None,
     }
+}
+
+/// "you control a land of each basic land type and a creature of each color"
+/// (Coalition Victory): the lowered condition is a conjunction of five
+/// `PlayerControls` leaves per quality, one per basic land type (Plains to
+/// Forest) or per color (white to green), each over the same base filter.
+fn describe_each_quality_control_condition(condition: &Condition) -> Option<String> {
+    fn flatten<'a>(condition: &'a Condition, out: &mut Vec<&'a Condition>) {
+        if let Condition::And(left, right) = condition {
+            flatten(left, out);
+            flatten(right, out);
+        } else {
+            out.push(condition);
+        }
+    }
+    const BASIC_LAND_TYPES: [Subtype; 5] = [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ];
+    const COLORS: [crate::color::ColorSet; 5] = [
+        crate::color::ColorSet::WHITE,
+        crate::color::ColorSet::BLUE,
+        crate::color::ColorSet::BLACK,
+        crate::color::ColorSet::RED,
+        crate::color::ColorSet::GREEN,
+    ];
+    if !matches!(condition, Condition::And(_, _)) {
+        return None;
+    }
+    let mut leaves = Vec::new();
+    flatten(condition, &mut leaves);
+    if leaves.len() % 5 != 0 {
+        return None;
+    }
+    let mut player = None;
+    let mut items = Vec::new();
+    for group in leaves.chunks(5) {
+        let filters = group
+            .iter()
+            .map(|leaf| match leaf {
+                Condition::PlayerControls { player, filter } => Some((player, filter)),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let (group_player, first) = filters[0];
+        if player.is_some_and(|existing| existing != group_player) {
+            return None;
+        }
+        player = Some(group_player);
+        let by_type = first.subtypes.as_slice() == [Subtype::Plains];
+        let by_color = first.colors == Some(crate::color::ColorSet::WHITE);
+        let mut base = first.clone();
+        if by_type {
+            base.subtypes.clear();
+        } else if by_color {
+            base.colors = None;
+        } else {
+            return None;
+        }
+        for (index, (leaf_player, filter)) in filters.iter().enumerate() {
+            let expected = if by_type {
+                base.clone().with_subtype(BASIC_LAND_TYPES[index])
+            } else {
+                base.clone().with_colors(COLORS[index])
+            };
+            if *leaf_player != group_player || **filter != expected {
+                return None;
+            }
+        }
+        let mut noun = base.clone();
+        noun.controller = None;
+        let noun = noun.description();
+        let quality = if by_type { "basic land type" } else { "color" };
+        items.push(format!(
+            "{} of each {quality}",
+            with_indefinite_article(strip_leading_article(&noun))
+        ));
+    }
+    let player = player?;
+    Some(format!(
+        "{} {} {}",
+        describe_player_filter(player),
+        if matches!(player, PlayerFilter::You) { "control" } else { "controls" },
+        join_with_and(&items)
+    ))
 }
