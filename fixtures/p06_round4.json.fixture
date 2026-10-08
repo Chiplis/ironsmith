@@ -198,5 +198,15 @@
   "toughness": "2",
   "loyalty": null,
   "oracle_text": "Flash\nWhen this creature enters, each token that would be created under an opponent's control this turn is created under your control instead."
+ },
+ {
+  "name": "Isengard Unleashed",
+  "oracle_id": "2b947703-751a-4d95-b5de-e2d6b1fcb502",
+  "mana_cost": "{2}{R}{R}{R}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Damage can't be prevented this turn. If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead.\nFlashback {4}{R}{R}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
  }
 ]

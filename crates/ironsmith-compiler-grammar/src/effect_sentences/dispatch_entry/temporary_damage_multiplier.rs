@@ -14,8 +14,13 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     // Resolved declarations in this family name classes of sources and
     // recipients, not context-local tags or future attachment choices.
     let source = crate::lexer::parser_token_word_refs(shape.source.filter_tokens);
+    // "a source you control" / "any source you control" (Insult, Isengard
+    // Unleashed): an articled source noun names every source.
+    let articled_source_noun =
+        shape.source.source_noun && matches!(source.as_slice(), ["a"] | ["any"]);
     if !shape.source.trailing_filter_tokens.is_empty()
-        || !matches!(source.as_slice(), [] | ["a", "creature"] | ["creature"])
+        || !(articled_source_noun
+            || matches!(source.as_slice(), [] | ["a", "creature"] | ["creature"]))
         || (!shape.source.source_noun && source.is_empty())
     {
         return Ok(None);
@@ -32,7 +37,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
             | ["a", "player"]
             | ["a", "permanent", "or", "player"]
             | ["a", "permanent", "or", "a", "player"]
-    ) {
+            | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+    ) && !(recipient.is_empty() && shape.damaged_tokens.is_none())
+    {
         return Ok(None);
     }
     let Some(spec) = crate::keyword_static::damage_multiplier_parts_from_shape(shape)? else {

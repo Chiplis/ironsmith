@@ -240,3 +240,11 @@ fn until_your_next_turn_multipliers_fix_their_referents() {
         ),
     ]);
 }
+
+#[test]
+fn this_turn_multipliers_read_sources_you_control_and_late_recipients() {
+    assert_cluster(&[(
+        "Isengard Unleashed",
+        &["RegisterDamageMultiplierEffect", "UntilEndOfTurn", "factor: 3", "Opponent"],
+    )]);
+}
