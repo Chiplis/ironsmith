@@ -485,6 +485,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_cast_or_play_tagged_clause,
         ),
         specific_primitive!(
+            "collection-cast-clause",
+            &["you", "cast"],
+            crate::permission_helpers::collection_casts::parse_collection_cast_clause,
+        ),
+        specific_primitive!(
             "prevent-next-damage-clause",
             &["prevent", "the"],
             parse_prevent_next_damage_clause,

@@ -1,3 +1,5 @@
+#[path = "permission_helpers/collection_casts.rs"]
+pub(crate) mod collection_casts;
 pub(crate) mod effect_cast_prices;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
