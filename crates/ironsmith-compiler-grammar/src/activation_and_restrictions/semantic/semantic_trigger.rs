@@ -1345,6 +1345,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             {
                 return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
             }
+            // "Whenever you play an Island" (Jokulmorder): CR 305.1 — only a
+            // land is played, so a land-subtype noun names the played land.
+            if let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
+                && !filter.subtypes.is_empty()
+                && filter.subtypes.iter().all(|subtype| subtype.is_land_subtype())
+                && filter.card_types.is_empty()
+                && filter.any_of.is_empty()
+            {
+                return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
+            }
         }
     }
 
