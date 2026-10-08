@@ -428,6 +428,13 @@ pub fn parse_filter_keyword_constraint_words(
             .is_some_and(|word| matches!(*word, "ability" | "abilities")));
         return Some((FilterKeywordConstraint::Static(keyword), article + 1 + noun));
     }
+    // "a card with a kicker ability" (Coralhelm Chronicler): kicker and
+    // multikicker (a kicker variant, CR 702.33) both qualify.
+    if matches!(words.get(article), Some(&"kicker" | &"multikicker")) {
+        let noun = usize::from(words.get(article + 1)
+            .is_some_and(|word| matches!(*word, "ability" | "abilities")));
+        return Some((FilterKeywordConstraint::Marker("kicker"), article + 1 + noun));
+    }
     if prefix_one_of(words, &[&["mana", "ability"], &["mana", "abilities"]]) {
         return Some((FilterKeywordConstraint::Marker("mana ability"), 2));
     }
