@@ -4796,6 +4796,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
