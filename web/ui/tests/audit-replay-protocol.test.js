@@ -40,8 +40,8 @@ const action = { command: { type: "priority_action", action_ref: { kind: "pass_p
 test("all engine replay entry points reject old, absent and mismatched protocol before reading engine state", async () => {
   const entries = [replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame,
     verifyEndOfMatchDisclosuresWithGame];
-  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
-  for (const version of [26, 27, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
+  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
+  for (const version of [26, 27, 28, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
     invalid.push({ protocolVersion: version, match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION } });
     invalid.push({ protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, match: { protocolVersion: version } });
   }
@@ -64,7 +64,7 @@ test("actions require successful initialization and recheck the session protocol
   const h = replayGame();
   await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /successfully initialized/);
   assert.deepEqual(h.calls, []);
-  for (const version of [25, 26, 27, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
+  for (const version of [25, 26, 27, 28, undefined, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)]) {
     for (const owner of ["transcript", "match"]) {
       const candidate = transcript();
       await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });

@@ -1,0 +1,145 @@
+{
+  "source_file": "reports/current-refresh-20261008/data/cards-current.json",
+  "source_sha256": "bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750",
+  "source_record": {
+    "object": "card",
+    "id": "d0505a8a-841b-471b-970d-125583b9ba9d",
+    "oracle_id": "d360ce89-d80d-4be6-be8c-7e7758cd5840",
+    "multiverse_ids": [
+      530961
+    ],
+    "arena_id": 77428,
+    "tcgplayer_id": 243323,
+    "cardmarket_id": 571514,
+    "name": "Loathsome Troll",
+    "lang": "en",
+    "released_at": "2021-07-23",
+    "uri": "https://api.scryfall.com/cards/d0505a8a-841b-471b-970d-125583b9ba9d",
+    "scryfall_uri": "https://scryfall.com/card/afr/327/loathsome-troll?utm_source=api",
+    "layout": "normal",
+    "highres_image": true,
+    "image_status": "highres_scan",
+    "image_updated_at": "2026-07-13T07:06:47Z",
+    "image_uris": {
+      "small": "https://cards.scryfall.io/small/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.jpg?1783926407",
+      "normal": "https://cards.scryfall.io/normal/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.jpg?1783926407",
+      "large": "https://cards.scryfall.io/large/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.jpg?1783926407",
+      "png": "https://cards.scryfall.io/png/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.png?1783926407",
+      "art_crop": "https://cards.scryfall.io/art_crop/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.jpg?1783926407",
+      "border_crop": "https://cards.scryfall.io/border_crop/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.jpg?1783926407",
+      "thumb": "https://cards.scryfall.io/thumb/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.webp?1783926407",
+      "grid": "https://cards.scryfall.io/grid/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.webp?1783926407",
+      "display": "https://cards.scryfall.io/display/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.webp?1783926407",
+      "art": "https://cards.scryfall.io/art/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.webp?1783926407",
+      "crop": "https://cards.scryfall.io/crop/front/d/0/d0505a8a-841b-471b-970d-125583b9ba9d.webp?1783926407"
+    },
+    "mana_cost": "{3}{G}{G}",
+    "cmc": 5.0,
+    "type_line": "Creature — Troll",
+    "oracle_text": "{3}{G}: Roll a d20. Activate only if this card is in your graveyard.\n1—9 | Put this card on top of your library.\n10—19 | Return this card to your hand.\n20 | Return this card to the battlefield tapped.",
+    "power": "6",
+    "toughness": "2",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
+    "keywords": [],
+    "legalities": {
+      "standard": "not_legal",
+      "future": "not_legal",
+      "historic": "legal",
+      "timeless": "legal",
+      "gladiator": "legal",
+      "pioneer": "legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "pauper": "not_legal",
+      "vintage": "legal",
+      "penny": "not_legal",
+      "commander": "legal",
+      "oathbreaker": "legal",
+      "standardbrawl": "not_legal",
+      "brawl": "legal",
+      "competitivebrawl": "legal",
+      "alchemy": "not_legal",
+      "paupercommander": "not_legal",
+      "duel": "legal",
+      "oldschool": "not_legal",
+      "premodern": "not_legal",
+      "predh": "not_legal",
+      "tlr": "not_legal"
+    },
+    "games": [
+      "arena",
+      "paper",
+      "mtgo"
+    ],
+    "reserved": false,
+    "game_changer": false,
+    "foil": true,
+    "nonfoil": true,
+    "finishes": [
+      "nonfoil",
+      "foil"
+    ],
+    "oversized": false,
+    "promo": false,
+    "reprint": false,
+    "variation": false,
+    "set_id": "e1ef87ba-ba92-4573-817f-543b996d2851",
+    "set": "afr",
+    "set_name": "Adventures in the Forgotten Realms",
+    "set_type": "expansion",
+    "set_uri": "https://api.scryfall.com/sets/e1ef87ba-ba92-4573-817f-543b996d2851",
+    "set_search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Aafr&unique=prints",
+    "scryfall_set_uri": "https://scryfall.com/sets/afr?utm_source=api",
+    "rulings_uri": "https://api.scryfall.com/cards/d0505a8a-841b-471b-970d-125583b9ba9d/rulings",
+    "prints_search_uri": "https://api.scryfall.com/cards/search?order=released&q=oracleid%3Ad360ce89-d80d-4be6-be8c-7e7758cd5840&unique=prints",
+    "collector_number": "327",
+    "digital": false,
+    "rarity": "uncommon",
+    "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
+    "artist": "Phil Stone",
+    "artist_ids": [
+      "86942b2a-49d3-4edd-908c-551f6f07dd00"
+    ],
+    "illustration_id": "713d0218-f651-4a24-a333-d8bf7c22b11f",
+    "border_color": "black",
+    "frame": "2015",
+    "frame_effects": [
+      "showcase"
+    ],
+    "full_art": false,
+    "textless": false,
+    "booster": false,
+    "story_spotlight": false,
+    "promo_types": [
+      "boosterfun"
+    ],
+    "edhrec_rank": 22222,
+    "prices": {
+      "usd": "0.19",
+      "usd_foil": "0.22",
+      "usd_etched": null,
+      "eur": "0.10",
+      "eur_foil": "0.26",
+      "tix": null
+    },
+    "related_uris": {
+      "gatherer": "https://gatherer.wizards.com/Pages/Card/Details.aspx?multiverseid=530961&printed=false",
+      "tcgplayer_infinite_articles": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Farticles&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Farticles%3FproductLineName%3Dmagic%26q%3DLoathsome%2BTroll",
+      "tcgplayer_infinite_decks": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Fdecks&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Fdecks%3FproductLineName%3Dmagic%26q%3DLoathsome%2BTroll",
+      "edhrec": "https://edhrec.com/route/?cc=Loathsome+Troll"
+    },
+    "purchase_uris": {
+      "tcgplayer": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&u=https%3A%2F%2Fwww.tcgplayer.com%2Fproduct%2F243323%3Fpage%3D1",
+      "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=571514&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
+      "cardhoarder": "https://www.cardhoarder.com/cards?affiliate_id=scryfall&data%5Bsearch%5D=Loathsome+Troll&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
+    },
+    "first_printed_set_name": "Adventures in the Forgotten Realms"
+  },
+  "text": "Mana cost: {3}{G}{G}\nType: Creature — Troll\nPower/Toughness: 6/2\n{3}{G}: Roll a d20. Activate only if this card is in your graveyard.\n1—9 | Put this card on top of your library.\n10—19 | Return this card to your hand.\n20 | Return this card to the battlefield tapped.",
+  "status": "Source-authored regression fixture; compiler and runtime tests unrun"
+}

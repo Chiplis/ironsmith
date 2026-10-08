@@ -826,6 +826,21 @@ pub(super) fn extend_triggered_line_with_result_followups(
     (triggered, next_idx)
 }
 
+// Restrictions belong to the activation envelope, not its resolving program.
+// Probe the same sentence partition used by activation lowering, without
+// discarding any authored tokens from the real ability (or examining its cost).
+fn activated_result_owner_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut resolving = Vec::new();
+    for sentence in split_lexed_sentences(tokens) {
+        if crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence)
+            .is_none()
+        {
+            append_joined_line_tokens(&mut resolving, sentence);
+        }
+    }
+    resolving
+}
+
 pub(super) fn extend_activated_line_with_result_followups(
     items: &[PreprocessedItem],
     idx: usize,
@@ -840,7 +855,8 @@ pub(super) fn extend_activated_line_with_result_followups(
         if super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line, &activated.effect_parse_tokens) {
+        let owner_tokens = activated_result_owner_tokens(&activated.effect_parse_tokens);
+        if !is_trigger_result_followup_line(line, &owner_tokens) {
             break;
         }
 
@@ -1289,3 +1305,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "statement_recognition_numeric_owner_tests.rs"]
+mod numeric_owner_tests;

@@ -429,3 +429,36 @@ fn ability_only_source_restriction_retains_its_distinct_envelope() {
         assert!(parse_target_restriction_envelope_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
     }
 }
+
+// Source-only HOLD evidence; UNRUN. This does not bless the current mistaken
+// Restriction classification of the relative predicate as correct semantics.
+#[test]
+fn sinister_concierge_unowned_gain_suspend_clause_stays_fail_closed() {
+    let tokens = lex_line(
+        "Each card exiled this way that doesn't have suspend gains suspend.",
+        0,
+    )
+    .unwrap();
+    assert!(crate::effect_sentences::parse_effect_clause_lexed(&tokens).is_err());
+}
+
+#[test]
+fn sinister_concierge_hold_does_not_relax_genuine_main_negated_heads() {
+    use crate::grammar::effects::typed_clause_heads::{
+        ClauseHeadFormAst, classify_typed_clause_head,
+    };
+    use crate::recognition::ParseOutcome;
+
+    for text in [
+        "Those creatures don't untap during their controllers' next untap steps.",
+        "That card does not have suspend.",
+        "Each card exiled this way can't be cast.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ParseOutcome::Match(head) = classify_typed_clause_head(&tokens) else {
+            panic!("missing restriction head: {text}");
+        };
+        assert_eq!(head.value.form, ClauseHeadFormAst::Restriction, "{text}");
+        assert!(!head.value.permits_action_fallback(), "{text}");
+    }
+}
