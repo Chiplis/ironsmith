@@ -603,14 +603,18 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | PhaseIn(filter)
         | AttackOrBlock(filter)
         | AttackOrBlockAlone(filter)
-        | EnterBattlefield(filter) => object_filter_mentions_iterated_player(filter),
+        | EnterBattlefield(filter)
+        | BecomeUntapped(filter)
+        | AttackBlockOrCrew(filter) => object_filter_mentions_iterated_player(filter),
         AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
-        | AttackPlayer { attackers, player } => {
+        | AttackPlayer { attackers, player }
+        | MustAttackPlayer { attackers, player } => {
             object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
         }
         BlockSpecificAttacker { blockers, attacker }
         | MustBlockSpecificAttacker { blockers, attacker }
-        | BeTargetedFrom(blockers, attacker) => {
+        | BeTargetedFrom(blockers, attacker)
+        | BeAttachedBy(blockers, attacker) => {
             object_filter_mentions_iterated_player(blockers)
                 || object_filter_mentions_iterated_player(attacker)
         }

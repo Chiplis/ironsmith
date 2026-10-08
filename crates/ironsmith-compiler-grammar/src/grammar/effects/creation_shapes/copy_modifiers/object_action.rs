@@ -2,7 +2,7 @@ use super::*;
 
 /// Splits "its name is <name>" or "named <name>" (ending at "and" or the end
 /// of the exception) out of a copy exception.
-fn split_copy_name_exception(words: &[&str]) -> (Option<Vec<String>>, Vec<&str>) {
+fn split_copy_name_exception<'a>(words: &[&'a str]) -> (Option<Vec<String>>, Vec<&'a str>) {
     let marker = words
         .windows(3)
         .position(|window| window == ["its", "name", "is"])
