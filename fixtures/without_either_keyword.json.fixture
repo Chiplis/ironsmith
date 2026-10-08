@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Stormtide Leviathan",
+    "oracle_id": "131a7475-0b9e-46eb-9ade-fef1b9820184",
+    "text": "Mana cost: {5}{U}{U}{U}\nType: Creature — Leviathan\nPower/Toughness: 8/8\nIslandwalk\nAll lands are Islands in addition to their other types.\nCreatures without flying or islandwalk can't attack."
+  }
+]
