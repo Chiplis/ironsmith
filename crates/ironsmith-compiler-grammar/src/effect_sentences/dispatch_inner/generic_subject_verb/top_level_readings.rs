@@ -256,6 +256,21 @@ fn read_copular_animation(
             vec![effect],
         )));
     }
+    // "It's a 3/3 Robot artifact creature with flying." / "He's a Spirit in
+    // addition to his other types." / "They're black Zombies in addition to
+    // their other colors and types.": a contracted pronoun copula in an
+    // effect sentence states the object's new characteristics exactly as
+    // "becomes" does, so every descriptor the become grammar owns reads here.
+    if let Some((subject, animation)) =
+        effect_grammar::clause_dispatch_shapes::parse_contracted_pronoun_copula_shape(tokens)
+        && let Ok(effect) =
+            super::super::clause_dispatch::parse_become_clause(&subject, &animation)
+    {
+        return Ok(Some((
+            "subject-verb verb=Become subject=explicit recognizer=copular-animation",
+            vec![effect],
+        )));
+    }
     Ok(None)
 }
 fn read_branch_scoped_collection(

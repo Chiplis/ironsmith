@@ -102,6 +102,35 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
     })
 }
 
+/// "... for as long as it has a saurian counter on it" (Sauron, Dino
+/// Devotee): the trailing duration lasts while the affected object keeps a
+/// counter of the named kind (CR 611.2b). Returns the counter kind and the
+/// body before the duration.
+pub fn parse_affected_object_counter_duration_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::object::CounterType, &[OwnedLexToken])> {
+    use winnow::combinator::{alt, opt};
+    let (start, (), suffix) = primitives::find_prefix(tokens, || {
+        (
+            as_long_as_marker,
+            primitives::phrase(&["it", "has"]),
+            opt(alt((primitives::kw("a"), primitives::kw("an")))),
+        )
+            .void()
+    })?;
+    let (counter_tokens, ()) = primitives::split_lexed_once_before_suffix(suffix, 1, || {
+        (
+            primitives::kw("counter"),
+            primitives::phrase(&["on", "it"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    })?;
+    let counter_type = crate::grammar::filters::parse_counter_type_from_tokens(counter_tokens)?;
+    let body = trim_lexed_commas(&tokens[..start]);
+    (!body.is_empty()).then_some((counter_type, body))
+}
+
 pub fn parse_search_restriction_duration_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<SearchRestrictionDurationShape>, CardTextError> {

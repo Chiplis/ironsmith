@@ -148,6 +148,49 @@ pub fn parse_copular_animation_shape(
     })
 }
 
+/// "It's a Forest land." / "He's a Spirit in addition to his other types." /
+/// "They're black Zombies in addition to their other colors and types.":
+/// split a contracted pronoun copula into the pronoun subject the become
+/// grammar reads ("it" / "they") and the descriptor. A gendered possessive
+/// ("his"/"her" other types) names the same object as the subject and is
+/// read as "its". "It's still a ..." restates retained types and belongs to
+/// the preceding animation, so it is not a copula here.
+pub fn parse_contracted_pronoun_copula_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let tokens = trim_lexed_commas(tokens);
+    let (head, rest) = tokens.split_first()?;
+    let subject = if head.is_any_word(&["it's", "it’s", "he's", "he’s", "she's", "she’s"]) {
+        "it"
+    } else if head.is_any_word(&["they're", "they’re"]) {
+        "they"
+    } else {
+        return None;
+    };
+    let rest = trim_lexed_commas(rest);
+    if rest.is_empty()
+        || rest
+            .first()
+            .is_some_and(|token| token.is_any_word(&["still", "no", "not"]))
+    {
+        return None;
+    }
+    let animation = rest
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            let gendered_possessive = token.is_any_word(&["his", "her"])
+                && rest.get(index + 1).is_some_and(|next| next.is_word("other"));
+            if gendered_possessive {
+                OwnedLexToken::synthetic_word("its")
+            } else {
+                token.clone()
+            }
+        })
+        .collect();
+    Some((vec![OwnedLexToken::synthetic_word(subject)], animation))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PassiveSacrificeShape<'a> {
     pub object_tokens: &'a [OwnedLexToken],

@@ -151,6 +151,17 @@ pub(super) fn parse_effect_clause_unstacked(
             render_lower_words(tokens)
         )));
     }
+    // "... and it's a 3/3 Robot artifact creature with flying" (Brilliance
+    // Unleashed): a contracted pronoun copula split off as its own clause
+    // states the object's new characteristics, read as "becomes".
+    // A descriptor the become grammar cannot read keeps the clause's other
+    // readings.
+    if let Some((subject, animation)) =
+        clause_grammar::parse_contracted_pronoun_copula_shape(tokens)
+        && let Ok(effect) = parse_become_clause(&subject, &animation)
+    {
+        return Ok(effect);
+    }
     let (verb, _) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [
