@@ -32,6 +32,21 @@ mechanics), so the package splits into many small clusters rather than one.
   ledger (p05 attack requirements / exile play permissions, p06 would-instead replacements,
   p09 choices/votes, p10 restrictions and library exile-until, p12 ability copying).
 
+## Round 3 (on cf8/integration)
+- Shared casting-keyword grant path (`keyword_static/granted_casting_keywords.rs`, replacing the
+  warp-only rule): warp, prowl, freerunning, miracle granted in hand (spell subjects map to those
+  cards in hand, so no new zone permission); jump-start granted in the graveyard.
+- Granted encore with derived costs (`KeywordAction::EncoreFromSourceCost`, graveyard grant).
+- Commander ninjutsu (`KeywordAction::CommanderNinjutsu`, Hand+Command functional zones).
+- Retarget "The new target must be ..." (`StackActionAst::RetargetStackObject.new_target_restriction`).
+- Paid-method cost modifiers: the existing rule was unreachable except for flashback; head hints
+  added, and a trailing "for each ..." is now owned instead of silently dropped.
+- Temporary damage multipliers: duration before recipient, and no-recipient form.
+- Rampage possession keyword (Rapid Fire); Sands of Time is handled by p03's skip-untap static.
+- Still blocked: granted replicate/offspring/demonstrate/sneak/madness (need a typed granted
+  optional-cost / trigger mechanism; madness is p06's replacement family), and the remaining
+  cast-timing spell bodies (Berserker's Frenzy, Camouflage, Illusionist's Gambit, Siren's Call).
+
 ## Source-proposed clusters
 ### absorb-keyword (1): Lymph Sliver
 - Fix: Absorb had no grammar. New registry rule lowers 'Absorb N' and '<subject> have absorb N' to the existing PreventMatchingDamage self-prevention (amount N, target = this object) that the spelled-out CR 702.64a sentence already compiles to (probe), granted via GrantStaticAbility.
