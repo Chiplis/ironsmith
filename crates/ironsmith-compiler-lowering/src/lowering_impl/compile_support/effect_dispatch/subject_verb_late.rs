@@ -889,6 +889,19 @@ pub(super) fn compile_subject_verb_late(
                 );
                 recipient_refs.iterated_player = false;
             }
+            // "It deals damage to target player equal to the number of
+            // nonbasic lands that player controls" (Anathemancer): as for the
+            // plain damage arm, the explicit player target is the same-clause
+            // antecedent of "that player" inside the amount.
+            let mut amount = amount;
+            if let TargetAst::Player(filter, Some(_))
+            | TargetAst::PlayerOrPlaneswalker(filter, Some(_)) = target
+            {
+                bind_relative_iterated_player_in_value_to_player_filter(
+                    &mut amount,
+                    &PlayerFilter::Target(Box::new(filter.clone())),
+                );
+            }
             let amount = resolve_value_it_tag(&amount, &current_reference_env(ctx))?;
             let relation_source = source_tag
                 .as_ref()
