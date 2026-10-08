@@ -1994,6 +1994,14 @@ fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFil
     ) {
         return Some(PlayerFilter::You);
     }
+    // "if a player other than you lost life this turn" (Ludevic): any one
+    // player except the ability's controller.
+    if matches!(
+        clause.word_refs().as_slice(),
+        ["a", "player", "other", "than", "you"] | ["another", "player"]
+    ) {
+        return Some(PlayerFilter::NotYou);
+    }
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::LifeChangeSubject,
