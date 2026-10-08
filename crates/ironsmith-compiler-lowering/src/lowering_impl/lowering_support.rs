@@ -4499,6 +4499,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
     match action {
         KeywordAction::Flying => Some(StaticAbility::flying()),
         KeywordAction::Menace => Some(StaticAbility::menace()),
+        // CR 702.22: a granted banding ("Enchanted creature has banding") is
+        // the same static keyword the printed one lowers to.
+        KeywordAction::Banding => Some(StaticAbility::banding()),
         KeywordAction::Hexproof => Some(StaticAbility::hexproof()),
         KeywordAction::Haste => Some(StaticAbility::haste()),
         KeywordAction::Improvise => Some(StaticAbility::improvise()),
