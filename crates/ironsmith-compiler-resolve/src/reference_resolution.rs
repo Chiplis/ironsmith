@@ -5332,6 +5332,12 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
+                // "Reveal the top seven cards of your library" (Stomping
+                // Slabs) remembers the revealed cards in its outcome.
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                    reveal: true,
+                    ..
+                })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
         ),
         PriorEffectAction::Sacrificed => matches!(
