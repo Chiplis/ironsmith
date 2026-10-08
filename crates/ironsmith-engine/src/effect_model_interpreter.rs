@@ -1395,6 +1395,10 @@ where
         if let Some(filter) = &payload.reflect_source_filter {
             effect = effect.reflecting_only_from_source_matching(filter.clone());
         }
+        effect = effect.with_portion(payload.portion);
+        if payload.combat_only {
+            effect = effect.combat_damage_only();
+        }
         return Ok(Effect::new(effect));
     }
     if let Some(payload) =

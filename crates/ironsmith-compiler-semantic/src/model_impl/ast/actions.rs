@@ -987,6 +987,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 reflect_damage_to_source_controller,
                 reflect_source_filter,
                 follow_up_effects,
+                portion,
+                combat_only,
             }) => f
                 .debug_struct("PreventNextTimeDamage")
                 .field("source", source)
@@ -997,6 +999,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 )
                 .field("reflect_source_filter", reflect_source_filter)
                 .field("follow_up_effects", follow_up_effects)
+                .field("portion", portion)
+                .field("combat_only", combat_only)
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget {
                 target,

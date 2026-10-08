@@ -3177,8 +3177,22 @@
         } else {
             format!(" to {target_text}")
         };
+        let damage_noun = if prevent_next_time.combat_only {
+            "combat damage"
+        } else {
+            "damage"
+        };
+        let prevented_part = match prevent_next_time.portion {
+            ironsmith_core::NextTimeDamagePreventionPortion::All => "that damage".to_string(),
+            ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown => {
+                "half that damage, rounded down".to_string()
+            }
+            ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining) => {
+                format!("all but {remaining} of that damage")
+            }
+        };
         let mut rendered = format!(
-            "The next time {source_text} would deal damage{target_clause} this turn, prevent that damage"
+            "The next time {source_text} would deal {damage_noun}{target_clause} this turn, prevent {prevented_part}"
         );
         if prevent_next_time.reflect_damage_to_source_controller {
             let prevented_damage = match &prevent_next_time.reflect_source_filter {
