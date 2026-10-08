@@ -931,6 +931,20 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("snow"),
             StaticAbilityLineHeadHint::Single("token"),
             StaticAbilityLineHeadHint::Single("tokens"),
+            // Color and supertype adjectives open the same filtered subject
+            // ("Colorless creatures you control enter with ...").
+            StaticAbilityLineHeadHint::Single("colorless"),
+            StaticAbilityLineHeadHint::Single("multicolored"),
+            StaticAbilityLineHeadHint::Single("monocolored"),
+            StaticAbilityLineHeadHint::Single("white"),
+            StaticAbilityLineHeadHint::Single("blue"),
+            StaticAbilityLineHeadHint::Single("black"),
+            StaticAbilityLineHeadHint::Single("red"),
+            StaticAbilityLineHeadHint::Single("green"),
+            StaticAbilityLineHeadHint::Single("legendary"),
+            StaticAbilityLineHeadHint::Single("nonlegendary"),
+            StaticAbilityLineHeadHint::Single("noncreature"),
+            StaticAbilityLineHeadHint::Single("nonland"),
         ],
         // These rule names describe the choice payload, while every accepted
         // source line begins with the replacement-style `As this ... enters`
