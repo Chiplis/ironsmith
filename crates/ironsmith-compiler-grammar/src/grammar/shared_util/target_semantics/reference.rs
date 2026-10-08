@@ -264,6 +264,18 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         crate::recognition::ParseOutcome::Error(diagnostic) => {
             return Err(diagnostic.into_card_text_error());
         }
+        // A caller that already consumed the article/count ("put two loyalty
+        // counters on a planeswalker you control" hands over only
+        // "planeswalker you control") leaves a bare singular object noun.
+        // `creature`/`permanent`/`card` already commit the head; every other
+        // card-type, supertype, or subtype noun heads the same non-targeted
+        // object selection, so parse it through the same prefix grammar.
+        crate::recognition::ParseOutcome::NoMatch
+            if bare_singular_object_noun_head(tokens)
+                && parse_object_filter(tokens, false).is_ok() =>
+        {
+            leaf::parse_leaf_target_head_tokens(tokens)?
+        }
         crate::recognition::ParseOutcome::NoMatch => {
             return Err(CardTextError::ParseError(format!(
                 "unrecognized target or selection phrase '{}'",
@@ -1312,4 +1324,22 @@ pub(crate) fn attachment_state_as_attached_object(filter: &mut ObjectFilter) {
     for branch in &mut filter.any_of {
         attachment_state_as_attached_object(branch);
     }
+}
+
+/// A singular object noun with no article, count, or `target` marker, whose
+/// head word is a card type, supertype, subtype, or the commander
+/// designation ("planeswalker you control", "Snail you control",
+/// "commander creature you control"). Plural heads are already admitted by
+/// the bare-plural fallback above.
+fn bare_singular_object_noun_head(tokens: &[OwnedLexToken]) -> bool {
+    let Some(word) = tokens.first().map(OwnedLexToken::parser_text) else {
+        return false;
+    };
+    if crate::word_primitives::strip_word_suffix(word, "s").is_some() {
+        return false;
+    }
+    word == "commander"
+        || crate::util::parse_card_type(word).is_some()
+        || crate::util::parse_supertype_word(word).is_some()
+        || parse_subtype_flexible(word).is_some()
 }

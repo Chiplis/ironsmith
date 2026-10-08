@@ -8,10 +8,18 @@ use winnow::prelude::*;
 fn payment_head(tokens: &[OwnedLexToken]) -> bool {
     let tokens = crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
         .map_or(tokens, |label| label.body_tokens);
+    // "Starting with you, each player may pay ..." and "each player starting
+    // with you may pay ..." (Mana-Charged Dragon) are the same protocol.
     primitives::probe_all(tokens, (
-        primitives::phrase(&["starting", "with", "you"]),
-        primitives::comma(),
-        primitives::phrase(&["each", "player", "may", "pay", "any", "amount", "of", "mana"]),
+        winnow::combinator::alt((
+            (
+                primitives::phrase(&["starting", "with", "you"]),
+                primitives::comma(),
+                primitives::phrase(&["each", "player"]),
+            ).void(),
+            primitives::phrase(&["each", "player", "starting", "with", "you"]).void(),
+        )),
+        primitives::phrase(&["may", "pay", "any", "amount", "of", "mana"]),
         primitives::sentence_end(),
     ).void(), "controller-first collective mana payment").is_some()
 }

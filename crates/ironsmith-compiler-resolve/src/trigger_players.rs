@@ -27,19 +27,58 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
         // Private-zone possessors name the owner, even when a stolen permanent
         // was controlled by somebody else immediately before the move.
-        TriggerSpec::ZoneChange(event) => event
-            .filter
-            .as_ref()
-            .and_then(|filter| filter.owner.as_ref())
-            .map(|owner| {
-                if *owner == PlayerFilter::You {
+        TriggerSpec::ZoneChange(event) => {
+            let filter = event.filter.as_ref()?;
+            if let Some(owner) = filter.owner.as_ref() {
+                return Some(if *owner == PlayerFilter::You {
                     PlayerFilter::You
                 } else {
                     PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
                         crate::tag::CompilerReferenceTag::Triggering.bind(),
                     ))
-                }
-            }),
+                });
+            }
+            // "Whenever a creature an opponent controls dies, ... that
+            // player": the only player the event names is the controller of
+            // the object that left (its last-known controller, CR 603.10a),
+            // exactly as for the entering-permanent triggers below.
+            filter
+                .controller
+                .as_ref()
+                .filter(|controller| {
+                    !matches!(controller, PlayerFilter::You | PlayerFilter::Any)
+                })
+                .map(|_| {
+                    PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    ))
+                })
+        }
+        TriggerSpec::Dies(filter)
+        | TriggerSpec::ExiledFromBattlefield(filter)
+        | TriggerSpec::LeavesBattlefieldWithoutDying {
+            filter,
+            one_or_more: false,
+        }
+        | TriggerSpec::PutIntoGraveyardFromZone {
+            filter,
+            from: crate::zone::Zone::Battlefield,
+            one_or_more: false,
+            ..
+        } if filter.owner.is_none()
+            && filter
+                .controller
+                .as_ref()
+                .is_some_and(|controller| {
+                    !matches!(controller, PlayerFilter::You | PlayerFilter::Any)
+                }) =>
+        {
+            // The single object that left the battlefield names one player:
+            // its last-known controller (CR 603.10a), "that player".
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         TriggerSpec::EntersBattlefield { filter, .. } if filter.source => None,
         // "Whenever a nonland permanent an opponent owns enters under your
         // control, they lose life ...": you are the controller, so the only
