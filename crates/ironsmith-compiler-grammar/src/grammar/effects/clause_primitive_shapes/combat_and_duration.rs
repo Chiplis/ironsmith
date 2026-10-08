@@ -177,27 +177,40 @@ pub enum AttackRequirementPlayer {
     /// "that player": the player the preceding instruction named.
     ThatPlayer,
     You,
+    /// "attacks a player": any player rather than a planeswalker or battle.
+    APlayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackPlayerRequirementDuration {
+    Turn,
+    Combat,
+    /// "each combat": every combat within an explicitly stated duration.
+    EachCombat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AttackPlayerRequirementShape<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub player: AttackRequirementPlayer,
-    pub duration: CombatRequirementDuration,
+    pub duration: AttackPlayerRequirementDuration,
 }
 
 fn attack_player_suffix<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<(AttackRequirementPlayer, CombatRequirementDuration)> {
+) -> WResult<(AttackRequirementPlayer, AttackPlayerRequirementDuration)> {
     (
         alt((primitives::kw("attack"), primitives::kw("attacks"))),
         alt((
             primitives::phrase(&["that", "player"]).value(AttackRequirementPlayer::ThatPlayer),
             primitives::kw("you").value(AttackRequirementPlayer::You),
+            primitives::phrase(&["a", "player"]).value(AttackRequirementPlayer::APlayer),
         )),
         alt((
-            primitives::phrase(&["this", "turn"]).value(CombatRequirementDuration::Turn),
-            primitives::phrase(&["this", "combat"]).value(CombatRequirementDuration::Combat),
+            primitives::phrase(&["this", "turn"]).value(AttackPlayerRequirementDuration::Turn),
+            primitives::phrase(&["this", "combat"]).value(AttackPlayerRequirementDuration::Combat),
+            primitives::phrase(&["each", "combat"])
+                .value(AttackPlayerRequirementDuration::EachCombat),
         )),
         primitives::phrase(&["if", "able"]),
         primitives::sentence_end(),

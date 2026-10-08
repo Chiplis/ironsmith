@@ -527,7 +527,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "attack-player-if-able-clause",
-            &["it", "that", "they", "target", "this", "up"],
+            &["it", "that", "they", "target", "this", "up", "until"],
             parse_attack_player_if_able_clause,
         ),
         specific_primitive!(
@@ -873,15 +873,28 @@ pub fn parse_attack_player_if_able_clause(
     let Some(shape) = clause_shapes::parse_attack_player_requirement_shape(tokens) else {
         return Ok(None);
     };
-    let until = match shape.duration {
-        clause_shapes::CombatRequirementDuration::Turn => Until::EndOfTurn,
-        clause_shapes::CombatRequirementDuration::Combat => Until::EndOfCombat,
+    // "Until your next turn, up to one target creature attacks a player each
+    // combat if able" (Nahiri, the Unforgiving): "each combat" needs the
+    // stated leading duration.
+    let (leading, subject_storage) = match parse_restriction_duration(shape.subject_tokens)? {
+        Some((duration, remainder)) => (Some(duration), remainder),
+        None => (None, shape.subject_tokens.to_vec()),
+    };
+    let until = match (shape.duration, leading) {
+        (clause_shapes::AttackPlayerRequirementDuration::Turn, None) => Until::EndOfTurn,
+        (clause_shapes::AttackPlayerRequirementDuration::Combat, None) => Until::EndOfCombat,
+        (clause_shapes::AttackPlayerRequirementDuration::EachCombat, Some(duration)) => duration,
+        _ => return Ok(None),
     };
     let player = match shape.player {
         clause_shapes::AttackRequirementPlayer::ThatPlayer => PlayerFilter::IteratedPlayer,
         clause_shapes::AttackRequirementPlayer::You => PlayerFilter::You,
+        // Any player the creature can attack; the controller is never an
+        // attack target (CR 508.1b), so the requirement is met by attacking
+        // any opponent.
+        clause_shapes::AttackRequirementPlayer::APlayer => PlayerFilter::Opponent,
     };
-    let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
+    let subject_clause = LexedClause::new(&subject_storage).trimmed();
     let subject_tokens = subject_clause.tokens();
     let attackers = if subject_tokens
         .first()
