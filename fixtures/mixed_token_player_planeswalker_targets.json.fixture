@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Coalborn Entity",
+  "oracle_id": "49f1dd11-aa10-442d-aaca-dd94d1ca108a",
+  "oracle_text": "{2}{R}: This creature deals 1 damage to target creature token, player, or planeswalker.",
+  "text": "Mana cost: {4}{R}\nType: Creature — Elemental\nPower/Toughness: 4/4\n{2}{R}: This creature deals 1 damage to target creature token, player, or planeswalker."
+ }
+]
