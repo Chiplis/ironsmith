@@ -51,6 +51,19 @@ pub fn parse_onto_battlefield_destination_shape(
             break;
         }
     }
+    // "blocking that creature" (Aetherplasm): the blocked attacker.
+    let mut blocking_tokens = None;
+    if let Some(index) = destination_tail.iter().position(|token| token.is_word("blocking"))
+        && destination_tail
+            .get(index + 1)
+            .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        let reference = destination_tail[index + 1..].to_vec();
+        if reference.len() <= 2 {
+            blocking_tokens = Some(reference);
+            destination_tail.truncate(index);
+        }
+    }
     let mut cleaned = Vec::new();
     for token in destination_tail {
         if !token_is_ignored(&token) {
@@ -115,5 +128,6 @@ pub fn parse_onto_battlefield_destination_shape(
         relative_controller,
         supported_tail,
         attack_target,
+        blocking_tokens,
     })
 }

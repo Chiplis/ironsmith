@@ -83,6 +83,9 @@ pub enum ZoneMoveActionAst {
         /// entering creature attacks the named player itself, never one of
         /// their planeswalkers or battles (CR 508.4).
         battlefield_attack_player_only: bool,
+        /// "onto the battlefield blocking that creature" (Aetherplasm): the
+        /// attacker the entering creature blocks (CR 509.4).
+        battlefield_blocking: Option<TargetAst>,
         battlefield_face_down: bool,
         battlefield_transformed: bool,
         attached_to: Option<TargetAst>,

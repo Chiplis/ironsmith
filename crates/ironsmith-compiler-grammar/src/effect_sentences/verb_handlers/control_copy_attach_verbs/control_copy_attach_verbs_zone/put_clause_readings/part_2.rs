@@ -786,6 +786,13 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     attached_to_target.clone(),
                 )
                 .with_battlefield_attack_target(destination_shape.attack_target)
+        .with_battlefield_blocking(
+            destination_shape
+                .blocking_tokens
+                .as_deref()
+                .map(parse_target_phrase)
+                .transpose()?,
+        )
                 .with_exiled_with_source_surface(exiled_with_source_surface.clone());
                 let effect = EffectAst::Sequence {
                     effects: vec![choose, move_chosen],
@@ -896,6 +903,13 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             attached_to_target,
         )
         .with_battlefield_attack_target(destination_shape.attack_target)
+        .with_battlefield_blocking(
+            destination_shape
+                .blocking_tokens
+                .as_deref()
+                .map(parse_target_phrase)
+                .transpose()?,
+        )
         .with_exiled_with_source_surface(exiled_with_source_surface)
         .with_move_to_zone_actor_surface(player)
         .with_move_to_zone_plural_surface_if(

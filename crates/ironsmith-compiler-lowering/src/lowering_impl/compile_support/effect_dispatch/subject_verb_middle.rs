@@ -2291,6 +2291,7 @@ pub(super) fn compile_subject_verb_middle(
             battlefield_attacking,
             battlefield_attack_target_player_or_planeswalker_controlled_by,
             battlefield_attack_player_only,
+            battlefield_blocking,
             battlefield_face_down,
             battlefield_transformed,
             attached_to,
@@ -2412,6 +2413,22 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 None
             };
+            // CR 509.4: the attacker an entering creature blocks.
+            let resolved_blocking_spec = if let Some(blocked) = battlefield_blocking {
+                if *zone != Zone::Battlefield {
+                    return Err(CardTextError::ParseError(
+                        "blocking battlefield destination requires zone battlefield".to_string(),
+                    ));
+                }
+                let (blocked_spec, blocked_choices) =
+                    resolve_target_spec_with_choices(blocked, &current_reference_env(ctx))?;
+                for choice in blocked_choices {
+                    push_choice(&mut choices, choice);
+                }
+                Some(blocked_spec)
+            } else {
+                None
+            };
             let attach_destination_is_plural = resolved_attach_spec
                 .as_ref()
                 .and_then(selected_object_filter)
@@ -2487,6 +2504,11 @@ pub(super) fn compile_subject_verb_middle(
                         move_effect
                             .attacking_player_or_planeswalker_controlled_by(attack_player_filter)
                     }
+                } else {
+                    move_effect
+                };
+                let move_effect = if let Some(blocked_spec) = &resolved_blocking_spec {
+                    move_effect.blocking(blocked_spec.clone())
                 } else {
                     move_effect
                 };
@@ -2654,6 +2676,11 @@ pub(super) fn compile_subject_verb_middle(
                 } else {
                     move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
                 }
+            } else {
+                move_effect
+            };
+            let move_effect = if let Some(blocked_spec) = &resolved_blocking_spec {
+                move_effect.blocking(blocked_spec.clone())
             } else {
                 move_effect
             };
