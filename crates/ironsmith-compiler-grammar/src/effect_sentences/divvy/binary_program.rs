@@ -144,6 +144,31 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
             }));
             (Zone::Exile, produced)
         }
+        BinaryPileProducer::GraveyardCards(card_type) => {
+            let pool_filter = ObjectFilter::default()
+                .with_type(card_type)
+                .owned_by(PlayerFilter::You)
+                .in_zone(Zone::Graveyard);
+            let produced = vec![
+                EffectAst::subject_verb_tag_matching_objects(
+                    pool_filter,
+                    vec![Zone::Graveyard],
+                    pool.clone(),
+                ),
+                // You separate the pool: the first pile is any subset of it.
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    filter: capture_filter(&pool, Zone::Graveyard),
+                    count: ChoiceCount::any_number(), count_value: None,
+                    player: PlayerAst::You,
+                    tag: first.clone(), zones: vec![Zone::Graveyard], search_mode: None,
+                }),
+                EffectAst::subject_verb_tag_matching_objects(
+                    capture_filter(&pool, Zone::Graveyard).not_tagged(first.clone()),
+                    vec![Zone::Graveyard], second.clone(),
+                ),
+            ];
+            (Zone::Graveyard, produced)
+        }
     };
     let chooser = match program.partitioner {
         BinaryPilePartitioner::TargetOpponent => PlayerFilter::You,
@@ -165,6 +190,10 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
                         ReturnControllerAst::Preserve, false, None,
                     ).with_tagged_destinations(vec![(chosen.clone(), Zone::Hand), (other.clone(), Zone::Graveyard)])]
                 }
+                BinaryPileDestination::ChosenExiledOtherToBattlefield => vec![
+                    move_capture(chosen, source_zone, Zone::Exile),
+                    move_capture(other, source_zone, Zone::Battlefield),
+                ],
                 BinaryPileDestination::OneToHandAndPoolToBottom => vec![
                     EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                         filter: capture_filter(chosen, source_zone), count: ChoiceCount::exactly(1),

@@ -12,6 +12,9 @@ pub enum BinaryPileCount {
 pub enum BinaryPileProducer {
     TopLibrary(BinaryPileCount),
     SequentialFaceDownExile { first: i32, second: i32 },
+    /// "Separate all creature cards in your graveyard into two piles"
+    /// (Death or Glory): the pool is every matching card in your graveyard.
+    GraveyardCards(crate::types::CardType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +27,9 @@ pub enum BinaryPilePartitioner {
 pub enum BinaryPileDestination {
     HandAndGraveyard,
     OneToHandAndPoolToBottom,
+    /// "Exile the pile of an opponent's choice and return the other to the
+    /// battlefield."
+    ChosenExiledOtherToBattlefield,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +55,7 @@ fn surface_is_complete(tokens: &[OwnedLexToken]) -> bool {
 
 pub(super) fn parse(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
     if let Some(program) = parse_sequential_exile(sentences) { return Some(program); }
+    if let Some(program) = parse_graveyard_partition(sentences) { return Some(program); }
     let first = *sentences.first()?;
     let words = TokenWordView::new(first).to_word_refs();
     let (partitioner, reveal_pool, mut remaining) =
@@ -101,6 +108,36 @@ pub(super) fn parse(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramS
     Some(BinaryPileProgramShape {
         producer: BinaryPileProducer::TopLibrary(if x { BinaryPileCount::XPlus(count) } else { BinaryPileCount::Fixed(count) }),
         partitioner, reveal_pool, destination, consumed_sentences,
+    })
+}
+
+/// CR 700.3: you separate the pool into two piles (one may be empty); an
+/// opponent chooses one; each pile then has its own destination.
+fn parse_graveyard_partition(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
+    let [separate, dispose, ..] = sentences else { return None; };
+    let words = TokenWordView::new(separate).to_word_refs();
+    let [ "separate", "all", noun, "cards", "in", "your", "graveyard", "into", "two", "piles" ] =
+        words.as_slice()
+    else {
+        return None;
+    };
+    let card_type = crate::util::parse_card_type(noun)?;
+    let dispose = TokenWordView::new(dispose).to_word_refs();
+    if dispose.as_slice()
+        != [
+            "exile", "the", "pile", "of", "an", "opponents", "choice", "and", "return", "the",
+            "other", "to", "the", "battlefield",
+        ]
+        || !sentences[..2].iter().all(|tokens| surface_is_complete(tokens))
+    {
+        return None;
+    }
+    Some(BinaryPileProgramShape {
+        producer: BinaryPileProducer::GraveyardCards(card_type),
+        partitioner: BinaryPilePartitioner::You,
+        reveal_pool: true,
+        destination: BinaryPileDestination::ChosenExiledOtherToBattlefield,
+        consumed_sentences: 2,
     })
 }
 

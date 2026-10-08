@@ -28,7 +28,47 @@ fn partition_move_is(effect: &Effect, chosen: &crate::tag::TagKey, other: &crate
         && captured_in(&filter.any_of[1], other, source)
 }
 
+/// "Separate all creature cards in your graveyard into two piles. Exile the
+/// pile of an opponent's choice and return the other to the battlefield."
+fn describe_graveyard_partition(effects: &[&Effect]) -> Option<String> {
+    let [pool, split, complement, opponent, pick] = effects else { return None; };
+    let pool = unwrap_tag_wrappers(pool).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let split = unwrap_tag_wrappers(split).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let complement =
+        unwrap_tag_wrappers(complement).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let opponent = unwrap_tag_wrappers(opponent).downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let pick = unwrap_tag_wrappers(pick).downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let [card_type] = pool.filter.card_types.as_slice() else { return None; };
+    if pool.filter.zone != Some(Zone::Graveyard)
+        || split.chooser != PlayerFilter::You
+        || !split.count.is_any_number()
+        || !captured_in(&split.filter, &pool.tag, Zone::Graveyard)
+        || !captured_in(&complement.filter, &pool.tag, Zone::Graveyard)
+        || opponent.filter != PlayerFilter::Opponent
+        || pick.modes.len() != 2
+    {
+        return None;
+    }
+    let destinations_match = pick.modes.iter().all(|mode| {
+        let moves: Vec<_> = mode
+            .effects
+            .iter()
+            .filter_map(|effect| downcast_move_to_zone(effect))
+            .map(|moved| moved.zone)
+            .collect();
+        moves == [Zone::Exile, Zone::Battlefield]
+    });
+    if !destinations_match {
+        return None;
+    }
+    Some(format!(
+        "Separate all {} cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield",
+        describe_card_type_word_local(*card_type)
+    ))
+}
+
 pub(super) fn describe(effects: &[&Effect]) -> Option<String> {
+    if let Some(text) = describe_graveyard_partition(effects) { return Some(text); }
     if let Some(text) = describe_exile(effects) { return Some(text); }
     let effects = if effects.first().is_some_and(|effect|
         effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>().is_some())
