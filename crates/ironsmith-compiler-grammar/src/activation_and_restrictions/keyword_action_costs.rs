@@ -475,22 +475,45 @@ fn parse_payment_clause_as_effects(
     let ast = match parse_effect_sentences_lexed(&trimmed) {
         Ok(ast) => ast,
         // "Ward—Get five poison counters" (The Serpent Society): a cost is
-        // an instruction to the player who pays it, so a bare "get" clause
-        // reads as that player's own sentence ("you get ...").
-        Err(_) if trimmed.first().is_some_and(|token| token.is_word("get")) => {
-            let mut with_payer = vec![OwnedLexToken::word(
-                "you".to_string(),
-                crate::TextSpan::synthetic(),
-            )];
-            with_payer.extend_from_slice(&trimmed);
-            match parse_effect_sentences_lexed(&with_payer) {
-                Ok(ast) => ast,
-                Err(_) => return Ok(None),
-            }
-        }
-        Err(_) => return Ok(None),
+        // an instruction to the player who pays it, so a bare "get N
+        // poison/energy counters" names that player's counters.
+        Err(_) => match parse_payer_gets_player_counters(&trimmed) {
+            Some(effect) => vec![effect],
+            None => return Ok(None),
+        },
     };
     Ok((!ast.is_empty()).then_some(ast))
+}
+
+/// "get N poison counters" / "get N energy counters" as a payment: the
+/// counters go to the paying player.
+fn parse_payer_gets_player_counters(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use winnow::Parser;
+    use winnow::combinator::alt;
+    let (count, poison) = crate::grammar::primitives::probe_all(
+        tokens,
+        (
+            crate::grammar::primitives::kw("get"),
+            crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+            alt((
+                crate::grammar::primitives::kw("poison").value(true),
+                crate::grammar::primitives::kw("energy").value(false),
+            )),
+            alt((
+                crate::grammar::primitives::kw("counter"),
+                crate::grammar::primitives::kw("counters"),
+            )),
+            crate::grammar::primitives::sentence_end(),
+        )
+            .map(|(_, count, poison, _, _)| (count, poison)),
+        "payer gets player counters",
+    )?;
+    let count = Value::Fixed(i32::try_from(count).ok()?);
+    Some(if poison {
+        EffectAst::subject_verb_poison_counters(PlayerAst::You, count)
+    } else {
+        EffectAst::subject_verb_energy_counters(PlayerAst::You, count)
+    })
 }
 
 pub fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
