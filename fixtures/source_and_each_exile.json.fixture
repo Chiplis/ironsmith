@@ -1,0 +1,19 @@
+[
+  {
+    "name": "Ajani, Strength of the Pride",
+    "oracle_id": "c3974ec7-7af0-4b65-baf6-4c1c4fe8a5c4",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Legendary Planeswalker — Ajani",
+    "oracle_text": "+1: You gain life equal to the number of creatures you control plus the number of planeswalkers you control.\n−2: Create a 2/2 white Cat Soldier creature token named Ajani's Pridemate with \"Whenever you gain life, put a +1/+1 counter on this token.\"\n0: If you have at least 15 life more than your starting life total, exile Ajani and each artifact and creature your opponents control.",
+    "loyalty": "5",
+    "text": "Mana cost: {2}{W}{W}\nType: Legendary Planeswalker — Ajani\nLoyalty: 5\n+1: You gain life equal to the number of creatures you control plus the number of planeswalkers you control.\n−2: Create a 2/2 white Cat Soldier creature token named Ajani's Pridemate with \"Whenever you gain life, put a +1/+1 counter on this token.\"\n0: If you have at least 15 life more than your starting life total, exile Ajani and each artifact and creature your opponents control."
+  },
+  {
+    "name": "Fraying Line",
+    "oracle_id": "b69d2bd6-3e99-4c51-89af-0acedd48739e",
+    "mana_cost": "{4}",
+    "type_line": "Artifact",
+    "oracle_text": "When this artifact enters, put a rope counter on target creature you control.\nAt the beginning of each player's upkeep, that player may pay {2}. If they do, they put a rope counter on a creature they control. Otherwise, exile this artifact and each creature without a rope counter on it, then remove all rope counters from all creatures.",
+    "text": "Mana cost: {4}\nType: Artifact\nWhen this artifact enters, put a rope counter on target creature you control.\nAt the beginning of each player's upkeep, that player may pay {2}. If they do, they put a rope counter on a creature they control. Otherwise, exile this artifact and each creature without a rope counter on it, then remove all rope counters from all creatures."
+  }
+]
