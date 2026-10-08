@@ -208,7 +208,8 @@ fn attack_player_suffix<'a>(
         alt((primitives::kw("attack"), primitives::kw("attacks"))),
         alt((
             primitives::phrase(&["that", "player"]).value(AttackRequirementPlayer::ThatPlayer),
-            primitives::kw("you").value(AttackRequirementPlayer::You),
+            // "attacks you this turn" is the typed this-turn requirement
+            // (effect_sentences::attack_player_requirement) only.
             primitives::phrase(&["a", "player"]).value(AttackRequirementPlayer::APlayer),
         )),
         alt((
