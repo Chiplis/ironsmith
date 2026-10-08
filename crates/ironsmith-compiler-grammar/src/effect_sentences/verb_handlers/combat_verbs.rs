@@ -847,10 +847,8 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
             span,
         ));
     };
-    add_candidate(
-        "damage-amount-relative-aggregate",
-        parse_equal_to_aggregate_filter_value(amount_tokens),
-    );
+    let relative_aggregate = parse_equal_to_aggregate_filter_value(amount_tokens);
+    add_candidate("damage-amount-relative-aggregate", relative_aggregate.clone());
     let object_count = parse_equal_to_number_of_filter_value(amount_tokens);
     add_candidate("damage-amount-object-count", object_count.clone());
     add_candidate(
@@ -877,7 +875,13 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     // same words (a bare history count, a re-derived filter count bound to
     // a nearby reference) and therefore covers only what those shapes
     // cannot prove.
-    if fixed_plus_history.is_none() && object_count.is_none() && complete_maximum.is_none() {
+    // A complete aggregate ("the total mana value of other spells you've
+    // cast this turn") likewise owns its whole phrase.
+    if fixed_plus_history.is_none()
+        && object_count.is_none()
+        && complete_maximum.is_none()
+        && relative_aggregate.is_none()
+    {
         add_candidate(
             "damage-amount-dynamic-cost-modifier",
             parse_dynamic_cost_modifier_value(amount_tokens)?,
