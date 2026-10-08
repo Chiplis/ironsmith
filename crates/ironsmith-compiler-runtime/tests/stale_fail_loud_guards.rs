@@ -42,3 +42,13 @@ fn leviathan_enters_tapped_and_skips_untap_as_two_statics() {
         assert!(text.contains("can't attack unless"), "{text}");
     }
 }
+
+#[test]
+fn death_cloud_each_player_chain_keeps_every_x_step() {
+    for definition in support::definitions("Death Cloud") {
+        let text = support::rendered(&definition);
+        for phrase in ["loses x life", "discards x cards", "x creatures", "x lands"] {
+            assert!(text.contains(phrase), "{phrase}: {text}");
+        }
+    }
+}
