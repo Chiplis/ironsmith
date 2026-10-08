@@ -1,0 +1,29 @@
+{
+  "source": {
+    "commit": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+    "tree": "ebac6ecfc19ceef218323c68f74b7e9b2b80d393",
+    "status": ""
+  },
+  "binary_sha256": "0e08b5c50956671d33bb7db4bf818899624e75db4c938807b2aa122282bcb76e",
+  "build_command": [
+    "cargo",
+    "build",
+    "--locked",
+    "-p",
+    "ironsmith-tools",
+    "--bin",
+    "sync_card_status_db",
+    "--release"
+  ],
+  "environment": {
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "256",
+    "CARGO_PROFILE_RELEASE_DEBUG": "0",
+    "CARGO_PROFILE_RELEASE_OPT_LEVEL": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "started_at": "2026-10-08T12:35:52Z",
+  "finished_at": "2026-10-08T13:06:28Z",
+  "rustc_verbose": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "cargo_verbose": "cargo 1.99.0 (5f94df478 2026-08-27)\nrelease: 1.99.0\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Debian 13.0.0 (trixie) [64-bit]\n"
+}
