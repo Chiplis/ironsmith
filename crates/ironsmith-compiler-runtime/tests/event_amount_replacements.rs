@@ -226,3 +226,17 @@ fn izzet_generatorium_adds_one_energy() {
         assert_eq!(game.player(A).unwrap().energy_counters, 3);
     }
 }
+
+#[test]
+fn until_your_next_turn_multipliers_fix_their_referents() {
+    assert_cluster(&[
+        (
+            "Lightning, Army of One",
+            &["RegisterDamageMultiplierEffect", "UntilYourNextTurn", "factor: 2"],
+        ),
+        (
+            "Jeska, Thrice Reborn",
+            &["RegisterDamageMultiplierEffect", "UntilYourNextTurn", "factor: 3", "combat_only: true"],
+        ),
+    ]);
+}

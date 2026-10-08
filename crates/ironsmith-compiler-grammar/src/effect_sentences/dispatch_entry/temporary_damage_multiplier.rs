@@ -1,6 +1,9 @@
 use super::*;
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_until_your_next_turn(tokens) {
+        return Ok(Some(effect));
+    }
     let Some(shape) = crate::grammar::keyword_static_lines::parse_damage_multiplier_tokens(tokens)
     else {
         return Ok(None);
@@ -40,6 +43,90 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         PlayerAst::Implicit,
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier { spec }),
     )))
+}
+
+/// "Until your next turn, if a source would deal damage to that player or a
+/// permanent that player controls, it deals double that damage instead."
+/// (Lightning, Army of One) / "Until your next turn, if that creature would
+/// deal combat damage to one of your opponents, it deals triple that damage to
+/// that player instead." (Jeska, Thrice Reborn): a resolution-registered
+/// multiplier lasting until the controller's next turn (CR 611.2a, 614.1a).
+/// "that player" and "that creature" name the ability's antecedents; the
+/// registration fixes them as it resolves.
+fn parse_until_your_next_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let (_, rest) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        (
+            crate::grammar::primitives::phrase(&["until", "your", "next", "turn"]),
+            winnow::combinator::opt(crate::grammar::primitives::comma()),
+        ),
+    )?;
+    let shape = crate::grammar::keyword_static_lines::parse_damage_multiplier_tokens(rest)?;
+    if shape.this_turn || shape.condition_tokens.is_some() || !shape.source.trailing_filter_tokens.is_empty() {
+        return None;
+    }
+    let source_words = crate::lexer::parser_token_word_refs(shape.source.filter_tokens);
+    let source_filter = match (source_words.as_slice(), shape.source.source_noun) {
+        ([] | ["a"] | ["any"], true) => ObjectFilter::default(),
+        (["that", "creature"], false) => {
+            let mut filter =
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+            filter.card_types = vec![crate::types::CardType::Creature];
+            filter
+        }
+        _ => return None,
+    };
+    if !matches!(
+        shape.source.controller,
+        crate::grammar::keyword_static_lines::DamageSourceControllerKind::None
+    ) {
+        return None;
+    }
+    let recipient = shape
+        .damaged_tokens
+        .map(crate::lexer::parser_token_word_refs)
+        .unwrap_or_default();
+    let (target_player_filter, target_object_filter) = match recipient.as_slice() {
+        ["that", "player", "or", "a", "permanent", "that", "player", "controls"] => (
+            Some(PlayerFilter::IteratedPlayer),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::IteratedPlayer)),
+        ),
+        ["one", "of", "your", "opponents"] | ["an", "opponent"] => {
+            (Some(PlayerFilter::Opponent), None)
+        }
+        ["a", "player"] => (Some(PlayerFilter::Any), None),
+        _ => return None,
+    };
+    let repeated = shape
+        .repeated_target_tokens
+        .map(crate::lexer::parser_token_word_refs)
+        .unwrap_or_default();
+    let repeated_ok = match repeated.as_slice() {
+        [] => true,
+        ["that", "player"] => target_object_filter.is_none(),
+        ["that", "player", "or", "permanent"] | ["that", "permanent", "or", "player"] => {
+            target_object_filter.is_some()
+        }
+        _ => false,
+    };
+    if !repeated_ok {
+        return None;
+    }
+    Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
+            spec: ironsmith_core::RegisterDamageMultiplierEffect {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                factor: shape.factor,
+                combat_only: shape.combat_only,
+                noncombat_only: shape.noncombat_only,
+                mode: ironsmith_core::ReplacementApplyMode::UntilYourNextTurn,
+            },
+        }),
+    ))
 }
 
 #[cfg(test)]
