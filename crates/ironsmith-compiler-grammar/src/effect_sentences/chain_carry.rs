@@ -832,6 +832,9 @@ pub use surface_preservation::{
 fn parse_for_each_object_effect_chain_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if crate::grammar::effects::counter_marker_shapes::parse_for_each_counter_kind_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(effects) = super::search_library::parse_for_each_revealed_this_way_sentence(tokens)?
     {
         return Ok(Some(effects));

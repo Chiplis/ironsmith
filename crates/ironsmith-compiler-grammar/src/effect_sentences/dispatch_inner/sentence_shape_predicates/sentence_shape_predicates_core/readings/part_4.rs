@@ -165,6 +165,12 @@ pub(super) fn read_for_each_object_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "for each kind of counter on target permanent, put another counter of
+    // that kind on it or remove one from it" iterates counter kinds, not
+    // objects; its own subject-verb primitive owns the sentence.
+    if crate::grammar::effects::counter_marker_shapes::parse_for_each_counter_kind_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(effects) = crate::effect_sentences::search_library::parse_for_each_revealed_this_way_sentence(tokens)? {
         return Ok(Some(effects));
     }
