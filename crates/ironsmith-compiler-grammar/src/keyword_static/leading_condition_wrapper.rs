@@ -68,13 +68,39 @@ pub fn parse_leading_condition_wrapped_static_line(
     let Some((condition, remainder)) = split_leading_condition(&tokens) else {
         return Ok(None);
     };
+    // A pronoun subject in the remainder ("..., it can't be blocked") is read
+    // by the inner grammar as this object. That is only the author's meaning
+    // when the condition is itself about this object ("As long as this
+    // creature is enchanted, it gets ..."); otherwise the pronoun may name an
+    // object from the condition (an enchanted creature) and must not be
+    // rebound to the source.
+    let remainder_has_pronoun_subject = remainder
+        .first()
+        .is_some_and(|token| token.is_any_word(&["it", "its", "it's", "they", "their"]));
+    let condition_is_about_this_object = match &condition {
+        LeadingCondition::YourTurn => false,
+        LeadingCondition::AsLongAs(condition_tokens) => condition_tokens
+            .first()
+            .is_some_and(|token| token.is_word("this")),
+    };
+    if remainder_has_pronoun_subject && !condition_is_about_this_object {
+        return Ok(None);
+    }
     // One sentence only: a trailing sentence is not under the condition.
-    if remainder
+    let mut quoted = false;
+    let mut unquoted_periods = Vec::new();
+    for (idx, token) in remainder.iter().enumerate() {
+        if token.is_quote() {
+            quoted = !quoted;
+        } else if !quoted && token.is_period() {
+            unquoted_periods.push(idx);
+        }
+    }
+    let last_content = remainder
         .iter()
-        .rev()
-        .skip_while(|token| token.is_period())
-        .any(|token| token.is_period())
-    {
+        .rposition(|token| !token.is_period() && !token.is_quote())
+        .unwrap_or(0);
+    if unquoted_periods.iter().any(|&idx| idx < last_content) {
         return Ok(None);
     }
     {
