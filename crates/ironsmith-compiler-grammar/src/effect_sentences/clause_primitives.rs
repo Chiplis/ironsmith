@@ -1287,6 +1287,39 @@ pub fn parse_until_duration_triggered_clause(
         ));
     }
 
+    // "Until end of turn, whenever target creature deals damage, you gain
+    // that much life." (Spiritualize): the event subject is a target of the
+    // scheduling spell, chosen as it is cast (CR 601.2c). Declare it, then
+    // watch that object instead of matching any creature.
+    let declared_subject_target: Option<EffectAst> = if matches!(trigger_words.get(1), Some(&"target")) {
+        let subject_end = trigger_tokens
+            .iter()
+            .position(|token| token.is_word("deals"));
+        match (subject_end, damage_source_filter_mut(&mut trigger)) {
+            (Some(end), Some(source)) if end > 2 => {
+                let filter = parse_object_filter(&trigger_tokens[2..end], false)?;
+                let tag = crate::util::helper_tag_for_tokens(tokens, "targeted");
+                *source = filter
+                    .clone()
+                    .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+                Some(EffectAst::TagReferenced {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only(
+                        crate::cards::builders::TargetAst::Object(
+                            filter,
+                            span_from_tokens(tokens),
+                            None,
+                        ),
+                    )),
+                    tag: crate::tag::TagRef::of(tag),
+                })
+            }
+            // Other event shapes keep their existing reading.
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     let either_of_watched_objects =
         crate::word_primitives::sequence_occurs(&trigger_words, &["either", "of", "those"]);
 
@@ -1303,16 +1336,40 @@ pub fn parse_until_duration_triggered_clause(
         restrict_play_or_cast_trigger_to_prior_cards(&mut trigger);
     }
 
-    Ok(Some(EffectAst::Delayed(
-        DelayedEffectAst::DelayedTriggerForDuration {
-            trigger,
-            effects,
-            one_shot: false,
-            duration,
-            either_of_watched_objects,
-            while_any_tagged_object_in_zone: None,
+    let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects,
+        one_shot: false,
+        duration,
+        either_of_watched_objects,
+        while_any_tagged_object_in_zone: None,
+    });
+    Ok(Some(match declared_subject_target {
+        Some(declaration) => EffectAst::Sequence {
+            effects: vec![declaration, delayed],
         },
-    )))
+        None => delayed,
+    }))
+}
+
+/// The damage source of a "whenever [object] deals ... damage" event.
+fn damage_source_filter_mut(
+    trigger: &mut crate::model::ast::TriggerSpec,
+) -> Option<&mut ObjectFilter> {
+    use crate::model::ast::TriggerSpec;
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => {
+            damage_source_filter_mut(trigger)
+        }
+        TriggerSpec::DealsDamage { source, .. }
+        | TriggerSpec::DealsDamageTo { source, .. }
+        | TriggerSpec::DealsDamageToPlayer { source, .. }
+        | TriggerSpec::DealsCombatDamage(source)
+        | TriggerSpec::DealsCombatDamageTo { source, .. }
+        | TriggerSpec::DealsCombatDamageToPlayer { source, .. }
+        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, .. } => Some(source),
+        _ => None,
+    }
 }
 
 /// Bind the played land / cast spell of a "... this way" play-or-cast
