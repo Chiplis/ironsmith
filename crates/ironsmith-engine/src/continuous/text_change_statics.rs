@@ -148,7 +148,8 @@ pub(crate) fn rewrite_static_model_words(
         | P::SacrificeOrRedirectReplacement { filter, .. }
         | P::RevealCardOrEnterTapped { filter, .. } | P::RedirectWouldEnter { filter, .. }
         | P::CanBlockAdditionalForEach { filter, .. }
-        | P::GrantSpellKeyword { filter, .. } => {
+        | P::GrantSpellKeyword { filter, .. }
+        | P::AlternativeCastFromZoneForFilter { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
         P::LegendRuleDoesntApplyToController { filter } => {
@@ -786,7 +787,7 @@ fn grantable_words(
             D::RetraceFromCardManaCost | D::BlitzFromCardManaCost | D::EmergeFromCardManaCost
             | D::MiracleFromCardManaCostReducedBy { .. } | D::EscapeFromCardManaCost { .. }
             | D::ManaValueAsGenericFromHand | D::LifeEqualManaValueFromHand { .. }
-            | D::LifeEqualManaValueFromZone { .. } => {}
+            | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost => {}
         },
         G::AlternativeCast(method) => match method {
             A::Blitz { total_cost } | A::Flashback { total_cost } | A::Harmonize { total_cost }

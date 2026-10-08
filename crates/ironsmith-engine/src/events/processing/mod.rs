@@ -1941,10 +1941,15 @@ fn prepare_discard_scoped_inner(
     // replacements. Only applying this particular replacement can authorize
     // its linked trigger; merely ending up in exile is insufficient.
     let mut additional_effects = replacement_scope.additional_replacement_effects.clone();
+    // A card has madness when it is printed or granted to it while in hand
+    // (CR 702.35a; Falkenrath Gorger).
     if game.object(card_id).is_some_and(|card| {
         card.alternative_casts
             .iter()
             .any(|alternative| alternative.is_madness())
+            || (card.zone == Zone::Hand
+                && crate::effects::player::granted_madness_route(game, card_id, Zone::Hand)
+                    .is_some())
     }) {
         additional_effects.push(ReplacementEffect::with_matcher(
             card_id,

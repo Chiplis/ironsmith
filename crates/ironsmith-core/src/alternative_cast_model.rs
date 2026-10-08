@@ -10,6 +10,9 @@ pub enum AlternativeCastKeyword {
     Bestow,
     Blitz,
     Warp,
+    /// CR 702.190a sneak, a named alternative cost; appended for wire
+    /// compatibility.
+    Sneak,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -240,6 +243,11 @@ where
             Self::Bestow { .. } => Some(AlternativeCastKeyword::Bestow),
             Self::Blitz { .. } => Some(AlternativeCastKeyword::Blitz),
             Self::Warp { .. } => Some(AlternativeCastKeyword::Warp),
+            // Sneak is a named composed alternative cost; its timing and
+            // resolution are keyed to the same method name.
+            Self::Composed { .. } if self.name().eq_ignore_ascii_case("Sneak") => {
+                Some(AlternativeCastKeyword::Sneak)
+            }
             _ => None,
         }
     }

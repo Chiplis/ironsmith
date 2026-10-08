@@ -533,6 +533,55 @@ fn append_granted_play_from_actions_for_card(
     Ok(())
 }
 
+/// "You may cast creature spells from your graveyard using their sneak
+/// abilities." (Ninja Teen): a permanent `player` controls lets a matching
+/// card they own be cast from `from_zone` with its `keyword` alternative cost,
+/// whether that cost is printed or granted (CR 601.2, 702.190a).
+pub(crate) fn filtered_alternative_cast_zone_permission(
+    game: &GameState,
+    player: PlayerId,
+    card: &crate::object::Object,
+    from_zone: Zone,
+    keyword: Option<ironsmith_core::alternative_cast_model::AlternativeCastKeyword>,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let Some(keyword) = keyword else {
+        return false;
+    };
+    if card.zone != from_zone || card.owner != player {
+        return false;
+    }
+    game.battlefield.iter().any(|&permanent| {
+        let Some(permanent_object) = game.object(permanent) else {
+            return false;
+        };
+        if game.controller_of(permanent_object) != player {
+            return false;
+        }
+        let Some(static_abilities) = view.static_abilities_rc(permanent) else {
+            return false;
+        };
+        static_abilities.iter().any(|static_ability| {
+            let Some(ironsmith_core::StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
+            }) = static_ability.compiled_model().map(|model| &model.payload)
+            else {
+                return false;
+            };
+            if *zone != from_zone || *method != keyword || !static_ability.is_active(game, permanent)
+            {
+                return false;
+            }
+            let ctx = game.filter_context_for(player, Some(permanent));
+            let mut filter = filter.clone();
+            filter.zone = None;
+            filter.matches(card, &ctx, game)
+        })
+    })
+}
+
 fn append_native_alternative_cast_actions_for_card_from_zone(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -548,7 +597,15 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
             matches!(ability.compiled_model().map(|model| &model.payload),
                 Some(ironsmith_core::StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method })
                 if *zone == from_zone && alt_cast.keyword() == Some(*method))
-        });
+        }) || (alt_cast.cast_from_zone() != from_zone
+            && filtered_alternative_cast_zone_permission(
+                game,
+                player,
+                card,
+                from_zone,
+                alt_cast.keyword(),
+                view,
+            ));
         if (alt_cast.cast_from_zone() == from_zone || additional_zone_allowed)
             && can_cast_with_alternative_with_view(game, player, card, alt_cast, view)
         {
@@ -613,6 +670,11 @@ fn append_zone_granted_alternative_cast_actions_for_card(
         ) {
             continue;
         }
+        // CR 702.35a: a granted madness cost is usable only while the madness
+        // trigger resolves, never as an ordinary cast from exile.
+        if method.is_madness() && !game.madness_cast_is_authorized(card_id, player) {
+            continue;
+        }
         let requirements = build_requirements_for_method(method);
         let mana_cost = get_mana_cost_for_method(method, card);
         let casting_method = match method {
@@ -638,6 +700,24 @@ fn append_zone_granted_alternative_cast_actions_for_card(
                 zone,
                 use_alternative: Some(base_alt_idx + offset),
             },
+            // A granted keyword cost that is not itself a cast from this zone
+            // ("Creature cards in your graveyard have sneak {3}{B}.") needs a
+            // separate permission to be used here (CR 601.2).
+            _ if filtered_alternative_cast_zone_permission(
+                game,
+                player,
+                card,
+                zone,
+                method.keyword(),
+                view,
+            ) =>
+            {
+                CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone,
+                    use_alternative: Some(base_alt_idx + offset),
+                }
+            }
             _ => continue,
         };
 

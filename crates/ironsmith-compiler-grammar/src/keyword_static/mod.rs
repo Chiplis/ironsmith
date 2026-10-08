@@ -41,7 +41,10 @@ pub use base_toughness_line::parse_base_toughness_only_line;
 mod absorb_keyword;
 pub use absorb_keyword::parse_absorb_keyword_line;
 mod granted_casting_keywords;
-pub use granted_casting_keywords::parse_granted_casting_keyword_line;
+pub use granted_casting_keywords::{
+    parse_cast_from_zone_using_keyword_abilities_line, parse_granted_casting_keyword_line,
+    parse_granted_madness_line,
+};
 mod granted_spell_keywords;
 pub use granted_spell_keywords::{
     granted_intrinsic_spell_keyword_ability, parse_granted_spell_keyword_line,
@@ -1882,6 +1885,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_cant_clauses),
         single_static_ability_ast_rule!(parse_granted_casting_keyword_line),
         single_static_ability_ast_rule!(parse_granted_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_cast_from_zone_using_keyword_abilities_line),
+        single_static_ability_ast_rule!(parse_granted_madness_line),
         single_static_ability_ast_rule!(parse_base_toughness_only_line),
         multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),

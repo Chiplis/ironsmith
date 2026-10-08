@@ -1562,6 +1562,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// Authored "Each ..." subject surface; presentation only.
         #[cfg_attr(feature = "serde", serde(default))]
         set_quantifier_surface: Option<SetQuantifierSurface>,
+    },    /// "You may cast creature spells from your graveyard using their sneak
+    /// abilities." (Ninja Teen): matching cards may be cast from `zone` with
+    /// their `method` alternative cost, printed or granted. Appended to
+    /// preserve published payload variant ordinals.
+    AlternativeCastFromZoneForFilter {
+        filter: ObjectFilter,
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
     },
 }
 
@@ -1768,6 +1776,9 @@ where
                 }
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
+                }
+                DerivedAlternativeCast::MadnessFromCardManaCost => {
+                    DerivedAlternativeCast::MadnessFromCardManaCost
                 }
                 DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
                     DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
@@ -2013,6 +2024,15 @@ where
                 filter,
                 keyword: keyword.try_map(&mut *map_cost)?,
                 set_quantifier_surface,
+            },
+            StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
+            } => StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
             },
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
@@ -7036,6 +7056,24 @@ impl<
                 damager_filter_surface: None,
                 exile_with_counters,
                 follow_up_effects,
+            },
+        }
+    }
+    /// Matching cards may be cast from `zone` using their `method`
+    /// alternative cost ("... using their sneak abilities").
+    pub fn alternative_cast_from_zone_for_filter(
+        filter: ObjectFilter,
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::AlternativeCastFromZoneForFilter),
+            label: display.into(),
+            payload: StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
             },
         }
     }

@@ -11,6 +11,12 @@
 //!   graveyard ("Each instant and sorcery card in your graveyard that's exactly
 //!   two colors has jump-start.", Niv-Mizzet, Supreme).
 //!
+//! - sneak {cost} (CR 702.190a) is a named alternative cost from hand. It may
+//!   be granted to cards in the hand or the graveyard ("Creature cards in your
+//!   graveyard have sneak {3}{B}.", Ninja Teen); a graveyard grant is usable
+//!   only under a separate "cast ... from your graveyard using their sneak
+//!   abilities" permission (`parse_cast_from_zone_using_keyword_abilities_line`).
+//!
 //! The engine already routes granted alternative casts through
 //! `resolve_play_from_alternative_method`, so method-keyed resolution (warp's
 //! end-step exile, jump-start's exile, miracle's draw trigger, prowl and
@@ -25,13 +31,15 @@ enum GrantedCastingKeyword {
     Freerunning,
     Miracle,
     JumpStart,
+    Sneak,
 }
 
 impl GrantedCastingKeyword {
-    fn zone(self) -> Zone {
+    fn allows_zone(self, zone: Zone) -> bool {
         match self {
-            Self::JumpStart => Zone::Graveyard,
-            Self::Warp | Self::Prowl | Self::Freerunning | Self::Miracle => Zone::Hand,
+            Self::JumpStart => zone == Zone::Graveyard,
+            Self::Sneak => matches!(zone, Zone::Hand | Zone::Graveyard),
+            Self::Warp | Self::Prowl | Self::Freerunning | Self::Miracle => zone == Zone::Hand,
         }
     }
 
@@ -53,6 +61,8 @@ fn granted_casting_keyword(tokens: &[OwnedLexToken]) -> Option<(GrantedCastingKe
         Some(GrantedCastingKeyword::Miracle)
     } else if first.is_any_word(&["jump-start", "jumpstart"]) {
         Some(GrantedCastingKeyword::JumpStart)
+    } else if first.is_word("sneak") {
+        Some(GrantedCastingKeyword::Sneak)
     } else {
         None
     };
@@ -91,6 +101,11 @@ fn granted_casting_method(
             ),
         ),
         GrantedCastingKeyword::Miracle => Method::Miracle { cost: cost? },
+        GrantedCastingKeyword::Sneak => Method::alternative_cost(
+            "Sneak",
+            Some(cost?),
+            vec![crate::model::CompilerCost::Sneak],
+        ),
         GrantedCastingKeyword::JumpStart => Method::JumpStart {
             additional_cost: ironsmith_core::TotalCost::from_cost(
                 crate::model::CompilerCost::Discard {
@@ -174,7 +189,7 @@ pub fn parse_granted_casting_keyword_line(
     let Some((filter, zone)) = granted_subject_card_filter(filter) else {
         return Ok(None);
     };
-    if zone != keyword.zone() {
+    if !keyword.allows_zone(zone) {
         return Ok(None);
     }
     let Some(method) = granted_casting_method(keyword, cost) else {
@@ -185,5 +200,127 @@ pub fn parse_granted_casting_keyword_line(
         filter,
         zone,
     );
+    Ok(Some(StaticAbility::grants(spec)))
+}
+
+/// "You may cast creature spells from your graveyard using their sneak
+/// abilities." (Ninja Teen): matching cards in that zone may be cast with
+/// that keyword's alternative cost, printed or granted (CR 601.2, 702.190a).
+pub fn parse_cast_from_zone_using_keyword_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use ironsmith_core::alternative_cast_model::AlternativeCastKeyword;
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["you", "may", "cast"]) {
+        return Ok(None);
+    }
+    let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) else {
+        return Ok(None);
+    };
+    if from_idx <= 3 {
+        return Ok(None);
+    }
+    let tail = parser_token_word_refs(&tokens[from_idx..]);
+    let (zone, keyword_word) = match tail.as_slice() {
+        ["from", "your", "graveyard", "using", "their", keyword, "abilities" | "ability"] => {
+            (Zone::Graveyard, *keyword)
+        }
+        ["from", "your", "hand", "using", "their", keyword, "abilities" | "ability"] => {
+            (Zone::Hand, *keyword)
+        }
+        _ => return Ok(None),
+    };
+    let method = match keyword_word {
+        "sneak" => AlternativeCastKeyword::Sneak,
+        "blitz" => AlternativeCastKeyword::Blitz,
+        "warp" => AlternativeCastKeyword::Warp,
+        "bestow" => AlternativeCastKeyword::Bestow,
+        _ => return Ok(None),
+    };
+    let mut filter = parse_object_filter_lexed(&tokens[3..from_idx], false)?;
+    // "creature spells" names the cards those spells come from.
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.cast_by = None;
+    let display = crate::lexer::render_token_slice(&tokens)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Ok(Some(StaticAbility::alternative_cast_from_zone_for_filter(
+        filter, zone, method, display,
+    )))
+}
+
+const MADNESS_MANA_COST_TAIL: &[&str] = &[
+    "the", "madness", "cost", "is", "equal", "to", "its", "mana", "cost",
+];
+const NOT_ON_BATTLEFIELD_TAILS: &[&[&str]] = &[
+    &["that", "isn't", "on", "the", "battlefield"],
+    &["that", "isnt", "on", "the", "battlefield"],
+];
+
+/// "Each Vampire creature card you own that isn't on the battlefield has
+/// madness. The madness cost is equal to its mana cost." (Falkenrath Gorger)
+///
+/// Madness (CR 702.35a) is a discard replacement that functions from the hand
+/// plus a linked trigger that casts the card from exile. The grant is the
+/// card's madness casting method, derived from its mana cost, recorded in
+/// every zone the card can be in other than the battlefield where that
+/// method matters: hand (the discard replacement), exile (the trigger's cast),
+/// graveyard and library ("if it has madness" checks).
+pub fn parse_granted_madness_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(has_idx) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["have", "has"]))
+    else {
+        return Ok(None);
+    };
+    if !tokens
+        .get(has_idx + 1)
+        .is_some_and(|token| token.is_word("madness"))
+    {
+        return Ok(None);
+    }
+    let tail_words = parser_token_word_refs(&tokens[has_idx + 2..]);
+    if !crate::word_primitives::parse_sequence_complete(&tail_words, MADNESS_MANA_COST_TAIL) {
+        return Ok(None);
+    }
+    let mut subject = &tokens[..has_idx];
+    if subject.first().is_some_and(|token| token.is_word("each")) {
+        subject = &subject[1..];
+    }
+    // "... that isn't on the battlefield" scopes the grant to the zones
+    // listed above; the remaining words name the cards.
+    let subject_words = parser_token_word_refs(subject);
+    let Some(scope_start) = subject_words.len().checked_sub(5) else {
+        return Ok(None);
+    };
+    let scope_words = &subject_words[scope_start..];
+    if !NOT_ON_BATTLEFIELD_TAILS
+        .iter()
+        .any(|tail| crate::word_primitives::parse_sequence_complete(scope_words, tail))
+    {
+        return Ok(None);
+    }
+    let Some(that_idx) = subject.iter().rposition(|token| token.is_word("that")) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&subject[..that_idx], false)?;
+    if filter.zone == Some(Zone::Battlefield) {
+        return Ok(None);
+    }
+    filter.zone = None;
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::MadnessFromCardManaCost,
+        ),
+        filter,
+        Zone::Hand,
+    );
+    spec.additional_zones = vec![Zone::Exile, Zone::Graveyard, Zone::Library];
     Ok(Some(StaticAbility::grants(spec)))
 }
