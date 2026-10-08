@@ -30,6 +30,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "OpenAttractionEffect" => {
             decode_as::<ironsmith_core::OpenAttractionEffect>(payload).map(Some)
         }
+        "RollToVisitAttractionsEffect" => {
+            decode_as::<ironsmith_core::RollToVisitAttractionsEffect>(payload).map(Some)
+        }
         "PopulateEffect" => decode_as::<ironsmith_core::PopulateEffect>(payload).map(Some),
         "ReflexiveTriggerEffect" => {
             decode_as::<ironsmith_core::ReflexiveTriggerEffect<wire::WireEffect>>(payload).map(Some)
@@ -134,6 +137,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "OpenAttractionEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::OpenAttractionEffect,
+        >(payload, context)
+        .map(Some),
+        "RollToVisitAttractionsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RollToVisitAttractionsEffect,
         >(payload, context)
         .map(Some),
         "PopulateEffect" => {

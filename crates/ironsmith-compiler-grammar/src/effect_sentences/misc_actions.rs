@@ -269,6 +269,14 @@ pub fn parse_roll(
             ));
         }
     };
+    // "roll to visit your Attractions" (CR 701.52): a keyword action, not a
+    // die named by the clause.
+    if matches!(
+        crate::lexer::token_word_refs(tokens).as_slice(),
+        ["to", "visit", "your" | "their", "attractions"]
+    ) {
+        return Ok(EffectAst::subject_verb_roll_to_visit_attractions(player));
+    }
     let Some(shape) = misc_action_shapes::parse_roll_die_prefix_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",

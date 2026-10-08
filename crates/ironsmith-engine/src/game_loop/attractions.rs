@@ -54,57 +54,31 @@ fn roll_to_visit_attractions_inner(
         return Ok(None);
     }
 
-    game.turn_store
-        .turn_history
-        .check_completed_die_roll_capacity(player, 1)?;
     let rule_source = ObjectId::from_raw(0);
     let mut context = ExecutionContext::new(rule_source, player, decision_maker);
-    let Some(transaction) = crate::effects::player::die_roll_transaction::roll_dice_with_modifiers(
-        game,
-        &mut context,
-        player,
-        1,
-        6,
-    )
-    .map_err(GameLoopError::ExecutionFailed)?
-    else {
-        return Ok(None);
-    };
-    let roll = transaction.rolls[0];
-    let completed = transaction
-        .complete_with_outputs(
+    let Some(roll) =
+        crate::effects::player::roll_to_visit_attractions::roll_to_visit_attractions_for_player(
             game,
             &mut context,
             player,
-            6,
-            roll.result,
-            crate::effects::player::die_roll_transaction::DieRollCompletion::AttractionVisit,
-            crate::effect::EffectOutcome::resolved(),
         )
-        .map_err(GameLoopError::ExecutionFailed)?;
+        .map_err(GameLoopError::ExecutionFailed)?
+    else {
+        return Ok(None);
+    };
     // The root trigger-queue handoff consumes its native reported events.
     try_queue_triggers_from_reported_events(
         game,
         trigger_queue,
-        completed.into_outcome().events,
+        roll.roll_outputs.into_outcome().events,
         true,
     )?;
     let provenance = crate::provenance::ProvNodeId::default();
 
-    let visits = game.attraction_visit_profiles(player, roll.result);
-    let visit_events = visits
-        .iter()
-        .map(|visit| {
-            TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::VisitAttraction,
-                    player,
-                    visit.object,
-                    1,
-                ),
-                provenance,
-            )
-        })
+    let visit_events = roll
+        .visits
+        .into_iter()
+        .map(|visit| TriggerEvent::new_with_provenance(visit, provenance))
         .collect::<Vec<_>>();
 
     // Record the whole simultaneous visit batch before checking observers, so

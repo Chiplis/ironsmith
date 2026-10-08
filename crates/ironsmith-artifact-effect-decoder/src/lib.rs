@@ -217,6 +217,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "NinjutsuEffect" => Some(EffectFamily::Permanent),
         "NoteLifeTotalEffect" => Some(EffectFamily::Resources),
         "OpenAttractionEffect" => Some(EffectFamily::CompositionMZ),
+        "RollToVisitAttractionsEffect" => Some(EffectFamily::CompositionMZ),
         "PayAnyEnergyEffect" => Some(EffectFamily::Player),
         "PayAnyLifeEffect" => Some(EffectFamily::Player),
         "PayEnergyEffect" => Some(EffectFamily::Player),

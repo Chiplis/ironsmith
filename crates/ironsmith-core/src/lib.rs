@@ -168,7 +168,7 @@ pub use effect::{
     BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, RepeatProcessPromptKind,
-    RepeatProcessChoiceHistory,
+    RepeatProcessChoiceHistory, RollToVisitAttractionsEffect,
     ReplaceNextDamageToTargetEffect, ReplacementApplyMode, ResolvesDespiteIllegalTargetsEffect,
     RestartGameEffect, RestrictionDurationSurface, RestrictionStart,
     RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,

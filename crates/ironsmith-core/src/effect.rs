@@ -18,6 +18,8 @@ use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 mod ascend;
 mod mana_damage_and_control;
 mod reselect_attack;
+mod attraction_visits;
+pub use attraction_visits::*;
 pub use ascend::*;
 pub use mana_damage_and_control::*;
 pub use reselect_attack::*;

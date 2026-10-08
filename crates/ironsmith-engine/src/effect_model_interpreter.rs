@@ -1834,6 +1834,11 @@ where
             payload.target.clone(),
         )));
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RollToVisitAttractionsEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::OpenAttractionEffect>(&effect) {
         return Ok(Effect::new(
             crate::effects::OpenAttractionEffect::new().with_reminder(payload.reminder),

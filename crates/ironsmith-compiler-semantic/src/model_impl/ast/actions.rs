@@ -382,6 +382,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("OpenAttraction")
                 .field("reminder", reminder)
                 .finish(),
+            Self::KeywordActions(KeywordActionAst::RollToVisitAttractions) => {
+                f.write_str("RollToVisitAttractions")
+            }
             Self::Library(LibraryActionAst::ManifestTopCardOfLibrary) => {
                 f.write_str("ManifestTopCardOfLibrary")
             }
