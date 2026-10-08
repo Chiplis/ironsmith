@@ -31,6 +31,10 @@ pub enum PlayerActivationRestrictionTailFact {
         filter: ObjectFilter,
         non_mana_only: bool,
     },
+    /// "block with more than <N> creature(s)" (Mirri, Weatherlight Duelist).
+    BlockWithMoreThan(usize),
+    /// "venture into the dungeon more than once each turn" (Keen-Eared Sentry).
+    VentureMoreThanOnceEachTurn,
 }
 
 pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCastRestrictionFact> {
@@ -390,6 +394,24 @@ pub fn parse_card_type_list_filter_words(
 pub fn parse_player_activation_restriction_tail_words(
     words: &[&str],
 ) -> Option<PlayerActivationRestrictionTailFact> {
+    if exact(
+        words,
+        &["venture", "into", "the", "dungeon", "more", "than", "once", "each", "turn"],
+    ) {
+        return Some(PlayerActivationRestrictionTailFact::VentureMoreThanOnceEachTurn);
+    }
+    if let Some(rest) = prefix_remainder(words, &["block", "with", "more", "than"])
+        && let [count, noun] = rest
+        && matches!(*noun, "creature" | "creatures")
+    {
+        let maximum = match *count {
+            "one" | "1" => 1,
+            "two" | "2" => 2,
+            "three" | "3" => 3,
+            _ => return None,
+        };
+        return Some(PlayerActivationRestrictionTailFact::BlockWithMoreThan(maximum));
+    }
     if let Some(filter) = parse_land_play_restriction_tail_words(words) {
         return Some(PlayerActivationRestrictionTailFact::PlayLandsMatching(filter));
     }

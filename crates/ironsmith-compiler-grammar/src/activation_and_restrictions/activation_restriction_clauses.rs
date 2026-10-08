@@ -722,6 +722,12 @@ fn restriction_from_player_action_fact(
                 Restriction::activate_abilities_of(filter)
             }
         }
+        PlayerActivationRestrictionTailFact::BlockWithMoreThan(maximum) => {
+            Restriction::block_with_more_than(player, maximum)
+        }
+        PlayerActivationRestrictionTailFact::VentureMoreThanOnceEachTurn => {
+            Restriction::venture_more_than_once_each_turn(player)
+        }
     }
 }
 

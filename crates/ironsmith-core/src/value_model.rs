@@ -1228,6 +1228,18 @@ pub enum Restriction {
     /// the second filter names attachments that can't become (or stay,
     /// CR 704.5m/n) attached to the matching hosts. Appended.
     BeAttachedBy(ObjectFilter, ObjectFilter),
+    /// "[players] can't block with more than N creatures [this combat]"
+    /// (Mirri, Weatherlight Duelist): caps the number of creatures each
+    /// matching player declares as blockers (CR 509.1b-c). Appended.
+    BlockWithMoreThan {
+        player: PlayerFilter,
+        maximum: usize,
+    },
+    /// "[players] can't venture into the dungeon more than once each turn"
+    /// (Keen-Eared Sentry): a matching player who already ventured this turn
+    /// can't venture again, including through the initiative (CR 701.49).
+    /// Appended.
+    VentureMoreThanOnceEachTurn(PlayerFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1602,6 +1614,14 @@ impl Restriction {
 
     pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
         Self::BeAttachedBy(hosts, attachments)
+    }
+
+    pub fn block_with_more_than(player: PlayerFilter, maximum: usize) -> Self {
+        Self::BlockWithMoreThan { player, maximum }
+    }
+
+    pub fn venture_more_than_once_each_turn(player: PlayerFilter) -> Self {
+        Self::VentureMoreThanOnceEachTurn(player)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {
