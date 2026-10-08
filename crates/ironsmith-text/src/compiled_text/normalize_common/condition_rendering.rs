@@ -3644,6 +3644,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     object_text,
                     destination
                 )
+            } else if filter.zone == Some(Zone::Hand) {
+                // "If you put an artifact card into your hand this way"
+                // (Chrome Courier, Town Greeter): the remembered card set is
+                // checked for a member that now is in that player's hand.
+                let object = describe_nonbattlefield_card_filter_without_zone(filter, Zone::Hand);
+                format!(
+                    "{} put {} into {} hand this way",
+                    describe_player_filter(player),
+                    with_indefinite_article(strip_leading_article(&object)),
+                    describe_possessive_player_filter(player),
+                )
             } else {
                 format!(
                     "{} had the tagged object '{}' matching {}",
