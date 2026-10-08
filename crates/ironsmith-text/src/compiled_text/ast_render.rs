@@ -2286,6 +2286,20 @@ fn render_color_conditional_keyword_grants(
 }
 
 fn ability_level_range_prefix(ability: &Ability) -> Option<String> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind {
+        let qualified = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()?;
+        let range = qualified.surface.strip_prefix("__ironsmith_level_range:")?;
+        let (min, max) = range.split_once(':')?;
+        return Some(if max == "+" {
+            format!("Level {min}+")
+        } else if min == max {
+            format!("Level {min}")
+        } else {
+            format!("Level {min}-{max}")
+        });
+    }
     let AbilityKind::Activated(activated) = &ability.kind else {
         return None;
     };

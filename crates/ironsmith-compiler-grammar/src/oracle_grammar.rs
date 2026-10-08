@@ -221,6 +221,7 @@ fn convert_line(line: RecognizedLine) -> OracleGrammarLine {
                         LevelItemKind::KeywordActions => "KeywordActions",
                         LevelItemKind::StaticAbilities => "StaticAbilities",
                         LevelItemKind::ActivatedAbility => "ActivatedAbility",
+                        LevelItemKind::TriggeredAbility => "TriggeredAbility",
                     }
                     .to_string(),
                     parsed_debug: format!("{:?}", item.parsed),
