@@ -264,6 +264,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DocumentProgram(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
+        EffectAst::SetDayNight(_) => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType => {}
         EffectAst::GrantLoyaltyActivationAllowance { .. } => {}

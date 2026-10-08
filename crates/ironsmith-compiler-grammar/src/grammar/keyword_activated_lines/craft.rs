@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, peek, preceded, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, take_till};
@@ -7,10 +7,18 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::{leaf, primitives};
 use crate::types::{CardType, Subtype};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CraftMaterialKind {
     CardType { card_type: CardType, count: u32 },
     Subtype { subtype: Subtype, count: u32 },
+    /// "one or more creatures", "two or more Dinosaurs": an open-ended count
+    /// of one material kind (CR 702.167a).
+    CardTypeOrMore { card_type: CardType, minimum: u32 },
+    SubtypeOrMore { subtype: Subtype, minimum: u32 },
+    /// "a Dinosaur, a Merfolk, a Pirate, and a Vampire": one distinct object
+    /// per listed subtype slot. Each slot is its own exile payment, so the
+    /// same object can never fill two slots.
+    SubtypeSlots(Vec<Subtype>),
     OneOrMore,
     RedInstantOrSorcery { minimum: u32 },
     Unsupported,
@@ -62,6 +70,8 @@ fn parse_craft_material_kind_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Cra
     alt((
         (primitives::phrase(&["one", "or", "more"]), eof).value(CraftMaterialKind::OneOrMore),
         parse_red_instant_or_sorcery_material,
+        parse_open_ended_material,
+        parse_subtype_slot_materials,
         parse_counted_material,
     ))
     .parse_next(input)
@@ -88,6 +98,75 @@ fn parse_counted_material<'a>(input: &mut LexStream<'a>) -> WResult<CraftMateria
     Ok(material)
 }
 
+fn parse_material_kind_word(word: &str) -> Option<MaterialWord> {
+    match word {
+        "artifact" | "artifacts" => Some(MaterialWord::CardType(CardType::Artifact)),
+        "creature" | "creatures" => Some(MaterialWord::CardType(CardType::Creature)),
+        _ => leaf::parse_leaf_subtype_flexible_complete(word)
+            .ok()
+            .map(MaterialWord::Subtype),
+    }
+}
+
+enum MaterialWord {
+    CardType(CardType),
+    Subtype(Subtype),
+}
+
+// "<n> or more <card type or subtype>": an open-ended material count.
+fn parse_open_ended_material<'a>(input: &mut LexStream<'a>) -> WResult<CraftMaterialKind> {
+    let minimum = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    if minimum == 0 {
+        return Err(primitives::backtrack_err("craft material", "positive material count"));
+    }
+    primitives::phrase(&["or", "more"]).parse_next(input)?;
+    let word = primitives::word_parser_text.parse_next(input)?;
+    let material = match parse_material_kind_word(word) {
+        Some(MaterialWord::CardType(card_type)) => {
+            CraftMaterialKind::CardTypeOrMore { card_type, minimum }
+        }
+        Some(MaterialWord::Subtype(subtype)) => {
+            CraftMaterialKind::SubtypeOrMore { subtype, minimum }
+        }
+        None => {
+            return Err(primitives::backtrack_err("craft material", "card type or subtype"));
+        }
+    };
+    eof.parse_next(input)?;
+    Ok(material)
+}
+
+fn parse_article_subtype_slot<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {
+    alt((primitives::kw("a"), primitives::kw("an"))).parse_next(input)?;
+    let word = primitives::word_parser_text.parse_next(input)?;
+    leaf::parse_leaf_subtype_flexible_complete(word)
+        .map_err(|_| primitives::backtrack_err("craft material", "subtype slot"))
+}
+
+fn parse_subtype_slot_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        (primitives::comma(), opt(primitives::kw("and"))).void(),
+        primitives::kw("and").void(),
+    ))
+    .parse_next(input)
+}
+
+// "a Dinosaur, a Merfolk, a Pirate, and a Vampire": two or more single-object
+// subtype slots.
+fn parse_subtype_slot_materials<'a>(input: &mut LexStream<'a>) -> WResult<CraftMaterialKind> {
+    let first = parse_article_subtype_slot.parse_next(input)?;
+    let rest: Vec<Subtype> = repeat(
+        1..,
+        preceded(parse_subtype_slot_separator, parse_article_subtype_slot),
+    )
+    .parse_next(input)?;
+    eof.parse_next(input)?;
+    let mut slots = Vec::with_capacity(rest.len() + 1);
+    slots.push(first);
+    slots.extend(rest);
+    Ok(CraftMaterialKind::SubtypeSlots(slots))
+}
+
 fn parse_red_instant_or_sorcery_material<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CraftMaterialKind> {
@@ -101,6 +180,46 @@ fn parse_red_instant_or_sorcery_material<'a>(
     .parse_next(input)?;
     eof.parse_next(input)?;
     Ok(CraftMaterialKind::RedInstantOrSorcery { minimum })
+}
+
+/// Craft material phrases whose material is a general object description or a
+/// whole-selection relation. The caller reads `filter_tokens` with the
+/// ordinary object-filter grammar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CraftFilteredMaterial<'a> {
+    /// "four or more nonlands with activated abilities"
+    OrMore {
+        minimum: u32,
+        filter_tokens: &'a [OwnedLexToken],
+    },
+    /// "two that share a card type"
+    ShareCardType { count: u32 },
+}
+
+pub fn parse_craft_filtered_material_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<CraftFilteredMaterial<'_>> {
+    if let Some((count, _)) = primitives::parse_prefix(tokens, parse_share_card_type_material) {
+        return (count >= 2).then_some(CraftFilteredMaterial::ShareCardType { count });
+    }
+    let (minimum, rest) = primitives::parse_prefix(tokens, parse_or_more_prefix)?;
+    (minimum > 0 && !rest.is_empty()).then_some(CraftFilteredMaterial::OrMore {
+        minimum,
+        filter_tokens: rest,
+    })
+}
+
+fn parse_share_card_type_material<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["that", "share", "a", "card", "type"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(count)
+}
+
+fn parse_or_more_prefix<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    let minimum = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    primitives::phrase(&["or", "more"]).parse_next(input)?;
+    Ok(minimum)
 }
 
 fn is_craft_suffix_boundary(token: &OwnedLexToken) -> bool {
@@ -147,6 +266,30 @@ mod tests {
         }
         for clause in ["zero creatures", "two artifacts and two creatures", "four or more creatures with different names"] {
             assert_eq!(parse(&format!("Craft with {clause} {{5}}")).material, CraftMaterialKind::Unsupported);
+        }
+    }
+
+    #[test]
+    fn parses_open_ended_and_subtype_slot_materials() {
+        assert_eq!(
+            parse("Craft with one or more creatures {2}{B}{B}").material,
+            CraftMaterialKind::CardTypeOrMore { card_type: CardType::Creature, minimum: 1 }
+        );
+        assert_eq!(
+            parse("Craft with one or more Dinosaurs {4}{R}").material,
+            CraftMaterialKind::SubtypeOrMore { subtype: Subtype::Dinosaur, minimum: 1 }
+        );
+        assert_eq!(
+            parse("Craft with a Dinosaur, a Merfolk, a Pirate, and a Vampire {4}").material,
+            CraftMaterialKind::SubtypeSlots(vec![
+                Subtype::Dinosaur,
+                Subtype::Merfolk,
+                Subtype::Pirate,
+                Subtype::Vampire,
+            ])
+        );
+        for clause in ["two that share a card type", "four or more nonlands with activated abilities"] {
+            assert_eq!(parse(&format!("Craft with {clause} {{6}}")).material, CraftMaterialKind::Unsupported);
         }
     }
 

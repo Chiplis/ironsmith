@@ -5887,6 +5887,13 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::LandsPlayed(player) => match player {
+            PlayerFilter::You => "the number of lands you've played this turn".to_string(),
+            _ => format!(
+                "the number of lands {} played this turn",
+                describe_player_filter(player)
+            ),
+        },
         TurnHistoryCount::PlayersLostLife(player) => format!(
             "the number of {} who lost life this turn",
             pluralize_noun_phrase(&describe_player_filter(player))

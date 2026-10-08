@@ -154,6 +154,8 @@ pub enum CounterType {
     Wind,
     Wish,
     Named(crate::InternedStr),
+    /// -1/-0 (Jabari's Influence). Appended for ordinal compatibility.
+    MinusOneMinusZero,
 }
 
 impl CounterType {
@@ -169,6 +171,7 @@ impl CounterType {
             CounterType::MinusZeroMinusTwo => Some((0, -2)),
             CounterType::MinusTwoMinusOne => Some((-2, -1)),
             CounterType::MinusTwoMinusTwo => Some((-2, -2)),
+            CounterType::MinusOneMinusZero => Some((-1, 0)),
             _ => None,
         }
     }
@@ -185,6 +188,7 @@ impl CounterType {
             CounterType::MinusZeroMinusTwo => Cow::Borrowed("-0/-2"),
             CounterType::MinusTwoMinusOne => Cow::Borrowed("-2/-1"),
             CounterType::MinusTwoMinusTwo => Cow::Borrowed("-2/-2"),
+            CounterType::MinusOneMinusZero => Cow::Borrowed("-1/-0"),
             CounterType::DoubleStrike => Cow::Borrowed("double strike"),
             CounterType::FirstStrike => Cow::Borrowed("first strike"),
             CounterType::Named(name) => Cow::Owned(name.to_string()),

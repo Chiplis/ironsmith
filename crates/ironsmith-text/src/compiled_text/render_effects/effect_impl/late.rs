@@ -2058,7 +2058,8 @@
         return format!("{} becomes plotted", describe_choose_spec(&plotted.target));
     }
     if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
-        return format!("{} becomes prepared", describe_choose_spec(&prepare.target));
+        let state = if prepare.unprepare { "unprepared" } else { "prepared" };
+        return format!("{} becomes {state}", describe_choose_spec(&prepare.target));
     }
     if let Some(clear) = effect.downcast_ref::<crate::effects::ClearGoadEffect>() {
         return match &clear.target {
@@ -6336,6 +6337,12 @@
     }
     if let Some(level) = effect.downcast_ref::<crate::effects::SetClassLevelEffect>() {
         return format!("This Class becomes level {}", level.level);
+    }
+    if let Some(day_night) = effect.downcast_ref::<crate::effects::SetDayNightEffect>() {
+        return match day_night.designation {
+            crate::effects::DayNightDesignation::Day => "It becomes day".to_string(),
+            crate::effects::DayNightDesignation::Night => "It becomes night".to_string(),
+        };
     }
     if effect
         .downcast_ref::<crate::effects::UnearthEffect>()

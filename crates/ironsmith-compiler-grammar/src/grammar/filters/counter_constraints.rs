@@ -67,6 +67,7 @@ fn parse_known_counter_type_word_slice(
         "-0/-2" => CounterType::MinusZeroMinusTwo,
         "-2/-1" => CounterType::MinusTwoMinusOne,
         "-2/-2" => CounterType::MinusTwoMinusTwo,
+        "-1/-0" => CounterType::MinusOneMinusZero,
         "deathtouch" => CounterType::Deathtouch,
         "decayed" => CounterType::Decayed,
         "flying" => CounterType::Flying,

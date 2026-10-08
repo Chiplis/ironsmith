@@ -1262,6 +1262,12 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::SetDayNight(designation) = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::SetDayNightEffect::new(*designation))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::LookAtTopCardsAsViewer {
         library_owner,
         viewer,

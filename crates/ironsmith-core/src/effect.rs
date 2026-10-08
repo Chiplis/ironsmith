@@ -4600,11 +4600,24 @@ impl SuspectEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PrepareEffect {
     pub target: ChooseSpec,
+    /// "becomes unprepared": remove the prepared designation instead.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub unprepare: bool,
 }
 
 impl PrepareEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            unprepare: false,
+        }
+    }
+
+    pub fn unprepare(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            unprepare: true,
+        }
     }
 }
 

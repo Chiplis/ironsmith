@@ -4101,6 +4101,7 @@ impl StaticAbility {
 
     pub fn additional_land_plays(count: u32) -> Self {
         let display = match count {
+            u32::MAX => "You may play any number of lands on each of your turns.".to_string(),
             1 => "You may play an additional land on each of your turns.".to_string(),
             2 => "You may play two additional lands on each of your turns.".to_string(),
             _ => format!("You may play {count} additional lands on each of your turns."),

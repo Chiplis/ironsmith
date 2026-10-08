@@ -661,6 +661,8 @@ pub enum Subtype {
     Siege,
     // Appended for CR 111.10x / 205.3g ordinal compatibility.
     Heartwood,
+    // Appended creature type (CR 205.3m), ordinal-compatible.
+    Llama,
 }
 
 impl Subtype {
@@ -1014,6 +1016,7 @@ impl Subtype {
             Subtype::Volver,
             Subtype::Walrus,
             Subtype::Weasel,
+            Subtype::Llama,
         ]
     }
 

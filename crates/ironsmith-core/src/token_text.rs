@@ -122,7 +122,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         Serf=>"Serf", Shiar=>"Shi'ar", Siren=>"Siren", Skrull=>"Skrull", Skunk=>"Skunk", Sloth=>"Sloth",
         Snail=>"Snail", Soltari=>"Soltari", Spy=>"Spy", Symbiote=>"Symbiote", Synth=>"Synth",
         Thalakos=>"Thalakos", Time=>"Time", TimeLord=>"Time Lord", Varmint=>"Varmint", Volver=>"Volver",
-        Walrus=>"Walrus", Weasel=>"Weasel",
+        Walrus=>"Walrus", Weasel=>"Weasel", Llama=>"Llama",
         Plains=>"Plains", Island=>"Island", Swamp=>"Swamp", Mountain=>"Mountain", Forest=>"Forest",
         Desert=>"Desert", Urzas=>"Urza's", Cave=>"Cave", Gate=>"Gate", Locus=>"Locus", Town=>"Town",
         Lair=>"Lair", Mine=>"Mine", Planet=>"Planet", PowerPlant=>"Power-Plant", Sphere=>"Sphere", Tower=>"Tower",

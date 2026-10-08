@@ -317,6 +317,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "SneakCostEffect" => Some(EffectFamily::Permanent),
         "SolveCaseEffect" => Some(EffectFamily::Permanent),
         "SetClassLevelEffect" => Some(EffectFamily::Permanent),
+        "SetDayNightEffect" => Some(EffectFamily::Permanent),
         "SoulbondPairEffect" => Some(EffectFamily::Permanent),
         "SupportEffect" => Some(EffectFamily::CompositionMZ),
         "SurveilEffect" => Some(EffectFamily::ZoneLibrary),

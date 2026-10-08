@@ -180,6 +180,7 @@ pub use effect::{
     ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
     SearchResultReferenceSurface, SearchSelectionMode, SecretChoiceEffect, SecretObjectChoice,
     SequenceEffect, SequenceSurface, SetBasePowerToughnessEffect, SetClassLevelEffect,
+    DayNightDesignation, SetDayNightEffect,
     SetLifeTotalEffect, SetQuantifierSurface, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,

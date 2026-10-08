@@ -145,6 +145,9 @@ pub(super) fn read_triggering_spell_ordinal_predicate(
     if let Some(predicate) = parse_triggering_spell_ordinal_predicate(predicate_tokens) {
         return Ok(Some(predicate));
     }
+    if let Some(predicate) = parse_triggering_land_play_ordinal_predicate(predicate_tokens) {
+        return Ok(Some(predicate));
+    }
     Ok(None)
 }
 pub(super) fn read_source_regenerated_this_turn_predicate(

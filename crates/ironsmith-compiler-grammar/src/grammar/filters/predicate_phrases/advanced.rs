@@ -329,6 +329,23 @@ fn parse_turn_history_intervening_predicate(
             filter,
         )));
     }
+    // "Destroy target creature if no other creature has greater power."
+    // (Getaway Glamer): the target's power is at least every creature's.
+    if surface::exact_words(&words, &["no", "other", "creature", "has", "greater", "power"]) {
+        return Ok(Some(PredicateAst::TargetHasGreatestPowerAmongCreatures));
+    }
+    // "destroy that creature if it didn't attack this turn" (Aggression)
+    if surface::exact_words(&words, &["it", "didnt", "attack", "this", "turn"])
+        || surface::exact_words(&words, &["it", "didn't", "attack", "this", "turn"])
+        || surface::exact_words(&words, &["it", "did", "not", "attack", "this", "turn"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.attacked_this_turn = true;
+        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+        )))));
+    }
     if surface::exact_words(&words, &["it", "has", "madness"]) {
         return Ok(Some(PredicateAst::TaggedMatches(
             crate::tag::CompilerReferenceTag::It.bind(),

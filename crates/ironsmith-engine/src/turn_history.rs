@@ -2488,6 +2488,12 @@ pub(crate) fn resolve_turn_history_count(
             }
             seen.len() as i32
         }
+        TurnHistoryCount::LandsPlayed(player) => game
+            .players
+            .iter()
+            .filter(|candidate| player.matches_player(candidate.id, filter_ctx))
+            .map(|candidate| candidate.lands_played_this_turn as i32)
+            .sum(),
         TurnHistoryCount::PlayersLostLife(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())

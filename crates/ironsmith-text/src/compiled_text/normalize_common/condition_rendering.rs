@@ -827,6 +827,18 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::LandsPlayed(player) => {
+            let player = describe_history_player_subject(player);
+            if is_present {
+                Some(format!("{player} played a land this turn"))
+            } else if is_absent {
+                Some(format!("{player} didn't play a land this turn"))
+            } else {
+                Some(format!(
+                    "{player} played {count_text} or more lands this turn"
+                ))
+            }
+        }
         ironsmith_core::TurnHistoryCount::CardsDrawn(player) => {
             let player = describe_history_player_subject(player);
             if is_present {

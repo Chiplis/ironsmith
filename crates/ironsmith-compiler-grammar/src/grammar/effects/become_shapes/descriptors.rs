@@ -259,6 +259,10 @@ const STILL_A_LAND_TAILS: &[&[&str]] = &[
     &["thats", "still", "a", "land"],
     &["it", "s", "still", "a", "land"],
     &["its", "still", "a", "land"],
+    // Plural animations: "lands you control become 2/2 creatures that are
+    // still lands" (CR 205.1b: the new types are added, land is kept).
+    &["that", "are", "still", "lands"],
+    &["still", "lands"],
 ];
 
 const STILL_A_CARD_TYPE_PREFIXES: &[&[&str]] = &[

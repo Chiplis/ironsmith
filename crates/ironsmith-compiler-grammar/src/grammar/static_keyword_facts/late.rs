@@ -477,6 +477,14 @@ pub fn parse_additional_land_play_count(tokens: &[OwnedLexToken]) -> Option<u32>
 
 fn parse_additional_land_play_lexed(input: &mut LexStream<'_>) -> WResult<u32> {
     semantic_phrase(&["you", "may", "play"]).parse_next(input)?;
+    // "You may play any number of lands on each of your turns." (Fastbond):
+    // no per-turn land-play cap (CR 305.2). The count saturates.
+    if opt(semantic_phrase(&["any", "number", "of", "lands", "on", "each", "of", "your", "turns"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        return Ok(u32::MAX);
+    }
     opt(semantic_phrase(&["up", "to"])).parse_next(input)?;
     let count = semantic_number_token.parse_next(input)?;
     if count == 0 {

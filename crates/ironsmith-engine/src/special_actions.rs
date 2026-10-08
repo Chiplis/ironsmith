@@ -3503,6 +3503,11 @@ fn check_total_cost_in_query_scope(
         ironsmith_core::TotalCostKind::All(costs) => {
             let mut speculative_tagged_objects = execution_ctx.tagged_objects.clone();
             let mut discard_slots = Vec::new();
+            // Each exile-chosen material slot consumes distinct objects: one
+            // object can't be exiled for two slots (Craft slot lists, CR
+            // 702.167a). Feasibility is a matching over all such slots, not a
+            // per-slot candidate count.
+            let mut exile_choice_slots: Vec<Vec<ObjectId>> = Vec::new();
             for (index, component) in costs.iter().enumerate() {
                 // Potential-source discovery must not resolve or fund mana
                 // components: either can recursively ask for this same set.
@@ -3562,7 +3567,7 @@ fn check_total_cost_in_query_scope(
                 // Build one legal set without prompting; actual payment makes the
                 // player's choice normally and remains atomic.
                 if let Some(next) = costs.get(index + 1)
-                    && let Some((tag, snapshots)) = preflight_tagged_choice_in_context(
+                    && let Some((tag, snapshots, candidates, required)) = preflight_tagged_choice_in_context(
                         game,
                         payer,
                         source,
@@ -3576,8 +3581,19 @@ fn check_total_cost_in_query_scope(
                         }),
                     )?
                 {
+                    if next
+                        .effect_ref()
+                        .is_some_and(|effect| effect.downcast_ref::<crate::effects::ExileEffect>().is_some())
+                    {
+                        exile_choice_slots.extend(std::iter::repeat_n(candidates, required));
+                    }
                     speculative_tagged_objects.insert(tag, snapshots);
                 }
+            }
+            if !crate::costs::distinct_discard_assignment_exists(&exile_choice_slots) {
+                return Err(CostPaymentError::Other(
+                    "no distinct assignment of objects to the exile cost slots".into(),
+                ));
             }
             if crate::costs::distinct_discard_assignment_exists(&discard_slots) {
                 Ok(())
@@ -3618,7 +3634,10 @@ fn preflight_tagged_choice_in_context(
     execution_ctx: &ExecutionContext<'_>,
     tagged_objects: &std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     source_state_reserved: bool,
-) -> Result<Option<(crate::tag::TagKey, Vec<ObjectSnapshot>)>, CostPaymentError> {
+) -> Result<
+    Option<(crate::tag::TagKey, Vec<ObjectSnapshot>, Vec<ObjectId>, usize)>,
+    CostPaymentError,
+> {
     let Some(choice) = choice_component
         .effect_ref()
         .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
@@ -3753,6 +3772,7 @@ fn preflight_tagged_choice_in_context(
         })?;
     }
 
+    let all_candidates = candidates.clone();
     let snapshots = candidates
         .into_iter()
         .take(required)
@@ -3766,7 +3786,7 @@ fn preflight_tagged_choice_in_context(
             "not enough objects available for tagged exile cost".to_string(),
         ));
     }
-    Ok(Some((choice.tag.clone(), snapshots)))
+    Ok(Some((choice.tag.clone(), snapshots, all_candidates, required)))
 }
 
 pub(crate) fn pay_total_cost_with_choice_in_context(

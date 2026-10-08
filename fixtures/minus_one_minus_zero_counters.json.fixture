@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Jabari's Influence",
+  "oracle_id": "8930b1ce-80ac-48b6-a368-ccff9fd01d38",
+  "oracle_text": "Cast this spell only after combat.\nGain control of target nonartifact, nonblack creature that attacked you this turn and put a -1/-0 counter on it.",
+  "text": "Mana cost: {3}{W}{W}\nType: Instant\nCast this spell only after combat.\nGain control of target nonartifact, nonblack creature that attacked you this turn and put a -1/-0 counter on it."
+ }
+]

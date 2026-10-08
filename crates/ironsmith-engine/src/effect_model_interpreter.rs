@@ -761,6 +761,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetDayNightEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RestartGameEffect>(&effect) {
         return Ok(converted);
     }
@@ -1933,9 +1936,7 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::PrepareEffect::new(
-            payload.target.clone(),
-        )));
+        return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SuspectEffect::new(

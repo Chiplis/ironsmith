@@ -97,6 +97,8 @@ pub enum BecomeExactKind {
     Colorless,
     Saddled,
     Prepared,
+    /// "becomes unprepared": the prepared designation is removed.
+    Unprepared,
     Plotted,
 }
 

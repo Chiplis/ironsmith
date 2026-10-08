@@ -1,0 +1,26 @@
+[
+ {
+  "name": "Possessed Aven",
+  "oracle_id": "1a5f1670-3e71-4379-90ee-a883c8dc6070",
+  "oracle_text": "Flying\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target blue creature.\"",
+  "text": "Mana cost: {2}{U}{U}\nType: Creature — Bird Soldier Horror\nPower/Toughness: 3/3\nFlying\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target blue creature.\""
+ },
+ {
+  "name": "Possessed Barbarian",
+  "oracle_id": "ee51365b-9f36-44a7-8706-ae5b2f86bd29",
+  "oracle_text": "First strike\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target red creature.\"",
+  "text": "Mana cost: {2}{R}{R}\nType: Creature — Human Barbarian Horror\nPower/Toughness: 3/3\nFirst strike\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target red creature.\""
+ },
+ {
+  "name": "Possessed Centaur",
+  "oracle_id": "2fd1707b-917c-4842-a5c6-dfffbedcf918",
+  "oracle_text": "Trample\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target green creature.\"",
+  "text": "Mana cost: {2}{G}{G}\nType: Creature — Centaur Horror\nPower/Toughness: 3/3\nTrample\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target green creature.\""
+ },
+ {
+  "name": "Possessed Nomad",
+  "oracle_id": "9bf9870e-32a3-494c-bd42-f9f013463619",
+  "oracle_text": "Vigilance\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target white creature.\"",
+  "text": "Mana cost: {2}{W}{W}\nType: Creature — Human Nomad Horror\nPower/Toughness: 3/3\nVigilance\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target white creature.\""
+ }
+]

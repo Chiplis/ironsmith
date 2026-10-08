@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Electryte",
+  "oracle_id": "5ff0c25f-4593-460b-9d7f-d9c37f135a18",
+  "oracle_text": "Whenever this creature deals combat damage to defending player, it deals damage equal to its power to each blocking creature.",
+  "text": "Mana cost: {3}{R}{R}\nType: Creature — Trilobite Beast\nPower/Toughness: 3/3\nWhenever this creature deals combat damage to defending player, it deals damage equal to its power to each blocking creature."
+ },
+ {
+  "name": "Latulla's Orders",
+  "oracle_id": "2f3c66db-efc1-4571-a4db-371a3d532615",
+  "oracle_text": "Flash\nEnchant creature\nWhenever enchanted creature deals combat damage to defending player, you may destroy target artifact that player controls.",
+  "text": "Mana cost: {1}{R}\nType: Enchantment — Aura\nFlash\nEnchant creature\nWhenever enchanted creature deals combat damage to defending player, you may destroy target artifact that player controls."
+ }
+]

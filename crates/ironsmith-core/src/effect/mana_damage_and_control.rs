@@ -1834,6 +1834,29 @@ impl SetClassLevelEffect {
     }
 }
 
+/// The game's day/night designation an effect sets (CR 731).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum DayNightDesignation {
+    Day,
+    Night,
+}
+
+/// "It becomes day." / "It becomes night." (CR 731.2-731.3). Making it day
+/// while it's already day (or night while night) changes nothing and is not
+/// "day becomes night" / "night becomes day".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct SetDayNightEffect {
+    pub designation: DayNightDesignation,
+}
+
+impl SetDayNightEffect {
+    pub const fn new(designation: DayNightDesignation) -> Self {
+        Self { designation }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BolsterEffect {

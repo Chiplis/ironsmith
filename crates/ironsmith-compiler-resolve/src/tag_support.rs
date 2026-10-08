@@ -313,7 +313,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {

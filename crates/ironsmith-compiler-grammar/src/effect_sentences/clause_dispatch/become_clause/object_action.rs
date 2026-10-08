@@ -6,6 +6,21 @@ pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    // "It becomes night." / "It becomes day." (CR 731.2-731.3): the impersonal
+    // "it" names the game's day/night designation, not an object.
+    if let [subject] = LexedClause::new(subject_tokens).trim().as_slice()
+        && subject.is_word("it")
+    {
+        let rest = crate::util::trim_edge_punctuation_tokens(rest_tokens);
+        if let [designation] = rest {
+            if designation.is_word("night") {
+                return Ok(EffectAst::SetDayNight(ironsmith_core::DayNightDesignation::Night));
+            }
+            if designation.is_word("day") {
+                return Ok(EffectAst::SetDayNight(ironsmith_core::DayNightDesignation::Day));
+            }
+        }
+    }
     let mut designation_clause = subject_tokens.to_vec();
     designation_clause.push(OwnedLexToken::synthetic_word("become"));
     designation_clause.extend_from_slice(rest_tokens);
@@ -447,6 +462,9 @@ pub fn parse_become_clause(
     }
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Prepared) {
         return Ok(EffectAst::subject_verb_prepare(target));
+    }
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Unprepared) {
+        return Ok(EffectAst::subject_verb_unprepare(target));
     }
     if let Some(aura) = become_surface.aura {
         if become_grammar::aura_subject_prefers_source(target_subject_tokens)

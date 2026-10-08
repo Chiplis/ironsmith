@@ -331,6 +331,19 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         {
             return vec![line.to_string()];
         }
+        if let Some(restriction_start) = split.trailing_restriction_start
+            && split.kind == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
+            && restriction_start > split.second_start
+        {
+            let cost = line
+                .get(split.second_start..restriction_start)
+                .unwrap_or_default()
+                .trim();
+            let restriction = line.get(restriction_start..).unwrap_or_default().trim();
+            if !first.is_empty() && !cost.is_empty() && !restriction.is_empty() {
+                return vec![format!("{first} {restriction}"), cost.to_string()];
+            }
+        }
         if !first.is_empty() && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
         }

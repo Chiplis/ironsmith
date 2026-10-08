@@ -3350,6 +3350,56 @@ pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Opt
     }))
 }
 
+/// "if it wasn't the first land you played this turn" (Fastbond): the
+/// triggering land's ordinal among the lands its player played this turn
+/// (CR 305.2). Land plays can't happen while the trigger waits on the stack,
+/// so the per-turn count read at trigger and resolution time is the ordinal.
+pub fn parse_triggering_land_play_ordinal_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
+    const PLAYED_THIS_TURN_SUFFIXES: &[&[&str]] = &[
+        &["you", "played", "this", "turn"],
+        &["youve", "played", "this", "turn"],
+        &["you've", "played", "this", "turn"],
+        &["you", "have", "played", "this", "turn"],
+    ];
+    let clause = LexedClause::new(tokens);
+    for (copulas, negated) in [
+        (&[&["it", "wasnt"][..], &["it", "wasn't"], &["it", "was", "not"], &["it", "isnt"], &["it", "isn't"]][..], true),
+        (&[&["it", "was"][..], &["it's"], &["its"], &["it", "is"]][..], false),
+    ] {
+        let atoms = [
+            WinnowSequence::any_phrase(copulas),
+            WinnowSequence::optional(OPTIONAL_THE),
+            WinnowSequence::object("ordinal", WinnowCaptureKind::WordCount(1)),
+            WinnowSequence::word("land"),
+            WinnowSequence::any_phrase(PLAYED_THIS_TURN_SUFFIXES),
+        ];
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
+            continue;
+        };
+        let ordinal_clause = matched.capture_clause("ordinal", clause)?;
+        let ordinal_token = ordinal_clause.tokens().first()?;
+        let ordinal = ironsmith_core::parse_ordinal_word(ordinal_token.parser_text())?;
+        if ordinal == 0 {
+            return None;
+        }
+        return Some(PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::LandsPlayed(
+                crate::target::PlayerFilter::You,
+            )),
+            operator: if negated {
+                crate::effect::ValueComparisonOperator::NotEqual
+            } else {
+                crate::effect::ValueComparisonOperator::Equal
+            },
+            right: Value::Fixed(ordinal as i32),
+        });
+    }
+    None
+}
+
 fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
     const OPTIONAL_IS: &[WinnowAtom<'static>] = &[WinnowSequence::word("is")];

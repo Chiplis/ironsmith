@@ -3554,6 +3554,7 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
+        | EffectAst::SetDayNight(_)
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
         | EffectAst::GrantLoyaltyActivationAllowance { .. }
@@ -8511,7 +8512,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,

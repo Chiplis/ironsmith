@@ -1105,6 +1105,27 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
 
     let mixed_object_player_target =
         matches_surface(&remaining_words, MIXED_PLAYER_PLANESWALKER_TOKEN_PATTERN);
+    // "target creature token, player, or planeswalker" (Coalborn Entity): one
+    // target drawn from three domains. The object arm is the union of
+    // creature tokens and planeswalkers on the battlefield.
+    if mixed_object_player_target
+        && primitives::parse_word_sequence_complete(
+            &remaining_words,
+            &["creature", "token", "player", "or", "planeswalker"],
+        )
+        .is_some()
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.any_of = vec![
+            ObjectFilter::creature().token(),
+            ObjectFilter::default().with_type(CardType::Planeswalker),
+        ];
+        filter.other = other;
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, target_span),
+            target_count,
+        ));
+    }
     if mixed_object_player_target {
         return Err(CardTextError::ParseError(format!(
             "unsupported creature-token/player/planeswalker target phrase (clause: '{}')",

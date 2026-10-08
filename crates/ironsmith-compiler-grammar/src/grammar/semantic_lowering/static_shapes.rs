@@ -255,6 +255,12 @@ pub fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Opti
     if !phrase_is_prefix(&words, &["you", "may", "play"]) {
         return None;
     }
+    if phrase_is_exact(
+        words.get(3..)?,
+        &["any", "number", "of", "lands", "on", "each", "of", "your", "turns"],
+    ) {
+        return Some(u32::MAX);
+    }
     let (number, used) = leaf::parse_leaf_number_prefix_words(words.get(3..)?)?.into_fixed()?;
     let tail = words.get(3 + used..)?;
     if phrase_is_exact(

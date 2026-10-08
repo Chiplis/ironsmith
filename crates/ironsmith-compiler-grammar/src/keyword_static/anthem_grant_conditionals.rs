@@ -158,6 +158,91 @@ pub fn parse_carried_conditional_anthem_grant_line(
     Ok(Some(result))
 }
 
+/// "[As long as ...,] this creature gets +1/+1, is black, and has
+/// \"{2}{B}, {T}: Destroy target blue creature.\"" (Possessed cycle): a pump,
+/// a color-setting effect (layer 5, CR 613.1e) and a quoted activated-ability
+/// grant (layer 6), all under the same leading condition. The general
+/// keyword grant reader declines this shape because its final "and has"
+/// segment looks like an omitted-subject predicate.
+pub fn parse_anthem_color_and_quoted_activated_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(line_shape) = anthem_grant_grammar::parse_anthem_keyword_head(tokens) else {
+        return Ok(None);
+    };
+    if line_shape.pre_grant_is_temporary {
+        return Ok(None);
+    }
+    let Some(color_segment) =
+        anthem_grant_grammar::parse_anthem_keyword_color_segment(tokens, line_shape)
+    else {
+        return Ok(None);
+    };
+    let ability_tokens_storage = trim_edge_punctuation(&tokens[line_shape.have_token + 1..]);
+    if !ability_tokens_storage
+        .first()
+        .is_some_and(|token| token.is_quote())
+        || !ability_tokens_storage
+            .last()
+            .is_some_and(|token| token.is_quote())
+    {
+        return Ok(None);
+    }
+    let ability_tokens = trim_outer_quotes(&ability_tokens_storage);
+    if ability_tokens.iter().any(|token| token.is_quote())
+        || anthem_grant_grammar::parse_colon_tail_split(ability_tokens).is_none()
+    {
+        return Ok(None);
+    }
+    let clause_words = crate::lexer::token_word_refs(tokens);
+    let clause = parse_anthem_clause(tokens, line_shape.get_token, color_segment.is_token)?;
+    let filter = anthem_subject_filter(&clause.subject);
+    let mut result = vec![build_anthem_static_ability(&clause).into()];
+    let color_ast: StaticAbilityAst = StaticAbility::set_colors(filter, color_segment.color).into();
+    result.push(match &clause.condition {
+        Some(condition) => add_static_ability_ast_condition(color_ast, condition.clone())?,
+        None => color_ast,
+    });
+    let Some(parsed) = parse_activated_line(ability_tokens)? else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported granted activated ability in anthem clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let display = display_text_for_tokens(ability_tokens, false);
+    result.push(grant_object_ability_for_anthem_subject(&clause, parsed, display));
+    Ok(Some(result))
+}
+
+/// "[As long as this creature is attacking,] for each creature you control,
+/// you may have that creature assign its combat damage as though it weren't
+/// blocked." (Siege Behemoth): grants the unblocked-assignment permission
+/// (CR 510.1c) to each creature you control under the leading condition.
+pub fn parse_controlled_creatures_may_assign_as_unblocked_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let (condition, body) = match crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens) {
+        Some(split) => (
+            Some(parse_static_condition_clause(split.condition_tokens)?),
+            split.remainder_tokens,
+        ),
+        None => (None, tokens),
+    };
+    if !crate::grammar::abilities::is_each_controlled_may_assign_damage_as_unblocked_lexed(body) {
+        return Ok(None);
+    }
+    let filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    Ok(Some(vec![StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::may_assign_damage_as_unblocked(),
+        )),
+        condition,
+    }]))
+}
+
 pub fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
