@@ -19,8 +19,8 @@ fn compile_source(name: &str, text: &str) -> CompiledCardArtifact {
         compile_to_artifact(name, text, false));
     let (artifact, _) = compiled.unwrap_or_else(|error| panic!("artifact {name}: {error}"));
     assert!(!artifact_loss.is_lossy(), "artifact {name}: {}", artifact_loss.reasons_text());
-    assert_eq!(FORMAT_VERSION, 15);
-    assert_eq!(artifact.format_version, 15);
+    assert_eq!(FORMAT_VERSION, 16);
+    assert_eq!(artifact.format_version, 16);
     assert_eq!(artifact.engine_schema_hash, ENGINE_SCHEMA_HASH);
     artifact.validate().unwrap();
     let bytes = artifact.to_json().unwrap();
@@ -59,26 +59,27 @@ fn source(row: &serde_json::Value) -> String {
 }
 
 fn assert_old_envelopes_refused(artifact: &CompiledCardArtifact) {
-    for version in [11, 12, 13, 14] {
+    for version in [11, 12, 13, 14, 15] {
         let mut stale = artifact.clone();
         stale.format_version = version;
         stale.refresh_checksum();
         assert!(matches!(stale.validate(), Err(ArtifactValidationError::UnsupportedFormat {
-            found, expected: 15,
+            found, expected: 16,
         }) if found == version));
         assert!(CompiledCardArtifact::from_json(&stale.to_json().unwrap()).is_err());
         assert!(matches!(materialize_artifact(&stale),
             Err(ArtifactMaterializationError::InvalidArtifact(
-                ArtifactValidationError::UnsupportedFormat { found, expected: 15 }
+                ArtifactValidationError::UnsupportedFormat { found, expected: 16 }
             )) if found == version));
         let mut registry = ironsmith::cards::CardRegistry::new();
         assert!(matches!(registry.register_compiled_artifact(&stale),
             Err(ArtifactRegistrationError::Invalid(
-                ArtifactValidationError::UnsupportedFormat { found, expected: 15 }
+                ArtifactValidationError::UnsupportedFormat { found, expected: 16 }
             )) if found == version));
         assert!(registry.get(&artifact.card.name).is_none());
     }
     for schema in [PUBLISHED_13_SCHEMA,
+        "ce114b87adedd56e98d8472b5d4e3db436ab9408ff2dc3176a286c32132462b7",
         "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
         "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
         "cf9f06e2cea9c4facdfe9b4aad19eaa4bca1062e4e9c9f28d22de18920cbd401",
@@ -160,11 +161,11 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
     assert_eq!(stale.payload, current.payload);
     assert!(matches!(materialize_artifact(&stale),
         Err(ArtifactMaterializationError::InvalidArtifact(
-            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 15 }))));
+            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 16 }))));
     let mut registry = ironsmith::cards::CardRegistry::new();
     assert!(matches!(registry.register_compiled_artifact(&stale),
         Err(ArtifactRegistrationError::Invalid(
-            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 15 }))));
+            ArtifactValidationError::UnsupportedFormat { found: 13, expected: 16 }))));
     assert!(registry.get("Synthetic cache boundary").is_none());
     // Do not recover with materialize_definition(stale.payload.definition).
     // It has no envelope provenance and cannot distinguish these release owners.
@@ -174,7 +175,7 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
 // source-cache boundary. This does not claim an old engine is compatible.
 #[test]
 fn step_local_native_history_uses_the_current_compiled_definition_boundary() {
-    assert_eq!(FORMAT_VERSION, 15);
+    assert_eq!(FORMAT_VERSION, 16);
     let rows: Vec<serde_json::Value> = serde_json::from_str(
         include_str!("../../../fixtures/combat_blocked_status.json.fixture")).unwrap();
     for name in ["Deep Wood", "Heavy Fog"] {
@@ -187,7 +188,7 @@ fn step_local_native_history_uses_the_current_compiled_definition_boundary() {
 // Oct8 compiler-only successor. These fixture additions are supplied by the
 // coordinated source corrections; the boundary is not independently deployable.
 #[test]
-fn oct8_full_bodies_require_fresh_independent_compilation_and_v15_admission() {
+fn oct8_full_bodies_require_fresh_independent_compilation_and_v16_admission() {
     let chosen: Vec<serde_json::Value> = serde_json::from_str(
         include_str!("../../../fixtures/chosen_type_domain_regressions.json.fixture")).unwrap();
     let untap: Vec<serde_json::Value> = serde_json::from_str(
@@ -226,16 +227,65 @@ fn same_session_refusals_and_permissive_compiles_do_not_contaminate_fresh_routes
         registry.register_compiled_artifact(&current).unwrap();
         let before = encode_runtime_definition(registry.get(name).unwrap().clone()).unwrap();
         let mut stale = current.clone();
-        stale.format_version = 14;
+        stale.format_version = 15;
         stale.engine_schema_hash =
-            "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f".into();
+            "ce114b87adedd56e98d8472b5d4e3db436ab9408ff2dc3176a286c32132462b7".into();
         stale.refresh_checksum();
         for _ in 0..2 {
             assert!(matches!(registry.register_compiled_artifact(&stale),
                 Err(ArtifactRegistrationError::Invalid(
-                    ArtifactValidationError::UnsupportedFormat { found: 14, expected: 15 }))));
+                    ArtifactValidationError::UnsupportedFormat { found: 15, expected: 16 }))));
             assert_eq!(encode_runtime_definition(registry.get(name).unwrap().clone()).unwrap(), before);
         }
         compile_source(name, clean);
+    }
+}
+
+// Source-authored, UNRUN. The three fixture files and source repairs are supplied
+// by the separately reviewed second Oct8 cohort. This boundary branch alone is
+// deliberately not a standalone passing/deployable integration.
+#[test]
+fn second_oct8_complete_bodies_require_independent_fresh_v16_routes() {
+    for (fixture, names) in [
+        (include_str!("../../../fixtures/source_must_be_blocked.json.fixture"),
+            &["Anzrag, the Quake-Mole", "Glorfindel, Dauntless Rescuer", "Loathsome Catoblepas"][..]),
+        (include_str!("../../../fixtures/temporary_additional_land_caps.json.fixture"),
+            &["Summer Bloom", "Journey of Discovery"][..]),
+    ] {
+        let rows: Vec<serde_json::Value> = serde_json::from_str(fixture).unwrap();
+        for name in names {
+            let row = rows.iter().find(|row| row["name"].as_str() == Some(*name)).unwrap();
+            assert_old_envelopes_refused(&compile_source(name, &source(row)));
+        }
+    }
+    let fixture: serde_json::Value = serde_json::from_str(
+        include_str!("../../../fixtures/titania_alternative_cost.json.fixture")).unwrap();
+    let row = &fixture["card"];
+    assert_eq!(row["name"], "Titania, Rugged Rumbler");
+    assert_old_envelopes_refused(&compile_source("Titania, Rugged Rumbler", &source(row)));
+}
+
+#[test]
+fn second_oct8_same_name_strict_and_permissive_requests_keep_source_admission() {
+    for (name, clean, unsupported) in [
+        ("Source requirement isolation",
+            "Type: Creature — Beast\nPower/Toughness: 2/2\n{G}: This creature must be blocked this turn if able.",
+            "Type: Creature — Beast\nPower/Toughness: 2/2\n{G}: This creature with flying must be blocked this turn if able."),
+        ("Land ceiling isolation",
+            "Type: Sorcery\nYou may play up to three additional lands this turn.",
+            "Type: Sorcery\nYou may play up to three nonsense additional lands this turn."),
+    ] {
+        for _ in 0..2 {
+            let _ = compile_to_artifact(name, unsupported, true);
+            let (artifact, loss) = ironsmith_compiler::parse_loss::capture(||
+                compile_to_artifact(name, unsupported, false));
+            assert!(artifact.is_err() || loss.is_lossy(), "artifact {name}");
+            let _ = compile_to_runtime_definition(name, unsupported, true);
+            let (direct, loss) = ironsmith_compiler::parse_loss::capture(||
+                compile_to_runtime_definition(name, unsupported, false));
+            assert!(direct.is_err() || loss.is_lossy(), "direct {name}");
+            assert_old_envelopes_refused(&compile_source(name, clean));
+            compile_source(name, clean);
+        }
     }
 }

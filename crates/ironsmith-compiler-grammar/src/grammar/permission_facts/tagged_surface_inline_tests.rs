@@ -258,3 +258,30 @@ fn private_exile_inspection_and_exact_source_presence_are_distinct_complete_perm
         assert!(parse_permission_tail_tokens(&lex(text), PermissionLifetimeFact::Immediate).is_none());
     }
 }
+
+#[test]
+fn temporary_additional_land_cap_consumes_optional_up_to_only() {
+    for (text, expected) in [
+        ("Play up to three additional lands this turn", 3),
+        ("Play up to two additional lands this turn", 2),
+        ("Play two additional lands this turn", 2),
+        ("Play an additional land this turn", 1),
+    ] {
+        let tokens = lex(text);
+        let fact = parse_additional_land_play_tokens(&tokens).expect(text);
+        assert_eq!(fact.count, Value::Fixed(expected));
+        assert!(!TokenWordView::new(fact.count_tokens).word_refs().contains(&"up"));
+    }
+    for text in [
+        "Play up to additional lands this turn",
+        "Play up three additional lands this turn",
+        "Play up to up to three additional lands this turn",
+        "Play at least three additional lands this turn",
+        "Play three nonsense additional lands this turn",
+        "Play up to two additional lands each turn",
+        "Play up to two additional lands this turn and draw a card",
+        "Each player may play up to two additional lands this turn",
+    ] {
+        assert!(parse_additional_land_play_tokens(&lex(text)).is_none(), "{text}");
+    }
+}

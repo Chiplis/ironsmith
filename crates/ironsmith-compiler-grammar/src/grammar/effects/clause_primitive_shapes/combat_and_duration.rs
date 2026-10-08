@@ -137,11 +137,20 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
                 .map(|((), _duration)| ())
                 .take()
                 .parse_next(input)?;
+            // Keep the newly reachable source subject raw. Its complete
+            // owner must see punctuation immediately before `must`, including
+            // a period that the sentence-boundary check below must reject.
+            // Other requirement families retain their existing normalization.
+            let subject_tokens = if subject_tokens.first().is_some_and(|token| token.is_word("this")) {
+                subject_tokens
+            } else {
+                trim_shape_edges(subject_tokens)
+            };
             let duration = must_be_blocked_suffix.parse_next(input)?;
             Ok(CombatRequirementShape {
                 kind: CombatRequirementKind::MustBeBlocked,
                 duration,
-                subject_tokens: trim_shape_edges(subject_tokens),
+                subject_tokens,
             })
         },
     ))

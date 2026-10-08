@@ -1,0 +1,38 @@
+{
+  "kind": "offline_existing_evidence_reconciliation",
+  "measured_source": "1dd81cd84c62f272479f26e16d74719fff24b97b",
+  "files": {
+    "audit-historical-source-proposals.json.gz": {
+      "bytes": 354264,
+      "sha256": "883eeda166e990cf88ae3c0cc83701addb5fc92b36097fad6ec1b7e93fce6ce6",
+      "original_bytes": 4111837,
+      "original_sha256": "450139faea9ee3ee6e4f036a7ee80e49fdfe31e8527c70e0240e3cfc51edf422",
+      "source_file": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/analysis/audit-historical-source-proposals.json",
+      "encoding": "gzip_mtime_zero"
+    },
+    "audit-historical-source-proposals.md": {
+      "bytes": 11358,
+      "sha256": "385dbee95773d20feeef4e710b26779cf1a2f7a1d3356d9eedb8892a0884c9c6",
+      "original_bytes": 11358,
+      "original_sha256": "385dbee95773d20feeef4e710b26779cf1a2f7a1d3356d9eedb8892a0884c9c6",
+      "source_file": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/analysis/audit-historical-source-proposals.md",
+      "encoding": "utf-8"
+    },
+    "residual-next-cohorts.json.gz": {
+      "bytes": 74004,
+      "sha256": "96a7dda6c59b2c721f9453c727c06c5f48de0021b2f0b11038af83d54f32768a",
+      "original_bytes": 876681,
+      "original_sha256": "4b05e3db7f2aa67fb9aca44245edb30cc047a7e947b5de511e41064920bd5453",
+      "source_file": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/analysis/residual-next-cohorts.json",
+      "encoding": "gzip_mtime_zero"
+    },
+    "residual-next-cohorts.md": {
+      "bytes": 13359,
+      "sha256": "2c20e87ff59df56a81ff6146b67278024e4346ae1b48f8212e3544063e1cee11",
+      "original_bytes": 13359,
+      "original_sha256": "2c20e87ff59df56a81ff6146b67278024e4346ae1b48f8212e3544063e1cee11",
+      "source_file": "/workspace/scratch/bc560e8d90ff/ironsmith-refresh-20261008-1dd81cd/reports/current-refresh-20261008/analysis/residual-next-cohorts.md",
+      "encoding": "utf-8"
+    }
+  }
+}

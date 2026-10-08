@@ -1,0 +1,52 @@
+# Independent Titania alternative-cost source review
+
+Reviewed commit: `5d87bb62f7292070dcaea89f88cd573807bcad93`, based on integrated `ad0b0056c`, in `ironsmith-titania-costs`.
+
+Verdict: **production change source-clear, with incomplete authored coverage and all execution gates still UNRUN**. No demonstrated runtime recovery or measured card recovery. The exact-current Titania panic record remains unchanged.
+
+## Source ownership and production change
+
+The baseline `1dd81cd84c62f272479f26e16d74719fff24b97b` has the same unconditional `self.cost.costs()` in `Ward::display`. `TotalCost::costs` calls `as_all().expect(...)` and therefore cannot accept the actual parsed Ward disjunction. Grammar `activation_and_restrictions/keyword_action_costs.rs:561–604` recursively constructs `TotalCost::one_of` for the payment `or`; Ward's payment reader delegates there. Compiler-runtime `lib.rs:636–647` renders presentation while converting to runtime, and compiled-text static-ability rendering calls `static_ability.display()` (`render_effects/abilities_and_costs.rs:1305`). This independently establishes the relevant source call path. The retained panic does not include a backtrace, so this is source attribution rather than a newly executed reproduction or proof that it is the only reachable panic.
+
+The production diff replaces only the waterbend presence predicate. It recursively matches `All`/`OneOf`, inspects borrowed mana components, and returns a Boolean. The existing branch-aware `has_non_mana_costs` and `display` calls remain. No branch selection, cost default, concatenation, discarded qualifier, graph rewrite, payment mutation, or unsupported-input fallback was added. Nested disjunctions are covered structurally; retained-model restoration is tested. Ordinary mana-only Ward formatting is explicitly asserted. The graph-preserving implementation is appropriate for this display owner.
+
+Additional cast costs remain owned by `ChooseModeEffect`, not Ward's `OneOf`. `simple_modal_mana_cost_branches`, `announce_modal_mana_costs`, and `modal_additional_costs_are_payable` retain single-choice announcement, aggregate printed/additional mana pricing, and nonmana payment ownership. Ward payment retains the targeted stack object's controller as payer and the Ward permanent/snapshot as source. Resolution payment selects only payable alternatives and recursively pays the selected branch. Cancellation/error rollback remains with existing transaction/checkpoint owners (`special_actions.rs:3329` and `3791`; `priority_mana.rs:1234` onward). None of these owners was edited.
+
+## Fixture and authored regressions
+
+Read-only JSON/byte comparison independently found exactly one Oracle-ID record and full-object equality with the fixture. The source digest is exactly `bae465b9d536fffa24c656daff5577a87f5a963dcb2160be0c1dc9ba8e225750`. Reconstructed metadata plus complete raw Oracle body equals fixture `text` byte-for-byte. This was data authentication only, not compiler execution.
+
+The source suite separately calls direct compilation and artifact compilation, captures strict/no-loss results, roundtrips the complete artifact through JSON, and materializes the decoded artifact. Both definitions feed all runtime cases. It asserts actual name, mana, type, subtypes, stats, separate additional-cost/Ward owners, both cast branches, both Ward branches, opposing payer/resource isolation, unavailable unchosen branches, no-pay decline, neither branch payable, invalid multiple cast selection, and immediate mana cancellation. No introduced test API defect was established by source inspection, but the suite has not compiled or run.
+
+Coverage limits to address before claiming the requested comprehensive gate:
+
+1. No full-card illegal-target or target-becomes-illegal case exists. Add rejection before targeting/payment and a stale target after triggering/resolving Ward, preserving ordinary target legality/fizzle semantics and payment ownership.
+2. Printed `{B/G}` is asserted, but runtime funding uses black only. Add green-funded cases for both cast branches and a wrong-color rejection case.
+3. Cancellation returns Cancel at the first mana prompt. It does not establish rollback after an actual mana-source activation/resource-spending prefix, nor queue/output/receipt rollback. Existing resource assertions are useful but narrower than complete transaction rollback.
+4. When both alternatives exist, no case deliberately chooses an unaffordable cast mana branch while the discard branch is affordable. Sole-payable and neither-payable cases are present. Ward selection intentionally filters unaffordable alternatives.
+
+These are coverage limitations, not established defects in the display repair.
+
+## Compatibility and promotion
+
+No wire/model/decision schema changes require a structural serialization bump for this patch alone. Nevertheless acceptance changes from a panic, canonical presentation can change, and previously cached negative support results can become stale. A subsequent coordinated compiler/catalog/audit-cache semantic identity is required before promotion; unchanged generic compiler_version is not sufficient identity. The inherited artifact15 contract names an earlier bounded source set. Do not silently expand or rewrite that descriptor (or any historical descriptor). Reconcile a subsequent descriptor/release version according to policy, regenerate genuine final-source artifacts/catalogs/evidence together, and invalidate stale panic/support cache entries. Source-only preservation of inherited artifact15/audit29 is not itself a release approval.
+
+No builds, tests, compiler/engine probes, corpus runs, code generation, source edits, or remote writes were performed. This independent report is the only file written. Future authorized final-stack compilation/tests and exact-current-ID artifact/runtime audit remain necessary; retain all current measurement counts and Titania's recorded panic until a new measurement exists.
+
+## Minimal additions and severity clarification
+
+There is **no established production source/API blocker**. For the specifically requested full-card coverage, the minimal missing assertions are: (a) parameterize each successful cast branch over black-only and green-only funding and retain exact remaining-mana/hand/graveyard assertions; add blue-only funding with no legal cast and unchanged resources to show the hybrid pip is enforced; (b) use the real full-card target plus a targeting spell, make the target unavailable/illegal before target announcement, and assert no legal target/payment/trigger and unchanged costs; (c) after a real Ward trigger is queued, remove the protected target, resolve the Ward trigger under the selected payer choice, then resolve the targeting spell and assert no effect on an illegal target. Keep the Ward obligation separate from the targeting spell's later legality check.
+
+The current cancellation tests genuinely cancel at a real payment prompt and verify the listed resources; their names do not claim an already-spent prefix. An activation-prefix cancellation test is **advisory inherited-payment coverage**, not a blocker to this display-only repair. If the surrounding narrative claims comprehensive resource rollback, either narrow it to immediate cancellation or add a payer-controlled mana source, activate it before Cancel, and assert its original tapped state, mana, hand/graveyard, stack and queued events are restored. Deliberately selecting an unaffordable alternative despite an available other branch is likewise an advisory inherited-payment edge, not evidence of a new production defect.
+
+## Exact-anchor re-review: d3380a3c23883188990600299076cdaa6915ad74
+
+Reviewed the follow-up diff against `5d87bb62f7292070dcaea89f88cd573807bcad93`. It changes only the full-card integration test and its README; production and fixture bytes are unchanged. Verdict: **source-clear for this bounded repair and its requested authored coverage; all executable gates remain UNRUN**. The prior missing requested coverage items are now resolved at source level.
+
+- Both additional casting branches now run with black-only and green-only pools. The helper explicitly answers the real `DecisionContext::HybridChoice` with a matching `HybridOption.symbol/index`. Verified these public fields, `ManaSymbol: Copy`, `PriorityResponse::HybridChoice(usize)`, and its production routing to `apply_hybrid_choice_response`. Existing exact mana, discard, stack, prompt and battlefield assertions remain in each case.
+- Blue-only pools are rejected by the real legal-action computation both with and without an available discard card, while asserting unchanged mana, hand, graveyard and stack. This distinguishes printed hybrid legality from paying either additional price.
+- Before-announcement departure removes the original creature identity and leaves no legal creature targets. The real legal-action computation must not offer the targeting spell, with payer resources unchanged. The empty fresh queue/no-prompt assertions are consistency checks, not an exercised attempt to force an illegal target through a mutation API. The test is appropriately a legal-action/announcement-availability case; it does not prove forced invalid-response rejection.
+- After the real Ward trigger is stacked, both payment branches run with Titania absent. Assertions distinguish the surviving Ward obligation, exactly one payment from the targeting controller, no charge to the protected controller, and the targeting spell still on the stack after Ward resolves. Returning the same card produces a different ObjectId; resolving the original spell must leave that new permanent untapped, move only the original targeting spell to its controller's graveyard, consume no further mana, and generate no second Ward prompt. This is a meaningful stale-object-target test rather than merely asserting an empty battlefield.
+- Verified public `GameState::move_object_by_effect` returns `Option<ObjectId>`, and `TriggerQueue::is_empty` exists. No new API mismatch or source blocker was found. No code was compiled or run.
+
+Immediate cancellation scope is now explicitly documented; after-spent-prefix/receipt rollback and deliberately selecting an unaffordable branch remain advisory inherited-payment edges. The subsequent release/cache semantic boundary requirement remains as above. Current measured panic/support data remains untouched.

@@ -625,8 +625,20 @@ impl StaticAbilityKind for Ward {
     }
 
     fn display(&self) -> String {
-        if self.cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
-            .any(|cost| cost.has_waterbend_obligation()) {
+        // A ward price can be a nested choice. This is a read-only display
+        // predicate, not a request to select or concatenate payment branches.
+        fn has_waterbend(cost: &TotalCost) -> bool {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(components) => components
+                    .iter()
+                    .filter_map(|component| component.mana_cost_ref())
+                    .any(|mana| mana.has_waterbend_obligation()),
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    branches.iter().any(has_waterbend)
+                }
+            }
+        }
+        if has_waterbend(&self.cost) {
             return format!("Ward—{}.", self.cost.display());
         }
         // Mana-only ward uses a space ("Ward {2}"); ward with any non-mana cost
@@ -686,6 +698,37 @@ mod tests {
         assert_eq!(ward.id(), StaticAbilityId::Ward);
         assert!(!ward.may_generate_continuous_effects());
         assert!(ward.ward_cost().is_some());
+    }
+
+    #[test]
+    fn ward_display_visits_alternatives_without_selecting_or_flattening_them() {
+        use crate::costs::Cost;
+        use crate::mana::{ManaCost, ManaSymbol};
+        let mana = || ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]);
+        for cost in [
+            TotalCost::mana(mana()),
+            TotalCost::one_of(vec![TotalCost::from_cost(Cost::life(2)), TotalCost::mana(mana())]),
+            TotalCost::one_of(vec![TotalCost::mana(mana()), TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::life(2)), TotalCost::mana(mana().with_waterbend()),
+            ])]),
+        ] {
+            let original = cost.clone();
+            let ward = Ward::new(cost);
+            let display = ward.display();
+            assert!(display.starts_with("Ward"));
+            assert_eq!(ward.cost, original, "rendering must retain the choice graph");
+            if original.as_one_of().is_some() {
+                assert!(display.contains(" or "));
+                assert!(display.starts_with("Ward—"));
+            } else {
+                assert_eq!(display, "Ward {2}");
+            }
+            let restored = crate::static_abilities::StaticAbility::from_model(
+                ward.compiled_model().unwrap().clone(),
+            );
+            assert_eq!(restored.display(), display);
+            assert_eq!(restored.ward_cost(), Some(&original));
+        }
     }
 
     #[test]

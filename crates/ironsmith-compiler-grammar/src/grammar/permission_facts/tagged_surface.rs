@@ -865,6 +865,9 @@ fn parse_additional_land_play_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<AdditionalLandPlayFact<'a>> {
     primitives::kw("play").parse_next(input)?;
+    // This is a permission ceiling, not a resolution-time numeric choice.
+    // Leave only the value itself for the complete typed count parser.
+    opt(primitives::phrase(&["up", "to"])).parse_next(input)?;
     let count_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),

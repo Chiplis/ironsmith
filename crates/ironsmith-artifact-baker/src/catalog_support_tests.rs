@@ -2598,3 +2598,26 @@ fn conditional_untap_bodies_reach_strict_baker_without_parse_loss() {
         assert!(!engine::cards::generated_definition_has_unimplemented_content(&definition));
     }
 }
+
+#[test]
+fn temporary_additional_land_caps_reach_strict_baker_without_parse_loss() {
+    // Authored gate only. Does not promote either ID or alter catalogue admission.
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/temporary_additional_land_caps.json.fixture"
+    )).unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        let name = row["name"].as_str().unwrap();
+        let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_artifact(CompileInput {
+            name, text: row["text"].as_str().unwrap(), score: None, local_id: 1,
+            other_face_id: None, other_face_name: None,
+            layout: LinkedFaceLayout::None, transforming_dfc: false,
+        }));
+        let artifact = result.unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+        artifact.validate().unwrap();
+        assert!(artifact.semantic_score.is_none());
+        let definition = engine::artifact_materializer::materialize_artifact(&artifact).unwrap();
+        assert!(!engine::cards::generated_definition_has_unimplemented_content(&definition));
+    }
+}
