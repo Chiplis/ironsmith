@@ -1014,7 +1014,45 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     {
         first.drain(..=comma_idx);
     }
+    inline_counted_number_sentence(&mut sentences);
     sentences
+}
+
+/// "Count the number of cards in your library. Your life total becomes that
+/// number." (Invincible Hymn): the counting sentence performs no action; its
+/// quantity is read once, at the following instruction, so "that number" is
+/// the counted quantity itself.
+fn inline_counted_number_sentence(sentences: &mut Vec<Vec<OwnedLexToken>>) {
+    let [count, consumer] = sentences.as_slice() else {
+        return;
+    };
+    let quantity = count
+        .iter()
+        .skip(1)
+        .filter(|token| !token.is_period())
+        .cloned()
+        .collect::<Vec<_>>();
+    if !count.first().is_some_and(|token| token.is_word("count"))
+        || quantity.len() < 4
+        || !quantity[0].is_word("the")
+        || !quantity[1].is_word("number")
+        || !quantity[2].is_word("of")
+    {
+        return;
+    }
+    let anaphors = consumer
+        .windows(2)
+        .enumerate()
+        .filter(|(_, pair)| pair[0].is_word("that") && pair[1].is_word("number"))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    let [anaphor] = anaphors.as_slice() else {
+        return;
+    };
+    let mut rewritten = consumer[..*anaphor].to_vec();
+    rewritten.extend(quantity);
+    rewritten.extend_from_slice(&consumer[anaphor + 2..]);
+    *sentences = vec![rewritten];
 }
 
 /// The index of the timing word of an "As this <subject> enters / transforms
