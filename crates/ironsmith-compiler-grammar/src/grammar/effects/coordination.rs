@@ -782,6 +782,16 @@ fn classify_boundary<'a>(
         // same sacrifice, not two alternative actions.
         return None;
     }
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Or | CoordinationOperatorAst::Comma
+    ) && crate::lexer::token_word_refs(after).ends_with(&["whichever", "is", "greater"])
+    {
+        // "equal to the amount of life you gained this turn or the amount of
+        // life you lost this turn, whichever is greater" (Willowdusk): the
+        // alternatives belong to one amount, not to two actions.
+        return None;
+    }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
         // "shuffles their hand and graveyard into their library" is one
         // shuffle whose object is a zone union; the connective is not an
