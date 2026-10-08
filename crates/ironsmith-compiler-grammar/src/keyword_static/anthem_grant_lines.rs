@@ -1972,6 +1972,81 @@ pub fn parse_each_creature_cant_be_blocked_by_more_than_line(
     }))
 }
 
+/// "Boars you control can't be blocked by more than one creature"
+/// (Rocksteady, Crash Courser) and "Each creature you control with menace
+/// can't be blocked except by three or more creatures" (Sonorous
+/// Howlbonder): the source-only blocker-count restrictions (CR 509.1b/c)
+/// granted to every object in an authored set.
+pub fn parse_filtered_blocker_count_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let Some(cant_idx) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..cant_idx]);
+    let subject_words = crate::lexer::token_word_refs(&subject_tokens);
+    let Some(first) = subject_words.first() else {
+        return Ok(None);
+    };
+    // The source itself keeps its own static production; leading conditions
+    // and durations have their own owners.
+    if matches!(
+        *first,
+        "this" | "it" | "as" | "if" | "until" | "enchanted" | "equipped" | "during"
+    ) || subject_words.iter().any(|word| matches!(*word, "long" | "turn" | "has" | "have")) {
+        return Ok(None);
+    }
+    let Some(fact) =
+        crate::grammar::activation_costs::cant_shapes::parse_blocking_cant_fact_tokens(
+            &tokens[cant_idx..],
+        )
+    else {
+        return Ok(None);
+    };
+    let granted = match fact {
+        crate::grammar::activation_costs::cant_shapes::BlockingCantFact::MaximumBlockers {
+            maximum_blockers,
+            ..
+        } => {
+            // "each creature ..." already has its dedicated production.
+            if matches!(parse_each_creature_cant_be_blocked_by_more_than_line(&tokens), Ok(Some(_))) {
+                return Ok(None);
+            }
+            StaticAbility::cant_be_blocked_by_more_than(maximum_blockers)
+        }
+        crate::grammar::activation_costs::cant_shapes::BlockingCantFact::MinimumBlockers {
+            minimum_blockers,
+            ..
+        } => StaticAbility::cant_be_blocked_except_by_n_or_more(minimum_blockers),
+        _ => return Ok(None),
+    };
+    let each = *first == "each";
+    let filter_tokens = if each { &subject_tokens[1..] } else { &subject_tokens[..] };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Ok(filter) = parse_object_filter(filter_tokens, false) else {
+        return Ok(None);
+    };
+    let ability = StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability: Box::new(StaticAbilityAst::Static(granted)),
+        condition: None,
+    };
+    Ok(Some(if each {
+        StaticAbilityAst::WithSetQuantifierSurface {
+            ability: Box::new(ability),
+            surface: ironsmith_core::SetQuantifierSurface::Each,
+        }
+    } else {
+        ability
+    }))
+}
+
 pub fn parse_each_creature_can_block_additional_creature_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {

@@ -852,6 +852,14 @@ fn parse_cant_clauses_unbound(
                 crate::grammar::anthem_grants::parse_each_creature_subject(clause.subject_tokens)
                     .is_some()
             })
+        // A filtered set granted a blocker-count restriction ("Boars you
+        // control can't be blocked by more than one creature") is owned by
+        // its grant production; the negated grammar would read the count as
+        // a blocker filter.
+        || matches!(
+            crate::keyword_static::parse_filtered_blocker_count_restriction_line(tokens),
+            Ok(Some(_))
+        )
         || crate::grammar::keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(
             tokens,
         )
