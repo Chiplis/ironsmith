@@ -5001,12 +5001,31 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         .or_else(|| words.strip_prefix(&["any", "of", "those", "results", "were"]))
     {
         (true, rest)
-    } else if let Some(rest) = words.strip_prefix(&["the", "roll", "was"]) {
+    } else if let Some(rest) = words
+        .strip_prefix(&["the", "roll", "was"])
+        .or_else(|| words.strip_prefix(&["the", "result", "is"]))
+        .or_else(|| words.strip_prefix(&["the", "result", "was"]))
+    {
         (false, rest)
     } else {
         return None;
     };
-    let number = number.strip_suffix(&["or", "higher"])?;
+    // "If the result is 3 or less" (Dissatisfied Customer, Non-Human
+    // Cannonball): the completed roll's result at most the bound.
+    let (number, operator) = if let Some(number) = number
+        .strip_suffix(&["or", "higher"])
+        .or_else(|| number.strip_suffix(&["or", "greater"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::GreaterThanOrEqual)
+    } else if !grouped
+        && let Some(number) = number
+            .strip_suffix(&["or", "less"])
+            .or_else(|| number.strip_suffix(&["or", "lower"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::LessThanOrEqual)
+    } else {
+        return None;
+    };
     let value = crate::grammar::trigger_clauses::parse_roll_result_words(number)?;
     let crate::grammar::trigger_clauses::RollResultShape::Fixed(value) = value else {
         return None;
@@ -5027,7 +5046,7 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
                 )
                 .with_action(ironsmith_core::PriorEffectAction::Rolled),
             ),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            operator,
             right: Value::Fixed(value),
         }
     })
