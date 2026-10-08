@@ -1897,6 +1897,10 @@ pub(crate) fn this_spell_cast_timing_allows(
         }
         ThisSpellCastTiming::DuringYourTurn => game.is_active_player(player),
         ThisSpellCastTiming::DuringOpponentsTurn => opponents_turn,
+        // Count the caster's own turns taken, including the current one.
+        ThisSpellCastTiming::NotDuringYourFirstTurns(count) => {
+            !(game.is_active_player(player) && game.turns_taken_by(player) <= count)
+        }
         ThisSpellCastTiming::DuringDeclareAttackersStep => {
             matches!(game.turn.phase, Phase::Combat)
                 && game.turn.step == Some(Step::DeclareAttackers)
@@ -2085,6 +2089,8 @@ pub(crate) fn this_spell_cast_condition_allows(
                 .count()
                 >= *count as usize
         }
+        // Evaluated by `spell_cast_restrictions_allow`, which knows the spell.
+        crate::static_abilities::ThisSpellCastCondition::Condition(_) => true,
         crate::static_abilities::ThisSpellCastCondition::YouControlFewerCreaturesThanEachOpponent => {
             let your_creatures = game.creatures_controlled_by(player).len();
             game.players
@@ -2124,6 +2130,17 @@ pub(crate) fn spell_cast_restrictions_allow(
             let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
                 return true;
             };
+            // A typed condition reads the spell itself as its source.
+            if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) =
+                &kind.condition
+            {
+                return kind
+                    .timing
+                    .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing))
+                    && crate::condition_eval::evaluate_condition_cast_time(
+                        game, condition, player, spell.id,
+                    );
+            }
             this_spell_cast_restriction_allows(game, player, &kind)
         })
 }

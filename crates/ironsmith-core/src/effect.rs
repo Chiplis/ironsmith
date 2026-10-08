@@ -723,6 +723,20 @@ pub enum DelayedTriggerSpec {
         defender: PlayerFilter,
         grouping: crate::trigger_model::PlayerAttackGrouping,
     },
+    /// Append-only. "Whenever [object] deals damage" for the registration's
+    /// lifetime, combat or noncombat alike (CR 120.1). A registration that
+    /// watches a captured object names it with a `source` filter.
+    DealsDamage { source: ObjectFilter },
+    /// Append-only. "Whenever [object] is dealt damage by [source]" for the
+    /// registration's lifetime (CR 120.1); a watched recipient is `source`.
+    DealsDamageTo {
+        source: ObjectFilter,
+        target: ObjectFilter,
+    },
+    /// Append-only. "Whenever [creature] attacks alone" for the
+    /// registration's lifetime: the only creature declared as an attacker
+    /// (CR 506.5).
+    AttacksAlone(ObjectFilter),
 }
 
 /// Lifetime policy for a delayed trigger registration.

@@ -1215,6 +1215,19 @@ pub enum Restriction {
         attackers: ObjectFilter,
         player: PlayerFilter,
     },
+    /// "[objects] can't become untapped" (Blossombind): no event or rule may
+    /// untap the matching permanents, including the untap step and untap
+    /// costs. Distinct from `Untap`, which only skips the controller's untap
+    /// step. Appended to preserve existing serialized variant ordinals.
+    BecomeUntapped(ObjectFilter),
+    /// "[objects] can't attack, block, or crew Vehicles" (Revoke
+    /// Privileges): attack and block prohibitions plus exclusion from crew
+    /// costs (CR 702.122a taps "untapped creatures you control"). Appended.
+    AttackBlockOrCrew(ObjectFilter),
+    /// "[hosts] can't be enchanted by other Auras" / "can't be equipped":
+    /// the second filter names attachments that can't become (or stay,
+    /// CR 704.5m/n) attached to the matching hosts. Appended.
+    BeAttachedBy(ObjectFilter, ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1577,6 +1590,18 @@ impl Restriction {
 
     pub fn untap(filter: ObjectFilter) -> Self {
         Self::Untap(filter)
+    }
+
+    pub fn become_untapped(filter: ObjectFilter) -> Self {
+        Self::BecomeUntapped(filter)
+    }
+
+    pub fn attack_block_or_crew(filter: ObjectFilter) -> Self {
+        Self::AttackBlockOrCrew(filter)
+    }
+
+    pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
+        Self::BeAttachedBy(hosts, attachments)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {

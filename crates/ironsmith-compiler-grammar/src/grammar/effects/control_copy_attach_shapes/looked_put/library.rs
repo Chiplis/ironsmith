@@ -76,5 +76,10 @@ pub fn is_reorder_tagged_cards(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "back")
         && primitives::contains_word(tokens, "any")
         && primitives::contains_word(tokens, "order")
-        && (primitives::contains_word(tokens, "it") || primitives::contains_word(tokens, "them"))
+        && (primitives::contains_word(tokens, "it")
+            || primitives::contains_word(tokens, "them")
+            // "Exile any number of those cards, then put the rest back in
+            // any order" (Dimir Machinations): the looked-at cards still in
+            // the library; the reorder keeps only cards still there.
+            || primitives::contains_word(tokens, "rest"))
 }

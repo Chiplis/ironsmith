@@ -31,6 +31,34 @@ fn simple_negated_object_restriction(
         ));
     }
 
+    // "[objects] can't become untapped" (Blossombind): every untap is
+    // prohibited, not only the untap step's.
+    if words == ["become", "untapped"] {
+        return Some(Restriction::become_untapped(filter.clone()));
+    }
+    // "can't be equipped" (Goblin Brawler) / "can't be enchanted [by other
+    // Auras]" (Anti-Magic Aura, Guardian Beast).
+    let attachment_subtype = match words {
+        ["be", "equipped"] => Some((crate::types::Subtype::Equipment, false)),
+        ["be", "enchanted"] => Some((crate::types::Subtype::Aura, false)),
+        ["be", "enchanted", "by", "other", "auras"] => Some((crate::types::Subtype::Aura, true)),
+        _ => None,
+    };
+    if let Some((subtype, other)) = attachment_subtype {
+        let mut attachments = ObjectFilter::default().with_subtype(subtype);
+        attachments.other = other;
+        return Some(Restriction::be_attached_by(filter.clone(), attachments));
+    }
+    // "[objects] can't attack, block, or crew Vehicles" (Revoke Privileges).
+    if words
+        .iter()
+        .copied()
+        .filter(|word| *word != ",")
+        .eq(["attack", "block", "or", "crew", "vehicles"])
+    {
+        return Some(Restriction::attack_block_or_crew(filter.clone()));
+    }
+
     let kind = restriction_grammar::parse_simple_object_restriction_words(words)?;
     use restriction_grammar::SimpleObjectRestrictionKind;
     Some(match kind {

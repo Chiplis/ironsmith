@@ -137,6 +137,8 @@ pub enum ThisSpellCastCondition {
     YouControlFewerCreaturesThanEachOpponent,
     /// "only if you control N or more permanents whose names contain <word>"
     YouControlNameWordOrMore { word: &'static str, count: u32 },
+    /// A typed cast-time condition evaluated with the spell as source.
+    Condition(ironsmith_core::Condition),
 }
 
 /// Cast-time restriction for "Cast this spell only ..." lines.

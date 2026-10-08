@@ -327,6 +327,29 @@ pub fn compile_delayed_trigger_spec(
             loyalty_only: *loyalty_only,
             activation_cost_has_tap: *activation_cost_has_tap,
         }),
+        TriggerSpec::DealsDamage { source, .. } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::DealsDamage {
+                source: source.clone(),
+            })
+        }
+        TriggerSpec::DealsDamageTo { source, target, .. } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::DealsDamageTo {
+                source: source.clone(),
+                target: target.clone(),
+            })
+        }
+        TriggerSpec::AttacksAlone(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter.clone()),
+        ),
+        // "Until end of turn, whenever Lyra deals combat damage to a player":
+        // an unwatched registration matches against its ability source, so
+        // the source filter names the permanent that created it.
+        TriggerSpec::ThisDealsCombatDamageToPlayer { player, .. } => Ok(
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                source: ObjectFilter::source(),
+                player: player.clone(),
+            },
+        ),
         TriggerSpec::Either(left, right) => Ok(ironsmith_core::DelayedTriggerSpec::Either(
             Box::new(compile_delayed_trigger_spec(left)?),
             Box::new(compile_delayed_trigger_spec(right)?),
@@ -977,6 +1000,18 @@ fn compile_duration_scoped_delayed_trigger(
                 ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(ObjectFilter::source())
             } else {
                 ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(resolved)
+            }
+        }
+        TriggerSpec::DealsDamage { source, .. } => {
+            let resolved = resolve_it_tag(source, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::DealsDamage {
+                    source: ObjectFilter::source(),
+                }
+            } else {
+                ironsmith_core::DelayedTriggerSpec::DealsDamage { source: resolved }
             }
         }
         TriggerSpec::DealsCombatDamageTo { source, target } => {
@@ -1796,6 +1831,88 @@ pub(super) fn try_compile_timing_and_control_effect(
                         );
                         (vec![effect], choices)
                     }
+                }
+                TriggerSpec::DealsDamage { source, .. } => {
+                    // "Whenever that creature deals damage this turn, ...":
+                    // watch the referenced object, as the combat form does.
+                    let resolved_filter = resolve_it_tag(source, &current_reference_env(ctx))?;
+                    let effect = if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter)
+                    {
+                        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone(),
+                            ironsmith_core::DelayedTriggerSpec::DealsDamage {
+                                source: crate::target::ObjectFilter::source(),
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_filter)
+                        .until_end_of_turn()
+                    } else {
+                        crate::effects::ScheduleDelayedTriggerEffect::new(
+                            ironsmith_core::DelayedTriggerSpec::DealsDamage {
+                                source: resolved_filter,
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .until_end_of_turn()
+                    };
+                    (vec![Effect::new(effect)], choices)
+                }
+                TriggerSpec::DealsDamageTo { source, target, .. } => {
+                    // "Whenever that creature is dealt damage by an attacking
+                    // creature this turn" (Glyph of Life): the watched object
+                    // is the damage recipient; the source stays a filter.
+                    let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
+                    let resolved_target = resolve_it_tag(target, &current_reference_env(ctx))?;
+                    let effect = if let Some(watched_tag) = watch_tag_from_filter(&resolved_target)
+                    {
+                        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone(),
+                            ironsmith_core::DelayedTriggerSpec::DealsDamageTo {
+                                source: resolved_source,
+                                target: crate::target::ObjectFilter::source(),
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_target)
+                        .until_end_of_turn()
+                    } else if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
+                        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone(),
+                            ironsmith_core::DelayedTriggerSpec::DealsDamageTo {
+                                source: crate::target::ObjectFilter::source(),
+                                target: resolved_target,
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_source)
+                        .until_end_of_turn()
+                    } else {
+                        crate::effects::ScheduleDelayedTriggerEffect::new(
+                            ironsmith_core::DelayedTriggerSpec::DealsDamageTo {
+                                source: resolved_source,
+                                target: resolved_target,
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .until_end_of_turn()
+                    };
+                    (vec![Effect::new(effect)], choices)
                 }
                 TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                     source,

@@ -9745,6 +9745,8 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
@@ -9761,7 +9763,8 @@ fn bind_unresolved_it_in_restriction(
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
-        | Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+        | Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::BeAttachedBy(blockers, attacker) => {
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }

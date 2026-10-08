@@ -5877,6 +5877,21 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::Untap(filter) => {
             format!("{} can't untap", filter.description())
         }
+        crate::effect::Restriction::BecomeUntapped(filter) => {
+            format!("{} can't become untapped", filter.description())
+        }
+        crate::effect::Restriction::BeAttachedBy(hosts, attachments) => {
+            if attachments.subtypes.contains(&crate::types::Subtype::Equipment) {
+                format!("{} can't be equipped", hosts.description())
+            } else if attachments.other {
+                format!("{} can't be enchanted by other Auras", hosts.description())
+            } else {
+                format!("{} can't be enchanted", hosts.description())
+            }
+        }
+        crate::effect::Restriction::AttackBlockOrCrew(filter) => {
+            format!("{} can't attack, block, or crew Vehicles", filter.description())
+        }
         crate::effect::Restriction::BeBlocked(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());

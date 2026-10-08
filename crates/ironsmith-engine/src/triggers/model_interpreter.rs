@@ -1126,6 +1126,13 @@ impl super::Trigger {
                 Self::from_delayed_trigger_spec(*left),
                 Self::from_delayed_trigger_spec(*right),
             ),
+            ironsmith_core::DelayedTriggerSpec::DealsDamage { source } => {
+                Self::deals_damage(source)
+            }
+            ironsmith_core::DelayedTriggerSpec::DealsDamageTo { source, target } => {
+                Self::deals_damage_to(source, target)
+            }
+            ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
         }
     }
 

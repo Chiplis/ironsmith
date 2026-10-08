@@ -291,7 +291,8 @@ fn restriction_references_identity(
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
-        | Restriction::BeTargetedFrom(blockers, attacker) => {
+        | Restriction::BeTargetedFrom(blockers, attacker)
+        | Restriction::BeAttachedBy(blockers, attacker) => {
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
         }
@@ -314,6 +315,8 @@ fn restriction_references_identity(
         | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)

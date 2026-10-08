@@ -795,6 +795,9 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     } else {
         parse_trigger_clause_lexed(trigger_core_tokens)?
     };
+    let mut trigger = trigger;
+    let subject_target_declaration =
+        declare_targeted_damage_source(tokens, trigger_core_tokens, &mut trigger)?;
     let remainder = shape.effect_tokens;
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -815,13 +818,68 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     }
 
     let one_shot = delayed_trigger_is_one_shot(trigger_clause);
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+    let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,
         one_shot,
         until_end_of_combat: false,
         attach_to_previous_ability: shape.references_previous_creature,
-    })]))
+    });
+    Ok(Some(match subject_target_declaration {
+        Some(declaration) => vec![declaration, delayed],
+        None => vec![delayed],
+    }))
+}
+
+/// "Whenever target creature deals damage this turn, you gain that much
+/// life." (Paladin of Prahv's forecast): the event subject is a target of the
+/// scheduling ability, chosen as it is put on the stack (CR 115.1, 601.2c).
+/// Declare that target and watch exactly that object, as the targeted
+/// combat-damage and dies shapes above do.
+fn declare_targeted_damage_source(
+    tokens: &[OwnedLexToken],
+    trigger_core_tokens: &[OwnedLexToken],
+    trigger: &mut TriggerSpec,
+) -> Result<Option<EffectAst>, CardTextError> {
+    fn damage_source_filter_mut(trigger: &mut TriggerSpec) -> Option<&mut ObjectFilter> {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => damage_source_filter_mut(trigger),
+            TriggerSpec::DealsDamage { source, .. }
+            | TriggerSpec::DealsDamageTo { source, .. }
+            | TriggerSpec::DealsDamageToPlayer { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+    let target_idx = match trigger_core_tokens
+        .iter()
+        .position(|token| token.is_word("target"))
+    {
+        Some(idx @ (0 | 1)) => idx,
+        _ => return Ok(None),
+    };
+    let Some(deals_idx) = trigger_core_tokens
+        .iter()
+        .position(|token| token.is_word("deals"))
+        .filter(|deals_idx| *deals_idx > target_idx + 1)
+    else {
+        return Ok(None);
+    };
+    let Some(source) = damage_source_filter_mut(trigger) else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(&trigger_core_tokens[target_idx + 1..deals_idx], false)?;
+    let tag = helper_tag_for_tokens(tokens, "targeted");
+    *source = filter
+        .clone()
+        .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+    Ok(Some(EffectAst::TagReferenced {
+        effect: Box::new(EffectAst::subject_verb_explicit_target_only(TargetAst::Object(
+            filter,
+            crate::util::span_from_tokens(tokens),
+            None,
+        ))),
+        tag: crate::tag::TagRef::of(tag),
+    }))
 }
 
 pub fn parse_delayed_when_that_dies_this_turn_sentence(

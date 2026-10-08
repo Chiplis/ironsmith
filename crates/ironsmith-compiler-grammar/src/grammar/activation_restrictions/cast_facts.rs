@@ -149,7 +149,19 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
         input = rest;
     } else if !matches!(input.first().copied(), Some("spell" | "spells")) {
         let term = singular(input.first().copied()?);
-        if let Ok(card_type) = leaf::parse_leaf_card_type_complete(term) {
+        if term == "permanent" {
+            // "You can't cast permanent spells." (Codie): a permanent spell
+            // is an artifact, creature, enchantment, planeswalker or battle
+            // spell (CR 110.4); the type list is a disjunction.
+            filter.card_types.extend([
+                crate::types::CardType::Artifact,
+                crate::types::CardType::Creature,
+                crate::types::CardType::Enchantment,
+                crate::types::CardType::Planeswalker,
+                crate::types::CardType::Battle,
+            ]);
+            input = &input[1..];
+        } else if let Ok(card_type) = leaf::parse_leaf_card_type_complete(term) {
             filter = filter.with_type(card_type);
             input = &input[1..];
         } else if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(term) {
@@ -486,6 +498,16 @@ fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) 
     if exact(comparison, &["the", "exiled", "card"]) {
         filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        });
+        return Some(filter);
+    }
+    // "... spells with the same name as that creature" (Reflector Mage):
+    // the name of the object the ability already referenced, compared
+    // against its tagged snapshot.
+    if exact_any(comparison, &[&["that", "creature"], &["that", "card"]]) {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
             relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
         });
         return Some(filter);

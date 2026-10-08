@@ -101,6 +101,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_enter_as_copy_as_enters_line(input)),
     },
     Reading {
+        id: RuleId::new("cant-cast-this-unless"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_cant_cast_this_unless(input)),
+    },
+    Reading {
+        id: RuleId::new("cant-cast-this-during-first-turns"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_cant_cast_this_during_first_turns(input)),
+    },
+    Reading {
         id: RuleId::new("early-static-marker"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -317,6 +329,72 @@ fn read_enter_as_copy_as_enters_line(
         return Ok(Some(vec![ability.into()]));
     }
     Ok(None)
+}
+/// "You can't cast this spell during your first, second, or third turns of
+/// the game." (Serra Avenger): a cast prohibition that applies only while the
+/// caster is the active player in one of their first three turns.
+/// "You can't cast this spell unless there are seven or more cards in your
+/// graveyard." (Proft): castable only while the condition holds (CR 601.3).
+fn read_cant_cast_this_unless(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = input.tokens;
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(rest) = words
+        .strip_prefix(&["you", "can't", "cast", "this"][..])
+        .or_else(|| words.strip_prefix(&["you", "cant", "cast", "this"][..]))
+    else {
+        return Ok(None);
+    };
+    let skipped = match rest.first() {
+        Some(&("creature" | "spell" | "card" | "planeswalker")) => 5,
+        _ => 4,
+    };
+    if words.get(skipped) != Some(&"unless") {
+        return Ok(None);
+    }
+    let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) else {
+        return Ok(None);
+    };
+    let Some(condition) = super::static_condition_clause_bound(&tokens[unless_idx + 1..]) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::only_if(condition),
+            crate::lexer::render_token_slice(tokens).trim().to_string(),
+        )
+        .into(),
+    ]))
+}
+fn read_cant_cast_this_during_first_turns(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(input.tokens);
+    let Some(rest) = words
+        .strip_prefix(&["you", "can't", "cast", "this"][..])
+        .or_else(|| words.strip_prefix(&["you", "cant", "cast", "this"][..]))
+    else {
+        return Ok(None);
+    };
+    let rest = match rest.first() {
+        Some(&("creature" | "spell" | "card" | "planeswalker")) => &rest[1..],
+        _ => rest,
+    };
+    if !rest.iter().copied().eq([
+        "during", "your", "first", "second", "or", "third", "turns", "of", "the", "game",
+    ]) {
+        return Ok(None);
+    }
+    Ok(Some(vec![
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::timing(
+                ironsmith_core::ThisSpellCastTiming::NotDuringYourFirstTurns(3),
+            ),
+            "You can't cast this spell during your first, second, or third turns of the game.",
+        )
+        .into(),
+    ]))
 }
 fn read_early_static_marker(
     input: &EarlyLine<'_>,

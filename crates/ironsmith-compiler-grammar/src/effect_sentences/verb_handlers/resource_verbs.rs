@@ -489,6 +489,16 @@ pub fn parse_look(
                     TargetAst::Player(PlayerFilter::Opponent, span_from_tokens(surface_tokens))
                 }
                 PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                PlayerAst::Defending => TargetAst::Player(PlayerFilter::Defending, None),
+                // The controller of the object the instruction already
+                // referenced ("Counter target spell. Look at its
+                // controller's hand.").
+                PlayerAst::ItsController => TargetAst::Player(
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                        crate::tag::CompilerReferenceTag::It.bind(),
+                    )),
+                    None,
+                ),
                 _ => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported look clause (clause: '{}')",

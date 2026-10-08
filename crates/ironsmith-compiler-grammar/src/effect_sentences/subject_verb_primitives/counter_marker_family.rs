@@ -81,6 +81,8 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
@@ -104,7 +106,8 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(filter, source_filter);
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
-        | Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+        | Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::BeAttachedBy(blockers, attacker) => {
             retarget_it_filter_for_counter_followup(blockers, source_filter);
             retarget_it_filter_for_counter_followup(attacker, source_filter);
         }

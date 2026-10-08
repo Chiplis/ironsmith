@@ -614,6 +614,8 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
             | Restriction::BeRegenerated(filter)
             | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::MaximumBlockers { filter, .. }
             | Restriction::HaveCountersPlaced(filter)
             | Restriction::BeTargeted(filter)
