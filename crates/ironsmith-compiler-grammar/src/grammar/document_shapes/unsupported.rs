@@ -123,23 +123,6 @@ const RULES: &[UnsupportedRule] = &[
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Exact,
         phrase: &[
-            "creatures",
-            "you",
-            "control",
-            "have",
-            "haste",
-            "and",
-            "attack",
-            "each",
-            "combat",
-            "if",
-            "able",
-        ],
-        kind: UnsupportedRewriteLineKind::AnthemSubject,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Exact,
-        phrase: &[
             "you", "may", "play", "any", "number", "of", "lands", "on", "each", "of", "your",
             "turns",
         ],
