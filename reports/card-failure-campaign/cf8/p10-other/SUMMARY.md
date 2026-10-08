@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger (after round 4): 32 `source-proposed`, 125 `blocked`, 0 untriaged, 0 `semantic-fix-collateral`.
+Ledger (after round 5): 37 `source-proposed`, 120 `blocked`, 1 `semantic-fix-collateral` (Gomazoa), 0 untriaged.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -163,3 +163,48 @@ None of these were implemented this round.
 - City of Solitude leaves a gap: mana abilities activated from a hand (Elvish Spirit Guide) by a
   non-active player are not prohibited (the object prohibition covers permanents only).
 - Debug-substring assertions in the new tests may need tightening after the first run.
+
+## Round 5 (coordinator follow-up; source-only, UNRUN)
+- **Tracker recompute confirmed**: `GameState::next_turn_single_lane_with_extra_turn_override` sets
+  `turn.active_player` and ends with `update_cant_effects()` (turns_and_tracking.rs, "Printed static
+  restrictions can switch on or off solely because the turn changed"); every
+  `refresh_continuous_state` also rebuilds the tracker. No fix needed; a real-turn-change test was
+  added (`own_turn_cast_restrictions.rs::city_of_solitude_follows_the_active_player_across_a_real_turn_change`).
+1. **City of Solitude gap closed** (26ca3ea34): appended `Restriction::ActivateAbilities(PlayerFilter)`
+   (every activation, mana abilities included, any zone). Tracker `cant_activate_abilities`;
+   `can_activate_non_mana_abilities` consults it, and the mana-ability legality paths
+   (`can_activate_mana_ability_with_cost_checks`, the payment precheck, the simple battlefield
+   mana output) check `GameState::can_activate_abilities(player)`. City now lowers to cast ban +
+   this player ban (replacing the two narrower statics). Test covers a hand mana ability (Elvish
+   Spirit Guide shape).
+2. **"Those players shuffle" once** (ab9105b19): the owners-library sentence reader now covers
+   "this creature and each creature it's blocking" (Gomazoa), "... blocking or blocked by it"
+   (Vortex, `in_combat_with_source`) and two independent references (Void Stalker). All objects move
+   under one outcome tag, then one `ShuffleLibraryEffect(OwnerOf(tag))`; the engine shuffles each
+   distinct owner exactly once in APNAP order (`distinct_tagged_owners`, CR 701.24a). Gomazoa was a
+   silent miscompile (shuffled between moves) — logged as semantic-fix-collateral.
+3. **Gonti**: NOT built — precise gap in the ledger (look owner vs viewer split in the AST).
+4. **Enters blocking** (c99ec3c0a): `MoveToZoneEffect.enters_blocking: Option<ChooseSpec>`
+   (appended, serde default) applied after battlefield entry through the shared
+   `put_onto_battlefield_blocking` (CR 509.4); AST `battlefield_blocking`, destination shape
+   "blocking that creature". Aetherplasm source-proposed.
+5. **Jace** (ae481cb5c): appended `Restriction::AttackPermanents{attackers, permanents}`; tracker
+   `cant_attack_permanents` checked in `can_attack_target_with_view` (CR 508.1b); negated tail
+   "can't attack <planeswalker/battle filter>". **Zara** (b33600dfc): hand procedure opens on a
+   defending player's hand look and binds "put a creature card from it ..." to that hand.
+6. Invasion of Alara, Plargg and Nassari, Talent of the Telepath, Fevered Suspicion, Dream Harvest
+   second sentence: NOT built this round.
+7. Single-card restrictions (Mana Maze, Moonhold, Rock Jockey, Haakon, Null Chamber, Ward of Bones,
+   Suffocation, Angelic Arbiter, Peace Talks), Spy Network, Dihada: NOT built. Findings: Haakon's
+   "but not from anywhere else" can't use `Condition::SourceIsInZone` because the cast condition is
+   re-evaluated on the stack; Peace Talks needs an "end of next turn" duration (no `Until` variant).
+
+### Round 5 risks
+- New appended schema: `Restriction::{ActivateAbilities, AttackPermanents}`,
+  `MoveToZoneEffect.enters_blocking`, AST `MoveToZone.battlefield_blocking`; tracker fields
+  `cant_activate_abilities`, `cant_attack_permanents`.
+- `ShuffleLibraryEffect` with `OwnerOf(Tagged)` over a multi-object tag now shuffles every distinct
+  owner (previously only the first object's owner). Any other card lowering "its owner shuffles"
+  over a multi-object tag changes accordingly (intended).
+- Owners-library reader replaces the Gomazoa-only reader; its "it's blocked by" negative test
+  still declines.
