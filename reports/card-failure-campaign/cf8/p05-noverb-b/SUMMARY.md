@@ -1,6 +1,7 @@
 # cf8 p05-noverb-b — "could not find verb in effect clause" (153 cards)
 
-Status (round 2): 42 source-proposed, 5 already-on-main, 106 blocked, 0 untriaged.
+Status (round 3): 47 source-proposed, 5 already-on-main, 101 blocked, 0 untriaged.
+(Round 2: 42 / 5 / 106.)
 (Round 1 was 18 / 4 / 131. The prebuilt probe binary was removed mid-session, so all round-2
 work is source-only reasoning.)
 Nothing was built or run. Every claim is from reading the source plus prebuilt-binary probes of
@@ -66,3 +67,22 @@ Also still blocked: Sizzling Soloist / Maddening Imp / Arcum's Whistle / Ekundu 
 - `required_attack_players_this_turn` now also yields restriction-based requirements. `create_token_copy` and the attack preview consume it unchanged.
 - The coordination recognizer has three new non-boundary rules (whichever-is-greater, adjacent colors, subtype object lists). They are narrow, but other packages that edit `classify_boundary` will conflict textually.
 - `parse_effect_sentence_lexed_uncached_inner` gains a leading "starting with you" reader that falls through on failure.
+
+
+## Round 3 (on cf8/integration)
+
+| Change | Cards |
+|---|---|
+| **Time travel as a clause primitive.** The existing sentence-only lowering (time-counter put/remove choice, CR 701.55) now reads anywhere, with "twice", "N times" and ", then time travel" repeats. "time travel" is also a chain-split effect head. | The Parting of the Ways, The Tenth Doctor, The Girl in the Fireplace |
+| **New `ActivationTiming::DeclareAttackersStepByAttackedPlayer`.** The activator must be the player the source is attacking, during the declare attackers step. The activator then picks via `ReselectAttackTargetEffect` (players only). | Capricopian |
+| **p06's prevention follow-up, reused.** "for each 1 damage prevented this way" now repeats any single follow-up action, not only token creation. | Immortal Coil |
+| **Integration hygiene.** `ReselectAttackTargetEffect` moved to the combat decoder family and added to `effect-registry.tsv`. My "attacks <player> if able" reader no longer accepts "attacks you this turn", so it can't be read two ways against p12's `MustAttackPlayerThisTurn`. It keeps "that player" / "a player" / "this combat" / "each combat". | — |
+
+Not done this round, with exact gaps recorded in the ledger:
+- **Abstruse Appropriation:** the engine already has per-symbol any-color spending. What's missing is a field to carry it through the GrantPlayTagged AST/effect.
+- **Curse of Hospitality:** needs a play permission for a player other than "you".
+- **Portal Manipulator:** needs a forced reassignment to a target player.
+- **Write into Being / Jeskai Infiltrator:** need a manifest flag on the put-face-down AST.
+- **Prevention/redirection shapes:** listed as owned by p03/p06.
+- **Parameter-substituting repeat (Firemind's Foresight, Kathril, Protection Racket, Timesifter):** p11's `RepeatProcessEffect` is a condition loop, not this.
+- **The 7 "starting with you" cards:** each still needs its choice-pool grammar. The ordering infrastructure from round 2 is in place.
