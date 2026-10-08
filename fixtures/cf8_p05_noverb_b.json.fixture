@@ -381,5 +381,49 @@
     "oracle_text": "First strike\nWhenever this creature deals combat damage to a player, you may exile target black or red permanent that player controls.",
     "power": "4",
     "toughness": "4"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Parting of the Ways",
+    "oracle_id": "58d5b285-eb0c-4478-b137-26a897075f70",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Exile the top five cards of your library. For each nonland card exiled this way, put a number of time counters on that card equal to its mana value. If it doesn't have suspend, it gains suspend.\nII — Time travel, then time travel.\nIII — For each opponent, destroy up to one target artifact that player controls."
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Tenth Doctor",
+    "oracle_id": "23af0a0a-1d12-47c7-b191-2bd3f84eea93",
+    "mana_cost": "{3}{U}{R}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "Allons-y! — Whenever you attack, exile cards from the top of your library until you exile a nonland card. Put three time counters on it. If it doesn't have suspend, it gains suspend.\nTimey-Wimey — {7}: Time travel three times. Activate only as a sorcery.",
+    "power": "3",
+    "toughness": "5"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Girl in the Fireplace",
+    "oracle_id": "39068bf1-cae4-4ac9-82ef-4e81bf59446e",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Create a 1/1 white Human Noble creature token with vanishing 3 and \"Prevent all damage that would be dealt to this token.\"\nII — Create a 2/2 white Horse creature token with \"Doctors you control have horsemanship.\"\nIII — Whenever a creature you control deals combat damage to a player this turn, time travel."
+  },
+  {
+    "cluster": "attacked_player_activation",
+    "name": "Capricopian",
+    "oracle_id": "3a5a6732-bdfa-4b64-b897-6817983dbb0e",
+    "mana_cost": "{X}{G}",
+    "type_line": "Creature — Goat Hydra",
+    "oracle_text": "This creature enters with X +1/+1 counters on it.\n{2}: Put a +1/+1 counter on this creature, then you may reselect which player this creature is attacking. Only the player this creature is attacking may activate this ability and only during the declare attackers step.",
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "cluster": "prevention_follow_up_repeat",
+    "name": "Immortal Coil",
+    "oracle_id": "c85fc672-12d8-4ab0-b18d-ccd590ac063c",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}, Exile two cards from your graveyard: Draw a card.\nIf damage would be dealt to you, prevent that damage. Exile a card from your graveyard for each 1 damage prevented this way.\nWhen there are no cards in your graveyard, you lose the game."
   }
 ]
