@@ -259,6 +259,7 @@ SkipTurnEffect	ironsmith_core::SkipTurnEffect	player
 SneakCostEffect	ironsmith_core::SneakCostEffect	permanent
 SolveCaseEffect	ironsmith_core::SolveCaseEffect	permanent
 SetClassLevelEffect	ironsmith_core::SetClassLevelEffect	permanent
+SetDayNightEffect	ironsmith_core::SetDayNightEffect	permanent
 SoulbondPairEffect	ironsmith_core::SoulbondPairEffect	permanent
 SupportEffect	ironsmith_core::SupportEffect	composition-m-z
 SurveilEffect	ironsmith_core::SurveilEffect	zone-library

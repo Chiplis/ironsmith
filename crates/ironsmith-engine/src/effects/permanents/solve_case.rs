@@ -14,12 +14,15 @@ impl EffectExecutor for SetDayNightEffect {
         _ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let daytime = self.designation == DayNightDesignation::Day;
-        let already = game.has_day_night() && game.is_daytime() == daytime;
         // CR 731.2: setting the designation it already has changes nothing;
         // a real change queues "day becomes night"/"night becomes day" and
-        // transforms day/nightbound permanents (CR 702.145).
-        game.set_daytime(daytime);
-        Ok(EffectOutcome::count(i32::from(!already)))
+        // transforms day/nightbound permanents (CR 702.145). The designation
+        // change is one atomic world action.
+        crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
+            let already = game.has_day_night() && game.is_daytime() == daytime;
+            game.set_daytime(daytime);
+            Ok(EffectOutcome::count(i32::from(!already)))
+        })
     }
 }
 
