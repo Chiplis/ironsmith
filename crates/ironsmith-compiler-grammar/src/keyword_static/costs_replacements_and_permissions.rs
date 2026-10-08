@@ -6743,7 +6743,26 @@ pub fn parse_copy_activated_abilities_line(
 
     let filter_tokens =
         trim_edge_punctuation(&tokens[fact.filter_start_token..fact.filter_end_token]);
-    let filter_tokens = strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    let mut filter_tokens =
+        strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    // "lands your opponents control except mana abilities" (Sharkey).
+    let exclude_mana_end = {
+        let words = parser_token_word_refs(&filter_tokens);
+        if words.ends_with(&["except", "mana", "abilities"]) {
+            match crate::lexer::TokenWordView::new(&filter_tokens)
+                .token_span_for_words(0, words.len() - 3)
+            {
+                Some(span) => Some(span.end),
+                None => return Ok(None),
+            }
+        } else {
+            None
+        }
+    };
+    let exclude_mana_abilities = exclude_mana_end.is_some();
+    if let Some(end) = exclude_mana_end {
+        filter_tokens.truncate(end);
+    }
     let force_once_each_turn = fact.once_each_turn_word_start.is_some();
     if filter_tokens.is_empty() {
         return Ok(None);
@@ -6802,6 +6821,7 @@ pub fn parse_copy_activated_abilities_line(
     let mut ability = crate::static_abilities::CopyActivatedAbilities::new(filter)
         .with_exclude_source_name(fact.exclude_source_name)
         .with_exclude_source_id(true)
+        .with_exclude_mana_abilities(exclude_mana_abilities)
         .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);
