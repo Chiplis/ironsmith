@@ -1262,6 +1262,9 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::ChoosePlayerOption(choice) = effect {
+        return Ok((vec![Effect::new(choice.clone())], Vec::new()));
+    }
     if let EffectAst::SetDayNight(designation) = effect {
         return Ok((
             vec![Effect::new(crate::effects::SetDayNightEffect::new(*designation))],

@@ -1,0 +1,38 @@
+[
+ {
+  "name": "Khorvath's Fury",
+  "oracle_id": "c3575cf9-847a-472c-94b3-ef70712c297d",
+  "oracle_text": "For each player, choose friend or foe. Each friend discards all cards from their hand, then draws that many cards plus one. Khorvath's Fury deals damage to each foe equal to the number of cards in their hand.",
+  "text": "Mana cost: {4}{R}\nType: Sorcery\nFor each player, choose friend or foe. Each friend discards all cards from their hand, then draws that many cards plus one. Khorvath's Fury deals damage to each foe equal to the number of cards in their hand."
+ },
+ {
+  "name": "Pir's Whim",
+  "oracle_id": "01c2b66a-66d1-4282-a078-b1fa737c57f4",
+  "oracle_text": "For each player, choose friend or foe. Each friend searches their library for a land card, puts it onto the battlefield tapped, then shuffles. Each foe sacrifices an artifact or enchantment of their choice.",
+  "text": "Mana cost: {3}{G}\nType: Sorcery\nFor each player, choose friend or foe. Each friend searches their library for a land card, puts it onto the battlefield tapped, then shuffles. Each foe sacrifices an artifact or enchantment of their choice."
+ },
+ {
+  "name": "Regna's Sanction",
+  "oracle_id": "b594f7f1-1db7-46e9-bbc7-42ccc16ce9a1",
+  "oracle_text": "For each player, choose friend or foe. Each friend puts a +1/+1 counter on each creature they control. Each foe chooses one untapped creature they control, then taps the rest.",
+  "text": "Mana cost: {3}{W}\nType: Sorcery\nFor each player, choose friend or foe. Each friend puts a +1/+1 counter on each creature they control. Each foe chooses one untapped creature they control, then taps the rest."
+ },
+ {
+  "name": "Virtus's Maneuver",
+  "oracle_id": "1c2d6b55-653a-41fd-8a5e-6463a992640b",
+  "oracle_text": "For each player, choose friend or foe. Each friend returns a creature card from their graveyard to their hand. Each foe sacrifices a creature of their choice.",
+  "text": "Mana cost: {2}{B}\nType: Sorcery\nFor each player, choose friend or foe. Each friend returns a creature card from their graveyard to their hand. Each foe sacrifices a creature of their choice."
+ },
+ {
+  "name": "Zndrsplt's Judgment",
+  "oracle_id": "7aacfc42-be6c-46a8-b474-f43a1b6b2ef8",
+  "oracle_text": "For each player, choose friend or foe. Each friend creates a token that's a copy of a creature they control. Each foe returns a creature they control to its owner's hand.",
+  "text": "Mana cost: {4}{U}\nType: Sorcery\nFor each player, choose friend or foe. Each friend creates a token that's a copy of a creature they control. Each foe returns a creature they control to its owner's hand."
+ },
+ {
+  "name": "Master of Ceremonies",
+  "oracle_id": "18ed0c8a-db8f-4247-87c4-544b833f01bd",
+  "oracle_text": "At the beginning of your upkeep, each opponent chooses money, friends, or secrets. For each player who chose money, you and that player each create a Treasure token. For each player who chose friends, you and that player each create a 1/1 green and white Citizen creature token. For each player who chose secrets, you and that player each draw a card.",
+  "text": "Mana cost: {3}{W}\nType: Creature — Rhino Druid\nPower/Toughness: 3/4\nAt the beginning of your upkeep, each opponent chooses money, friends, or secrets. For each player who chose money, you and that player each create a Treasure token. For each player who chose friends, you and that player each create a 1/1 green and white Citizen creature token. For each player who chose secrets, you and that player each draw a card."
+ }
+]

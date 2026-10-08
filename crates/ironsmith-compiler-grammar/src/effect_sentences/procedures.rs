@@ -9,7 +9,7 @@
 use super::dispatch_entry::SentenceInput;
 use super::{
     consult_procedure, copy_cast_procedure, exiled_top_procedure, graveyard_cast_procedure,
-    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
+    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, player_option_choice_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -30,6 +30,7 @@ pub(super) enum Procedure {
     KeywordChoice(keyword_choice_procedure::KeywordChoiceGroup),
     SearchPartition(search_partition_procedure::SearchPartitionGroup),
     AssignUnblocked(assign_unblocked_procedure::AssignUnblockedGroup),
+    PlayerOptionChoice(player_option_choice_procedure::PlayerOptionChoiceGroup),
 }
 
 /// A closed procedure: its effects and the sentences it consumed.
@@ -95,6 +96,10 @@ fn open_all(
         keyword_choice_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::KeywordChoice)),
     );
+    consider(
+        player_option_choice_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::PlayerOptionChoice)),
+    );
     match (opened.is_empty(), deferred) {
         (true, Some(error)) => Err(error),
         _ => Ok(opened),
@@ -122,6 +127,9 @@ pub(super) fn continue_with(
         Procedure::KeywordChoice(group) => keyword_choice_procedure::continue_with(group, sentence),
         Procedure::SearchPartition(group) => search_partition_procedure::continue_with(group, sentence),
         Procedure::AssignUnblocked(group) => assign_unblocked_procedure::continue_with(group, sentence),
+        Procedure::PlayerOptionChoice(group) => {
+            player_option_choice_procedure::continue_with(group, sentence)
+        }
     }
 }
 
@@ -187,6 +195,11 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             consumed: group.consumed,
             effects: assign_unblocked_procedure::finish(group),
         },
+        Procedure::PlayerOptionChoice(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: player_option_choice_procedure::finish(group),
+        },
     }
 }
 
@@ -204,6 +217,7 @@ pub(super) fn kind(procedure: &Procedure) -> &'static str {
         Procedure::KeywordChoice(_) => "keyword-choice",
         Procedure::SearchPartition(_) => "search-partition",
         Procedure::AssignUnblocked(_) => "assign-unblocked",
+        Procedure::PlayerOptionChoice(_) => "player-option-choice",
     }
 }
 
@@ -221,6 +235,7 @@ fn name(procedure: &Procedure) -> &'static str {
         Procedure::KeywordChoice(_) => "keyword-choice-procedure",
         Procedure::SearchPartition(_) => "search-partition-procedure",
         Procedure::AssignUnblocked(_) => "assign-unblocked-procedure",
+        Procedure::PlayerOptionChoice(_) => "player-option-choice-procedure",
     }
 }
 

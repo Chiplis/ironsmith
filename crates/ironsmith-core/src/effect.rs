@@ -17,9 +17,11 @@ use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
 mod ascend;
 mod mana_damage_and_control;
+mod player_option_choice;
 mod reselect_attack;
 pub use ascend::*;
 pub use mana_damage_and_control::*;
+pub use player_option_choice::*;
 pub use reselect_attack::*;
 
 /// Identifier for an effect within an effect sequence.

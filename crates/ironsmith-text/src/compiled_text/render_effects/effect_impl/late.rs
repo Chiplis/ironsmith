@@ -6347,6 +6347,31 @@
     if let Some(level) = effect.downcast_ref::<crate::effects::SetClassLevelEffect>() {
         return format!("This Class becomes level {}", level.level);
     }
+    fn describe_player_option_choice(choice: &crate::effects::ChoosePlayerOptionEffect) -> String {
+        let options = match choice.options.as_slice() {
+            [] => String::new(),
+            [only] => only.clone(),
+            [first, second] => format!("{first} or {second}"),
+            [init @ .., last] => format!("{}, or {last}", init.join(", ")),
+        };
+        let (subject, noun) = match &choice.participants {
+            PlayerFilter::Any => ("Each player", "player"),
+            PlayerFilter::Opponent => ("Each opponent", "opponent"),
+            PlayerFilter::NotYou => ("Each other player", "other player"),
+            _ => ("Each player", "player"),
+        };
+        match choice.chooser {
+            crate::effects::PlayerOptionChooser::Participant => {
+                format!("{subject} chooses {options}")
+            }
+            crate::effects::PlayerOptionChooser::Controller => {
+                format!("For each {noun}, choose {options}")
+            }
+        }
+    }
+    if let Some(choice) = effect.downcast_ref::<crate::effects::ChoosePlayerOptionEffect>() {
+        return describe_player_option_choice(choice);
+    }
     if let Some(day_night) = effect.downcast_ref::<crate::effects::SetDayNightEffect>() {
         return match day_night.designation {
             crate::effects::DayNightDesignation::Day => "It becomes day".to_string(),

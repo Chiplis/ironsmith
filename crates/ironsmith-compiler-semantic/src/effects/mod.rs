@@ -91,7 +91,7 @@ pub use ironsmith_core::{
     SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SecretChoiceEffect,
     SecretObjectChoice, SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect,
     SetClassLevelEffect, SetLifeTotalEffect, SharedTypeConstraint, DayNightDesignation,
-    SetDayNightEffect,
+    SetDayNightEffect, ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect, ScheduledSkipKind, SkipMainPhasesThisTurnEffect,

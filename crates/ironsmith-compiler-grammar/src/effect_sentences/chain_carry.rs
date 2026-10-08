@@ -180,6 +180,8 @@ fn rest_action_effect(
 ) -> EffectAst {
     match action {
         chain_grammar::RestActionShape::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        // CR 701.26a: tapping the rest of the matching permanents.
+        chain_grammar::RestActionShape::Tap => EffectAst::subject_verb_tap_all(filter),
         chain_grammar::RestActionShape::Exile => EffectAst::subject_verb_exile_all(filter, false),
         chain_grammar::RestActionShape::Sacrifice => {
             EffectAst::subject_verb_sacrifice_all(player, filter)

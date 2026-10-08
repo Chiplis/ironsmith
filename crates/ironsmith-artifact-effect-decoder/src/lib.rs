@@ -88,6 +88,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ChooseLandTypeEffect" => Some(EffectFamily::Player),
         "ChooseModeEffect" => Some(EffectFamily::CompositionAL),
         "ChooseNamedOptionEffect" => Some(EffectFamily::Player),
+        "ChoosePlayerOptionEffect" => Some(EffectFamily::Player),
         "RippleEffect" => Some(EffectFamily::Player),
         "ChooseNumberEffect" => Some(EffectFamily::Player),
         "ChooseNewTargetsEffect" => Some(EffectFamily::StackEvent),
