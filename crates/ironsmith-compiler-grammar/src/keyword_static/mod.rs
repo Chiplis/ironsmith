@@ -43,6 +43,8 @@ pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
 mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
+mod first_spell_permissions;
+pub use first_spell_permissions::parse_first_spell_flash_permission_line;
 pub use each_player_land_plays::parse_each_player_additional_land_play_line;
 pub use devour_quality::parse_devour_quality_line;
 pub use costs_replacements_and_permissions::*;
@@ -787,6 +789,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "your"),
         ],
+        "parse_first_spell_flash_permission_line" => vec![
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
         "parse_surveilled_graveyard_play_life_cost_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1496,6 +1501,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_permanent_self_damage_prevention_line),
         single_static_ability_ast_rule!(parse_persistent_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_shared_color_pair_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_first_spell_flash_permission_line),
         single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),

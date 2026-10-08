@@ -308,10 +308,66 @@ fn parse_friend_or_foe_recipient_sentence(
     Ok(None)
 }
 
+/// "Lands you control gain all basic land types until end of turn."
+/// (Energybending): each land gains the five basic land types in addition to
+/// its other types (CR 205.1b, 305.6), until the duration ends.
+fn parse_gain_all_basic_land_types_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((gain_idx, (), after_gain)) = primitives::find_prefix(clean, || {
+        (
+            winnow::combinator::alt((primitives::kw("gain"), primitives::kw("gains"))),
+            primitives::phrase(&["all", "basic", "land", "types"]),
+        )
+            .void()
+    }) else {
+        return Ok(None);
+    };
+    if gain_idx == 0
+        || primitives::parse_all(
+            after_gain,
+            primitives::phrase(&["until", "end", "of", "turn"]),
+            "gain all basic land types duration",
+        )
+        .is_err()
+    {
+        return Ok(None);
+    }
+    let subject = &clean[..gain_idx];
+    let target = if subject.iter().any(|token| token.is_word("target")) {
+        crate::util::parse_target_phrase(subject)?
+    } else {
+        let Ok(filter) = crate::object_filters::parse_object_filter(subject, false) else {
+            return Ok(None);
+        };
+        if !filter.card_types.contains(&crate::types::CardType::Land) {
+            return Ok(None);
+        }
+        TargetAst::Object(filter, None, None)
+    };
+    Ok(Some(vec![EffectAst::subject_verb_add_subtypes(
+        target,
+        vec![
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ],
+        crate::effect::Until::EndOfTurn,
+    )]))
+}
+
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = parse_friend_or_foe_sentence(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_gain_all_basic_land_types_sentence(tokens)? {
         return Ok(effects);
     }
     if let Some(effects) = parse_for_each_color_target_expansion(tokens)? {
