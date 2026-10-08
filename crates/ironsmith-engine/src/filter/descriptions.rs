@@ -702,6 +702,15 @@ fn object_has_ability_marker_in_view(
     if marker.trim().eq_ignore_ascii_case("kicked") {
         return object.optional_costs_paid.was_kicked();
     }
+    // Kicker and its multikicker variant (CR 702.33) are kicker abilities.
+    if marker.trim().eq_ignore_ascii_case("kicker") {
+        return object.optional_costs.iter().any(|cost| {
+            matches!(
+                cost.kind,
+                crate::cost::OptionalCostKind::Kicker | crate::cost::OptionalCostKind::Multikicker
+            )
+        });
+    }
     if aura_attachment_has_ability_marker(enchant_filter, marker) {
         return true;
     }

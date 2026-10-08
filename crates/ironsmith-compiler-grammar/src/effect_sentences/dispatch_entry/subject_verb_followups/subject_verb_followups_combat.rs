@@ -14,37 +14,73 @@ pub(super) fn pre_rule_damage_amount_replacement(
     let Some(shape) = followup_shapes::parse_damage_amount_replacement(sentence_tokens) else {
         return Ok(None);
     };
-    let Some(previous) = state.effects.last() else {
+    let Some(outer_previous) = state.effects.last() else {
         return Ok(None);
+    };
+    // "When you do, this creature deals damage ... . If ..., this creature
+    // deals twice that much damage instead." (Surtland Flinger): the
+    // replacement modifies the damage inside the reflexive trigger's body.
+    let in_reflexive_body = matches!(
+        outer_previous,
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects, .. })
+            if effects.last().is_some_and(|last| primary_damage_source_from_effect(last).is_some())
+    );
+    let previous = match outer_previous {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects, .. })
+            if in_reflexive_body =>
+        {
+            effects.last().expect("checked non-empty reflexive body")
+        }
+        other => other,
     };
     let Some(source) = primary_damage_source_from_effect(previous) else {
         return Ok(None);
     };
+    // A definite description ("the creature you control") names the
+    // preceding instruction's explicitly targeted damage source; it never
+    // names a fresh object.
+    let definite_previous_source =
+        shape.definite_source && matches!(&source, TargetAst::Object(_, Some(_), _));
     if !shape.repeats_source
+        && !definite_previous_source
         && !matches!(&source, TargetAst::Source(_))
         && !matches!(&source, TargetAst::Object(filter, None, _) if filter.source)
     {
         return Ok(None);
     }
-    let Some((amount, used)) = crate::util::parse_value(shape.amount_tokens) else {
-        return Ok(None);
-    };
-    if used != shape.amount_tokens.len() {
-        return Ok(None);
-    }
-    // Event quantities ("twice that much") need their own exact event/LKI
-    // owner. This family admits only a literal or the spell's X plus a literal.
-    fn scalar_amount(value: &Value) -> bool {
-        match value.unhinted() {
-            Value::Fixed(_) | Value::X => true,
-            Value::Add(left, right) => scalar_amount(left) && scalar_amount(right),
-            _ => false,
+    // "twice that much": the amount the replaced instruction would deal,
+    // doubled. Both arms resolve at the same time, so the default arm's own
+    // amount expression is exactly "that much" (CR 614.1a).
+    let doubles_prior_amount = crate::grammar::primitives::probe_all(
+        shape.amount_tokens,
+        crate::grammar::primitives::phrase(&["twice", "that", "much"]),
+        "twice that much damage",
+    )
+    .is_some();
+    let amount = if doubles_prior_amount {
+        None
+    } else {
+        let Some((amount, used)) = crate::util::parse_value(shape.amount_tokens) else {
+            return Ok(None);
+        };
+        if used != shape.amount_tokens.len() {
+            return Ok(None);
         }
-    }
-    if !scalar_amount(&amount) {
-        return Ok(None);
-    }
-    fn replace_amount(effect: &mut EffectAst, replacement: &Value) -> bool {
+        // Other event quantities need their own exact event/LKI owner. This
+        // family admits only a literal or the spell's X plus a literal.
+        fn scalar_amount(value: &Value) -> bool {
+            match value.unhinted() {
+                Value::Fixed(_) | Value::X => true,
+                Value::Add(left, right) => scalar_amount(left) && scalar_amount(right),
+                _ => false,
+            }
+        }
+        if !scalar_amount(&amount) {
+            return Ok(None);
+        }
+        Some(amount)
+    };
+    fn replace_amount(effect: &mut EffectAst, replacement: Option<&Value>) -> bool {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Damage(
@@ -53,7 +89,10 @@ pub(super) fn pre_rule_damage_amount_replacement(
                 ),
                 ..
             }) => {
-                *amount = replacement.clone();
+                *amount = match replacement {
+                    Some(replacement) => replacement.clone(),
+                    None => Value::Scaled(Box::new(amount.clone()), 2),
+                };
                 true
             }
             EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
@@ -62,7 +101,7 @@ pub(super) fn pre_rule_damage_amount_replacement(
         }
     }
     let mut replacement = previous.clone();
-    if !replace_amount(&mut replacement, &amount) {
+    if !replace_amount(&mut replacement, amount.as_ref()) {
         return Ok(None);
     }
     let Some(predicate) = parse_trailing_if_predicate_lexed(shape.predicate_tokens) else {
@@ -90,8 +129,18 @@ pub(super) fn pre_rule_damage_amount_replacement(
         shape.predicate_tokens,
         primary_damage_target_from_effect(previous).as_ref(),
     );
-    let previous = state.effects.pop().expect("the bound damage instruction exists");
-    state.effects.push(EffectAst::SelfReplacement {
+    let slot = if in_reflexive_body {
+        match state.effects.last_mut() {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects, .. })) => {
+                effects
+            }
+            _ => unreachable!("checked reflexive body"),
+        }
+    } else {
+        &mut *state.effects
+    };
+    let previous = slot.pop().expect("the bound damage instruction exists");
+    slot.push(EffectAst::SelfReplacement {
         predicate,
         if_true: vec![replacement],
         if_false: vec![previous],

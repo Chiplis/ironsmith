@@ -877,6 +877,33 @@ pub(super) fn extend_statement_line_with_result_followups(
     (statement, next_idx)
 }
 
+/// A conditional "..., <action> instead." line restates the action of the
+/// statement's final sentence: both name the same action verb, and that
+/// sentence is not itself already a replacement. Unrelated "instead" lines
+/// (a different action, or a statement that performed no such action) stay
+/// their own lines.
+fn is_restatement_of_statement(line: &[OwnedLexToken], statement: &[OwnedLexToken]) -> bool {
+    let Some(action) =
+        super::super::grammar::effects::followup_shapes::conditional_instead_restatement_action(line)
+    else {
+        return false;
+    };
+    let Some((restated_verb, _)) = crate::effect_sentences::find_verb(action) else {
+        return false;
+    };
+    let Some(last_sentence) = split_lexed_sentences(statement)
+        .into_iter()
+        .rev()
+        .find(|sentence| !sentence.is_empty())
+    else {
+        return false;
+    };
+    if last_sentence.iter().any(|token| token.is_word("instead")) {
+        return false;
+    }
+    crate::effect_sentences::find_verb(last_sentence).is_some_and(|(verb, _)| verb == restated_verb)
+}
+
 pub(super) fn extend_statement_line_with_result_followups_in_place(
     items: &[PreprocessedItem],
     idx: usize,
@@ -888,10 +915,14 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
         if is_station_result_boundary(items, next_idx, line) {
             break;
         }
-        if super::is_nonkeyword_choice_labeled_line(line) {
+        // "Adamant — If ..., it deals 4 damage instead." restates the
+        // preceding spell statement's action; kept apart it has no action of
+        // its own to replace.
+        let conditional_instead = is_restatement_of_statement(&line.tokens, &statement.parse_tokens);
+        if !conditional_instead && super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line, &statement.parse_tokens) {
+        if !conditional_instead && !is_trigger_result_followup_line(line, &statement.parse_tokens) {
             break;
         }
 

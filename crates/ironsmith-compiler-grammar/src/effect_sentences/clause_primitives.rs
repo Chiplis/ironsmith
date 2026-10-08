@@ -1851,7 +1851,22 @@ pub fn parse_deal_damage_equal_to_power_clause(
                     ],
                 }));
             }
-            let mut target = parse_target_phrase(target_tokens)?;
+            // "to each creature and each planeswalker" (Corpse Explosion):
+            // one simultaneous damage event to the union of both sets.
+            let union_target = if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each"))
+            {
+                crate::effect_sentences::parse_each_object_set_union(&target_tokens[1..])?.map(
+                    |union| TargetAst::Object(union, None, span_from_tokens(target_tokens)),
+                )
+            } else {
+                None
+            };
+            let mut target = match union_target {
+                Some(target) => target,
+                None => parse_target_phrase(target_tokens)?,
+            };
             // "Target creature an opponent controls deals damage equal to
             // its power to that player": the only player named is the
             // targeted source's controller (lowering binds it to the source's
@@ -1944,6 +1959,16 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     if shape
         .left_tokens
         .is_some_and(|left| left.iter().any(|token| token.is_word("may")))
+    {
+        return Ok(None);
+    }
+    // "When you do, it fights ..." / "If you do, it fights ...": the leading
+    // result clause owns the sentence (a reflexive trigger, CR 603.12); its
+    // words are never part of the first fighter's description.
+    if shape
+        .left_tokens
+        .and_then(|left| left.first())
+        .is_some_and(|token| token.is_any_word(&["when", "whenever", "if"]))
     {
         return Ok(None);
     }

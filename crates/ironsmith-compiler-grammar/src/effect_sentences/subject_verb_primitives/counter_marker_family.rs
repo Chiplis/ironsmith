@@ -309,6 +309,11 @@ pub fn parse_sentence_for_each_counter_kind_put_or_remove(
         return Ok(None);
     };
     let target = parse_target_phrase(shape.target_tokens)?;
+    if shape.put_only {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_for_each_counter_kind_put_another(target),
+        ]));
+    }
 
     Ok(Some(vec![
         EffectAst::subject_verb_for_each_counter_kind_put_or_remove(target),

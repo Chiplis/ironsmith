@@ -766,6 +766,17 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or
+        && (before.last().is_some_and(|token| token.is_word("tap"))
+            && after.first().is_some_and(|token| token.is_word("untap"))
+            || before.last().is_some_and(|token| token.is_word("untap"))
+                && after.first().is_some_and(|token| token.is_word("tap")))
+    {
+        // "tap or untap target creature" (Tolarian Kraken) is one action
+        // with a choice of direction over one shared object; the
+        // tap-or-untap reading owns the whole phrase.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
         && before
             .iter()
             .any(|token| token.is_any_word(&["sacrifice", "sacrifices"]))

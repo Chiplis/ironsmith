@@ -3537,7 +3537,13 @@ fn advance_reference_frame_for_effect(
         }
         // Mirrors lowering: the looked-at cards become the object antecedent
         // ("..., then puts them back in any order").
-        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, .. } => {
+        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, viewer, .. } => {
+            // Mirrors lowering, which resolves the viewer as a tracked actor:
+            // "Target opponent looks at the top four cards of your library
+            // and separates them ..." makes that opponent "that player".
+            if !matches!(viewer, PlayerAst::You) {
+                track_effect_player(*viewer, frame, true, true)?;
+            }
             frame.last_object_tag = Some(
                 if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                     next_reference_tag(id_gen, "revealed")
@@ -5333,6 +5339,12 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
+                // "Reveal the top seven cards of your library" (Stomping
+                // Slabs) remembers the revealed cards in its outcome.
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                    reveal: true,
+                    ..
+                })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
         ),
         PriorEffectAction::Sacrificed => matches!(

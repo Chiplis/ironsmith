@@ -8459,7 +8459,10 @@ fn parse_turn_scoped_enter_tapped_replacement(
         return Ok(None);
     };
     let subject_tokens = trim_edge_punctuation(&tokens[..enter_index]);
-    if subject_tokens.is_empty() {
+    // Only the sentence that states the entry rule supplies its subject
+    // ("Sacrifice X lands. ... Lands you control enter tapped this turn."):
+    // earlier sentences are their own instructions, owned elsewhere.
+    if subject_tokens.is_empty() || subject_tokens.iter().any(|token| token.is_period()) {
         return Ok(None);
     }
     let mut filter = super::parse_object_filter(&subject_tokens, false)?;

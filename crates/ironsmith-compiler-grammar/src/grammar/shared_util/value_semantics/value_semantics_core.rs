@@ -471,6 +471,28 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             },
         ));
     }
+    // "for each player who was dealt combat damage this turn" (Vivien's
+    // Stampede): every player, not only opponents.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["player", "players"],
+            &["who", "that"],
+            &["was", "were"],
+            &["dealt"],
+            &["combat"],
+            &["damage"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PlayersDealtCombatDamageBy {
+                players: PlayerFilter::Any,
+                sources: ObjectFilter::default(),
+            },
+        ));
+    }
     let opponents_lost_life = crate::word_primitives::parse_choice_sequence_complete(
         &words,
         &[

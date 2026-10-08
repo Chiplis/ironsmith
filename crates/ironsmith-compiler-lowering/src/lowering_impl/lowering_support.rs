@@ -4505,6 +4505,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
     match action {
         KeywordAction::Flying => Some(StaticAbility::flying()),
         KeywordAction::Menace => Some(StaticAbility::menace()),
+        // CR 702.22: a granted banding ("Enchanted creature has banding") is
+        // the same static keyword the printed one lowers to.
+        KeywordAction::Banding => Some(StaticAbility::banding()),
         KeywordAction::Hexproof => Some(StaticAbility::hexproof()),
         KeywordAction::Haste => Some(StaticAbility::haste()),
         KeywordAction::Improvise => Some(StaticAbility::improvise()),
@@ -6323,6 +6326,18 @@ fn validate_effect_for_iterated_player(
         )?;
         return validate_effects_for_iterated_player(
             &unless_action.alternative,
+            iterated_player_bound,
+            context,
+        );
+    }
+    // Join forces (an ability word, CR 207.2c): the collective payment
+    // wrapper binds no player itself; its body's own `ForPlayers` loop does
+    // ("Each player draws X cards").
+    if let Some(collect) =
+        effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(
+            &collect.effects,
             iterated_player_bound,
             context,
         );
