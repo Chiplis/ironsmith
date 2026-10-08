@@ -1,6 +1,15 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    // "for each player being attacked" / "for each opponent you're attacking"
+    // (Apothecary White, Amber Gristle O'Maul): the defending players of the
+    // current combat (CR 506.2), not every player in the game.
+    if let Some(len) = players_being_attacked_len(words) {
+        return Some((
+            Value::PlayersBeingAttacked.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            len,
+        ));
+    }
     if let ["for", "each", player_words @ ..] = words
         && let Some(filter) = crate::grammar::shared_util::reference_shapes::parse_hand_advantage_player(player_words)
     {
@@ -932,5 +941,43 @@ mod current_blocked_attacker_count_tests {
         assert!(!filter.blocking);
         assert!(matches!(filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if tag == crate::tag::CompilerReferenceTag::It.bind().into()));
         assert!(!filter.blocked_by_source, "do not substitute an implicit source for the antecedent");
+    }
+}
+
+/// The length of a complete "for each player being attacked" count phrase.
+fn players_being_attacked_len(words: &[&str]) -> Option<usize> {
+    const PHRASES: &[&[&str]] = &[
+        &["for", "each", "player", "being", "attacked"],
+        &["for", "each", "opponent", "being", "attacked"],
+        &["for", "each", "player", "youre", "attacking"],
+        &["for", "each", "player", "you're", "attacking"],
+        &["for", "each", "opponent", "youre", "attacking"],
+        &["for", "each", "opponent", "you're", "attacking"],
+    ];
+    PHRASES
+        .iter()
+        .copied()
+        .find(|phrase| *phrase == words)
+        .map(|phrase| phrase.len())
+}
+
+#[cfg(test)]
+mod players_being_attacked_tests {
+    use super::*;
+
+    #[test]
+    fn players_being_attacked_counts_the_defending_players() {
+        for words in [
+            &["for", "each", "player", "being", "attacked"][..],
+            &["for", "each", "opponent", "youre", "attacking"],
+        ] {
+            let (value, used) = parse_for_each_count_value_words(words).unwrap();
+            assert_eq!(used, words.len());
+            assert_eq!(value.unhinted(), &Value::PlayersBeingAttacked);
+        }
+        assert!(
+            players_being_attacked_len(&["for", "each", "player", "being", "attacked", "by", "it"])
+                .is_none()
+        );
     }
 }
