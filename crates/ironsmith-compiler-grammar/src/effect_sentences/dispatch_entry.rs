@@ -6119,6 +6119,9 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(split) = super::shared_object_verb_pairs::split_shared_object_verb_pairs(tokens) {
+        return parse_effect_sentences_lexed(&split);
+    }
     if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
         return Ok(effects);
     }
