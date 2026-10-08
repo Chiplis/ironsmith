@@ -4002,6 +4002,13 @@ pub fn parse_filter_dont_untap_during_controllers_untap_steps_line(
         // battlefield filter subjects.
         return Ok(None);
     }
+    // "As long as you control another snow permanent, enchanted creature
+    // doesn't untap ..." (Winter's Rest): the leading condition belongs to
+    // the generic conditional-static wrapper, which strips it and re-reads
+    // the subject; reading it as part of the subject would fail the line.
+    if crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens).is_some() {
+        return Ok(None);
+    }
     let Some(spec) = keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(tokens)
     else {
         return Ok(None);
