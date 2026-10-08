@@ -5470,6 +5470,22 @@
             }
             return text;
         }
+        // "Tap each creature dealt damage this way" (Aurelia's Fury).
+        if tap.actor.is_none()
+            && let ChooseSpec::All(filter) = &tap.target
+            && let [card_type] = filter.card_types.as_slice()
+            && let Some(action) = describe_tagged_this_way_action(filter)
+        {
+            let mut rest = filter.clone();
+            rest.tagged_constraints.clear();
+            rest.zone = None;
+            let noun = if rest == ObjectFilter::default().with_type(*card_type) {
+                describe_card_type_word_local(*card_type).to_string()
+            } else {
+                strip_leading_article(&rest.description()).to_string()
+            };
+            return format!("Tap each {noun} {action} this way");
+        }
         let where_clause = choose_spec_dynamic_count_value_where_clause(&tap.target)
             .or_else(|| choose_spec_filter_where_x_clause(&tap.target))
             .unwrap_or_default();

@@ -1147,10 +1147,15 @@ fn pre_rule_tap_damage_this_way_followup(
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
-        direct_effects: Some(vec![EffectAst::subject_verb_tap(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::Damaged0.bind(),
-            None,
-        ))]),
+        // "Tap each creature dealt damage this way" (Aurelia's Fury): the
+        // remembered damage recipients can include players, planeswalkers and
+        // battles; only the creatures among them are tapped.
+        direct_effects: Some(vec![EffectAst::subject_verb_tap_all(
+            ObjectFilter::creature().match_tagged(
+                crate::tag::CompilerReferenceTag::Damaged0.bind(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            ),
+        )]),
         consumed_sentences: 1,
     })))
 }
