@@ -40,7 +40,8 @@ fn stormtide_leviathan_restricts_creatures_lacking_both_keywords() {
         let excluded = tail.find("excluded_static_abilities").expect("excluded keywords");
         let list = &tail[excluded..tail[excluded..].find(']').map_or(tail.len(), |end| excluded + end)];
         assert!(list.contains("Flying"), "{list}");
-        assert!(list.contains("Islandwalk") || list.contains("Landwalk"), "{list}");
+        // Islandwalk is a keyword marker; it must be excluded too.
+        assert!(tail.contains("islandwalk"), "{tail}");
         assert!(!tail[..excluded].contains("any_of: [ObjectFilter"), "not a disjunction");
     }
 }
