@@ -1133,7 +1133,13 @@ fn describe_death_filter_subject(filter: &ObjectFilter, demonstrative: bool) -> 
     if noun.is_empty() || noun.contains("tagged '") {
         return None;
     }
-    if demonstrative {
+    // A color-qualified union ("target black or green creature or
+    // planeswalker") is referred back to by the shared noun: "If that
+    // permanent would die this turn". A bare union repeats itself ("If that
+    // creature or planeswalker would die this turn").
+    if demonstrative && filter.card_types.len() > 1 && filter.colors.is_some() {
+        Some("that permanent".to_string())
+    } else if demonstrative {
         Some(format!("that {noun}"))
     } else {
         Some(with_indefinite_article(noun))
@@ -1382,6 +1388,36 @@ pub(crate) fn describe_reveal_hand_exile_same_name_search_bundle(
         "Target opponent reveals their hand. Choose up to X nonland cards from it and exile them. Search that player's graveyard, hand, and library for any number of cards with the same name as those cards and exile them. Then that player shuffles."
             .to_string(),
     )
+}
+
+/// "If you do, choose a nonland card from it and exile that card": the choice
+/// is constrained to the hand revealed by an earlier instruction.
+pub(crate) fn describe_revealed_hand_choose_then_exile(filtered: &[&Effect]) -> Option<String> {
+    let [choose_effect, exile_effect] = filtered else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = unwrap_basic_tag_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose_exact_count(choose) != Some(1)
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || !choose.additional_zones.is_empty()
+        || choose.is_search
+        || exile.face_down
+        || !matches!(exile.spec.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !matches!(choose.filter.tagged_constraints.as_slice(), [constraint]
+            if constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "__revealed_this_way__")
+    {
+        return None;
+    }
+    let choice_text = describe_effect(choose_effect);
+    let choice = choice_text
+        .trim_end_matches('.')
+        .strip_prefix("You choose ")?
+        .strip_suffix(" revealed this way")?;
+    Some(format!("Choose {choice} from it and exile that card"))
 }
 
 pub(crate) fn describe_reveal_hand_choose_prefix(filtered: &[&Effect]) -> Option<String> {

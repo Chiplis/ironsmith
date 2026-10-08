@@ -607,6 +607,11 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsExiledThisWay),
         );
     }
+    if contains_word(tokens, "drawn") {
+        return Some(
+            metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay),
+        );
+    }
     Some(metric)
 }
 

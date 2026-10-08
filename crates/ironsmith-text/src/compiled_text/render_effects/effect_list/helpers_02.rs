@@ -651,20 +651,28 @@ fn consult_match_move_to_zone<'a>(
     consult: &crate::effects::ConsultTopOfLibraryEffect,
     zone: Zone,
 ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    tagged_match_move_to_zone(effect, &consult.match_tag, zone)
+}
+
+fn tagged_match_move_to_zone<'a>(
+    effect: &'a Effect,
+    match_tag: &crate::tag::TagKey,
+    zone: Zone,
+) -> Option<&'a crate::effects::MoveToZoneEffect> {
     let direct = unwrap_render_wrappers(effect);
     if let Some(move_to_zone) = direct.downcast_ref::<crate::effects::MoveToZoneEffect>()
         && move_to_zone.zone == zone
         && !move_to_zone.to_top
         && matches!(
             move_to_zone.target.base(),
-            ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            ChooseSpec::Tagged(tag) if tag == match_tag
         )
     {
         return Some(move_to_zone);
     }
 
     let for_each = direct.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if for_each.tag != consult.match_tag {
+    if for_each.tag != *match_tag {
         return None;
     }
     let nested = if let [sequence] = for_each.effects.as_slice()
@@ -688,6 +696,95 @@ fn consult_match_move_to_zone<'a>(
                 ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"
             )))
     .then_some(move_to_zone)
+}
+
+/// "... Put those cards onto the battlefield and the rest on the bottom of
+/// your library in a random order" (Empty the Laboratory): a list that ends
+/// with a reveal-until partition's match move and exact remainder, after
+/// other actions (a target declaration, damage from the revealed card) sit
+/// between the consult and its disposition. The shared consult tags prove the
+/// partition; the leading effects render as their own sentences.
+pub(crate) fn render_trailing_consult_match_move_and_rest(effects: &[Effect]) -> Option<String> {
+    let (rest_effect, init) = effects.split_last()?;
+    let (move_effect, prefix) = init.split_last()?;
+    let remainder = structural_unwrap_render_wrappers(rest_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.surface != ironsmith_core::LibraryRemainderSurface::Rest
+        || remainder.player != PlayerFilter::You
+    {
+        return None;
+    }
+    let keep = remainder.keep_tagged.as_ref()?;
+    if !crate::cards::is_sentence_helper_tag(keep.as_str(), "consult_match") {
+        return None;
+    }
+    let (move_to_zone, destination) =
+        if let Some(move_to_zone) = tagged_match_move_to_zone(move_effect, keep, Zone::Hand) {
+            (move_to_zone, "into your hand")
+        } else {
+            let move_to_zone = tagged_match_move_to_zone(move_effect, keep, Zone::Battlefield)?;
+            (move_to_zone, "onto the battlefield")
+        };
+    if move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || !move_to_zone.enters_with_counters.is_empty()
+        || !matches!(
+            move_to_zone.battlefield_controller,
+            ironsmith_core::BattlefieldController::Preserve
+        )
+    {
+        return None;
+    }
+    // The consult (when it is in this list) fixes how many cards matched;
+    // otherwise the move's authored plural surface does.
+    let consult = prefix
+        .iter()
+        .rev()
+        .flat_map(|effect| {
+            let effect = structural_unwrap_render_wrappers(effect);
+            match effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                Some(sequence) => sequence.effects.iter().rev().collect::<Vec<_>>(),
+                None => vec![effect],
+            }
+        })
+        .find_map(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+                .filter(|consult| &consult.match_tag == keep && consult.all_tag == remainder.tag)
+        });
+    let plural = match consult.map(|consult| &consult.stop_rule) {
+        Some(
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)),
+        ) => false,
+        Some(crate::effects::ConsultTopOfLibraryStopRule::MatchCount(_)) => true,
+        Some(crate::effects::ConsultTopOfLibraryStopRule::TotalManaValue(_)) => return None,
+        None => move_to_zone.target_plural_surface,
+    };
+    if let Some(consult) = consult
+        && (consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+            || consult.player != PlayerFilter::You)
+    {
+        return None;
+    }
+    let matched_reference = if plural { "those cards" } else { "that card" };
+    let order_text = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    let disposition = format!(
+        "Put {matched_reference} {destination} and the rest on the bottom of your library{order_text}"
+    );
+    if prefix.is_empty() {
+        return Some(disposition);
+    }
+    let prefix_text = describe_effect_list(prefix);
+    let prefix_text = prefix_text.trim().trim_end_matches('.');
+    if prefix_text.is_empty() {
+        return None;
+    }
+    Some(format!("{}. {disposition}", capitalize_first(prefix_text)))
 }
 
 pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) -> Option<String> {

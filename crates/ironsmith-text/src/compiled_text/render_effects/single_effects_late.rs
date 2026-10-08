@@ -476,17 +476,23 @@ pub(super) fn describe_villainous_choice(
         })
         .collect::<Vec<_>>();
 
+    // An empty surface elides the chooser shared with the preceding clause.
+    let player = if player.is_empty() {
+        String::new()
+    } else {
+        format!("{player} ")
+    };
     match modes.as_slice() {
         [first, second] => {
             format!(
-                "{player} faces a villainous choice — {}, or {}",
+                "{player}faces a villainous choice — {}, or {}",
                 capitalize_first(first),
                 lowercase_first(second)
             )
         }
-        [] => format!("{player} faces a villainous choice"),
+        [] => format!("{player}faces a villainous choice"),
         _ => format!(
-            "{player} faces a villainous choice — {}",
+            "{player}faces a villainous choice — {}",
             capitalize_first(&modes.join(", or "))
         ),
     }
@@ -2144,6 +2150,12 @@ pub(crate) fn collect_activation_restriction_clauses(
             .strip_prefix("__ironsmith_activation_label:")
             .is_some_and(|label| label.eq_ignore_ascii_case("Boast"))
     });
+    // Power-up's "only once" limit is likewise its reminder text.
+    let is_power_up = additional_restrictions.iter().any(|restriction| {
+        restriction
+            .strip_prefix("__ironsmith_activation_label:")
+            .is_some_and(|label| label.eq_ignore_ascii_case("Power-up"))
+    });
     for condition in activation_restrictions {
         if is_boast
             && matches!(
@@ -2152,6 +2164,9 @@ pub(crate) fn collect_activation_restriction_clauses(
                     | crate::ConditionExpr::MaxActivationsPerTurn(1)
             )
         {
+            continue;
+        }
+        if is_power_up && matches!(condition, crate::ConditionExpr::MaxActivationsPerObject(1)) {
             continue;
         }
         let described = super::abilities_and_costs::describe_mana_activation_condition(condition);
@@ -2425,7 +2440,10 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if let AbilityKind::Activated(activated) = &ability.kind
         && activated.mana_cost.as_one_of().is_some()
     {
-        return describe_structural_equip_keyword(activated);
+        // "Reconfigure—Pay {2} or {E}{E}{E}" (Razorfield Ripper) also has
+        // a structural one-of cost surface.
+        return describe_structural_equip_keyword(activated)
+            .or_else(|| describe_structural_reconfigure_keyword(activated));
     }
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(craft) = describe_structural_craft_keyword(ability, activated)
@@ -3481,12 +3499,64 @@ pub(super) fn describe_structural_reconfigure_keyword(
         return None;
     }
 
-    let cost = describe_cost_list(activated.mana_cost.costs());
+    if let Some(branches) = activated.mana_cost.as_one_of() {
+        // "Reconfigure—Pay {2} or {E}{E}{E}" (CR 702.151a, Razorfield Ripper).
+        let has_non_mana_branch = branches.iter().any(|branch| branch.has_non_mana_costs());
+        let branches = branches
+            .iter()
+            .map(|branch| {
+                let described = describe_total_cost(branch);
+                if has_non_mana_branch && !branch.has_non_mana_costs() {
+                    format!("pay {described}")
+                } else if has_non_mana_branch {
+                    lowercase_first(&described)
+                } else {
+                    described
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" or ");
+        return Some(if has_non_mana_branch {
+            format!("Reconfigure—{}", capitalize_first(&branches))
+        } else {
+            format!("Reconfigure {branches}")
+        });
+    }
+    let cost = describe_cost_list(activated.mana_cost.as_all()?);
     if cost.trim().is_empty() || cost.eq_ignore_ascii_case("Free") {
         Some("Reconfigure {0}".to_string())
     } else {
         Some(format!("Reconfigure {cost}"))
     }
+}
+
+/// CR 702.151a: Reconfigure is two activated abilities. The unattach half
+/// (same cost, sorcery speed, only while attached) prints nothing of its own
+/// when it follows the attach half that renders "Reconfigure {cost}".
+pub(crate) fn is_reconfigure_unattach_half_of(
+    attach_half: &Ability,
+    ability: &Ability,
+) -> bool {
+    let (AbilityKind::Activated(attach), AbilityKind::Activated(unattach)) =
+        (&attach_half.kind, &ability.kind)
+    else {
+        return false;
+    };
+    if describe_structural_reconfigure_keyword(attach).is_none()
+        || !matches!(unattach.timing, ActivationTiming::SorcerySpeed)
+        || !unattach.choices.is_empty()
+        || unattach.mana_cost != attach.mana_cost
+        || unattach.effects.segments.len() != 1
+        || !unattach.effects.segments[0].self_replacements.is_empty()
+    {
+        return false;
+    }
+    let [effect] = unattach.effects.segments[0].default_effects.as_slice() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::ReconfigureEffect>()
+        .is_some_and(|reconfigure| matches!(reconfigure.target.base(), ChooseSpec::Source))
 }
 
 pub(super) fn describe_structural_outlast_keyword(
@@ -4131,7 +4201,7 @@ pub(super) fn endure_spirit_token_size(
 
     let token = &create.token;
     if !token.card.is_token
-        || token.card.name != "Spirit"
+        || token.card.name.trim_end_matches(" Token") != "Spirit"
         || token.card.color_indicator != Some(crate::color::ColorSet::WHITE)
         || token.card.card_types != [CardType::Creature]
         || token.card.subtypes != [Subtype::Spirit]
@@ -5651,6 +5721,29 @@ pub(super) fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
             if filter.is_commander && filter.subtypes.is_empty() {
                 return Some("commander".to_string());
             }
+            // "Equip worthy {1}" (Mjölnir, Hammer of Thor): a worthy
+            // creature is a legendary non-Villain that's red and/or white.
+            if filter.subtypes.is_empty()
+                && filter.supertypes == [crate::types::Supertype::Legendary]
+                && filter.excluded_subtypes == [crate::types::Subtype::Villain]
+                && filter.colors.is_some_and(|colors| {
+                    colors
+                        == crate::color::ColorSet::from_color(crate::color::Color::Red)
+                            .with(crate::color::Color::White)
+                })
+            {
+                return Some("worthy".to_string());
+            }
+            // "Equip legendary creature [cost]" (Blackblade Reforged).
+            if filter.subtypes.is_empty() && !filter.supertypes.is_empty() {
+                let supertypes = filter
+                    .supertypes
+                    .iter()
+                    .map(|supertype| supertype.name().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                return Some(format!("{supertypes} creature"));
+            }
             if filter.subtypes.len() == 1 {
                 return Some(filter.subtypes[0].to_string());
             }
@@ -6075,4 +6168,25 @@ mod craft_material_surface_tests {
         filter.any_of[0].other = true; filter.any_of[1].colors = Some(crate::color::ColorSet::RED);
         assert!(describe_craft_material_filter(&filter, ChoiceCount::exactly(2)).is_none());
     }
+}
+
+
+/// "Onto another target creature with the same controller": the destination
+/// target's controller is the controller of the first (source) target.
+fn describe_move_counters_destination(to: &ChooseSpec) -> String {
+    if let ChooseSpec::Target(inner) = to.unhinted()
+        && let ChooseSpec::Object(filter) = inner.unhinted()
+        && matches!(
+            filter.controller,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        )
+    {
+        let mut unscoped = filter.clone();
+        unscoped.controller = None;
+        let described = describe_choose_spec(&ChooseSpec::Target(Box::new(ChooseSpec::Object(
+            unscoped,
+        ))));
+        return format!("{described} with the same controller");
+    }
+    describe_choose_spec(to)
 }

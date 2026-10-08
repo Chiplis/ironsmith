@@ -4218,7 +4218,7 @@ impl StaticAbility {
     }
 
     pub fn prevent_matching_damage(spec: ironsmith_core::PreventMatchingDamageSpec) -> Self {
-        Self::new(PreventMatchingDamage { spec })
+        Self::new(PreventMatchingDamage { spec, condition: None })
     }
 
     pub fn prevent_half_damage_replacement(

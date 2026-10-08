@@ -67,6 +67,17 @@ pub fn parse_resource_shuffle_shape(
                 to_bottom: false,
             });
         }
+        if exact_unit(target, source_card_reference)
+            && let Some((destination_player, rest)) =
+                primitives::parse_prefix(&normalized_destination, destination)
+            && supported_source_tail(trimmed(rest))
+        {
+            return Some(ResourceShuffleShape::ObjectsIntoSubjectLibrary {
+                target_len: into_idx,
+                player: resolve_destination(destination_player, default_player),
+                all: false,
+            });
+        }
         if consult_remainder(target)
             && let Some((destination_player, rest)) =
                 primitives::parse_prefix(&normalized_destination, destination)

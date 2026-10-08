@@ -593,7 +593,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Library(LibraryActionAst::PutRestOnBottomOfLibrary) => {
                 f.write_str("PutRestOnBottomOfLibrary")
             }
-            Self::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn) => {
+            Self::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. }) => {
                 f.write_str("DontLoseThisManaAsStepsAndPhasesEndThisTurn")
             }
             Self::Exchanges(ExchangeActionAst::ExchangeValues {
@@ -1026,6 +1026,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source_target,
                 protect_source_target,
                 follow_up_effects,
+                ..
             }) => f
                 .debug_struct("PreventAllDamageToTarget")
                 .field("combat_only", combat_only)
@@ -1045,6 +1046,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     target,
                     duration,
                     source_filter,
+                    ..
                 },
             ) => f
                 .debug_struct("PreventAllDamageToTargetFromSourceFilter")
@@ -1057,6 +1059,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     duration,
                     source_filter,
                     of_chosen_color,
+                    ..
                 },
             ) => f
                 .debug_struct("PreventAllDamageFromSourceFilter")

@@ -1341,6 +1341,35 @@ pub(super) fn parse_object_filter(
         filter.in_combat_with_source = true;
         return Ok(filter);
     }
+    // "target creature that's blocking equipped creature" (Plasma Caster):
+    // the blocker is in combat with the source's attached host, not itself
+    // equipped.
+    if let Some(index) = refs.iter().position(|word| *word == "blocking")
+        && index + 3 == refs.len()
+        && refs[index + 2] == "creature"
+        && let Some(host) = match refs[index + 1] {
+            "equipped" => Some(crate::tag::CompilerReferenceTag::Equipped),
+            "enchanted" => Some(crate::tag::CompilerReferenceTag::Enchanted),
+            _ => None,
+        }
+    {
+        let mut base_end = index;
+        if base_end >= 1 && matches!(refs[base_end - 1], "that's" | "thats" | "that’s") {
+            base_end -= 1;
+        } else if base_end >= 2
+            && refs[base_end - 2] == "that"
+            && matches!(refs[base_end - 1], "is" | "are")
+        {
+            base_end -= 2;
+        }
+        if base_end > 0 {
+            let mut filter =
+                parse_object_filter(&tokens[..words.token_start_indices()[base_end]], other)?;
+            filter.blocking = true;
+            filter.in_combat_with = Some(crate::filter::ObjectRef::Tagged(host.bind().into()));
+            return Ok(filter);
+        }
+    }
     // "an artifact or creature card from among those cards" (Spirit of
     // Resilience): restrict the selection to the referenced collection.
     if let Some(base) = crate::object_filters::split_from_among_those_cards_suffix(tokens) {

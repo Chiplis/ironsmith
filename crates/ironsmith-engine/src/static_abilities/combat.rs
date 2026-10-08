@@ -1037,10 +1037,12 @@ impl StaticAbilityKind for CanBlockAdditionalCreatureEachCombat {
         if self.additional == 1 {
             "Can block an additional creature each combat".to_string()
         } else {
-            format!(
-                "Can block {} additional creatures each combat",
-                self.additional
-            )
+            // "Can block an additional seven creatures each combat".
+            let count = u32::try_from(self.additional)
+                .ok()
+                .and_then(ironsmith_core::cardinal_word)
+                .unwrap_or_else(|| self.additional.to_string());
+            format!("Can block an additional {count} creatures each combat")
         }
     }
 

@@ -2481,11 +2481,19 @@ pub(in super::super) fn parse_object_filter_inner(
     // spell form share one either-characteristic disjunction.
     if has_power_or_toughness_clause {
         let mut power_or_toughness_cmp = None;
+        let mut pt_reference = crate::filter::PtReference::Effective;
         for idx in 0..all_words.len() {
-            let (_, value_tokens) = match all_words.get(idx..) {
+            let (reference, value_tokens) = match all_words.get(idx..) {
                 Some(["power", "or", "toughness", rest @ ..])
                 | Some(["toughness", "or", "power", rest @ ..]) => {
-                    (crate::filter::PtReference::Effective, rest)
+                    // "with base power or toughness 1" (Sword of the Squeak)
+                    // compares both printed-base characteristics.
+                    let reference = if idx > 0 && all_words[idx - 1] == BASE_WORD {
+                        crate::filter::PtReference::Base
+                    } else {
+                        crate::filter::PtReference::Effective
+                    };
+                    (reference, rest)
                 }
                 _ => continue,
             };
@@ -2495,6 +2503,7 @@ pub(in super::super) fn parse_object_filter_inner(
                 continue;
             };
             power_or_toughness_cmp = Some(cmp);
+            pt_reference = reference;
             break;
         }
         let Some(cmp) = power_or_toughness_cmp else {
@@ -2510,9 +2519,11 @@ pub(in super::super) fn parse_object_filter_inner(
 
         let mut power_branch = base.clone();
         power_branch.power = Some(cmp.clone());
+        power_branch.power_reference = pt_reference;
 
         let mut toughness_branch = base;
         toughness_branch.toughness = Some(cmp);
+        toughness_branch.toughness_reference = pt_reference;
 
         let mut disjunction = ObjectFilter::default();
         disjunction.any_of = vec![power_branch, toughness_branch];

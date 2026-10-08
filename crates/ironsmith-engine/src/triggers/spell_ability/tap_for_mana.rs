@@ -70,6 +70,8 @@ impl TriggerMatcher for TapForManaTrigger {
         let object = describe_tap_for_mana_filter(&self.filter);
         let object_phrase = if starts_with_determiner(&object) {
             object
+        } else if object.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+            format!("an {object}")
         } else {
             format!("a {object}")
         };

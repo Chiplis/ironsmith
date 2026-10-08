@@ -463,6 +463,15 @@ fn recognize_trailing_condition(
     {
         return None;
     }
+    // `unless its controller pays ...` is a payment choice owned by the
+    // unless-action grammar, never a state condition: a state reading would
+    // silently replace the payment with whatever predicate it can scrape.
+    if condition_tokens
+        .iter()
+        .any(|token| token.is_word("pays") || token.is_word("pay"))
+    {
+        return None;
+    }
     let condition =
         parse_state_condition(condition_tokens, ConditionPositionAst::Postcondition, true)?;
     Some(ParseOutcome::matched(

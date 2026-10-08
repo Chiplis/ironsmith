@@ -3385,6 +3385,10 @@ pub struct PreventAllDamageEffect<E = ()> {
     /// Programs executed for the actual amount prevented by this shield.
     #[cfg_attr(feature = "serde", serde(default))]
     pub follow_up_effects: Vec<E>,
+    /// Authored "<source> would deal" rather than "that would be dealt by
+    /// <source>"; presentation only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_would_deal_surface: bool,
 }
 
 impl<E> PreventAllDamageEffect<E> {
@@ -3401,7 +3405,13 @@ impl<E> PreventAllDamageEffect<E> {
             until,
             protect_source_target: false,
             follow_up_effects: Vec::new(),
+            source_would_deal_surface: false,
         }
+    }
+
+    pub fn with_source_would_deal_surface(mut self) -> Self {
+        self.source_would_deal_surface = true;
+        self
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
@@ -3429,6 +3439,7 @@ impl<E> PreventAllDamageEffect<E> {
                 .into_iter()
                 .map(&mut map)
                 .collect::<Result<Vec<_>, Error>>()?,
+            source_would_deal_surface: self.source_would_deal_surface,
         })
     }
 

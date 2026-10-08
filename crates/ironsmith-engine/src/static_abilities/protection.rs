@@ -326,6 +326,21 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
     }
+    if let Some(chosen) = filter.protection_chosen_card_type_quality() {
+        return chosen.to_string();
+    }
+    // "protection from each of the exiled card's card types" (Mirror Golem):
+    // any source sharing a card type with the card this source exiled.
+    if let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        && (ObjectFilter {
+            tagged_constraints: Vec::new(),
+            ..filter.clone()
+        }) == ObjectFilter::default()
+    {
+        return "each of the exiled card's card types".to_string();
+    }
     if *filter == ObjectFilter::default().monocolored() {
         return "monocolored".to_string();
     }

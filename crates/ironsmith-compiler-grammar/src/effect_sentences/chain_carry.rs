@@ -626,6 +626,21 @@ fn ensure_explicit_target_player_subject_declarations(
     if authored_targets == 0 {
         return;
     }
+    // "you may have target player mill X cards, where X is ..." (Cloudhoof
+    // Kirin): the optional instruction declares its own target player as it
+    // lowers, exactly as the X-free sentence does. A second, unconditional
+    // declaration ahead of it would ask for another target.
+    if effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::Permissions(
+                crate::cards::builders::PermissionEffectAst::May { .. }
+                    | crate::cards::builders::PermissionEffectAst::MayByPlayer { .. }
+            )
+        )
+    }) {
+        return;
+    }
 
     let mut target_subjects = 0usize;
     let mut declarations = 0usize;
@@ -1561,6 +1576,12 @@ fn parse_effect_chain_inner_lexed_unstacked(
         // been lowered, so keep the action list free of a synthetic
         // subject/verb parse for the binding text itself.
         if is_standalone_where_x_binding_segment(&segment) {
+            continue;
+        }
+        // "destroy that creature and it can't be regenerated" (Consuming
+        // Ferocity): the rider sets the destroy's no-regeneration flag.
+        if bind_no_regeneration_rider(&mut effects, &segment) {
+            previous_segment = Some(segment);
             continue;
         }
         if append_shared_damage_player_operand(&mut effects, &segment) {
@@ -2673,6 +2694,24 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTarget {
                 source_target: Some(_),
+                follow_up_effects,
+                ..
+            },
+        ) if follow_up_effects.is_empty()
+            && sequence_grammar::parse_prevention_gain_life_followup_shape(sentence) =>
+        {
+            follow_up_effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                    amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+                }),
+            ));
+            true
+        }
+        SubjectVerbActionAst::DamagePrevention(
+            DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                of_chosen_color: false,
                 follow_up_effects,
                 ..
             },

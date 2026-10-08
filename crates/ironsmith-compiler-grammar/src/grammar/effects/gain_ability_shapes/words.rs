@@ -139,6 +139,19 @@ pub fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbil
     if !has_base_pt {
         return Some((offset, verb));
     }
+    // A serial list "has base power and toughness 5/3, gains trample, and
+    // ..." (Werewolf Pack Leader): the comma-separated gain/lose verb right
+    // after the P/T value is the primary verb, like the "and gains" form.
+    let value_start = after_has.len() - base_input.len();
+    for index in value_start + 1..(value_start + 4).min(after_has.len()) {
+        if after_has[index] == "and" {
+            break;
+        }
+        let mut next_input = &after_has[index..];
+        if let Ok(next_verb) = alt((gain_word, lose_word)).parse_next(&mut next_input) {
+            return Some((offset + 1 + index, next_verb));
+        }
+    }
     let Some((tail, verb)) = find_shared_ability_tail(after_has, SharedAbilityTail::Gain)
         .map(|tail| (tail, GainAbilityVerb::Gain))
         .or_else(|| {

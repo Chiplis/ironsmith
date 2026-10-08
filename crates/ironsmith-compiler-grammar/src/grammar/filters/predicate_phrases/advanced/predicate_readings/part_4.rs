@@ -908,6 +908,7 @@ pub(super) const READINGS: &[Reading] = &[
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("source-power-threshold-predicate")
                 && !input.read_by("turn-history-intervening-predicate")
+                && !input.read_by("half-starting-life-total-threshold-predicate")
         },
         read: |input| input.outcome(read_value_reference_comparison_predicate(input)),
     },

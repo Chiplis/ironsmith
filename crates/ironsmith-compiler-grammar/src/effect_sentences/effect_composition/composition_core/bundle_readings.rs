@@ -686,6 +686,12 @@ fn read_regenerate_then_gain_control(
 fn read_consult_then_put_matches_battlefield_rest_bottom(
     input: &Bundle<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // The general consult-disposition reading covers the untapped
+    // "put those cards onto the battlefield and the rest ..." shape with the
+    // same meaning; defer to it so the two never compete for one input.
+    if parse_consult_disposition_bundle(input.tokens).is_some() {
+        return Ok(None);
+    }
     let sentences = &input.sentences;
     if sentences.len() == 2
         && let Ok(Some(effects)) = parse_consult_then_put_matches_battlefield_rest_bottom_bundle(

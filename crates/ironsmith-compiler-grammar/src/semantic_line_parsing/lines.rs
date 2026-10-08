@@ -1759,6 +1759,40 @@ fn render_statement_source_tokens(
 fn parse_villainous_choice_statement_chunk(
     line: &RewriteStatementLine,
 ) -> Result<Option<LineAst>, CardTextError> {
+    if let Some(shape) =
+        semantic_grammar::parse_villainous_choice_preceding_clause_tokens(&line.info.source_tokens)
+    {
+        let mut effects = parse_effect_sentences_lexed(shape.clause_tokens)?;
+        let first_mode_effects = parse_villainous_choice_mode_program(shape.first_mode_program)?;
+        let second_mode_effects = parse_villainous_choice_mode_program(shape.second_mode_program)?;
+        let player = if shape.target_owner {
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target)
+        } else {
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+        };
+        // The clause's subject faces the choice; the shared subject is
+        // elided as printed ("..., then faces a villainous choice").
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::VillainousChoice {
+                player,
+                player_surface: Some(String::new()),
+                modes: vec![
+                    ChooseOneModeAst {
+                        description: render_statement_source_tokens(line, shape.first_mode_tokens),
+                        effects: first_mode_effects,
+                    },
+                    ChooseOneModeAst {
+                        description: render_statement_source_tokens(
+                            line,
+                            shape.second_mode_tokens,
+                        ),
+                        effects: second_mode_effects,
+                    },
+                ],
+            },
+        ));
+        return Ok(Some(LineAst::Statement { effects }));
+    }
     let source_sentences = split_lexed_sentences(&line.info.source_tokens);
     let player_statement = source_sentences
         .iter()

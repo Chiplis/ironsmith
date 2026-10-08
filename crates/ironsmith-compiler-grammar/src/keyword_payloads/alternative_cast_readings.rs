@@ -328,7 +328,41 @@ fn read_freerunning(
     if let Some(keyword_tokens) =
         keyword_tokens_for_shape(tokens, full_tokens, KeywordPrefixShape::Freerunning)
     {
-        let (cost, _) = leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
+        let condition = crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
+            crate::types::Subtype::Assassin,
+        );
+        let cost_tokens = keyword_tokens.get(1..).unwrap_or_default();
+        // "Freerunning—Return a blue creature you control to its owner's
+        // hand" (Escape Detection): a non-mana freerunning cost.
+        if leading_mana_cost_from_tokens(cost_tokens).is_none() {
+            let cost_tokens = cost_tokens
+                .iter()
+                .skip_while(|token| matches!(token.kind, crate::lexer::TokenKind::Dash | crate::lexer::TokenKind::EmDash))
+                .cloned()
+                .collect::<Vec<_>>();
+            let Some(total_cost) =
+                crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
+                    &cost_tokens,
+                )?
+            else {
+                return Ok(None);
+            };
+            let method = crate::model::CompilerAlternativeCastingMethod::Composed {
+                name: "Freerunning".into(),
+                total_cost,
+                condition: None,
+                prototype_power_toughness: None,
+            };
+            return Ok(ast(LineAst::AlternativeCastingMethod(
+                crate::model::CompilerAlternativeCastingMethod::alternative_cost_with_condition(
+                    "Freerunning",
+                    method.mana_cost().cloned(),
+                    method.non_mana_costs(),
+                    condition,
+                ),
+            )));
+        }
+        let (cost, _) = leading_mana_cost_from_tokens(cost_tokens)
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "freerunning keyword missing cost '{}'",

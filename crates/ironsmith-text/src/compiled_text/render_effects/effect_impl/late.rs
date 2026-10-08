@@ -63,6 +63,20 @@
     }
 
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
+        if target_only.chooser.is_none()
+            && let ChooseSpec::WithCountValue(inner, _, count) = target_only.target.unhinted()
+            && is_one_plus_kick_count(count)
+        {
+            let first = describe_choose_spec(inner);
+            let another = if first.starts_with("any target") {
+                "another target".to_string()
+            } else {
+                format!("another {}", strip_leading_article(&first))
+            };
+            return format!(
+                "Choose {first}, then choose {another} for each time this spell was kicked"
+            );
+        }
         let mut target = describe_choose_spec(&target_only.target);
         if target_only.chooser.is_some()
             && let ChooseSpec::Object(filter) = target_only.target.base()
@@ -70,6 +84,26 @@
             && let Some(noun) = target.strip_suffix(" that player controls")
         {
             target = format!("{noun} they control");
+        }
+        // "its controller chooses target creature one of their opponents
+        // controls" (Necrotic Plague): the target's controller is an
+        // opponent of the chooser.
+        if let Some(chooser) = target_only.chooser.as_ref()
+            && let ChooseSpec::Object(filter) = target_only.target.base()
+            && filter.controller == Some(PlayerFilter::OpponentOf(Box::new(chooser.clone())))
+        {
+            let mut bare = filter.clone();
+            bare.controller = None;
+            let mut spec = target_only.target.clone();
+            if let ChooseSpec::Target(inner) = &mut spec
+                && let ChooseSpec::Object(inner_filter) = inner.as_mut()
+            {
+                *inner_filter = bare;
+                target = format!(
+                    "{} one of their opponents controls",
+                    describe_choose_spec(&spec)
+                );
+            }
         }
         return target_only.chooser.as_ref().map_or_else(
             || format!("Choose {target}"),
@@ -85,6 +119,9 @@
         return describe_villainous_choice(villainous);
     }
     if let Some(compact) = describe_compact_protection_choice(effect) {
+        return compact;
+    }
+    if let Some(compact) = describe_compact_keyword_change_choice(effect) {
         return compact;
     }
     if let Some(compact) = describe_compact_destroy_color_choice(effect) {
@@ -614,7 +651,15 @@
             Some(crate::effects::CopyAttackTargetMode::Player(_))
         );
         let separate_entry = create_copy.entry_tapped_attacking_followup && create_copy.attack_target_mode.is_none();
-        let inline_tapped = create_copy.enters_tapped && !player_only_attack && !separate_entry;
+        // "create a tapped token that's a copy of ... attacking that
+        // opponent" (Mardu Siegebreaker) authors the player attack inline;
+        // only a separate "The token enters tapped and attacking that
+        // player" sentence carries the follow-up surface.
+        let player_inline_attack =
+            player_only_attack && !create_copy.entry_tapped_attacking_followup;
+        let inline_tapped = create_copy.enters_tapped
+            && (!player_only_attack || player_inline_attack)
+            && !separate_entry;
         let inline_attacking =
             create_copy.enters_attacking && create_copy.attack_target_mode.is_none() && !separate_entry;
         let token_state = match (inline_tapped, inline_attacking) {
@@ -624,7 +669,12 @@
             (false, false) => "",
         };
         let use_where_x = value_prefers_where_x(&create_copy.count);
+        // "For each flip you won, create a token that's a copy of ..."
+        let coin_basis = describe_coin_result_for_each_basis(&create_copy.count);
         let token_object = match create_copy.count {
+            _ if coin_basis.is_some() => {
+                format!("a {token_state}token that's a copy of {target}")
+            }
             _ if use_where_x => format!("X {token_state}tokens that are copies of {target}"),
             Value::Fixed(1) => format!("a {token_state}token that's a copy of {target}"),
             Value::Fixed(n) => {
@@ -663,6 +713,9 @@
         } else {
             format!("Create {token_object}")
         };
+        if let Some(basis) = coin_basis {
+            text = format!("For each {basis}, {}", lowercase_first(&text));
+        }
         if !copied_object_controller_is_actor
             && !matches!(create_copy.controller, PlayerFilter::You)
         {
@@ -971,7 +1024,9 @@
         if use_where_x {
             text.push_str(&format!(", where X is {}", describe_value(&create_copy.count)));
         }
-        if player_only_attack {
+        if player_inline_attack {
+            text.push_str(" attacking that player");
+        } else if player_only_attack {
             let subject = if singular_copy {
                 "The token enters"
             } else {
@@ -1096,12 +1151,16 @@
     }
     if let Some(bolster) = effect.downcast_ref::<crate::effects::BolsterEffect>() {
         if let Some(value) = &bolster.amount_value {
-            return if value_prefers_where_x(value) {
-                let basis = describe_where_x_basis(value)
-                    .map(|basis| format!(", where X is {basis}")).unwrap_or_default();
-                format!("Bolster X{basis}")
-            } else {
-                format!("Bolster {}", describe_value(value))
+            // A keyword action's number slot takes a numeral or X; any
+            // computed amount is defined by a "where X is" clause.
+            return match value.unhinted() {
+                Value::Fixed(amount) => format!("Bolster {amount}"),
+                Value::X => "Bolster X".to_string(),
+                _ => {
+                    let basis = describe_where_x_basis(value)
+                        .unwrap_or_else(|| describe_value(value));
+                    format!("Bolster X, where X is {basis}")
+                }
             };
         }
         return format!("Bolster {}", bolster.amount);
@@ -1175,6 +1234,19 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        // "That creature doesn't untap during its controller's untap step for
+        // as long as this Equipment remains on the battlefield" (Neko-Te):
+        // the untap restriction only applies in its controller's untap step.
+        if cant.start == crate::effect::RestrictionStart::Immediate
+            && matches!(cant.duration, Until::ForAsLongAs(_))
+            && let crate::effect::Restriction::Untap(filter) = &cant.restriction
+            && filter_is_exactly_one_tagged_object(filter)
+        {
+            return format!(
+                "That permanent doesn't untap during its controller's untap step {}",
+                describe_until(&cant.duration)
+            );
+        }
         if cant.start == crate::effect::RestrictionStart::LastAddedCombatPhase {
             return describe_chosen_added_combat_restriction(cant).unwrap_or_else(|| {
                 format!("{} during that combat phase", describe_restriction(&cant.restriction))
@@ -1294,6 +1366,17 @@
                 _ => capitalize_first(&description),
             };
             return format!("{subject} must be blocked this turn if able");
+        }
+        // "That creature must be blocked this combat if able" (Neyith of
+        // the Dire Hunt): the restricted object is a prior effect's result.
+        if cant.duration == Until::EndOfCombat
+            && let crate::effect::Restriction::MustBeBlocked(filter) = &cant.restriction
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+            && matches!(filter.description().as_str(), "permanent" | "creature")
+        {
+            return "That creature must be blocked this combat if able".to_string();
         }
         if let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction {
             return describe_player_gain_keyword(player, "shroud", &cant.duration);
@@ -1759,6 +1842,12 @@
         let (amount, where_x) = if value_prefers_where_x(&collect.amount) {
             ("X".to_string(), describe_where_x_basis(&collect.amount)
                 .map(|basis| format!(", where X is {basis}")).unwrap_or_default())
+        } else if !matches!(collect.amount.unhinted(), Value::Fixed(_) | Value::X) {
+            // "collect evidence X, where X is the total mana value of ..."
+            (
+                "X".to_string(),
+                format!(", where X is {}", describe_value(&collect.amount)),
+            )
         } else {
             (describe_value(&collect.amount), String::new())
         };
@@ -1923,6 +2012,11 @@
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }
     if let Some(plotted) = effect.downcast_ref::<crate::effects::BecomePlottedEffect>() {
+        // Plotting always follows the exile that moved the card, so a tagged
+        // card is the just-exiled one and oracle refers back with "it".
+        if matches!(plotted.target.base(), ChooseSpec::Tagged(_)) {
+            return "it becomes plotted".to_string();
+        }
         return format!("{} becomes plotted", describe_choose_spec(&plotted.target));
     }
     if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
@@ -2258,6 +2352,18 @@
             && copy_spell.target_reference_kind == Some(StackObjectKind::Spell)
         {
             target_text = "that spell".to_string();
+        }
+        // "The controller of target instant or sorcery spell copies it"
+        // (Meletis Charlatan): the copied spell's controller makes the copy.
+        if matches!(copy_spell.count, Value::Fixed(1))
+            && let ChooseSpec::Tagged(tag) = copy_spell.target.base()
+            && matches!(
+                &copy_spell.copier,
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(copier_tag))
+                    if copier_tag == tag
+            )
+        {
+            return finish_copy_spell_text("Its controller copies it".to_string(), copy_spell);
         }
         if matches!(copy_spell.count, Value::Fixed(1)) {
             if matches!(copy_spell.target, ChooseSpec::Iterated) {
@@ -3098,8 +3204,10 @@
                 let desc = filter.description();
                 if desc.is_empty() {
                     "a source".to_string()
+                } else if desc.ends_with("spell") || desc.ends_with("source") {
+                    with_indefinite_article(&desc)
                 } else {
-                    format!("{desc} source")
+                    with_indefinite_article(&format!("{desc} source"))
                 }
             }
             crate::effects::RedirectNextTimeDamageSource::Target(spec) => {
@@ -3125,8 +3233,24 @@
                 else { "that source's controller".to_string() }
             } else { destination };
             format!("All {damage} that would be dealt{recipient} this turn by {source_text} is dealt to {destination} instead")
+        } else if matches!(&redirect_next_time.source,
+            crate::effects::RedirectNextTimeDamageSource::Filter(filter) if *filter == ObjectFilter::default())
+        {
+            // Any source at all: the authored subject is the damage itself.
+            format!("The next time {damage} would be dealt{recipient} this turn, that damage is dealt to {destination} instead")
+        } else if source_text.starts_with("this ") {
+            // The source names itself: "it deals that damage to target creature
+            // instead" (Soltari Guerrillas).
+            format!("The next time {source_text} would deal {damage}{recipient} this turn, it deals that damage to {destination} instead")
+        } else if matches!(
+            redirect_next_time.destination,
+            crate::effects::RedirectNextTimeDamageDestination::Controller
+                | crate::effects::RedirectNextTimeDamageDestination::DamageSource
+        ) {
+            let anaphor = if source_text.ends_with("spell") { "that spell" } else { "that source" };
+            format!("The next time {source_text} would deal {damage}{recipient} this turn, {anaphor} deals that damage to {destination} instead")
         } else {
-            format!("The next time {source_text} would deal {damage}{recipient} this turn, that source deals that damage to {destination} instead")
+            format!("The next time {source_text} would deal {damage}{recipient} this turn, that damage is dealt to {destination} instead")
         };
     }
     if let Some(redirect_all) =
@@ -3259,6 +3383,13 @@
             base.follow_up_effects.clear();
             return finish(describe_effect(&Effect::new(base)));
         }
+        if prevent_all.source_would_deal_surface
+            && !prevent_all.protect_source
+            && !prevent_all.protect_source_target
+            && let Some(rendered) = describe_prevent_all_damage_source_would_deal(prevent_all)
+        {
+            return finish(rendered);
+        }
         if let Some(source_target) = &prevent_all.source_target {
             let timing = if matches!(prevent_all.until, Until::EndOfTurn) {
                 "this turn".to_owned()
@@ -3286,7 +3417,7 @@
                     ));
                 }
                 return finish(format!(
-                    "Prevent all {damage} {} would deal {timing}",
+                    "Prevent all {damage} that would be dealt by {} {timing}",
                     describe_choose_spec(source_target)
                 ));
             }
@@ -3384,6 +3515,18 @@
                             "Prevent all damage that would be dealt this turn by {source_phrase} sources"
                         );
                     }
+                    // "by creatures" (Chant of Vitu-Ghazi): a type-noun source
+                    // names every matching object, so it reads plural.
+                    let source_phrase = if source_phrase.rsplit(' ').next().is_some_and(|noun| {
+                        matches!(
+                            noun,
+                            "creature" | "artifact" | "enchantment" | "planeswalker" | "permanent"
+                        )
+                    }) {
+                        pluralize_noun_phrase(source_phrase)
+                    } else {
+                        source_phrase.to_string()
+                    };
                     return format!(
                         "Prevent all damage that would be dealt this turn by {source_phrase}"
                     );
@@ -3407,7 +3550,18 @@
                 .strip_prefix("all damage from ")
                 .and_then(|rest| rest.strip_suffix(" sources"))
             {
-                let source_phrase = pluralize_noun_phrase(source_phrase);
+                // A purely adjectival source filter ("colorless", "red")
+                // keeps its "sources" noun.
+                let adjectival = prevent_all
+                    .damage_filter
+                    .from_source
+                    .as_ref()
+                    .is_some_and(|filter| filter.card_types.is_empty() && filter.subtypes.is_empty());
+                let source_phrase = if adjectival {
+                    format!("{source_phrase} sources")
+                } else {
+                    pluralize_noun_phrase(source_phrase)
+                };
                 return format!(
                     "Prevent all damage that would be dealt to {protected} this turn by {source_phrase}"
                 );
@@ -3716,6 +3870,21 @@
             };
             return format!("{timing}, {delayed_text}");
         }
+        // "whenever a player taps an Island for mana, that player adds an
+        // additional {U}": a tap-for-mana trigger's mana is on top of what the
+        // tapped permanent produced.
+        if schedule
+            .trigger
+            .downcast_ref::<crate::triggers::TapForManaTrigger>()
+            .is_some()
+            && matches!(
+                schedule.effects.flattened_default_effects(),
+                [add] if add.downcast_ref::<crate::effects::AddManaEffect>().is_some()
+            )
+            && !delayed_text.contains(" adds an additional ")
+        {
+            delayed_text = delayed_text.replacen(" adds ", " adds an additional ", 1);
+        }
         if schedule.leading_duration_surface
             && schedule.duration == ironsmith_core::DelayedTriggerDuration::EndOfTurn
             && !schedule.start_next_turn
@@ -3976,6 +4145,27 @@
                         .downcast_ref::<crate::effects::PhaseOutEffect>()
                         .is_some()
             );
+            // "return it ... at the beginning of the next end step. That
+            // creature is a black Zombie ...": the timing closes the return
+            // sentence and the returned permanent's characteristics follow.
+            if let [returned, characteristics] = delayed_effects
+                && let Some(returned_tag) = wrapped_effect_tag(returned)
+                && structural_unwrap_render_wrappers(returned)
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                    .is_some_and(|move_to_zone| move_to_zone.zone == Zone::Battlefield)
+                && structural_unwrap_render_wrappers(characteristics)
+                    .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                    .and_then(|apply| apply.target_spec.as_ref())
+                    .is_some_and(|spec| matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == returned_tag))
+                && let Some((return_text, rest)) = delayed_text.split_once(". ")
+                && back_references
+            {
+                return format!(
+                    "{} at the beginning of the next end step. {}",
+                    capitalize_first(return_text),
+                    capitalize_first(rest)
+                );
+            }
             if (single_clause && back_references)
                 || is_single_destroy_instruction
                 || is_single_phase_out_instruction
@@ -4355,7 +4545,18 @@
                 Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
                 Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
             }
-        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        } else {
+            // An unzoned, untyped filter ("a red source you control") also
+            // matches spells; the generic description says "permanent".
+            let mut desc = register.source_filter.description();
+            if register.source_filter.zone.is_none()
+                && register.source_filter.card_types.is_empty()
+                && register.source_filter.subtypes.is_empty()
+            {
+                desc = desc.replacen("permanent", "source", 1);
+            }
+            with_indefinite_article(strip_leading_article(&desc))
+        };
         let recipient = match (&register.target_player_filter, &register.target_object_filter) {
             (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
             (Some(player), None) => describe_player_filter(player),
@@ -4383,7 +4584,16 @@
                 Some(PlayerFilter::Opponent) => "a source an opponent controls".to_string(),
                 Some(player) => format!("a source controlled by {}", describe_player_filter(player)),
             }
-        } else { with_indefinite_article(strip_leading_article(&register.source_filter.description())) };
+        } else {
+            let mut desc = register.source_filter.description();
+            if register.source_filter.zone.is_none()
+                && register.source_filter.card_types.is_empty()
+                && register.source_filter.subtypes.is_empty()
+            {
+                desc = desc.replacen("permanent", "source", 1);
+            }
+            with_indefinite_article(strip_leading_article(&desc))
+        };
         let recipient = match (&register.target_player_filter, &register.target_object_filter) {
             (Some(PlayerFilter::Any), Some(object)) if *object == ObjectFilter::permanent() => "a permanent or player".to_string(),
             (Some(player), None) => describe_player_filter(player),
@@ -4907,6 +5117,13 @@
         {
             return "Two target players exchange life totals".to_string();
         }
+        // "exchange life totals with that player" (Psychic Transfer).
+        if exchange_life.player1 == PlayerFilter::You {
+            return format!(
+                "Exchange life totals with {}",
+                describe_player_filter(&exchange_life.player2)
+            );
+        }
         return format!(
             "Exchange life totals of {} and {}",
             describe_player_filter(&exchange_life.player1),
@@ -5007,7 +5224,13 @@
             };
             format!("{counters} for each {basis}")
         } else {
-            match player_counters.count {
+            match &player_counters.count {
+                // "that player gets twice that many rad counters"
+                Value::Scaled(inner, 2) if matches!(inner.unhinted(), Value::EventValue(_)) => {
+                    let base = describe_value(inner);
+                    let base = if base == "that much" { "that many".to_string() } else { base };
+                    format!("twice {base} {kind} counters")
+                }
                 Value::Fixed(1) => format!("{} counter", with_indefinite_article(&kind)),
                 Value::Fixed(_) | Value::X | Value::EventValue(_) => format!(
                     "{} {kind} counters",
@@ -5230,6 +5453,14 @@
             return format!("{look}{permission_text}{duration}. If you cast a spell this way, {payment} rather than pay its mana cost");
         }
         let permission = grant.spec.clone().with_beneficiary(grant.player.clone()).display();
+        // A one-turn play permission reads "You may play ... this turn".
+        if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.spec.cast_this_way_grants.is_empty()
+            && permission.contains(" may ")
+        {
+            return format!("{permission} this turn");
+        }
         if !grant.spec.cast_this_way_grants.is_empty() && !duration.is_empty() {
             return format!("{}, {}", capitalize_first(duration.trim()), lowercase_first(&permission));
         }
@@ -5889,7 +6120,7 @@
                 ironsmith_core::effect::CounterMoveAmount::All => format!("all {} counters", move_counters.counter_type.description()),
             },
             describe_choose_spec(&move_counters.from),
-            describe_choose_spec(&move_counters.to)
+            describe_move_counters_destination(&move_counters.to)
         );
     }
     if let Some(move_counter) = effect.downcast_ref::<crate::effects::MoveOneCounterEffect>() {
@@ -6012,6 +6243,78 @@
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
         if !vote.payloads.is_empty() {
+            // Project the ordered payload program onto the option-local /
+            // trailing-effect shape the authored vote renderers read
+            // ("Council's dilemma — ...", "Will of the council — ..."). The
+            // projection only feeds rendering; the payload order is kept by
+            // the definition itself.
+            let mut legacy = vote.clone();
+            legacy.payloads.clear();
+            let mut trailing = Vec::new();
+            let mut projected = true;
+            for payload in &vote.payloads {
+                match payload {
+                    ironsmith_core::VotePayload::Effects(effects) => {
+                        trailing.extend(effects.iter().cloned());
+                    }
+                    ironsmith_core::VotePayload::ForEachVote { option, effects } => {
+                        let crate::effects::VoteChoice::NamedOptions(options) = &mut legacy.choice
+                        else {
+                            projected = false;
+                            break;
+                        };
+                        let Some(slot) = options
+                            .iter_mut()
+                            .find(|candidate| candidate.name.eq_ignore_ascii_case(option))
+                        else {
+                            projected = false;
+                            break;
+                        };
+                        slot.effects_per_vote.extend(effects.iter().cloned());
+                    }
+                }
+            }
+            if projected {
+                let mut legacy_effects = vec![Effect::new(legacy)];
+                legacy_effects.extend(trailing);
+                let rendered = describe_effect_list(&legacy_effects);
+                if !rendered.trim().is_empty() {
+                    // Council's dilemma: an open vote, starting with you,
+                    // whose every option scales its own outcome per vote.
+                    // The option-local renderers announce that ability word;
+                    // keep it when the outcomes are vote-count programs.
+                    let per_vote_options = match &vote.choice {
+                        crate::effects::VoteChoice::NamedOptions(options) => {
+                            options.len() >= 2
+                                && options.iter().all(|option| {
+                                    vote.payloads.iter().any(|payload| match payload {
+                                        ironsmith_core::VotePayload::ForEachVote {
+                                            option: name,
+                                            ..
+                                        } => name.eq_ignore_ascii_case(&option.name),
+                                        ironsmith_core::VotePayload::Effects(effects) => {
+                                            format!("{effects:?}").contains(&format!(
+                                                "VoteCount({:?})",
+                                                option.name
+                                            ))
+                                        }
+                                    })
+                                })
+                        }
+                        _ => false,
+                    };
+                    if per_vote_options
+                        && vote.starting_with_controller
+                        && !vote.secret
+                        && vote.controller_extra_votes == 0
+                        && !rendered.starts_with("Council's dilemma")
+                        && rendered.starts_with("Starting with you, ")
+                    {
+                        return format!("Council's dilemma — {rendered}");
+                    }
+                    return rendered;
+                }
+            }
             let mut initiation = vote.clone();
             initiation.payloads.clear();
             if let crate::effects::VoteChoice::NamedOptions(options) = &mut initiation.choice {
@@ -6120,6 +6423,46 @@
         return format!("{starting}each player votes for {}{}", choices, suffix);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        // "Take two extra turns after this one": a fixed count of extra turns
+        // is one counted noun, not a repeated sentence.
+        let visible = repeat
+            .effects
+            .iter()
+            .filter(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    .is_none_or(|target| target.explicit_declaration)
+            })
+            .collect::<Vec<_>>();
+        if let [only] = visible.as_slice()
+            && let Some(extra_turn) = only.downcast_ref::<crate::effects::ExtraTurnEffect>()
+            && let Value::Fixed(count) = repeat.count.unhinted()
+            && *count > 1
+        {
+            let player = describe_player_filter(&extra_turn.player);
+            let count = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+            return format!(
+                "{player} {} {count} extra turns after this one",
+                player_verb(&player, "take", "takes")
+            );
+        }
+        // "Target opponent skips their next X turns, where X is the number
+        // of coins that came up heads" (Ral Zarek): a repeated skip is one
+        // counted run of skipped turns.
+        if let [only] = visible.as_slice()
+            && let Some(skip) = only.downcast_ref::<crate::effects::SkipTurnEffect>()
+            && skip.player != PlayerFilter::IteratedPlayer
+            && !matches!(repeat.count.unhinted(), Value::Fixed(_))
+        {
+            let player = describe_player_filter(&skip.player);
+            let amount = describe_coin_result_for_each_basis(&repeat.count)
+                .map(|basis| format!("the number of {}", pluralize_noun_phrase(&basis)))
+                .unwrap_or_else(|| describe_value(&repeat.count));
+            return format!(
+                "{player} {} their next X turns, where X is {amount}",
+                player_verb(&player, "skip", "skips")
+            );
+        }
         let repeated = describe_effect_list(&repeat.effects);
         let repeated = repeated.trim();
         if repeated.is_empty() {
@@ -6213,6 +6556,9 @@
         if let Some(basis) = describe_turn_history_for_each_basis(&repeat.count) {
             return format!("For each {basis}, {repeated}");
         }
+        if let Some(basis) = describe_coin_result_for_each_basis(&repeat.count) {
+            return format!("For each {basis}, {repeated}");
+        }
         if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach)
             && let Some(basis) = describe_create_for_each_count(&repeat.count)
         {
@@ -6232,6 +6578,17 @@
             return format!(
                 "{}. Repeat this process once",
                 capitalize_first(repeated.trim_end_matches('.'))
+            );
+        }
+        // A repeated multi-clause process (Torment of Hailfire's "loses 3
+        // life unless ...") cannot carry a trailing "X times" unambiguously.
+        if !matches!(repeat.count.unhinted(), Value::Fixed(_))
+            && (repeated.contains(" unless ") || repeated.contains(". "))
+        {
+            return format!(
+                "Repeat the following process {} times. {}",
+                describe_value(&repeat.count),
+                capitalize_first(&repeated)
             );
         }
         return match repeat.count.unhinted() {
@@ -6271,3 +6628,4 @@
     }
     "Unsupported effect".to_string()
 }
+

@@ -44,7 +44,11 @@ pub enum ManaActionAst {
     AddManaCommanderIdentity {
         amount: Value,
     },
-    DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+    /// "you don't lose [unspent red] mana as steps and phases end": `color`
+    /// restricts the retained mana to one color.
+    DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+        color: Option<crate::color::Color>,
+    },
     AddManaImprintedColors,
     PayMana {
         cost: ManaCost,

@@ -4536,9 +4536,21 @@ fn maybe_assign_effect_result_id(
         && remaining.is_empty()
         && effect_can_supply_prior_effect_memory(effect);
 
+    // An exact choice/reveal producer exports its result only when a later
+    // sibling can read it. With no visible siblings (a nested branch) the
+    // consumer may live outside this list, so keep exporting.
     let exact_choice_producer = [local_random_result_bindings::Family::Number,
         local_random_result_bindings::Family::Color, local_random_result_bindings::Family::Reveal]
-        .into_iter().any(|family| family.compatible(effect));
+        .into_iter().any(|family| family.compatible(effect)
+            && (remaining.is_empty()
+                || if family == local_random_result_bindings::Family::Reveal {
+                    family.exported_for(remaining)
+                } else {
+                    let later = format!("{remaining:?}");
+                    ["ChosenNumber", "color_choice: Some"]
+                        .iter()
+                        .any(|marker| later.contains(marker))
+                }));
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt
         || next_is_if_result_with_opponent_did
@@ -6913,7 +6925,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
             | SubjectVerbActionAst::Mana(
-                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. },
             )
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
@@ -7565,8 +7577,10 @@ fn resolve_effect_result_value(
             *value = match value {
                 Value::PendingComparisonLeft => left.clone(),
                 Value::PendingComparisonRight => right.clone(),
-                _ => Value::absolute_difference(left.clone(), right.clone())
-                    .with_surface_hint(ValueSurfaceHint::Difference),
+                _ => Value::absolute_difference(left.clone(), right.clone()).with_surface_hints([
+                    ValueSurfaceHint::Difference,
+                    ValueSurfaceHint::ComparisonDifferenceReference,
+                ]),
             };
         }
 
@@ -8527,7 +8541,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
             | SubjectVerbActionAst::Mana(
-                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. },
             ) => 0,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone {
                 target, ..

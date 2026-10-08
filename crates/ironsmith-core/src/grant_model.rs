@@ -820,7 +820,17 @@ where
 {
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
-        if let Some(surface) = &self.filtered_zone_surface { return surface.clone(); }
+        if let Some(surface) = &self.filtered_zone_surface {
+            // A rider attached after the permission sentence was captured
+            // ("If you do, it enters with a finality counter on it").
+            if self.cast_this_way_grants.is_empty()
+                || surface.contains(" this way")
+                || surface.contains("If you do")
+            {
+                return surface.clone();
+            }
+            return self.display_base();
+        }
         let text = self.display_base();
         if self.instant_timing {
             format!("{text}. If you cast a spell this way, you may cast it as though it had flash")
@@ -1086,6 +1096,10 @@ where
 
         fn graveyard_cast_cost_text<C: CostComponent>(additional_costs: &[C]) -> String {
             fn cost_text<C: CostComponent>(cost: &C) -> Option<String> {
+                // "by foraging in addition to paying their other costs".
+                if cost.display().trim().trim_end_matches('.').eq_ignore_ascii_case("forage") {
+                    return Some("foraging".to_string());
+                }
                 if let Some(amount) = cost.life_amount() {
                     return Some(format!("paying {amount} life"));
                 }
@@ -1552,10 +1566,13 @@ where
                 cast_filter
             };
             let cast_spell_text = || {
-                if self
-                    .source_exiled_surface
-                    .as_ref()
-                    .is_some_and(|surface| surface.generic_cast_this_way_subject)
+                // An authored permission sentence already names what may be
+                // cast; its rider reads "If you cast a spell this way".
+                if self.filtered_zone_surface.is_some()
+                    || self
+                        .source_exiled_surface
+                        .as_ref()
+                        .is_some_and(|surface| surface.generic_cast_this_way_subject)
                 {
                     "a spell".to_string()
                 } else {
@@ -1599,7 +1616,7 @@ where
                     .or_else(|| grants[0].strip_prefix("enters the battlefield with "))
             {
                 let spell_text = cast_spell_text();
-                if self.filter == ObjectFilter::source() {
+                if self.filter.source {
                     return format!(". If you do, it enters with {rest}");
                 }
                 if let Some(subject) = cast_this_way_entered_object_subject(entered_object_filter) {
@@ -1611,6 +1628,11 @@ where
             }
             format!(". Spells cast this way gain {}", grants.join(" and "))
         };
+        // A rider attached after the permission sentence was captured
+        // ("If you do, it enters with a finality counter on it").
+        if let Some(surface) = &self.filtered_zone_surface {
+            return format!("{surface}{}", cast_this_way_ability_suffix());
+        }
         let cast_this_way_suffix = || {
             let mut suffix = cast_this_way_ability_suffix();
             let Some(surface) = self.source_exiled_surface.as_ref().and_then(|surface| surface.mana_rider)
@@ -1627,6 +1649,15 @@ where
             suffix
         };
 
+        // Costless Mayhem (Oscorp Industries): play this card from your
+        // graveyard if you discarded it this turn.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter
+                == ObjectFilter::source().discarded_or_cycled_this_turn_by(PlayerFilter::You)
+        {
+            return "Mayhem".to_string();
+        }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::source()
@@ -1806,13 +1837,51 @@ where
         }
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
-            && self.filter == ObjectFilter::nonland()
+            && (self.filter == ObjectFilter::nonland()
+                || self.filter == ObjectFilter::nonland().in_zone(Zone::Hand))
             && method.cast_from_zone() == Zone::Hand
             && method.mana_cost().is_none()
             && method.non_mana_costs().is_empty()
         {
             return format!(
                 "{may_prefix} cast spells from your hand without paying their mana costs"
+            );
+        }
+        // "You may cast Dragon spells without paying their mana costs."
+        if let Grantable::AlternativeCast(method) = &self.grantable
+            && self.zone == Zone::Hand
+            && self.filter.zone.is_none()
+            && self.filter != ObjectFilter::default()
+            && method.cast_from_zone() == Zone::Hand
+            && method.mana_cost().is_none()
+            && method.non_mana_costs().is_empty()
+            && method.cast_condition().is_none()
+        {
+            return format!(
+                "{may_prefix} cast {} without paying their mana costs",
+                pluralize_castable_spell_subject(castable_filter_description(&self.filter))
+            );
+        }
+        // "You may cast spells with mana value less than or equal to the
+        // number of creatures you control from your hand without paying their
+        // mana costs." (Omnipresence)
+        if let Grantable::AlternativeCast(method) = &self.grantable
+            && self.zone == Zone::Hand
+            && self.filter.zone == Some(Zone::Hand)
+            && method.cast_from_zone() == Zone::Hand
+            && method.mana_cost().is_none()
+            && method.non_mana_costs().is_empty()
+            && method.cast_condition().is_none()
+        {
+            let mut spell_filter = self.filter.clone();
+            spell_filter.zone = None;
+            let spells = if spell_filter == ObjectFilter::nonland() {
+                "spells".to_string()
+            } else {
+                pluralize_castable_spell_subject(castable_filter_description(&spell_filter))
+            };
+            return format!(
+                "{may_prefix} cast {spells} from your hand without paying their mana costs"
             );
         }
         if let Grantable::AlternativeCast(method @ AlternativeCastingMethod::Composed { .. }) =

@@ -394,7 +394,10 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
         };
         let condition = super::super::describe_static_condition(condition);
         if let Some(rest) = condition.strip_prefix("as long as ")
-            && let Some(if_tail) = self.display.strip_prefix("If ")
+            && let Some(if_tail) = self
+                .display
+                .strip_prefix("If ")
+                .or_else(|| self.display.strip_prefix("if "))
         {
             return format!("As long as {rest}, if {if_tail}");
         }
@@ -4618,6 +4621,7 @@ impl StaticAbilityKind for UnsupportedParserLine {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventMatchingDamage {
     pub spec: ironsmith_core::PreventMatchingDamageSpec,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl StaticAbilityKind for PreventMatchingDamage {
@@ -4626,7 +4630,23 @@ impl StaticAbilityKind for PreventMatchingDamage {
     }
 
     fn display(&self) -> String {
-        self.spec.display.clone()
+        // The static gate ("As long as this artifact is untapped") leads the
+        // printed prevention rule.
+        let Some(condition) = &self.condition else { return self.spec.display.clone() };
+        let condition = crate::static_abilities::continuous::describe_static_condition(condition);
+        let Some(gate) = condition.strip_prefix("as long as ") else {
+            return self.spec.display.clone();
+        };
+        format!("As long as {gate}, {}", self.spec.display)
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut next = self.clone();
+        next.condition = Some(match next.condition.take() {
+            Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)),
+            None => condition,
+        });
+        Some(StaticAbility::new(next))
     }
 
     fn generate_replacement_effect(
@@ -4641,7 +4661,7 @@ impl StaticAbilityKind for PreventMatchingDamage {
                 source_filter: self.spec.source_filter.clone(),
                 target_player_filter: self.spec.target_player_filter.clone(),
                 target_object_filter: self.spec.target_object_filter.clone(),
-                condition: None,
+                condition: self.condition.clone(),
                 combat_only: self.spec.combat_only,
                 noncombat_only: self.spec.noncombat_only,
                 amount_less_than: None,
@@ -4760,7 +4780,16 @@ pub struct RedirectMatchingDamage {
 }
 impl StaticAbilityKind for RedirectMatchingDamage {
     fn id(&self) -> StaticAbilityId { StaticAbilityId::RedirectMatchingDamage }
-    fn display(&self) -> String { self.spec.display.clone() }
+    fn display(&self) -> String {
+        // The static gate ("As long as this creature is untapped") is part of
+        // the printed ability, ahead of the redirection itself.
+        let Some(condition) = &self.condition else { return self.spec.display.clone() };
+        let condition = crate::static_abilities::continuous::describe_static_condition(condition);
+        let Some(gate) = condition.strip_prefix("as long as ") else {
+            return self.spec.display.clone();
+        };
+        format!("As long as {gate}, {}", self.spec.display)
+    }
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         let mut next = self.clone();
         next.condition = Some(match next.condition.take() {

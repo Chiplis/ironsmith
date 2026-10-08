@@ -126,6 +126,26 @@ pub fn is_still_land_followup(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
+/// "It's still an enchantment." after an animation of a noncreature
+/// permanent: the card type the animated object keeps.
+pub fn parse_still_card_type_followup(tokens: &[OwnedLexToken]) -> Option<crate::types::CardType> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let rest = [
+        &["it's", "still"][..],
+        &["its", "still"][..],
+        &["it", "s", "still"][..],
+    ]
+    .into_iter()
+    .find_map(|prefix| words.strip_prefix(prefix))?;
+    let [article, card_type] = rest else {
+        return None;
+    };
+    if !matches!(*article, "a" | "an") {
+        return None;
+    }
+    leaf::parse_leaf_card_type_complete(card_type).ok()
+}
+
 pub fn is_destroy_those_creatures_followup(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,

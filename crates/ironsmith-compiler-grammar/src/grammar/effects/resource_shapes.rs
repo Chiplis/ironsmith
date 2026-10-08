@@ -188,12 +188,17 @@ fn tagged_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::phrase(&["them"]),
         primitives::phrase(&["that", "card"]),
         primitives::phrase(&["those", "cards"]),
-        // "Shuffle this card into your library from your graveyard" (Kogla
-        // and Yidaro) names the source card itself.
-        primitives::phrase(&["this", "card"]),
     ))
     .void()
     .parse_next(input)
+}
+
+/// "Shuffle this card into your library from your graveyard" (Kogla and
+/// Yidaro) names the source card itself, not an earlier result.
+fn source_card_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["this", "card"])
+        .void()
+        .parse_next(input)
 }
 
 fn exact_unit<'a>(

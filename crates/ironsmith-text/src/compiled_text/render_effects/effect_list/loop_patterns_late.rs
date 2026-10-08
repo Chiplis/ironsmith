@@ -3474,7 +3474,37 @@
             idx += 2;
             continue;
         }
-        let mut rendered = describe_effect(filtered[idx]);
+        // "If it was a creature card, A. If it was a land card, B.
+        // Otherwise, C." (Misfortune Teller): the final branch's `Otherwise`
+        // also excludes the earlier sibling's condition, which lowering
+        // spells out as a nested `if not <earlier condition>`. That nested
+        // guard is what the authored "Otherwise" already says.
+        let sibling_otherwise = filtered[idx]
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .and_then(|conditional| {
+                let [nested] = conditional.if_false.as_slice() else {
+                    return None;
+                };
+                let nested = nested.downcast_ref::<crate::effects::ConditionalEffect>()?;
+                let Condition::Not(excluded) = &nested.condition else {
+                    return None;
+                };
+                if !nested.if_false.is_empty()
+                    || !filtered[..idx].iter().any(|earlier| {
+                        earlier
+                            .downcast_ref::<crate::effects::ConditionalEffect>()
+                            .is_some_and(|earlier| earlier.condition == **excluded)
+                    })
+                {
+                    return None;
+                }
+                let mut flattened = conditional.clone();
+                flattened.if_false = nested.if_true.clone();
+                Some(Effect::new(flattened))
+            });
+        let current = sibling_otherwise.as_ref().unwrap_or(filtered[idx]);
+        let mut rendered = describe_effect(current);
+
         if !rendered.is_empty() {
             let mut is_battlefield_move_result_followup = false;
             if idx > 0
@@ -3504,8 +3534,23 @@
                         EffectPredicate::PriorEffectResult(_)
                     )
                 });
+            // Each "If you win N or more flips, ..." reads the same coin
+            // receipt; they are parallel sentences, not a sequence.
+            let is_coin_result_followup = filtered[idx]
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some_and(|conditional| match &conditional.condition {
+                    Condition::ValueComparison { left, .. } => {
+                        describe_coin_result_for_each_basis(left).is_some()
+                    }
+                    // "Exile target card. If it was a creature card, ... If
+                    // it was a land card, ..." classifies the object the
+                    // preceding action just moved; it is not a later step.
+                    Condition::TaggedObjectMatchedLastKnown(..) => true,
+                    _ => false,
+                });
             if !parts.is_empty()
                 && rendered.starts_with("If ")
+                && !is_coin_result_followup
                 && !is_your_turn_followup
                 && !is_battlefield_move_result_followup
                 && !is_prior_result_followup

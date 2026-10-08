@@ -59,6 +59,45 @@ pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String
         .then(|| description.replacen(role, alternatives, 1))
 }
 
+/// "each creature that blocked or was blocked this turn" (Heat Stroke): two
+/// bare combat-history branches over one shared outer noun.
+fn describe_blocked_or_was_blocked_union(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+    if filter.union_connective() != ObjectFilterUnionConnective::Or
+        || filter.blocked_this_turn
+        || filter.was_blocked_this_turn
+    {
+        return None;
+    }
+    let mut blocked = ObjectFilter::default();
+    blocked.blocked_this_turn = true;
+    let mut was_blocked = ObjectFilter::default();
+    was_blocked.was_blocked_this_turn = true;
+    let bare = |branch: &ObjectFilter| {
+        let mut branch = branch.clone();
+        branch.union_surface = ObjectFilter::default().union_surface;
+        branch
+    };
+    if !((bare(first) == blocked && bare(second) == was_blocked)
+        || (bare(first) == was_blocked && bare(second) == blocked))
+    {
+        return None;
+    }
+    let mut combined = filter.clone();
+    combined.any_of.clear();
+    combined.blocked_this_turn = true;
+    let description = combined.description();
+    description.contains("that blocked this turn").then(|| {
+        description.replacen(
+            "that blocked this turn",
+            "that blocked or was blocked this turn",
+            1,
+        )
+    })
+}
+
 fn ensure_indefinite_article(text: String) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -3696,6 +3735,18 @@ impl ObjectFilter {
         self
     }
 
+    /// Protection from a card type chosen as the permanent entered (Serra's
+    /// Emissary) covers every object of that type, not only permanents.
+    pub fn protection_chosen_card_type_quality(&self) -> Option<&'static str> {
+        (self.chosen_card_type
+            && (ObjectFilter {
+                chosen_card_type: false,
+                union_surface: Default::default(),
+                ..self.clone()
+            }) == ObjectFilter::default())
+        .then_some("the chosen card type")
+    }
+
     /// A protection quality stated solely in terms of mana-value parity.
     pub fn protection_mana_value_parity_quality(&self) -> Option<&'static str> {
         let parity = self.mana_value_parity?;
@@ -4059,6 +4110,47 @@ impl ObjectFilter {
         self
     }
 
+    /// "enchanted"/"equipped" (CR 303.4, 301.5): an object with any Aura or
+    /// Equipment attached, when that attachment has no further qualifier.
+    fn with_attached_adjective(&self) -> Option<&'static str> {
+        let attached = self.with_attached_object.as_deref()?;
+        // "enchanted creature" from an Aura's own text: the attachment is
+        // this source.
+        if attached.source {
+            let mut rest = attached.clone();
+            let surface = rest.source_surface.take();
+            rest.source = false;
+            rest.zone = None;
+            if rest != ObjectFilter::default() {
+                return None;
+            }
+            return match surface {
+                Some(crate::SourceReferenceSurface::ThisPermanentType(noun)) if noun == "Aura" => {
+                    Some("enchanted")
+                }
+                Some(crate::SourceReferenceSurface::ThisPermanentType(noun))
+                    if noun == "Equipment" =>
+                {
+                    Some("equipped")
+                }
+                _ => None,
+            };
+        }
+        let mut rest = attached.clone();
+        rest.zone = None;
+        let (card_type, adjective) = match rest.subtypes.as_slice() {
+            [Subtype::Aura] => (CardType::Enchantment, "enchanted"),
+            [Subtype::Equipment] => (CardType::Artifact, "equipped"),
+            _ => return None,
+        };
+        if !(rest.card_types.is_empty() || rest.card_types == [card_type]) {
+            return None;
+        }
+        rest.card_types.clear();
+        rest.subtypes.clear();
+        (rest == ObjectFilter::default()).then_some(adjective)
+    }
+
     pub fn description(&self) -> String {
         // "each creature except for tokens you control" (Ajani Unrelenting):
         // the survivors are the base objects that you don't control or that
@@ -4076,6 +4168,42 @@ impl ObjectFilter {
                 let mut base = self.clone();
                 base.any_of.clear();
                 return format!("{} except for tokens you control", base.description());
+            }
+            // "each creature except for creatures you control with flying"
+            // (Flame Sweep): survivors are those you don't control or that
+            // lack the one named static ability.
+            let lacking = |branch: &ObjectFilter| match branch.excluded_static_abilities.as_slice() {
+                [ability] if *branch == ObjectFilter::default().without_static_ability(*ability) => {
+                    Some(*ability)
+                }
+                _ => None,
+            };
+            let excepted = if *left == not_you { lacking(right) } else if *right == not_you { lacking(left) } else { None };
+            if let Some(ability) = excepted
+                && self.controller.is_none()
+                && !self.static_abilities.contains(&ability)
+                && !self.excluded_static_abilities.contains(&ability)
+            {
+                let mut base = self.clone();
+                base.any_of.clear();
+                if base.zone == Some(Zone::Battlefield) {
+                    base.zone = None;
+                }
+                let base_text = base.description();
+                let kept = base
+                    .clone()
+                    .controlled_by(PlayerFilter::You)
+                    .with_static_ability(ability)
+                    .description();
+                let kept = kept
+                    .strip_prefix("a ")
+                    .or_else(|| kept.strip_prefix("an "))
+                    .unwrap_or(&kept);
+                if !base_text.contains(' ')
+                    && let Some(rest) = kept.strip_prefix(base_text.as_str())
+                {
+                    return format!("{base_text} except for {base_text}s{rest}");
+                }
             }
         }
         // A union of bare result tags ("those tokens" across several
@@ -4114,6 +4242,9 @@ impl ObjectFilter {
         if let Some(description) = describe_shared_combat_role_union(self) {
             return description;
         }
+        if let Some(description) = describe_blocked_or_was_blocked_union(self) {
+            return description;
+        }
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
         if let Some(description) = describe_relative_characteristic_list_filter(self) {
@@ -4136,6 +4267,37 @@ impl ObjectFilter {
         }
         if let Some(description) = describe_exact_mana_cost_union(self) {
             return description;
+        }
+        // "Equipment named Sword of Kaldra, Shield of Kaldra, and Helm of
+        // Kaldra": a serial list of literal names over one shared noun.
+        if self.any_of.len() >= 3
+            && self.any_of.iter().all(|branch| {
+                let mut rest = branch.clone();
+                rest.name = None;
+                rest.name_surface = LiteralNameSurface::default();
+                branch.name.is_some() && rest == ObjectFilter::default()
+            })
+        {
+            let mut base = self.clone();
+            base.any_of.clear();
+            let names = self
+                .any_of
+                .iter()
+                .map(|branch| {
+                    branch
+                        .name_surface()
+                        .or(branch.name.as_deref())
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect::<Vec<_>>();
+            if let Some((last, rest)) = names.split_last() {
+                return format!(
+                    "{} named {}, and {last}",
+                    base.description(),
+                    rest.join(", ")
+                );
+            }
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
@@ -4353,15 +4515,25 @@ impl ObjectFilter {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
-                PlayerFilter::TaggedPlayer(_) => {
+                PlayerFilter::TaggedPlayer(tag) => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
-                    controller_suffix = Some("that player controls".to_string());
+                    // "creatures enchanted player controls" (Curse of
+                    // Conformity) keeps the attachment's player noun.
+                    controller_suffix = Some(if tag.as_str() == "enchanted" {
+                        "enchanted player controls".to_string()
+                    } else {
+                        "that player controls".to_string()
+                    });
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
+                // "target creature the player to your left controls".
                 PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
-                    parts.push(describe_possessive_player_filter(ctrl));
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some(format!("{} controls", describe_player_filter(ctrl)));
                 }
                 PlayerFilter::Defending => {
                     if !has_leading_determiner {
@@ -4434,9 +4606,16 @@ impl ObjectFilter {
                     controller_suffix = Some("its controller controls".to_string());
                 }
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
-                PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
-                    parts.push("that player's".to_string())
+                // "all tokens that player controls" (Legions to Ashes): an
+                // aliased controller reads as a control relation, like an
+                // aliased target player.
+                PlayerFilter::AliasedControllerOf(_) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
                 }
+                PlayerFilter::AliasedOwnerOf(_) => parts.push("that player's".to_string()),
             }
         }
 
@@ -4625,6 +4804,14 @@ impl ObjectFilter {
                 if colors.contains(Color::Green) {
                     color_words.push("green");
                 }
+                // Two-color pairs read in their color-wheel order: "green or
+                // white", "red or white", "green or blue".
+                if matches!(
+                    color_words.as_slice(),
+                    ["white", "green"] | ["white", "red"] | ["blue", "green"]
+                ) {
+                    color_words.swap(0, 1);
+                }
                 if !color_words.is_empty() {
                     parts.push(describe_filter_union_list(
                         color_words.into_iter().map(str::to_string).collect(),
@@ -4776,6 +4963,14 @@ impl ObjectFilter {
                         }
                         _ => {}
                     }
+                }
+                TaggedOpbjectRelation::IsNotTaggedObject
+                    if constraint.tag.as_str().starts_with("tap_cost_") =>
+                {
+                    // "Target creature other than the creature tapped this
+                    // way" (Veteran's Voice): excludes the cost's tapped object.
+                    post_noun_qualifiers
+                        .push("other than the creature tapped this way".to_string());
                 }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     // `other` already spells this exclusion adjectivally. The
@@ -5081,21 +5276,31 @@ impl ObjectFilter {
         if self.noncommander {
             parts.push("noncommander".to_string());
         }
+        // "each creature it blocked this combat": the triggering blocker's
+        // own blocked set reads as a relative clause.
+        let blocked_by_triggering = matches!(
+            &self.blocked_by,
+            Some(ObjectRef::Tagged(tag)) if tag.as_str() == "triggering"
+        );
         if self.blocked && self.unblocked {
             parts.push("blocked/unblocked".to_string());
         } else {
-            if self.blocked {
+            if self.blocked && !blocked_by_triggering {
                 parts.push("blocked".to_string());
             }
             if self.unblocked {
                 parts.push("unblocked".to_string());
             }
         }
-        if let Some(blocker) = &self.blocked_by {
+        if blocked_by_triggering {
+            post_noun_qualifiers.push("it blocked this combat".to_string());
+        } else if let Some(blocker) = &self.blocked_by {
             let blocker_text = match blocker {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "equipped" => "equipped creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "enchanted" => "enchanted creature",
                 ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
@@ -5116,17 +5321,43 @@ impl ObjectFilter {
             {
                 partner_description = partner_description.replacen(" creature", "", 1);
             }
-            post_noun_qualifiers.push(format!(
-                "that blocked or was blocked by {} this turn",
+            // A pure back-reference to one earlier object reads "it".
+            let partner_is_reference = combat_partner.card_types.is_empty()
+                && combat_partner.subtypes.is_empty()
+                && combat_partner.controller.is_none()
+                && !combat_partner.tagged_constraints.is_empty()
+                && combat_partner.tagged_constraints.iter().all(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                });
+            let partner_text = if partner_is_reference {
+                "it".to_string()
+            } else {
                 ensure_indefinite_article(partner_description)
+            };
+            post_noun_qualifiers.push(format!(
+                "that blocked or was blocked by {partner_text} this turn"
             ));
         }
-        if self.tapped && self.untapped {
-            parts.push("tapped/untapped".to_string());
+        let attached_adjective = self.with_attached_adjective();
+        if let Some(adjective) = attached_adjective {
+            parts.push(adjective.to_string());
+        }
+        // Oracle orders the tapped state before "nontoken" ("untapped
+        // nontoken artifact", "tapped nontoken creatures").
+        let tapped_state = if self.tapped && self.untapped {
+            Some("tapped/untapped")
         } else if self.tapped {
-            parts.push("tapped".to_string());
+            Some("tapped")
         } else if self.untapped {
-            parts.push("untapped".to_string());
+            Some("untapped")
+        } else {
+            None
+        };
+        if let Some(state) = tapped_state {
+            match parts.iter().position(|part| part == "nontoken") {
+                Some(index) => parts.insert(index, state.to_string()),
+                None => parts.push(state.to_string()),
+            }
         }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
@@ -5230,6 +5461,8 @@ impl ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "equipped" => "equipped creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "enchanted" => "enchanted creature",
                 ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "that creature",
             };
             post_noun_qualifiers.push(if self.blocking {
@@ -5747,10 +5980,23 @@ impl ObjectFilter {
                     PtReference::Effective => "power",
                     PtReference::Base => "base power",
                 };
-                parts.push(
-                    describe_extremum_filter_comparison(power, label)
-                        .unwrap_or_else(|| format!("with {label} {}", describe_comparison(power))),
+                // "a creature card with lesser power" than the triggering
+                // or source creature (Shadowfax, Mentor). An authored
+                // possessive ("power less than Lena's power") keeps its
+                // surface hint and its spelled-out comparison.
+                let lesser_than_referent = matches!(
+                    power,
+                    Comparison::LessThanExpr(value)
+                        if matches!(value.as_ref(), Value::PowerOf(spec)
+                            if matches!(spec.as_ref(), ChooseSpec::Source)
+                                || matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"))
                 );
+                parts.push(if lesser_than_referent && label == "power" {
+                    "with lesser power".to_string()
+                } else {
+                    describe_extremum_filter_comparison(power, label)
+                        .unwrap_or_else(|| format!("with {label} {}", describe_comparison(power)))
+                });
             }
             if let Some(power_parity) = self.power_parity {
                 let axis = match self.power_reference {
@@ -5904,7 +6150,13 @@ impl ObjectFilter {
         }
         for ability in &self.static_abilities {
             if let Some(label) = describe_filter_static_ability(*ability) {
-                parts.push(format!("with {}", label));
+                // Oracle names a morph creature "a creature with a morph
+                // ability".
+                if *ability == StaticAbilityId::Morph {
+                    parts.push(format!("with a {label} ability"));
+                } else {
+                    parts.push(format!("with {}", label));
+                }
             }
         }
         for marker in &self.ability_markers {
@@ -6012,7 +6264,7 @@ impl ObjectFilter {
                         zone_name
                     ));
                 } else if zone == Zone::Graveyard && self.single_graveyard {
-                    parts.push("in single graveyard".to_string());
+                    parts.push("from a single graveyard".to_string());
                 } else if zone == Zone::Graveyard {
                     parts.push("in a graveyard".to_string());
                 } else {
@@ -6182,7 +6434,9 @@ impl ObjectFilter {
             };
             parts.push(format!("that could enchant {host_text}"));
         }
-        if let Some(with_attached) = &self.with_attached_object {
+        if let Some(with_attached) = &self.with_attached_object
+            && attached_adjective.is_none()
+        {
             let inner = with_attached.description();
             let surfaced = if inner.starts_with("another ") || inner.starts_with("other ") {
                 inner
@@ -7558,6 +7812,7 @@ pub fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'s
         Changeling => Some("changeling"),
         Cascade => Some("cascade"),
         Convoke => Some("convoke"),
+        Phasing => Some("phasing"),
         _ => None,
     }
 }
@@ -7698,6 +7953,29 @@ fn describe_extremum_filter_comparison(
     comparison: &Comparison,
     characteristic: &str,
 ) -> Option<String> {
+    // "with equal or lesser power" (Body Launderer), "with lesser toughness"
+    // (Colfenor): the comparand is the same characteristic of the clause's
+    // antecedent, which the compact relational surface leaves implicit.
+    let relative = match comparison {
+        Comparison::LessThanOrEqualExpr(value) => Some(("equal or lesser", value)),
+        Comparison::LessThanExpr(value) => Some(("lesser", value)),
+        Comparison::GreaterThanOrEqualExpr(value) => Some(("equal or greater", value)),
+        Comparison::GreaterThanExpr(value) => Some(("greater", value)),
+        _ => None,
+    };
+    if let Some((relation, value)) = relative {
+        let (value_characteristic, spec) = match value.unhinted() {
+            Value::PowerOf(spec) => ("power", spec),
+            Value::ToughnessOf(spec) => ("toughness", spec),
+            _ => return None,
+        };
+        let antecedent = matches!(
+            spec.unhinted(),
+            crate::ChooseSpec::Tagged(tag) if matches!(tag.as_str(), "triggering" | "__it__")
+        );
+        return (antecedent && characteristic == value_characteristic)
+            .then(|| format!("with {relation} {characteristic}"));
+    }
     let Comparison::EqualExpr(value) = comparison else {
         return None;
     };
@@ -7938,6 +8216,13 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
             Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
+            // "Choose a number ... with power greater than or equal to the
+            // chosen number" (Expel the Interlopers).
+            Value::PriorEffectMetric { query, .. }
+                if query.action == Some(crate::PriorEffectAction::ChosenNumber) =>
+            {
+                "the chosen number".to_string()
+            }
             Value::LastNotedLifeTotal => "last noted life total".to_string(),
             Value::ThisAbilityResolvedThisTurnCount => {
                 "the number of times this ability has resolved this turn".to_string()
@@ -8098,6 +8383,24 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::LifeGainedThisTurn(PlayerFilter::You) => {
                 "the amount of life you gained this turn".to_string()
             }
+            // "less than the revealed card's mana value": the one card an
+            // exact prior action produced.
+            Value::PriorEffectMetric { query, .. }
+                if query.metric == EffectMetric::FirstManaValue
+                    && query.filter.is_none()
+                    && query.player.is_none() =>
+            {
+                let card = match query.action {
+                    Some(crate::value_model::PriorEffectAction::Revealed) => "the revealed card",
+                    Some(crate::value_model::PriorEffectAction::Exiled) => "the exiled card",
+                    Some(crate::value_model::PriorEffectAction::Discarded) => "the discarded card",
+                    Some(crate::value_model::PriorEffectAction::Sacrificed) => {
+                        "the sacrificed permanent"
+                    }
+                    _ => "that card",
+                };
+                format!("{card}'s mana value")
+            }
             _ => "a dynamic value".to_string(),
         }
     }
@@ -8190,6 +8493,19 @@ fn describe_value_choose_spec_possessive(spec: &ChooseSpec) -> String {
         } else {
             format!("{subject}'s")
         };
+    }
+    // "power greater than target creature's power": an inline single target
+    // is named where the value reads it.
+    if spec.is_target()
+        && spec.count().max == Some(1)
+        && let ChooseSpec::Object(filter) = spec.base()
+    {
+        let desc = filter.description();
+        let noun = desc
+            .strip_prefix("a ")
+            .or_else(|| desc.strip_prefix("an "))
+            .unwrap_or(&desc);
+        return format!("target {noun}'s");
     }
     let subject = match spec.base() {
         ChooseSpec::Tagged(tag) if tag.as_str() == crate::EXPLOITED_TAG => {

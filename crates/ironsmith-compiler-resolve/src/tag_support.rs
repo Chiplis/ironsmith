@@ -1588,7 +1588,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
         | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
-        | SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn)
+        | SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. })
         | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
         | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn {

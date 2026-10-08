@@ -1111,7 +1111,12 @@ impl StaticAbilityModelInterpreter {
                     leaf = inner.as_ref();
                 }
                 let converted = StaticAbility::from_model(leaf.clone());
-                if !converted.may_generate_continuous_effects() { return Some(converted); }
+                // A rule-modifying leaf ("This ability costs {2} less to
+                // activate if you have one or fewer cards in hand") carries
+                // the condition natively when it supports one.
+                if !converted.may_generate_continuous_effects() {
+                    return Some(converted.with_condition(combined.clone()).unwrap_or(converted));
+                }
                 converted.with_condition(combined.clone()).unwrap_or_else(|| {
                     StaticAbility::new(
                         crate::static_abilities::GrantAbility::source(converted)
@@ -2464,6 +2469,28 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         {
             let body = StaticAbility::from_model((**ability).clone()).display();
             return format!("{} — {body}", self.model.label);
+        }
+        // A conditional leaf with no continuous effect keeps its native
+        // display unconditioned; the gate is still part of the ability.
+        if let ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } =
+            &self.model.payload
+            && let Some(leaf) = self.leaf_static_ability()
+            && !leaf.may_generate_continuous_effects()
+        {
+            let body = leaf.display();
+            let body = body.trim_end_matches('.');
+            let condition = super::continuous::describe_static_condition(condition);
+            if leaf.id() == StaticAbilityId::EntersTapped
+                && let Some(rest) = condition.strip_prefix("as long as ")
+            {
+                let mut chars = body.chars();
+                let lowered = chars
+                    .next()
+                    .map(|first| first.to_lowercase().chain(chars).collect::<String>())
+                    .unwrap_or_default();
+                return format!("If {rest}, {lowered}");
+            }
+            return format!("{body} {condition}");
         }
         if let Some(ability) = self.leaf_static_ability() {
             return ability.display();

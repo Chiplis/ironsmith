@@ -4120,6 +4120,33 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(description) = owner_or_controller_clause {
             return with_x_in_cost(description);
         }
+        // "creature with [base] power or toughness 1 or less": one either-
+        // characteristic comparison lowered as power and toughness branches.
+        if let [power_branch, toughness_branch] = self.any_of.as_slice()
+            && power_branch.power.is_some()
+            && power_branch.toughness.is_none()
+            && toughness_branch.toughness.is_some()
+            && toughness_branch.power.is_none()
+            && power_branch.power == toughness_branch.toughness
+            && power_branch.power_reference == toughness_branch.toughness_reference
+            && {
+                let mut normalized = toughness_branch.clone();
+                normalized.power = normalized.toughness.take();
+                normalized.power_reference = toughness_branch.toughness_reference;
+                normalized.toughness_reference = power_branch.toughness_reference;
+                normalized == *power_branch
+            }
+        {
+            let description = ObjectFilter::description(power_branch);
+            for (needle, replacement) in [
+                (" with base power ", " with base power or toughness "),
+                (" with power ", " with power or toughness "),
+            ] {
+                if description.contains(needle) {
+                    return with_x_in_cost(description.replacen(needle, replacement, 1));
+                }
+            }
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let descriptions = self
                 .any_of
@@ -4288,15 +4315,25 @@ impl ObjectFilterExt for ObjectFilter {
                     post_noun_qualifiers.push(format!("controlled by {}", ctrl.description()));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
-                PlayerFilter::TaggedPlayer(_) => {
+                PlayerFilter::TaggedPlayer(tag) => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
-                    controller_suffix = Some("that player controls".to_string());
+                    // "creatures enchanted player controls" (Curse of
+                    // Conformity) keeps the attachment's player noun.
+                    controller_suffix = Some(if tag.as_str() == "enchanted" {
+                        "enchanted player controls".to_string()
+                    } else {
+                        "that player controls".to_string()
+                    });
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
+                // "target creature the player to your left controls".
                 PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
-                    parts.push(describe_possessive_player_filter(ctrl));
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some(format!("{} controls", describe_player_filter(ctrl)));
                 }
                 PlayerFilter::Defending => {
                     if !has_leading_determiner {
@@ -4917,6 +4954,8 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "equipped" => "equipped creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "enchanted" => "enchanted creature",
                 ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
@@ -4937,9 +4976,21 @@ impl ObjectFilterExt for ObjectFilter {
             {
                 partner_description = partner_description.replacen(" creature", "", 1);
             }
-            post_noun_qualifiers.push(format!(
-                "that blocked or was blocked by {} this turn",
+            // A pure back-reference to one earlier object reads "it".
+            let partner_is_reference = combat_partner.card_types.is_empty()
+                && combat_partner.subtypes.is_empty()
+                && combat_partner.controller.is_none()
+                && !combat_partner.tagged_constraints.is_empty()
+                && combat_partner.tagged_constraints.iter().all(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                });
+            let partner_text = if partner_is_reference {
+                "it".to_string()
+            } else {
                 ensure_filter_indefinite_article(partner_description)
+            };
+            post_noun_qualifiers.push(format!(
+                "that blocked or was blocked by {partner_text} this turn"
             ));
         }
         if self.tapped && self.untapped {
@@ -5096,6 +5147,8 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Target => "target creature",
                 ObjectRef::Specific(_) => "that creature",
                 ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "equipped" => "equipped creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "enchanted" => "enchanted creature",
                 ObjectRef::Tagged(_) | ObjectRef::FilterCandidate => "that creature",
             };
             post_noun_qualifiers.push(if self.blocking {
@@ -5538,7 +5591,14 @@ impl ObjectFilterExt for ObjectFilter {
                     PtReference::Effective => "power",
                     PtReference::Base => "base power",
                 };
-                parts.push(format!("with {label} {}", describe_comparison(power)));
+                let comparison = describe_comparison(power);
+                // "creatures with greater power" (Tadeas): compared against
+                // the referenced object's own power.
+                if label == "power" && comparison == "greater than its power" {
+                    parts.push("with greater power".to_string());
+                } else {
+                    parts.push(format!("with {label} {comparison}"));
+                }
             }
             if let Some(power_parity) = self.power_parity {
                 let axis = match self.power_reference {
@@ -5662,7 +5722,13 @@ impl ObjectFilterExt for ObjectFilter {
         }
         for ability in &self.static_abilities {
             if let Some(label) = describe_filter_static_ability(*ability) {
-                parts.push(format!("with {}", label));
+                // Oracle names a morph creature "a creature with a morph
+                // ability".
+                if *ability == crate::static_abilities::StaticAbilityId::Morph {
+                    parts.push(format!("with a {label} ability"));
+                } else {
+                    parts.push(format!("with {}", label));
+                }
             }
         }
         for marker in &self.ability_markers {
@@ -5767,7 +5833,7 @@ impl ObjectFilterExt for ObjectFilter {
                         zone_name
                     ));
                 } else if zone == Zone::Graveyard && self.single_graveyard {
-                    parts.push("in single graveyard".to_string());
+                    parts.push("from a single graveyard".to_string());
                 } else if zone == Zone::Graveyard {
                     parts.push("in a graveyard".to_string());
                 } else {

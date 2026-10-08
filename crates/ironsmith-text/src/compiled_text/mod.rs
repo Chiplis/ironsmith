@@ -62,7 +62,31 @@ fn restore_cleave_bracket_surface(line: String) -> String {
 /// renderers replace it with the card's name.
 pub(crate) const GRANTING_SOURCE_RENDER_SURFACE: &str = "the granting permanent";
 
+/// "When this creature transforms into Awoken Horror": the destination of a
+/// self-transform trigger is the face that has the ability, compiled as a
+/// self-reference; oracle always names that face.
+fn substitute_transform_destination_self_name(line: String, def: &CardDefinition) -> String {
+    const MARKER: &str = " transforms into this ";
+    let Some(start) = line.find(MARKER) else {
+        return line;
+    };
+    let after = &line[start + MARKER.len()..];
+    let noun_len = after
+        .find(|ch: char| !ch.is_ascii_alphabetic())
+        .unwrap_or(after.len());
+    if noun_len == 0 {
+        return line;
+    }
+    format!(
+        "{} transforms into {}{}",
+        &line[..start],
+        def.card.name,
+        &after[noun_len..]
+    )
+}
+
 fn substitute_granting_source_surface(line: String, def: &CardDefinition) -> String {
+    let line = substitute_transform_destination_self_name(line, def);
     if !line.contains("granting permanent") {
         return line;
     }
@@ -110,11 +134,35 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let lines = compact_post_substitution_surface_lines(lines)
         .into_iter()
         .map(normalize_scored_compiled_line)
+        .map(uppercase_standalone_variable_x)
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
     let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
     prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
+}
+
+/// A granted ability's display can carry lowercased source words, so the
+/// variable reads "+x/+x ... where x is". A standalone lowercase `x` is never
+/// an English word in rules text; it is always the variable X.
+fn uppercase_standalone_variable_x(line: String) -> String {
+    if !line.contains('x') {
+        return line;
+    }
+    let chars = line.chars().collect::<Vec<_>>();
+    let mut out = String::with_capacity(line.len());
+    for (index, ch) in chars.iter().enumerate() {
+        let standalone = *ch == 'x'
+            && index
+                .checked_sub(1)
+                .and_then(|prev| chars.get(prev))
+                .is_none_or(|prev| !prev.is_alphanumeric() && *prev != '\'')
+            && chars
+                .get(index + 1)
+                .is_none_or(|next| !next.is_alphanumeric() && *next != '\'');
+        out.push(if standalone { 'X' } else { *ch });
+    }
+    out
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
@@ -794,8 +842,10 @@ fn parse_station_charge_counter_condition(condition: &str) -> Option<i32> {
         "the number of charge counters on this creature is ",
     ]
     .into_iter()
-    .find_map(|prefix| lower.strip_prefix(prefix))?
-    .strip_suffix(" or greater")?;
+    .find_map(|prefix| lower.strip_prefix(prefix))?;
+    let threshold = threshold
+        .strip_suffix(" or greater")
+        .or_else(|| threshold.strip_prefix("greater than or equal to "))?;
     parse_station_threshold_value(threshold.trim())
 }
 
@@ -851,6 +901,47 @@ fn station_threshold_body(body: &str) -> String {
     body.to_string()
 }
 
+/// Once a line has spelled out "this is the first time this ability has
+/// resolved this turn", later branches of the same count ladder use the
+/// elliptical Oracle form "If it's the second time, ...".
+fn elide_repeated_resolution_count_conditions(line: String) -> String {
+    const TAIL: &str = " time this ability has resolved this turn";
+    const HEAD: &str = "If this is the ";
+    let Some(first) = line.find(TAIL) else {
+        return line;
+    };
+    let split = first + TAIL.len();
+    let (kept, mut rest) = line.split_at(split);
+    let mut out = kept.to_string();
+    while let Some(start) = rest.find(HEAD) {
+        let after_head = &rest[start + HEAD.len()..];
+        let Some(ordinal) = after_head.split(' ').next() else {
+            break;
+        };
+        let Some(after_ordinal) = after_head[ordinal.len()..].strip_prefix(TAIL) else {
+            out.push_str(&rest[..start + HEAD.len()]);
+            rest = after_head;
+            continue;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&format!("If it's the {ordinal} time"));
+        rest = after_ordinal;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Recruit is lowered by expanding the keyword action into its reminder-text
+/// instructions; the rendered expansion reads back as the keyword action.
+fn restore_recruit_keyword_action(line: String) -> String {
+    const EXPANSION: &str = "raw a card, then discard a card. If you discard a nonland card this way, create a 1/1 white Human Soldier creature token";
+    let mut out = line;
+    for (head, keyword) in [("d", "recruit"), ("D", "Recruit")] {
+        out = out.replace(&format!("{head}{EXPANSION}"), keyword);
+    }
+    out
+}
+
 fn normalize_scored_compiled_line(line: String) -> String {
     // Effect-list renderers intentionally lowercase clauses when composing
     // them into a larger sentence. At the card-line boundary, restore normal
@@ -862,6 +953,8 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // final three-sentence surface after the earlier merge passes; fold it
     // to the authored reveal-and-put sentence here.
     let line = normalize_common::normalize_search_outside_game_reveal_surface(&line);
+    let line = elide_repeated_resolution_count_conditions(line);
+    let line = restore_recruit_keyword_action(line);
     // A trailing "if" on a targeting instruction ("Destroy target artifact if
     // its mana value is 2 or less") checks the pending target before the
     // action happens, so it never reads as the past-tense last-known check
@@ -1163,8 +1256,94 @@ fn remove_redundant_period_after_terminal_quote(line: &str) -> String {
     normalized
 }
 
+/// "Each player loses half their life, then discards half the cards in their
+/// hand. Round down each time.": a sentence whose every fraction rounds the
+/// same way states the rounding once, after the sentence.
+fn fold_repeated_rounding_into_trailing_sentence(line: String) -> String {
+    let mut out = Vec::new();
+    let mut changed = false;
+    for sentence in line.split_inclusive(". ") {
+        let (body, separator) = match sentence.strip_suffix(". ") {
+            Some(body) => (body, ". "),
+            None => (sentence, ""),
+        };
+        let (core, terminal) = match body.strip_suffix('.') {
+            Some(core) => (core, "."),
+            None => (body, ""),
+        };
+        let mut folded = None;
+        for direction in ["down", "up"] {
+            let marker = format!(", rounded {direction}");
+            let other = if direction == "down" { ", rounded up" } else { ", rounded down" };
+            if core.matches(&marker).count() >= 2 && !core.contains(other) {
+                folded = Some(format!(
+                    "{}. Round {direction} each time{}{separator}",
+                    core.replace(&marker, ""),
+                    if terminal.is_empty() { "" } else { "." }
+                ));
+            }
+        }
+        match folded {
+            Some(text) => {
+                changed = true;
+                out.push(text);
+            }
+            None => out.push(sentence.to_string()),
+        }
+    }
+    if changed { out.concat() } else { line }
+}
+
+/// Adamant (CR 207.2c ability word) is the only printed spelling of a
+/// leading "at least three <color> mana was spent" condition.
+fn label_adamant_condition_line(line: String) -> String {
+    let Some(rest) = line.strip_prefix("If at least three ") else {
+        return line;
+    };
+    let colored = ["white", "blue", "black", "red", "green"]
+        .iter()
+        .any(|color| rest.starts_with(&format!("{color} mana was spent to cast this spell")));
+    if colored { format!("Adamant — {line}") } else { line }
+}
+
+/// "... if this is the first time this ability has resolved this turn. If
+/// it's the second time, ...": after the first resolution-count condition,
+/// later ones in the same ability abbreviate to "it's the <ordinal> time".
+fn abbreviate_repeated_resolution_count_conditions(line: String) -> String {
+    const HEAD: &str = "If this is the ";
+    const TAIL: &str = " time this ability has resolved this turn";
+    let Some(first) = line.find(" time this ability has resolved this turn") else {
+        return line;
+    };
+    let split = first + TAIL.len();
+    let (kept, rest) = line.split_at(split);
+    let mut out = kept.to_string();
+    let mut remaining = rest;
+    while let Some(start) = remaining.find(HEAD) {
+        let after_head = &remaining[start + HEAD.len()..];
+        let Some(ordinal_end) = after_head.find(TAIL) else {
+            break;
+        };
+        let ordinal = &after_head[..ordinal_end];
+        if ordinal.is_empty() || ordinal.contains(' ') {
+            out.push_str(&remaining[..start + HEAD.len()]);
+            remaining = after_head;
+            continue;
+        }
+        out.push_str(&remaining[..start]);
+        out.push_str("If it's the ");
+        out.push_str(ordinal);
+        out.push_str(" time");
+        remaining = &after_head[ordinal_end + TAIL.len()..];
+    }
+    out.push_str(remaining);
+    out
+}
+
 fn finalize_ast_surface_line(line: String) -> String {
-    let mut line = line;
+    let mut line = abbreviate_repeated_resolution_count_conditions(label_adamant_condition_line(
+        fold_repeated_rounding_into_trailing_sentence(line),
+    ));
     // A merge pass can append a rider after a line that already ends with a
     // sentence-final period, doubling it ("can't be regenerated.. You lose").
     if !line.contains("...") {
@@ -1915,7 +2094,13 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
             }
             let head = trimmed[..first].trim();
             let condition = trimmed[first + marker.len()..].trim();
-            if head.is_empty() || condition.is_empty() {
+            // "for as long as" is a one-shot duration, and a labeled chapter
+            // ("I — ...") is its own triggered line.
+            if head.is_empty()
+                || condition.is_empty()
+                || head.to_ascii_lowercase().ends_with(" for")
+                || head.contains(" — ")
+            {
                 return None;
             }
             // The pump + can't-block threshold pair has a dedicated
@@ -1958,9 +2143,47 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
         }
     }
 
+    // The second static of a shared-subject pair may restate the condition
+    // through the pronoun ("as long as it's monstrous"); the pair then reads
+    // as one subject with two predicates.
+    fn pronoun_condition_matches(left_head: &str, left_cond: &str, right_cond: &str) -> bool {
+        let Some((subject, _, _)) = split_subject_predicate_clause(left_head) else {
+            return false;
+        };
+        right_cond
+            .strip_prefix("it's ")
+            .is_some_and(|state| left_cond.eq_ignore_ascii_case(&format!("{subject} is {state}")))
+    }
+
     let mut merged: Vec<String> = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let (
+                Some((left_head, left_cond, left_marker)),
+                Some((right_head, right_cond, right_marker)),
+            ) = (
+                split_static_condition(&lines[idx]),
+                split_static_condition(&lines[idx + 1]),
+            )
+            && left_marker == right_marker
+            && left_marker == "as long as"
+            && !left_head.contains(" and ")
+            && !right_head.contains(" and ")
+            && pronoun_condition_matches(left_head, left_cond, right_cond)
+            && let Some((left_subject, _, _)) = split_subject_predicate_clause(left_head)
+            && right_head
+                .to_ascii_lowercase()
+                .starts_with(&format!("{} ", left_subject.to_ascii_lowercase()))
+        {
+            let right_verb_phrase = right_head[left_subject.len()..].trim();
+            merged.push(format!(
+                "As long as {left_cond}, it {} and {right_verb_phrase}.",
+                left_head[left_subject.len()..].trim()
+            ));
+            idx += 2;
+            continue;
+        }
         if idx + 1 < lines.len()
             && let (
                 Some((left_head, left_cond, left_marker)),
@@ -2051,6 +2274,20 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
             {
                 merged.push(format!(
                     "{left} and it doesn't untap during its controller's next untap step."
+                ));
+                idx += 2;
+                continue;
+            }
+            // "You may cast this card from your graveyard or from exile":
+            // one permission per zone, authored as one sentence.
+            if let Some(left_zone) = left.strip_prefix("You may cast this card from ")
+                && let Some(right_zone) = right.strip_prefix("You may cast this card from ")
+                && [left_zone, right_zone].iter().all(|zone| {
+                    matches!(*zone, "your graveyard" | "exile" | "your hand" | "your library")
+                })
+            {
+                merged.push(format!(
+                    "You may cast this card from {left_zone} or from {right_zone}."
                 ));
                 idx += 2;
                 continue;
@@ -2218,7 +2455,7 @@ const ADJACENT_LINE_JOINS: &[(&str, &str, &str)] = &[
     ),
     (
         "Creatures with flying can't attack or block.",
-        "Creatures with flying activated abilities with in their costs can't be activated.",
+        "Creatures with flying activated abilities with {T} in their costs can't be activated.",
         "Creatures with flying can't attack or block, and their activated abilities with {T} in their costs can't be activated.",
     ),
     (

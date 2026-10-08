@@ -778,7 +778,7 @@ pub fn display_text_for_tokens_in_mode(
     let mut capitalize_next_cost_action = true;
     let mut last_rendered_as_mana_symbol = false;
 
-    for token in tokens {
+    for (token_idx, token) in tokens.iter().enumerate() {
         if let Some(word) = token.as_word() {
             if needs_space && !text.is_empty() {
                 text.push(' ');
@@ -786,10 +786,14 @@ pub fn display_text_for_tokens_in_mode(
             let numeric_like = word
                 .chars()
                 .all(|ch| ch.is_ascii_digit() || matches!(ch, 'x' | 'X' | '+' | '-' | '/'));
+            // "Pay 2 life" counts life, not generic mana.
+            let counts_life = tokens
+                .get(token_idx + 1)
+                .is_some_and(|next| next.is_word("life"));
             let (mut rendered, rendered_as_mana_symbol) = match word {
                 "t" => ("{T}".to_string(), true),
                 "q" => ("{Q}".to_string(), true),
-                _ if in_loyalty_cost || (in_effect_text && numeric_like) => {
+                _ if in_loyalty_cost || ((in_effect_text || counts_life) && numeric_like) => {
                     (word.to_string(), false)
                 }
                 _ => match crate::util::parse_mana_symbol(word) {

@@ -1086,8 +1086,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         {
             // "enchanted creature blocks or becomes blocked": the right arm
             // shares the left arm's subject, not the ability's source.
+            // "this creature leaves the battlefield or becomes untapped"
+            // likewise keeps the leaving object as the untap subject.
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Leave))
         } else if right_words.len() > 1
             && right_words
                 .first()
@@ -1397,6 +1400,21 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         if let Some(player) = parse_trigger_subject_player_filter(&subject_words) {
+            // "you create or sacrifice a token" (Mirkwood Bats): one subject
+            // performs either verb on the shared object. Distribute the
+            // object over both verbs and read each arm on its own.
+            if tokens.get(create_idx + 1).is_some_and(|token| token.is_word("or"))
+                && tokens.len() > create_idx + 3
+            {
+                let shared_object = &tokens[create_idx + 3..];
+                let mut left_tokens = tokens[..=create_idx].to_vec();
+                left_tokens.extend_from_slice(shared_object);
+                let mut right_tokens = subject_tokens.to_vec();
+                right_tokens.extend_from_slice(&tokens[create_idx + 2..]);
+                let left = parse_trigger_clause_lexed(&left_tokens)?;
+                let right = parse_trigger_clause_lexed(&right_tokens)?;
+                return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+            }
             let object_tokens = trim_commas(&tokens[create_idx + 1..]);
             let one_or_more = has_leading_one_or_more(&object_tokens);
             let object_tokens = strip_leading_one_or_more_lexed(&object_tokens);
@@ -4110,6 +4128,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player));
             }
             let card_numbers = parse_draw_numbers_each_turn(tail);
+            // "a player draws their second card during their turn" (The
+            // Council of Four): only the active player's own draws count.
+            let player = if matches!(player, PlayerFilter::Any)
+                && tail.ends_with(&["during", "their", "turn"])
+            {
+                PlayerFilter::Active
+            } else {
+                player
+            };
             match card_numbers.as_slice() {
                 [card_number] => {
                     return Ok(TriggerSpec::PlayerDrawsNthCardEachTurn {

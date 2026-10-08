@@ -413,6 +413,9 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::You => "you cast",
             PlayerFilter::Any => "a player casts",
             PlayerFilter::Opponent => "an opponent casts",
+            // "a player casts their second spell during their turn" (The
+            // Council of Four): an ordinal of the active player's own spells.
+            PlayerFilter::Active if self.exact_spells_this_turn.is_some() => "a player casts",
             PlayerFilter::Active => "the active player casts",
             PlayerFilter::ChosenPlayer => "the chosen player casts",
             PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
@@ -496,7 +499,7 @@ impl TriggerMatcher for SpellCastTrigger {
                             suppress_turn_suffix = true;
                             format!("their {ordinal} spell {turn_suffix}")
                         }
-                        None => format!("their {ordinal} spell each turn"),
+                        None => format!("their {ordinal} spell during their turn"),
                     },
                     PlayerFilter::Opponent => match exact_spell_turn_suffix {
                         Some(turn_suffix) => {
@@ -524,6 +527,9 @@ impl TriggerMatcher for SpellCastTrigger {
                         Some(turn_suffix) => {
                             suppress_turn_suffix = true;
                             format!("their {ordinal} {base_spell_text} {turn_suffix}")
+                        }
+                        None if self.caster == PlayerFilter::Active => {
+                            format!("their {ordinal} {base_spell_text} during their turn")
                         }
                         None => format!("their {ordinal} {base_spell_text} each turn"),
                     },

@@ -4247,8 +4247,37 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
             clauses.push(body);
             continue;
         }
-        for inner in &for_players.effects {
-            let text = describe_effect(inner);
+        // A coordinated per-player body ("each lose 2 life and sacrifice a
+        // creature of their choice") lists its members as one clause list;
+        // a choice feeding a sacrifice is that sacrifice's selection.
+        let members: Vec<&Effect> = match for_players.effects.as_slice() {
+            [only] => match unwrap_basic_tag_wrappers(only)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+            {
+                Some(sequence) if sequence.surface == ironsmith_core::SequenceSurface::Coordinated => {
+                    sequence.effects.iter().collect()
+                }
+                _ => vec![only],
+            },
+            effects => effects.iter().collect(),
+        };
+        let mut member_texts = Vec::with_capacity(members.len());
+        let mut member_idx = 0;
+        while member_idx < members.len() {
+            if let Some(choose) = structural_unwrap_render_wrappers(members[member_idx])
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                && let Some(next) = members.get(member_idx + 1)
+                && let Some(sacrifice) = sacrifice_view_unwrapped(next)
+                && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
+            {
+                member_texts.push(compact.trim_end_matches('.').to_string());
+                member_idx += 2;
+                continue;
+            }
+            member_texts.push(describe_effect(members[member_idx]));
+            member_idx += 1;
+        }
+        for text in member_texts {
             let lower = text.to_ascii_lowercase();
             let clause = lower
                 .strip_prefix("that player ")
@@ -4273,6 +4302,11 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
                         clause
                             .strip_prefix("draws ")
                             .map(|rest| format!("draw {rest}"))
+                    })
+                    .or_else(|| {
+                        clause
+                            .strip_prefix("sacrifices ")
+                            .map(|rest| format!("sacrifice {rest}"))
                     })
                     .unwrap_or(clause)
                     .to_string(),
@@ -5037,7 +5071,7 @@ pub(crate) fn render_necromentia_shape(effects: &[&Effect]) -> Option<String> {
     let create =
         unwrap_tag_wrappers(create_effect).downcast_ref::<crate::effects::CreateTokenEffect>()?;
     if !is_target_opponent_player_filter(&create.controller)
-        || create.token.card.name != "Zombie"
+        || create.token.card.name.trim_end_matches(" Token") != "Zombie"
         || !create.token.card.card_types.contains(&CardType::Creature)
         || !create.token.card.subtypes.contains(&Subtype::Zombie)
     {

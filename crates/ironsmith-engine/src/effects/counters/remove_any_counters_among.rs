@@ -111,6 +111,11 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
             "X".to_string()
         } else if effect.min_count > 0 {
             "one or more".to_string()
+        } else if effect.count != u32::MAX {
+            // "remove up to three stun counters from among ..."
+            let bound = ironsmith_core::cardinal_word(effect.count)
+                .unwrap_or_else(|| effect.count.to_string());
+            format!("up to {bound}")
         } else {
             "any number of".to_string()
         };
@@ -436,6 +441,33 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
         };
     }
 
+    // "from among all permanents": the permanent card types spelled out as
+    // a union are every permanent.
+    {
+        use crate::types::CardType as T;
+        let every_permanent_type = [
+            T::Artifact,
+            T::Creature,
+            T::Enchantment,
+            T::Land,
+            T::Planeswalker,
+            T::Battle,
+        ];
+        if plural
+            && filter.card_types.len() == every_permanent_type.len()
+            && every_permanent_type
+                .iter()
+                .all(|card_type| filter.card_types.contains(card_type))
+        {
+            let mut rest = filter.clone();
+            rest.card_types.clear();
+            rest.union_surface = Default::default();
+            rest.zone = None;
+            if rest == ObjectFilter::default() {
+                return "all permanents".to_string();
+            }
+        }
+    }
     let mut noun = if filter.card_types.is_empty() {
         if plural {
             "permanents".to_string()

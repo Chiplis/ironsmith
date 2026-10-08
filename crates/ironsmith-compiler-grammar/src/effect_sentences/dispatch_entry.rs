@@ -355,6 +355,14 @@ pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration:
                 duration: effect_duration,
                 ..
             })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
+                duration: effect_duration,
+                ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+                duration: effect_duration,
+                ..
+            })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
                 duration: effect_duration,
                 ..
@@ -4541,6 +4549,14 @@ pub(crate) fn parse_complete_create_statement(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if effect_grammar::delayed_step_shapes::parse_delayed_timing_marker_shape(sentence)
         .is_some_and(|marker| marker.start_word > 0)
+    {
+        return Ok(None);
+    }
+    // A trailing "unless <player> pays ..." alternative wraps the whole
+    // creation; the unless reading owns that statement.
+    if crate::grammar::lexical::LexedClause::new(sentence)
+        .find_unquoted_token_word("unless")
+        .is_some()
     {
         return Ok(None);
     }
@@ -11878,6 +11894,12 @@ pub fn replace_unbound_x_in_damage_effect(
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
                 amount, ..
+            })
+            // A pronoun-bound source ("it deals X damage to each other
+            // creature ... and each player, where X is ...").
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                amount,
+                ..
             }) => {
                 if value_contains_unbound_x(amount) {
                     *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
@@ -12278,6 +12300,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
                 count: amount,
                 ..
@@ -12587,7 +12610,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
             | SubjectVerbActionAst::Mana(
-                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. },
             )
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
@@ -14296,10 +14319,15 @@ fn parse_coin_batch_and_counted_turn_skip(
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false, stop_condition: None, loss_action: None, opponent_results: None, count_value: None }),
         ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-            count: Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::Outcome,
-                metric: ironsmith_core::EffectMetric::Count,
-            },
+            // The typed heads count of the flip receipt, as "for each coin
+            // that comes up heads" reads it.
+            count: Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::CoinHeads,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Flipped),
+            ),
             effects: vec![EffectAst::subject_verb_skip_turn(player)],
         }),
     ]))

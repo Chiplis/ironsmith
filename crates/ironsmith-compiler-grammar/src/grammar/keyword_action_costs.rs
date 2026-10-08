@@ -781,7 +781,11 @@ pub fn parse_dynamic_keyword_amount_tokens(tokens: &[OwnedLexToken]) -> Option<D
         primitives::kw("x").parse_next(input)?;
         let definition = opt((opt(primitives::comma()),
             (primitives::phrase(&["where", "x", "is"]),
-                repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+                // The definition ends with its own sentence; a following
+                // sentence is a separate instruction, never part of X.
+                repeat_till::<_, _, (), _, _, _, _>(1..,
+                    any.verify(|token: &&OwnedLexToken| token.kind != crate::lexer::TokenKind::Period).void(),
+                    peek(primitives::sentence_end()))
                     .map(|((), _)| ())).take(),
         )).parse_next(input)?.map(|(_, definition)| definition);
         primitives::sentence_end().parse_next(input)?;

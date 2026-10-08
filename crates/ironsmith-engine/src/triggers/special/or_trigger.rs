@@ -77,6 +77,22 @@ fn strip_leading_article(text: &str) -> &str {
         .unwrap_or(text)
 }
 
+/// The attacker/blocker subject keeps its article ("a creature you
+/// control"), except an attachment subject ("enchanted creature").
+fn combat_pair_subject(filter: &ObjectFilter) -> String {
+    let described = filter.description();
+    let attachment = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+    }) || described.starts_with("an enchanted ")
+        || described.starts_with("an equipped ");
+    if attachment {
+        strip_leading_article(&described).to_string()
+    } else {
+        described
+    }
+}
+
 fn pluralize_damage_recipient(text: &str) -> String {
     let text = strip_leading_article(text);
     if text.ends_with('s') {
@@ -264,7 +280,7 @@ impl OrTrigger {
             }
             return Some(format!(
                 "Whenever {} attacks or blocks",
-                strip_leading_article(&attacks.filter.description())
+                combat_pair_subject(&attacks.filter)
             ));
         } else if let (Some(blocks), Some(attacks)) = (
             first.downcast_ref::<BlocksTrigger>(),
@@ -280,7 +296,7 @@ impl OrTrigger {
             }
             return Some(format!(
                 "Whenever {} blocks or attacks",
-                strip_leading_article(&attacks.filter.description())
+                combat_pair_subject(&attacks.filter)
             ));
         } else {
             return None;
@@ -937,6 +953,53 @@ impl OrTrigger {
         ))
     }
 
+    /// "Whenever you cast or copy an instant or sorcery spell": the same
+    /// player casting or copying a spell of one shared filter.
+    fn cast_or_copy_same_spell_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (Some(cast), Some(copied)) = (
+            first.downcast_ref::<SpellCastTrigger>(),
+            second.downcast_ref::<SpellCopiedTrigger>(),
+        ) else {
+            return None;
+        };
+        fn plain_spell_filter(filter: Option<&ObjectFilter>) -> ObjectFilter {
+            let mut base = filter.cloned().unwrap_or_default();
+            if base.zone == Some(Zone::Stack) {
+                base.zone = None;
+            }
+            if base.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+                base.stack_kind = None;
+            }
+            base.has_mana_cost = false;
+            if base.cast_by == Some(PlayerFilter::IteratedPlayer) {
+                base.cast_by = None;
+            }
+            base.union_surface = Default::default();
+            base
+        }
+        if cast.caster != copied.copier
+            || cast.caster != PlayerFilter::You
+            || plain_spell_filter(cast.filter.as_ref())
+                != plain_spell_filter(copied.filter.as_ref())
+            || cast.mana_source_filter.is_some()
+            || cast.timing.is_some()
+            || cast.during_turn.is_some()
+            || cast.min_spells_this_turn.is_some()
+            || cast.exact_spells_this_turn.is_some()
+            || cast.count_all_spells_this_turn
+            || cast.from_not_hand
+            || cast.first_spell_of_game
+        {
+            return None;
+        }
+        let cast_display = first.display();
+        let rest = cast_display.strip_prefix("Whenever you cast ")?;
+        Some(format!("Whenever you cast or copy {rest}"))
+    }
+
     fn spell_or_activated_ability_x_cost_display(&self) -> Option<String> {
         let [first, second] = self.triggers.as_slice() else {
             return None;
@@ -1341,6 +1404,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.spell_other_than_first_or_copy_display() {
             return display;
         }
+        if let Some(display) = self.cast_or_copy_same_spell_display() {
+            return display;
+        }
         if let Some(display) = self.you_cast_or_activate_display() {
             return display;
         }
@@ -1403,6 +1469,51 @@ impl TriggerMatcher for OrTrigger {
         } else {
             " or "
         };
+        // "Whenever one or more creatures you control fight or become
+        // blocked" (Neyith of the Dire Hunt): two batch arms over the same
+        // subject print it once.
+        if joiner == " or "
+            && let [first, second] = parts.as_slice()
+            && let Some((intro, first_body)) = first.split_once(' ')
+            && first_body.starts_with("one or more ")
+        {
+            let shared_words = first_body
+                .split(' ')
+                .zip(second.split(' '))
+                .take_while(|(left, right)| left == right)
+                .count();
+            let first_words = first_body.split(' ').collect::<Vec<_>>();
+            let second_words = second.split(' ').collect::<Vec<_>>();
+            let starts_with_verb = |words: &[&str]| {
+                words.first().is_some_and(|word| {
+                    matches!(
+                        *word,
+                        "fight"
+                            | "become"
+                            | "attack"
+                            | "block"
+                            | "die"
+                            | "deal"
+                            | "leave"
+                            | "enter"
+                            | "are"
+                    )
+                })
+            };
+            if shared_words > 3
+                && shared_words < first_words.len()
+                && shared_words < second_words.len()
+                && starts_with_verb(&first_words[shared_words..])
+                && starts_with_verb(&second_words[shared_words..])
+            {
+                return format!(
+                    "{intro} {} {} or {}",
+                    first_words[..shared_words].join(" "),
+                    first_words[shared_words..].join(" "),
+                    second_words[shared_words..].join(" ")
+                );
+            }
+        }
         if joiner == " or " && parts.len() >= 3 {
             parts.join(", or ")
         } else {

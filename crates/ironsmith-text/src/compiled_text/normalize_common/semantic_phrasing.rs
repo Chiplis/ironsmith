@@ -126,6 +126,7 @@ fn normalize_irregular_creature_type_plurals(line: &str) -> String {
         .replace("Werewolfs", "Werewolves")
         .replace("Funguses", "Fungi")
         .replace("Mouses", "Mice")
+        .replace("Samurais", "Samurai")
 }
 
 fn restore_draw_exile_time_counter_granted_cast_surface(line: &str) -> Option<String> {
@@ -927,6 +928,23 @@ fn remove_inline_synthetic_target_choice(line: &str) -> Option<String> {
     None
 }
 
+/// "Choose target instant or sorcery spell. Its controller copies it." ->
+/// "The controller of target instant or sorcery spell copies it." (Meletis
+/// Charlatan): an action performed by the target's controller names the
+/// declared target in the possessive.
+fn fold_target_choice_into_controller_possessive(line: &str) -> Option<String> {
+    let start = line.find("Choose target ")?;
+    let declared = &line[start + "Choose ".len()..];
+    let (target, rest) = declared.split_once(". Its controller ")?;
+    if target.contains(['.', ',']) {
+        return None;
+    }
+    Some(format!(
+        "{}The controller of {target} {rest}",
+        &line[..start]
+    ))
+}
+
 fn remove_leading_synthetic_target_choice(line: &str) -> Option<String> {
     let lower = line.to_ascii_lowercase();
     for target in ["target opponent", "target player"] {
@@ -1407,6 +1425,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = remove_leading_synthetic_target_choice(&normalized) {
         normalized = compact;
     }
+    if let Some(compact) = fold_target_choice_into_controller_possessive(&normalized) {
+        normalized = compact;
+    }
     if let Some(compact) = compact_target_player_coordinated_actions(&normalized) {
         normalized = compact;
     }
@@ -1507,11 +1528,11 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         )
         .replace(
             "up to X target creatures gain flying until end of turn, where X is the number of creatures on the battlefield",
-            "up to X target creatures gain flying until end of turn, where X is how many times this spell was kicked",
+            "up to X target creatures gain flying until end of turn, where X is the number of times this spell was kicked",
         )
         .replace(
             "return up to X target creature cards from your graveyard to the battlefield, where X is the number of enchantments on the battlefield",
-            "return up to X target creature cards from your graveyard to the battlefield, where X is how many times this spell was kicked",
+            "return up to X target creature cards from your graveyard to the battlefield, where X is the number of times this spell was kicked",
         )
         .replace(
             "you may return target creature card with mana value X or less from your graveyard to the battlefield under their control",
@@ -2632,6 +2653,7 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    normalized = normalized.replace("This artifact ability costs ", "This ability costs ");
     normalized = normalized
         .replace(
             "This creature gains can attack as though it didn't have defender until end of turn",
@@ -2652,6 +2674,12 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "until end of turn, then it can attack this turn as though",
             "until end of turn and can attack this turn as though",
+        )
+        // A pump bundled with the granted defender exception shares one
+        // until-end-of-turn duration.
+        .replace(
+            " and gains \"Can attack as though it didn't have defender.\" Until end of turn",
+            " until end of turn and can attack this turn as though it didn't have defender",
         );
     normalized = normalized.replace(
         "When this creature enters, that creature deals",
@@ -6086,6 +6114,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             second.trim(),
             "other creatures with the same name as that object get ",
         )
+        .or_else(|| {
+            strip_prefix_ascii_ci(second.trim(), "other creatures with the same name as it get ")
+        })
         .and_then(|rest| {
             rest.strip_suffix(" until end of turn")
                 .or_else(|| rest.strip_suffix(" until end of turn."))
@@ -6567,6 +6598,55 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
                 " faces a villainous choice — You draw ",
             )
             .replace(", or they discard ", ", or that player discards ");
+    }
+    // "Search your library for ... Then shuffle." (Sunforger): after a
+    // search of your library, Oracle's shuffle instruction omits the zone.
+    if normalized.contains("earch your library for ") {
+        normalized = normalized.replace(". Then shuffle your library", ". Then shuffle");
+    }
+    // "Target creature you control assigns combat damage equal to its
+    // toughness rather than its power this turn" (Plagon): a temporary grant
+    // of the damage-assignment rule reads as the subject's own predicate.
+    for quoted in [
+        " gains \"This creature assigns combat damage equal to its toughness rather than its power.\"",
+        " gains \"This creature assigns combat damage equal to its toughness rather than its power\"",
+    ] {
+        if let Some(position) = normalized.find(quoted) {
+            let head = &normalized[..position];
+            if let Some(start) = head.rfind("Until end of turn, ") {
+                let subject = &head[start + "Until end of turn, ".len()..];
+                if !subject.contains(['.', ',']) {
+                    normalized = format!(
+                        "{}{} assigns combat damage equal to its toughness rather than its power this turn{}",
+                        &head[..start],
+                        capitalize_first(subject),
+                        &normalized[position + quoted.len()..]
+                    );
+                }
+            }
+        }
+    }
+    // "Enchanted creature gets +0/+2 and assigns combat damage equal to its
+    // toughness rather than its power" (Gauntlets of Light): the granted
+    // damage-assignment rule is a predicate of the attached subject, not a
+    // quoted ability.
+    for quoted in [
+        " has \"This creature assigns combat damage equal to its toughness rather than its power.\"",
+        " has \"This creature assigns combat damage equal to its toughness rather than its power\"",
+    ] {
+        normalized = normalized.replace(
+            quoted,
+            " assigns combat damage equal to its toughness rather than its power",
+        );
+    }
+    // A granted changeling characteristic reads as the creature-type grant
+    // Oracle prints ("gain all creature types"); only copy exceptions keep
+    // the keyword ("except it has changeling").
+    for (keyword, types) in [
+        (" gain changeling", " gain all creature types"),
+        (" gains changeling", " gains all creature types"),
+    ] {
+        normalized = normalized.replace(keyword, types);
     }
     normalize_irregular_creature_type_plurals(&normalized)
 }

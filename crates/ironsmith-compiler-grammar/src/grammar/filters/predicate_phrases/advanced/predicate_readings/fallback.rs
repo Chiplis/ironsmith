@@ -357,11 +357,13 @@ fn more_cards_in_hand_than_each_opponent(words: &[&str]) -> Option<PredicateAst>
     match words {
         ["you", "have", "more", "cards", "in", "hand", "than", "each", "opponent"]
         | ["you", "have", "more", "cards", "in", "your", "hand", "than", "each", "opponent"] => {
-            Some(PredicateAst::Player(
-                PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
-                    player: PlayerAst::You,
-                },
-            ))
+            // Each opponent, not each other player: a teammate's hand does
+            // not count.
+            Some(PredicateAst::ValueComparison {
+                left: Value::CardsInHand(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                right: Value::MaxCardsInHand(PlayerFilter::Opponent),
+            })
         }
         _ => None,
     }

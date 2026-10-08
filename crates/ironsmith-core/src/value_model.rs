@@ -383,6 +383,11 @@ pub enum ValueSurfaceHint {
     RepeatThisProcessOnce,
     ManaValueOfPermanentExiledThisWay,
     Difference,
+    /// A bare "the difference" that names the gap of the preceding value
+    /// comparison ("if you have fewer than seven cards in hand, draw cards
+    /// equal to the difference"). Presentation only; the absolute difference
+    /// it carries is unchanged.
+    ComparisonDifferenceReference,
     /// Preserve the authored subtraction connective "in excess of". The
     /// underlying value remains ordinary subtraction for runtime evaluation.
     InExcessOf,

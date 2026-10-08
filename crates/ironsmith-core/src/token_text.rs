@@ -65,7 +65,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         Berserker=>"Berserker", Bird=>"Bird", Blinkmoth=>"Blinkmoth", Boar=>"Boar", Cat=>"Cat",
         Centaur=>"Centaur", Camarid=>"Camarid", Citizen=>"Citizen", Clown=>"Clown", Coward=>"Coward",
         Changeling=>"Changeling", Cleric=>"Cleric", Construct=>"Construct", Crab=>"Crab", Crocodile=>"Crocodile",
-        Cyclops=>"Cyclops", Cyberman=>"Cyberman", Dalek=>"Dalek", Detective=>"Detective", Doctor=>"Doctor",
+        Cyclops=>"Cyclops", Cyberman=>"Cyberman", Dalek=>"Dalek", Deserter=>"Deserter", Detective=>"Detective", Doctor=>"Doctor",
         Demon=>"Demon", Devil=>"Devil", Dinosaur=>"Dinosaur", Djinn=>"Djinn", Efreet=>"Efreet", Dog=>"Dog",
         Drone=>"Drone", Dragon=>"Dragon", Drake=>"Drake", Druid=>"Druid", Dwarf=>"Dwarf", Elder=>"Elder",
         Egg=>"Egg", Eldrazi=>"Eldrazi", Hamster=>"Hamster", Spawn=>"Spawn", Scion=>"Scion",

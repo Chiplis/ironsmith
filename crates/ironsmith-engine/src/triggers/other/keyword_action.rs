@@ -478,7 +478,7 @@ impl TriggerMatcher for KeywordActionTrigger {
         }
         if matches!(
             self.action,
-            KeywordActionKind::Fight | KeywordActionKind::Connive
+            KeywordActionKind::Fight | KeywordActionKind::Connive | KeywordActionKind::Renown
         ) && let Some(source_filter) = &self.source_filter
         {
             return if self.one_or_more { format!("Whenever one or more {} {}", crate::triggers::combat::pluralize_one_or_more_attack_subject(&source_filter.description()), self.action.infinitive()) }

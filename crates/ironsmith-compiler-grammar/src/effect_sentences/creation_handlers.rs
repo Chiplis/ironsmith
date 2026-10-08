@@ -284,11 +284,21 @@ fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
 /// this sentence boundary prevents that grant from also being copied into the
 /// token definition.
 fn inline_quoted_token_creation_sentence(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    inline_quoted_token_creation_sentence_with_ordinal(tokens).map(|(sentence, _, _)| sentence)
+}
+
+/// The last create sentence carrying an inline quoted rule, its ordinal among
+/// create sentences, and the number of create sentences. A period that ends a
+/// quoted rule (`... can't block." Then create ...`) also ends the sentence.
+fn inline_quoted_token_creation_sentence_with_ordinal(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], usize, usize)> {
     let mut sentence_start = 0usize;
     let mut inside_quote = false;
     let mut saw_create = false;
     let mut saw_quote_after_create = false;
     let mut last_create_sentence = None;
+    let mut create_sentences = 0usize;
 
     for (idx, token) in tokens.iter().enumerate() {
         if token.kind == TokenKind::Quote {
@@ -296,6 +306,20 @@ fn inline_quoted_token_creation_sentence(tokens: &[OwnedLexToken]) -> Option<&[O
                 saw_quote_after_create = true;
             }
             inside_quote = !inside_quote;
+            let closes_sentence = !inside_quote
+                && idx > 0
+                && tokens[idx - 1].kind == TokenKind::Period
+                && tokens.get(idx + 1).is_some();
+            if closes_sentence {
+                if saw_create {
+                    last_create_sentence =
+                        Some((sentence_start, idx + 1, saw_quote_after_create, create_sentences));
+                    create_sentences += 1;
+                }
+                sentence_start = idx + 1;
+                saw_create = false;
+                saw_quote_after_create = false;
+            }
             continue;
         }
         if inside_quote {
@@ -306,7 +330,11 @@ fn inline_quoted_token_creation_sentence(tokens: &[OwnedLexToken]) -> Option<&[O
         }
         if token.kind == TokenKind::Period {
             if saw_create {
-                last_create_sentence = Some((sentence_start, idx + 1, saw_quote_after_create));
+                if saw_quote_after_create || last_create_sentence.is_none_or(|(_, _, quoted, _)| !quoted) {
+                    last_create_sentence =
+                        Some((sentence_start, idx + 1, saw_quote_after_create, create_sentences));
+                }
+                create_sentences += 1;
             }
             sentence_start = idx + 1;
             saw_create = false;
@@ -315,10 +343,14 @@ fn inline_quoted_token_creation_sentence(tokens: &[OwnedLexToken]) -> Option<&[O
     }
 
     if saw_create {
-        last_create_sentence = Some((sentence_start, tokens.len(), saw_quote_after_create));
+        if saw_quote_after_create || last_create_sentence.is_none_or(|(_, _, quoted, _)| !quoted) {
+            last_create_sentence =
+                Some((sentence_start, tokens.len(), saw_quote_after_create, create_sentences));
+        }
+        create_sentences += 1;
     }
-    let (start, end, has_inline_quote) = last_create_sentence?;
-    has_inline_quote.then_some(&tokens[start..end])
+    let (start, end, has_inline_quote, ordinal) = last_create_sentence?;
+    has_inline_quote.then_some((&tokens[start..end], ordinal, create_sentences))
 }
 
 fn tokens_outside_double_quoted_rules(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -996,11 +1028,45 @@ pub fn attach_inline_token_granted_abilities_to_last_create(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let Some(tokens) = inline_quoted_token_creation_sentence(tokens) else {
+    let Some((tokens, ordinal, create_sentences)) =
+        inline_quoted_token_creation_sentence_with_ordinal(tokens)
+    else {
         return false;
     };
     if double_quoted_rule_bodies(tokens).is_empty() {
         return false;
+    }
+    // A quoted rule in an earlier create sentence belongs to that sentence's
+    // token, not to a later sentence's creation.
+    fn contains_create(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
+                )
+        ) {
+            return true;
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_create);
+        });
+        found
+    }
+    let is_top_level_create = |effect: &EffectAst| contains_create(effect);
+    if ordinal + 1 < create_sentences
+        && effects.iter().filter(|effect| is_top_level_create(effect)).count() == create_sentences
+    {
+        let Some(effect) = effects
+            .iter_mut()
+            .filter(|effect| is_top_level_create(effect))
+            .nth(ordinal)
+        else {
+            return false;
+        };
+        return attach_inline_token_granted_abilities_to_effect(effect, tokens);
     }
     for effect in effects.iter_mut().rev() {
         if attach_inline_token_granted_abilities_to_effect(effect, tokens) {
@@ -1360,6 +1426,17 @@ pub fn parse_create(
         None
     };
     let tokens = creation_grammar::creation_body_tokens(tokens);
+    // "Create ... unless <player> pays ..." is a whole-clause alternative,
+    // owned by the unless reading; the token tail must never absorb it.
+    if crate::grammar::lexical::LexedClause::new(tokens)
+        .find_unquoted_token_word("unless")
+        .is_some()
+    {
+        return Err(CardTextError::ParseError(format!(
+            "create clause carries a trailing unless alternative (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        )));
+    }
     let input = create_clause_readings::CreateClause { tokens, subject };
     match create_clause_readings::read(&input) {
         crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),

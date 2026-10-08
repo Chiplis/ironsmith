@@ -276,6 +276,15 @@ fn describe_phase_step_value_comparison(
     {
         let mut objects = filter.clone();
         objects.zone = None;
+        // "no opponent controls a white or blue creature".
+        if objects.controller == Some(PlayerFilter::Opponent) {
+            objects.controller = None;
+            let description = objects.description();
+            return Some(format!(
+                "no opponent controls {}",
+                ensure_indefinite_article(&description)
+            ));
+        }
         let description = objects.description();
         let objects = pluralize_relative_object_phrase(strip_indefinite_article(&description));
         return Some(format!("there are no {objects} on the battlefield"));
@@ -644,6 +653,15 @@ fn describe_turn_history_value_comparison(
                 // +1/+1 counters on ... this turn" even at a threshold of
                 // one, so the bare-presence phrasing the other histories use
                 // would not be the authored surface here.
+                // An untyped counter at the presence threshold is authored
+                // in the simple past: "if you put a counter on a creature
+                // this turn".
+                if counter_type.is_none() && is_present && player == &PlayerFilter::You {
+                    return Some(format!(
+                        "you put a counter on {} this turn",
+                        with_indefinite_article(&subject)
+                    ));
+                }
                 let action = if player == &PlayerFilter::You {
                     "you've put".to_string()
                 } else {
@@ -955,25 +973,33 @@ fn describe_two_named_creatures_control_condition(
     left: &Condition,
     right: &Condition,
 ) -> Option<String> {
-    fn named_creature(condition: &Condition) -> Option<(&PlayerFilter, &str)> {
+    fn named_creature(condition: &Condition) -> Option<(&PlayerFilter, &str, &'static str)> {
         let Condition::PlayerControls { player, filter } = condition else {
             return None;
         };
         let name = filter.name.as_deref()?;
         let mut base = filter.clone();
         base.name = None;
-        let expected = ObjectFilter::creature().controlled_by(player.clone());
-        (base == expected).then_some((player, name))
+        [
+            (ObjectFilter::creature(), "creatures"),
+            (ObjectFilter::artifact(), "artifacts"),
+        ]
+        .into_iter()
+        .find(|(expected, _)| base == expected.clone().controlled_by(player.clone()))
+        .map(|(_, noun)| (player, name, noun))
     }
 
-    let (left_player, left_name) = named_creature(left)?;
-    let (right_player, right_name) = named_creature(right)?;
-    if left_player != right_player || left_name.eq_ignore_ascii_case(right_name) {
+    let (left_player, left_name, left_noun) = named_creature(left)?;
+    let (right_player, right_name, right_noun) = named_creature(right)?;
+    if left_player != right_player
+        || left_noun != right_noun
+        || left_name.eq_ignore_ascii_case(right_name)
+    {
         return None;
     }
     let subject = describe_player_filter(left_player);
     Some(format!(
-        "{} {} creatures named {} and {}",
+        "{} {} {left_noun} named {} and {}",
         subject,
         player_verb(&subject, "control", "controls"),
         title_case_card_name_fragment(left_name),
@@ -1384,6 +1410,65 @@ pub(crate) fn source_status_alternatives(condition: &Condition) -> Option<String
             source_status_alternatives(left)?,
             source_status_alternatives(right)?
         )),
+        _ => None,
+    }
+}
+
+/// A local coin receipt compared with a fixed count reads as the authored
+/// flip outcome ("you win two or more flips", "both coins come up heads").
+fn describe_coin_result_comparison(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    describe_coin_result_comparison_for(left, operator, right, "you")
+}
+
+/// The coin comparison with its flipper named by `actor` ("you", "they").
+pub(crate) fn describe_coin_result_comparison_for(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+    actor: &str,
+) -> Option<String> {
+    use crate::effect::{EffectMetric, ValueComparisonOperator::*};
+    let metric_of = |value: &Value| match value.unhinted() {
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if query.filter.is_none() =>
+        {
+            Some(query.metric)
+        }
+        _ => None,
+    };
+    let metric = metric_of(left)?;
+    if metric == EffectMetric::CoinFlipsWon
+        && operator == Equal
+        && metric_of(right) == Some(EffectMetric::CoinFlipsTotal)
+    {
+        return Some(format!("{actor} win all the flips"));
+    }
+    let Value::Fixed(count) = right.unhinted() else {
+        return None;
+    };
+    let count = u32::try_from(*count).ok()?;
+    let word = small_number_word(count).unwrap_or_else(|| count.to_string());
+    match (metric, operator) {
+        (EffectMetric::CoinFlipsWon, GreaterThan) if count == 0 => {
+            Some(format!("{actor} win the flip"))
+        }
+        (EffectMetric::CoinFlipsLost, GreaterThan) if count == 0 => {
+            Some(format!("{actor} lose the flip"))
+        }
+        (EffectMetric::CoinFlipsWon, GreaterThanOrEqual) => {
+            Some(format!("{actor} win {word} or more flips"))
+        }
+        (EffectMetric::CoinFlipsWon, Equal) => Some(format!("{actor} won {word} flips this way")),
+        (EffectMetric::CoinHeads, Equal) if count == 2 => {
+            Some("both coins come up heads".to_string())
+        }
+        (EffectMetric::CoinTails, Equal) if count == 2 => {
+            Some("both coins come up tails".to_string())
+        }
         _ => None,
     }
 }
@@ -2036,11 +2121,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 describe_player_filter(player)
             )
         }
+        // Oracle compares "you" against "each opponent".
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+            player: PlayerFilter::You,
+        } => "you have more cards in hand than each opponent".to_string(),
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
-            format!(
-                "{} has more cards in hand than each other player",
-                describe_player_filter(player)
-            )
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "have", "has");
+            format!("{subject} {verb} more cards in hand than each other player")
         }
         Condition::PlayerHasPoisonCountersOrMore { player, count } => {
             let subject = describe_player_filter(player);
@@ -2219,6 +2307,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             let zone_text = match zone {
                 Zone::Graveyard => "a graveyard".to_string(),
+                Zone::Exile => "exile".to_string(),
                 _ => format!("the {}", zone.name()),
             };
             format!("this spell was cast from {zone_text}")
@@ -2320,6 +2409,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if display_label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
+            }
+            if label.kind == crate::cost::OptionalCostKind::Teamwork {
+                return "this spell was cast using teamwork".to_string();
             }
             if let Some(cost) = label.strip_prefix("Kicker ") {
                 return format!("it was kicked with its {cost} kicker");
@@ -2465,6 +2557,25 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if let Some(text) = describe_source_matches_keyword_condition(filter) {
                 return text;
             }
+            // "it has no oil counters on it".
+            if let Some(absent) = &filter.without_counter
+                && (ObjectFilter {
+                    without_counter: None,
+                    zone: None,
+                    ..filter.clone()
+                }) == ObjectFilter::default()
+            {
+                return match absent {
+                    ironsmith_core::CounterConstraint::Typed(counter_type) => format!(
+                        "it has no {} counters on it",
+                        counter_type.description()
+                    ),
+                    ironsmith_core::CounterConstraint::Any => {
+                        "it has no counters on it".to_string()
+                    }
+                    _ => format!("this permanent is {}", ensure_indefinite_article(&filter.description())),
+                };
+            }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
             if stripped == "permanent" {
@@ -2532,6 +2643,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 counter_type.description()
             ),
         },
+        Condition::SourceHasCountersAtLeast(1) => "this source has counters on it".to_string(),
         Condition::SourceHasCountersAtLeast(count) => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!("there are {count_text} or more counters on it")
@@ -2545,12 +2657,24 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if let Some(symbol) = symbol {
                 if *amount == 1 {
                     format!("{} was spent to cast this spell", describe_mana_symbol(*symbol))
-                } else {
-                    // Adamant-style oracle keeps "at least three white mana".
+                } else if *amount == 2 {
+                    // The hybrid-evoke cycle prints "if {W}{W} was spent".
                     format!(
-                        "at least {amount_text} {} mana was spent to cast this spell",
+                        "{}{} was spent to cast this spell",
+                        describe_mana_symbol(*symbol),
                         describe_mana_symbol(*symbol)
                     )
+                } else {
+                    // Adamant-style oracle keeps "at least three white mana".
+                    let color = match symbol {
+                        crate::mana::ManaSymbol::White => "white".to_string(),
+                        crate::mana::ManaSymbol::Blue => "blue".to_string(),
+                        crate::mana::ManaSymbol::Black => "black".to_string(),
+                        crate::mana::ManaSymbol::Red => "red".to_string(),
+                        crate::mana::ManaSymbol::Green => "green".to_string(),
+                        other => describe_mana_symbol(*other),
+                    };
+                    format!("at least {amount_text} {color} mana was spent to cast this spell")
                 }
             } else {
                 format!("at least {amount_text} mana was spent to cast this spell")
@@ -2631,6 +2755,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            // "if it has the least power or is tied for least power among
+            // creatures on the battlefield" (Wretched Banquet).
+            if let Some(crate::filter::Comparison::EqualExpr(bound)) = &filter.power
+                && let Value::LeastPower(among) = bound.as_ref()
+                && *among == ObjectFilter::creature().in_zone(Zone::Battlefield)
+                && (ObjectFilter {
+                    power: None,
+                    union_surface: Default::default(),
+                    ..filter.clone()
+                }) == ObjectFilter::default()
+            {
+                return "it has the least power or is tied for least power among creatures on the battlefield".into();
+            }
             if filter.was_blocked_this_turn {
                 let mut plain = filter.clone();
                 plain.was_blocked_this_turn = false;
@@ -2647,6 +2784,32 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 remainder.tagged_constraints.clear();
                 if remainder == ObjectFilter::default() {
                     return "that card has the chosen name".into();
+                }
+            }
+            // "if it's equipped" / "if it's enchanted": the triggering
+            // object has any Equipment (or Aura) attached.
+            if tag.as_str() == "triggering"
+                && let Some(attached) = filter.with_attached_object.as_deref()
+            {
+                let adjective = match attached.subtypes.as_slice() {
+                    [crate::types::Subtype::Equipment] => Some("equipped"),
+                    [crate::types::Subtype::Aura] => Some("enchanted"),
+                    _ => None,
+                };
+                let mut bare_attached = attached.clone();
+                bare_attached.subtypes.clear();
+                bare_attached.card_types.clear();
+                bare_attached.zone = None;
+                let mut rest = filter.clone();
+                rest.with_attached_object = None;
+                if rest.zone == Some(Zone::Battlefield) {
+                    rest.zone = None;
+                }
+                if let Some(adjective) = adjective
+                    && bare_attached == ObjectFilter::default()
+                    && rest == ObjectFilter::default()
+                {
+                    return format!("it's {adjective}");
                 }
             }
             if filter.attacked_this_turn {
@@ -2754,6 +2917,33 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // below applies to its past-tense form. An attachment tag names
             // its own subject ("equipped creature is green") through the
             // dedicated attached-object describer further down.
+            // A bare supertype is likewise an adjective ("If that creature is
+            // legendary"), never "a legendary permanent".
+            if !matches!(tag.as_str(), "equipped" | "enchanted") && !filter.supertypes.is_empty() {
+                let mut remainder = filter.clone();
+                remainder.supertypes.clear();
+                remainder.set_demonstrative_antecedent_surface(None);
+                if remainder.zone == Some(Zone::Battlefield) {
+                    remainder.zone = None;
+                }
+                if remainder == ObjectFilter::default() {
+                    let adjectives = filter
+                        .supertypes
+                        .iter()
+                        .map(|supertype| supertype.to_string().to_ascii_lowercase())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let subject = filter
+                        .demonstrative_antecedent_surface()
+                        .map(|surface| surface.phrase().to_string())
+                        .unwrap_or_else(|| "it".to_string());
+                    return if subject == "it" {
+                        format!("it's {adjectives}")
+                    } else {
+                        format!("{subject} is {adjectives}")
+                    };
+                }
+            }
             if !matches!(tag.as_str(), "equipped" | "enchanted")
                 && let Some(colors) = bare_color_adjective_words(filter)
             {
@@ -2958,6 +3148,44 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return condition;
             }
+            // "If the sacrificed creature's toughness was 4 or greater"
+            // (Witch's Oven): a stat threshold on the cost-sacrificed object.
+            if tag.as_str().starts_with("sacrifice_cost")
+                && let [card_type] = filter.card_types.as_slice()
+                && let Some(text) = {
+                    let mut rest = filter.clone();
+                    rest.card_types.clear();
+                    rest.zone = None;
+                    let stat = match (rest.power.take(), rest.toughness.take()) {
+                        (Some(cmp), None) => Some(("power", cmp)),
+                        (None, Some(cmp)) => Some(("toughness", cmp)),
+                        _ => None,
+                    };
+                    stat.filter(|_| {
+                        rest.power_reference = Default::default();
+                        rest.toughness_reference = Default::default();
+                        rest == ObjectFilter::default()
+                    })
+                    .and_then(|(stat, cmp)| {
+                        let bound = match cmp {
+                            ironsmith_core::FilterComparison::GreaterThanOrEqual(n) => {
+                                format!("{n} or greater")
+                            }
+                            ironsmith_core::FilterComparison::LessThanOrEqual(n) => {
+                                format!("{n} or less")
+                            }
+                            ironsmith_core::FilterComparison::Equal(n) => n.to_string(),
+                            _ => return None,
+                        };
+                        Some(format!(
+                            "the sacrificed {}'s {stat} was {bound}",
+                            describe_card_type_word_local(*card_type)
+                        ))
+                    })
+                }
+            {
+                return text;
+            }
             if let Some(action) = this_way_action_from_tag(tag) {
                 let object = describe_player_tagged_object_text(tag, filter);
                 if action == "put" && filter.zone == Some(Zone::Battlefield) {
@@ -2968,6 +3196,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
                 return if action == "died" {
                     format!("{object} died this way")
+                } else if action.starts_with("dealt ") {
+                    // Oracle states damage results in the present: "If a
+                    // Werewolf is dealt damage this way".
+                    format!("{object} is {action} this way")
                 } else {
                     format!("{object} was {action} this way")
                 };
@@ -3305,6 +3537,27 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return format!("it was {}", states.join(" or "));
             }
+            // "if an Aura you controlled was attached to it" (Dawn Evangel).
+            if tag.as_str() == "triggering"
+                && let Some(attached) = filter.with_attached_object.as_deref()
+                && attached.controller.is_some()
+            {
+                let mut rest = filter.clone();
+                rest.with_attached_object = None;
+                rest.zone = None;
+                if rest == ObjectFilter::default() {
+                    let mut attached = attached.clone();
+                    attached.zone = None;
+                    let described = attached
+                        .description()
+                        .replace(" you control", " you controlled")
+                        .replace(" an opponent controls", " an opponent controlled");
+                    return format!(
+                        "{} was attached to it",
+                        with_indefinite_article(strip_leading_article(&described))
+                    );
+                }
+            }
             describe_last_known_tagged_object_condition(tag, filter)
         }
         Condition::TaggedObjectIsTopOfLibrary { tag, .. } => {
@@ -3329,7 +3582,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::TaggedObjectIsSoulbondPaired(tag) => {
             if is_implicit_reference_tag(tag.as_str()) {
-                "it's paired with another creature".to_string()
+                "it's paired with a creature".to_string()
             } else {
                 format!(
                     "the tagged object '{}' is paired with another creature",
@@ -3634,10 +3887,211 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if let Some(rendered) = describe_coin_result_comparison(left, *operator, right) {
+                return rendered;
+            }
+            // The triggering die roll ("Whenever you roll a 3 or higher, ...
+            // If the roll was 4 or higher, ..." (Monoxa)).
+            if let (
+                Value::EventValue(EventValueSpec::DieResult),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(minimum),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                return format!("the roll was {minimum} or higher");
+            }
+            // "If you sacrificed an Angel this way" (Shilgengar): a count of
+            // the cost-sacrificed object that matches a quality.
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            )
+            | (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::Fixed(0),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str().contains("sacrifice_cost")
+            {
+                let mut quality = filter.clone();
+                quality.tagged_constraints.clear();
+                quality.zone = None;
+                let description = if let [subtype] = quality.subtypes.as_slice()
+                    && quality.card_types.is_empty()
+                {
+                    subtype.to_string()
+                } else {
+                    strip_leading_article(&quality.description()).to_string()
+                };
+                return format!(
+                    "you sacrificed {} this way",
+                    with_indefinite_article(&description)
+                );
+            }
+            // "you have six or more unspent mana"
+            if let (
+                Value::UnspentMana(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && *count >= 1
+            {
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                let subject = describe_player_filter(player);
+                let verb = player_verb(&subject, "have", "has");
+                return format!("{subject} {verb} {count_text} or more unspent mana");
+            }
+            // "there are five or more mana values among cards in your
+            // graveyard", "two or more unlocked doors among Rooms you
+            // control", "you control seven or more lands with different
+            // names": distinct-quality counts read as a plural threshold.
+            if let (
+                Value::DistinctManaValues(filter)
+                | Value::UnlockedDoorsAmong(filter)
+                | Value::DistinctNames(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && *count >= 1
+            {
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                let plural = pluralize_noun_phrase(strip_leading_article(
+                    &describe_count_filter_value_subject(filter),
+                ));
+                return match left.unhinted() {
+                    Value::DistinctManaValues(_) => {
+                        format!("there are {count_text} or more mana values among {plural}")
+                    }
+                    Value::UnlockedDoorsAmong(_) => {
+                        format!("there are {count_text} or more unlocked doors among {plural}")
+                    }
+                    _ => match plural.strip_suffix(" you control") {
+                        Some(objects) => format!(
+                            "you control {count_text} or more {objects} with different names"
+                        ),
+                        None => format!(
+                            "there are {count_text} or more {plural} with different names"
+                        ),
+                    },
+                };
+            }
+            // "its power is greater than each other creature's power"
+            // (Selvala): strictly greater than the greatest power among every
+            // other creature.
+            if let (
+                Value::PowerOf(_),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::GreatestPower(filter),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && filter.card_types == [CardType::Creature]
+                && filter.controller.is_none()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                })
+            {
+                return format!(
+                    "{} is greater than each other creature's power",
+                    describe_value(left)
+                );
+            }
+            // "an opponent has at least four more cards in hand than you"
+            // (Teachings of the Archaics).
+            if let (
+                Value::MaxCardsInHand(PlayerFilter::Opponent),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Add(base, margin),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && matches!(base.unhinted(), Value::CardsInHand(PlayerFilter::You))
+                && let Value::Fixed(margin) = margin.unhinted()
+                && *margin > 0
+            {
+                let margin_text = number_word(*margin).unwrap_or_else(|| margin.to_string());
+                return format!(
+                    "an opponent has at least {margin_text} more cards in hand than you"
+                );
+            }
+            // "you control eight or more artifacts with the same name as one
+            // another" (Mechanized Production).
+            if let (
+                Value::GreatestSharedNameCount(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && filter.controller == Some(PlayerFilter::You)
+                && *count > 1
+            {
+                let mut objects = filter.clone();
+                objects.controller = None;
+                objects.zone = None;
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                return format!(
+                    "you control {count_text} or more {} with the same name as one another",
+                    pluralize_noun_phrase(strip_leading_article(&objects.description()))
+                );
+            }
+            // "If any of those results was 10 or higher" (Farideh, Devil's
+            // Chosen).
+            if let (
+                Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::Fixed(0),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                return format!("any of those results was {minimum} or higher");
+            }
+            // "you control seven or more lands with different names" (Field
+            // of the Dead) and "you control three or more creatures that
+            // share a creature type" (Littjara Kinseekers).
+            if let (
+                Value::DistinctNames(filter) | Value::GreatestSharedCreatureTypeCount(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && filter.controller == Some(PlayerFilter::You)
+                && *count > 1
+            {
+                let mut objects = filter.clone();
+                objects.controller = None;
+                objects.zone = None;
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                let relation = if matches!(left.unhinted(), Value::DistinctNames(_)) {
+                    "with different names"
+                } else {
+                    "that share a creature type"
+                };
+                return format!(
+                    "you control {count_text} or more {} {relation}",
+                    pluralize_noun_phrase(strip_leading_article(&objects.description()))
+                );
+            }
+            // "there are five or more mana values among cards in your
+            // graveyard" (Graveyard Shift).
+            if let (
+                Value::DistinctManaValues(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && *count > 1
+            {
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                return format!(
+                    "there are {count_text} or more mana values among {}",
+                    describe_count_filter_value_subject(filter)
+                );
+            }
+            if let Some(rendered) = describe_damage_presence_comparison(left, *operator, right) {
+                return rendered;
+            }
             if right.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence)
                 && let (Value::CountersOn(spec, Some(counter)), crate::effect::ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(1)) = (left.unhinted(), operator, right.unhinted())
             {
                 return format!("{} has {} counter on it", describe_choose_spec(spec), with_indefinite_article(&counter.description()));
+            }
+            if let Some(rendered) = describe_player_quantity_comparison(left, *operator, right) {
+                return rendered;
             }
             let mut sole_creature_card = ObjectFilter::creature()
                 .in_zone(Zone::Graveyard)
@@ -3711,14 +4165,37 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "{amount} or more mana from {source} was spent to {action}"
                 );
             }
+            let triggering = |spec: &ChooseSpec| {
+                matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+            };
             if let (
-                Value::ManaSpentToCastTriggeringObject,
+                Value::ManaSpentToCastTriggeringObject | Value::ManaSpentToCast(_),
                 crate::effect::ValueComparisonOperator::LessThan,
                 Value::ManaValueOf(spec),
             ) = (left.unhinted(), operator, right.unhinted())
-                && matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+                && triggering(spec)
+                && match left.unhinted() {
+                    Value::ManaSpentToCast(cast) => triggering(cast),
+                    _ => true,
+                }
             {
                 return "the amount of mana spent to cast it was less than its mana value"
+                    .to_string();
+            }
+            // "Counter target spell. If the amount of mana spent to cast that
+            // spell was less than its mana value, ..." (Unravel): the
+            // countered spell is checked by last-known information.
+            if let (
+                Value::ManaSpentToCast(cast),
+                crate::effect::ValueComparisonOperator::LessThan,
+                Value::ManaValueOf(spec),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && let ChooseSpec::Tagged(cast_tag) = cast.base()
+                && let ChooseSpec::Tagged(value_tag) = spec.base()
+                && cast_tag == value_tag
+                && this_way_action_from_tag(cast_tag) == Some("countered")
+            {
+                return "the amount of mana spent to cast that spell was less than its mana value"
                     .to_string();
             }
             // An object an earlier instruction acted on ("Destroy target
@@ -3794,6 +4271,42 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return "no creatures are on the battlefield".to_string();
             }
+            // "a creature has a -1/-1 counter on it" (Tenacious Hunter).
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.controller.is_none()
+                && filter.card_types == [CardType::Creature]
+                && filter.subtypes.is_empty()
+                && let Some(crate::filter::CounterConstraint::Typed(counter_type)) =
+                    &filter.with_counter
+            {
+                return format!(
+                    "a creature has {} on it",
+                    with_indefinite_article(&format!("{} counter", counter_type.description()))
+                );
+            }
+            // "no opponent controls a white or blue creature" (Skittish Kavu):
+            // the battlefield-population lowering counts opponents' matches.
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::Equal,
+                Value::Fixed(0),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.controller == Some(PlayerFilter::Opponent)
+            {
+                let mut controlled = filter.clone();
+                controlled.zone = None;
+                controlled.controller = None;
+                return format!(
+                    "no opponent controls {}",
+                    with_indefinite_article(&controlled.description())
+                );
+            }
             if let Some(rendered) = describe_happily_value_comparison(left, *operator, right) {
                 return rendered;
             }
@@ -3811,6 +4324,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Value::Fixed(count),
             ) = (left, operator, right)
             {
+                // "you've lost life this turn": a threshold of one is presence.
+                if *count <= 1 {
+                    let subject = describe_player_filter(player);
+                    let have = if subject == "you" {
+                        "you've".to_string()
+                    } else {
+                        format!("{subject} has")
+                    };
+                    return format!("{have} lost life this turn");
+                }
                 return format!(
                     "{} lost {} or more life this turn",
                     describe_player_filter(player),
@@ -3880,6 +4403,27 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     count_text,
                     graveyard
                 );
+            }
+            // "an opponent is poisoned" / "an opponent has three or more
+            // poison counters": at least one matching player exists.
+            if let (
+                Value::CountPlayersWithPoisonCountersAtLeast(player, minimum),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && *minimum >= 1
+            {
+                let subject = match player {
+                    PlayerFilter::Opponent => "an opponent".to_string(),
+                    PlayerFilter::Any => "a player".to_string(),
+                    other => describe_player_filter(other),
+                };
+                if *minimum == 1 {
+                    return format!("{subject} is poisoned");
+                }
+                let count_text =
+                    small_number_word(*minimum).unwrap_or_else(|| minimum.to_string());
+                return format!("{subject} has {count_text} or more poison counters");
             }
             if let (
                 Value::PlayerCounters(player, CounterType::Poison),
@@ -4055,6 +4599,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
                 let subject = strip_indefinite_article(&filter.description()).to_string();
                 let noun = pluralize_relative_object_phrase(&subject);
+                // Combat state needs no battlefield existential: "if two or
+                // more creatures are attacking you".
+                if let Some((head, state)) = noun.split_once(" that are attacking ")
+                    && !head.contains(' ')
+                {
+                    return format!("{count_text} or more {head} are attacking {state}");
+                }
                 return format!("there are {} or more {} on the battlefield", count_text, noun);
             }
             if let (
@@ -4210,6 +4761,75 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_value(left),
                     describe_value(right)
                 );
+            }
+            // "If creatures you control have total toughness 10 or greater".
+            if *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                && let Value::Fixed(count) = right.unhinted()
+                && let Some((characteristic, filter)) = match left.unhinted() {
+                    Value::TotalPower(filter) => Some(("power", filter)),
+                    Value::TotalToughness(filter) => Some(("toughness", filter)),
+                    _ => None,
+                }
+                && filter.controller == Some(PlayerFilter::You)
+            {
+                let mut base = filter.clone();
+                base.controller = None;
+                base.zone = None;
+                let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                    &base.description(),
+                ));
+                return format!(
+                    "{objects} you control have total {characteristic} {count} or greater"
+                );
+            }
+            // Counted thresholds read as existence: "if there are two or more
+            // counters among creatures you control", "if you control two or
+            // more nontoken permanents with the same name as one another".
+            if *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                && let Value::Fixed(count) = right.unhinted()
+                && *count >= 2
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                if left.has_surface_hint(ValueSurfaceHint::CountersAmong)
+                    && let Value::CountersOn(spec, counter_type) = left.unhinted()
+                    && let ChooseSpec::All(filter) = spec.unhinted()
+                {
+                    let subject = pluralize_noun_phrase(&filter.description());
+                    let counters = match counter_type {
+                        Some(counter_type) => format!("{} counters", counter_type.description()),
+                        None => "counters".to_string(),
+                    };
+                    return format!("there are {count_text} or more {counters} among {subject}");
+                }
+                if let Value::DamageHistory(query) = left.unhinted()
+                    && query.reduction == ironsmith_core::DamageHistoryReduction::DistinctSources
+                    && query.recipients == ironsmith_core::DamageHistoryRecipients::Any
+                    && let ironsmith_core::DamageHistorySources::Matching(filter) = &query.sources
+                    && *filter == ObjectFilter::default().you_control()
+                {
+                    let damage = match query.combat {
+                        Some(true) => "combat damage",
+                        Some(false) => "noncombat damage",
+                        None => "damage",
+                    };
+                    return format!(
+                        "{count_text} or more sources you controlled dealt {damage} this turn"
+                    );
+                }
+                if let Value::GreatestSharedNameCount(filter) = left.unhinted()
+                    && filter.controller == Some(PlayerFilter::You)
+                {
+                    let mut base = filter.clone();
+                    base.controller = None;
+                    base.zone = None;
+                    let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                        &base.description(),
+                    ));
+                    return format!(
+                        "you control {count_text} or more {objects} with the same name as one another"
+                    );
+                }
             }
             // A literal bound reads as "N or less"/"N or greater" in oracle
             // regardless of what quantity is being compared.
@@ -4703,6 +5323,66 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return named_creatures;
             }
+            // "If it was dealt damage this turn" / "if 4 or more damage was
+            // dealt to it this turn": the last-known existence guard plus a
+            // damage total to that same object.
+            if let Condition::TaggedObjectMatchedLastKnown(tag, _) = left.as_ref()
+                && let Condition::ValueComparison { left: amount, operator, right: bound } =
+                    right.as_ref()
+                && let Value::Fixed(bound) = bound.unhinted()
+                && let Some(minimum) = match operator {
+                    crate::effect::ValueComparisonOperator::GreaterThan => Some(*bound + 1),
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => Some(*bound),
+                    _ => None,
+                }
+                && minimum >= 1
+                && let Value::DamageHistory(query) = amount.unhinted()
+                && query.sources == ironsmith_core::DamageHistorySources::Any
+                && query.combat.is_none()
+                && query.reduction == ironsmith_core::DamageHistoryReduction::Total
+                && matches!(&query.recipients,
+                    ironsmith_core::DamageHistoryRecipients::Reference(spec)
+                        if matches!(spec.base(), ChooseSpec::Tagged(recipient) if recipient == tag))
+                && is_implicit_reference_tag(tag.as_str())
+            {
+                if minimum == 1 {
+                    return "it was dealt damage this turn".to_string();
+                }
+                return format!("{minimum} or more damage was dealt to it this turn");
+            }
+            // "if equipped creature didn't deal combat damage to a creature
+            // this turn" (Thirsting Axe): the attachment check only anchors
+            // the damage history to the equipped host.
+            if let Condition::AttachedToSourceMatches(_) = left.as_ref()
+                && let Condition::ValueComparison {
+                    left: Value::DamageHistory(query),
+                    operator: crate::effect::ValueComparisonOperator::Equal,
+                    right: Value::Fixed(0),
+                } = right.as_ref()
+                && matches!(
+                    query.sources,
+                    ironsmith_core::DamageHistorySources::SourceAttachedObject
+                )
+            {
+                let recipient = match &query.recipients {
+                    ironsmith_core::DamageHistoryRecipients::Any => Some(String::new()),
+                    ironsmith_core::DamageHistoryRecipients::MatchingObjects(filter) => Some(
+                        format!(" to {}", ensure_indefinite_article(&filter.description())),
+                    ),
+                    ironsmith_core::DamageHistoryRecipients::Players(player) => {
+                        Some(format!(" to {}", describe_player_filter(player)))
+                    }
+                    _ => None,
+                };
+                if let Some(recipient) = recipient {
+                    let kind = match query.combat {
+                        Some(true) => "combat damage",
+                        Some(false) => "noncombat damage",
+                        None => "damage",
+                    };
+                    return format!("equipped creature didn't deal {kind}{recipient} this turn");
+                }
+            }
             if matches!(
                 left.as_ref(),
                 Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast)
@@ -5008,6 +5688,15 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
         let described = describe_last_known_tagged_object_condition(tag, &unhinted);
         if let Some(tail) = described.strip_prefix("it ") {
             return format!("{} {tail}", surface.phrase());
+        }
+    }
+    // "If the sacrificed permanent was a Vehicle" names the cost object.
+    if let Some(surface) = filter.additional_cost_object_surface() {
+        let mut unhinted = filter.clone();
+        unhinted.set_additional_cost_object_surface(None);
+        let described = describe_last_known_tagged_object_condition(tag, &unhinted);
+        if let Some(tail) = described.strip_prefix("it ") {
+            return format!("{} {tail}", surface.description());
         }
     }
     // A bare state filter is an adjective predicate in oracle ("If it was
@@ -6008,6 +6697,70 @@ pub(crate) fn describe_source_exiled_with_counter_condition(
     ))
 }
 
+/// A player-quantity comparison in its printed possessive form: "you have
+/// fewer than seven cards in hand", "that player has more cards in hand than
+/// you", "they control fewer lands than you".
+pub(crate) fn describe_player_quantity_comparison(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let relation = match operator {
+        Op::GreaterThan => "more",
+        Op::LessThan => "fewer",
+        _ => return None,
+    };
+    match (left.unhinted(), right.unhinted()) {
+        (Value::CardsInHand(player), Value::Fixed(count)) if *count >= 0 => {
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "have", "has");
+            let count = number_word(*count).unwrap_or_else(|| count.to_string());
+            Some(format!("{subject} {verb} {relation} than {count} cards in hand"))
+        }
+        // "you have more cards in hand than each opponent" (Kitsune
+        // Bonesetter): compared with the opponent holding the most cards.
+        (Value::CardsInHand(player), Value::MaxCardsInHand(PlayerFilter::Opponent))
+            if operator == Op::GreaterThan =>
+        {
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "have", "has");
+            Some(format!("{subject} {verb} more cards in hand than each opponent"))
+        }
+        (Value::CardsInHand(player), Value::CardsInHand(other)) if player != other => {
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "have", "has");
+            Some(format!(
+                "{subject} {verb} {relation} cards in hand than {}",
+                describe_player_filter(other)
+            ))
+        }
+        (Value::Count(filter), Value::Count(other_filter)) => {
+            let player = filter.controller.as_ref()?;
+            let other = other_filter.controller.as_ref()?;
+            if player == other {
+                return None;
+            }
+            let mut objects = filter.clone();
+            objects.controller = None;
+            let mut other_objects = other_filter.clone();
+            other_objects.controller = None;
+            if objects != other_objects {
+                return None;
+            }
+            objects.zone = None;
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "control", "controls");
+            Some(format!(
+                "{subject} {verb} {relation} {} than {}",
+                pluralize_noun_phrase(strip_indefinite_article(&objects.description())),
+                describe_player_filter(other)
+            ))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod greatest_power_control_tests {
     use super::*;
@@ -6401,5 +7154,83 @@ mod chosen_name_condition_tests {
             describe_condition(&Condition::TaggedObjectMatches(tag, filter)),
             "that card has the chosen name"
         );
+    }
+}
+
+/// A comparison of an amount against zero is the presence (or absence) of the
+/// event it counts: "the amount of damage dealt to this creature this turn is
+/// greater than 0" is "this creature was dealt damage this turn".
+fn describe_damage_presence_comparison(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let Value::Fixed(threshold) = right.unhinted() else {
+        return None;
+    };
+    let present = match (operator, *threshold) {
+        (Op::GreaterThan, 0) | (Op::GreaterThanOrEqual, 1) | (Op::NotEqual, 0) => true,
+        (Op::Equal, 0) | (Op::LessThan, 1) | (Op::LessThanOrEqual, 0) => false,
+        _ => return None,
+    };
+    match left.unhinted() {
+        Value::DamageHistory(query)
+            if query.reduction == ironsmith_core::DamageHistoryReduction::Total =>
+        {
+            let damage = match query.combat {
+                Some(true) => "combat damage",
+                Some(false) => "noncombat damage",
+                None => "damage",
+            };
+            match (&query.sources, &query.recipients) {
+                (
+                    ironsmith_core::DamageHistorySources::Any,
+                    ironsmith_core::DamageHistoryRecipients::Reference(recipient),
+                ) => {
+                    let recipient = describe_choose_spec(recipient);
+                    Some(if present {
+                        format!("{recipient} was dealt {damage} this turn")
+                    } else {
+                        format!("{recipient} wasn't dealt {damage} this turn")
+                    })
+                }
+                (
+                    ironsmith_core::DamageHistorySources::Reference(source),
+                    ironsmith_core::DamageHistoryRecipients::Reference(recipient),
+                ) => {
+                    let source = describe_choose_spec(source);
+                    let recipient = describe_choose_spec(recipient);
+                    Some(if present {
+                        format!("{source} dealt {damage} to {recipient} this turn")
+                    } else {
+                        format!("{source} didn't deal {damage} to {recipient} this turn")
+                    })
+                }
+                (
+                    ironsmith_core::DamageHistorySources::Reference(source),
+                    ironsmith_core::DamageHistoryRecipients::Any,
+                ) => {
+                    let source = describe_choose_spec(source);
+                    Some(if present {
+                        format!("{source} dealt {damage} this turn")
+                    } else {
+                        format!("{source} didn't deal {damage} this turn")
+                    })
+                }
+                _ => None,
+            }
+        }
+        Value::NoncombatDamageDealtToPlayersThisTurn(PlayerFilter::Opponent) => Some(if present {
+            "an opponent was dealt noncombat damage this turn".to_string()
+        } else {
+            "no opponent was dealt noncombat damage this turn".to_string()
+        }),
+        Value::PlayerCounters(player, CounterType::Poison) if present => {
+            let player = describe_player_filter(player);
+            let verb = if player == "you" { "are" } else { "is" };
+            Some(format!("{player} {verb} poisoned"))
+        }
+        _ => None,
     }
 }

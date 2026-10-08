@@ -503,6 +503,86 @@ fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffe
     true
 }
 
+/// "return it to the battlefield ... at the beginning of the next end step.
+/// That creature is a black Zombie in addition to its other colors and
+/// types" (Grave Betrayal): the characteristic change names the returned
+/// permanent, a new object (CR 400.7), so it belongs inside the delayed
+/// return, applied to what that return put onto the battlefield.
+fn fuse_delayed_return_characteristics_followup(lowered: &mut LoweredEffects) {
+    fn fuse(schedule: &Effect, followup: &Effect) -> Option<Effect> {
+        let schedule = schedule.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+        if !schedule.one_shot {
+            return None;
+        }
+        let tagged = schedule
+            .effects
+            .last()?
+            .downcast_ref::<crate::effects::TaggedEffect>()?;
+        let move_to_zone = tagged
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let ChooseSpec::Tagged(returned_source) = move_to_zone.target.base() else {
+            return None;
+        };
+        if move_to_zone.zone != Zone::Battlefield {
+            return None;
+        }
+        let apply = followup.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if !matches!(apply.until, crate::effect::Until::Forever)
+            || !matches!(
+                apply.target_spec.as_ref().map(ChooseSpec::base),
+                Some(ChooseSpec::Tagged(tag)) if tag == returned_source
+            )
+        {
+            return None;
+        }
+        let mut applied = apply.clone();
+        applied.target_spec = Some(ChooseSpec::Tagged(tagged.tag.clone()));
+        let mut fused = schedule.clone();
+        fused.effects.push(Effect::new(applied));
+        Some(Effect::new(fused))
+    }
+
+    let mut segments = lowered.effects.segments.clone();
+    let mut fused_any = false;
+    for index in 0..segments.len() {
+        if !segments[index].self_replacements.is_empty() {
+            continue;
+        }
+        let mut effect_index = 0;
+        while effect_index + 1 < segments[index].default_effects.len() {
+            let effects = &mut segments[index].default_effects;
+            if let Some(fused) = fuse(&effects[effect_index], &effects[effect_index + 1]) {
+                effects[effect_index] = fused;
+                effects.remove(effect_index + 1);
+                fused_any = true;
+                continue;
+            }
+            effect_index += 1;
+        }
+        if index + 1 < segments.len()
+            && segments[index + 1].self_replacements.is_empty()
+            && segments[index + 1].default_effects.len() == 1
+            && let Some(last) = segments[index].default_effects.last()
+            && let Some(fused) = fuse(last, &segments[index + 1].default_effects[0])
+        {
+            *segments[index]
+                .default_effects
+                .last_mut()
+                .expect("checked above") = fused;
+            segments[index + 1].default_effects.clear();
+            fused_any = true;
+        }
+    }
+    if !fused_any {
+        return;
+    }
+    segments.retain(|segment| {
+        !segment.default_effects.is_empty() || !segment.self_replacements.is_empty()
+    });
+    lowered.effects.replace_segments(segments);
+}
+
 fn fuse_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
     if fuse_delayed_return_control_loss_sacrifice_followup(lowered) {
         return;
@@ -4222,6 +4302,7 @@ fn lower_parsed_ability_internal(
             }
             bind_cast_spell_future_entry_counters(&trigger, &mut lowered);
             fuse_source_control_loss_sacrifice_followup(&mut lowered);
+            fuse_delayed_return_characteristics_followup(&mut lowered);
             triggered.trigger = compile_trigger_spec(trigger);
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;

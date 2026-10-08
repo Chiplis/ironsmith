@@ -325,16 +325,20 @@ fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
         {
             Some(StaticAbility::cant_attack_unless_condition(fact.condition, display))
         }
-        AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => {
+        AttackUnlessScope::AttackOrBlock
+        | AttackUnlessScope::Block
+        | AttackUnlessScope::AttackAlone => {
             let crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition) =
                 fact.condition
             else {
                 return None;
             };
-            let restriction = if fact.scope == AttackUnlessScope::Block {
-                crate::effect::Restriction::block(ObjectFilter::source())
-            } else {
-                crate::effect::Restriction::attack_or_block(ObjectFilter::source())
+            let restriction = match fact.scope {
+                AttackUnlessScope::Block => crate::effect::Restriction::block(ObjectFilter::source()),
+                AttackUnlessScope::AttackAlone => {
+                    crate::effect::Restriction::attack_alone(ObjectFilter::source())
+                }
+                _ => crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
             };
             Some(
                 StaticAbility::restriction(restriction, display)

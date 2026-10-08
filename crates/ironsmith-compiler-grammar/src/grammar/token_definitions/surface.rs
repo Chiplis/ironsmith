@@ -289,6 +289,10 @@ pub fn parse_postnominal_token_color_words_tokens(tokens: &[OwnedLexToken]) -> O
 }
 
 pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
+    // A trailing "where X is ..." clause defines the count, not the token
+    // ("create X Blood tokens, where X is the number of abilities from among
+    // flying, ..."); its keyword words never belong to the token.
+    let words = &words[..words.iter().position(|word| *word == "where").unwrap_or(words.len())];
     let mut keywords = Vec::new();
     for (word, keyword) in [
         ("flying", TokenKeywordShape::Flying),

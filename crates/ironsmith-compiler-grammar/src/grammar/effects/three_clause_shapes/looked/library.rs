@@ -58,6 +58,18 @@ pub fn parse_looked_remainder_shape(tokens: &[OwnedLexToken]) -> Option<LookedRe
     if contains_sequence_word(tail, "bottom") && contains_sequence_word(tail, "library") {
         return parse_consult_remainder_order_tokens(tail).map(LookedRemainderShape::LibraryBottom);
     }
+    // "Put the rest on the bottom in a random order": the looked-at library
+    // is the implied owner of "the bottom".
+    if contains_sequence_phrase(tail, &[&["on", "the", "bottom", "in"]]) {
+        if contains_sequence_phrase(tail, &[&["random", "order"]]) {
+            return Some(LookedRemainderShape::LibraryBottom(LibraryBottomOrderAst::Random));
+        }
+        if contains_sequence_phrase(tail, &[&["any", "order"]]) {
+            return Some(LookedRemainderShape::LibraryBottom(
+                LibraryBottomOrderAst::ChooserChooses,
+            ));
+        }
+    }
     contains_sequence_word(tail, "graveyard").then_some(LookedRemainderShape::Graveyard)
 }
 

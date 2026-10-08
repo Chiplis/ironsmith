@@ -1588,6 +1588,14 @@ pub fn parse_persistent_no_maximum_hand_size_lexed(
 /// phases end". A pronoun subject ("they", "that player") names the player the
 /// surrounding sentence already introduced (for example the player who just
 /// added the mana), not the ability's controller.
+/// "you don't lose unspent red mana as steps and phases end" (The Last Agni
+/// Kai): the retained mana is only of the named color.
+fn dont_lose_mana_color(words: &[&str]) -> Option<crate::color::Color> {
+    let mana = words.iter().position(|word| *word == "mana")?;
+    let color_word = *words.get(mana.checked_sub(1)?)?;
+    crate::color::Color::from_name(color_word)
+}
+
 fn dont_lose_mana_subject_player(words: &[&str]) -> PlayerAst {
     let Some(negation) = words
         .iter()
@@ -1748,6 +1756,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(Some(vec![
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
                 dont_lose_mana_subject_player(&words),
+                dont_lose_mana_color(&words),
             ),
         ]));
     }

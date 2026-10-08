@@ -80,7 +80,9 @@ pub struct CountedLookedHandRemainderShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OptionalLookedTopRemainderShape {
     pub count: ChoiceCount,
-    pub remainder_order: LibraryBottomOrderAst,
+    /// `None` when the rest go into your graveyard rather than on the bottom
+    /// of the library ("Put the rest into your graveyard.").
+    pub remainder_order: Option<LibraryBottomOrderAst>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,6 +137,17 @@ fn standalone_library_bottom_remainder(
     Ok(order)
 }
 
+/// "Put the rest into your graveyard."
+fn standalone_graveyard_remainder(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("rest").parse_next(input)?;
+    primitives::phrase(&["into", "your", "graveyard"])
+        .void()
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
+}
+
 fn counted_looked_hand_remainder(
     input: &mut LexStream<'_>,
 ) -> WResult<CountedLookedHandRemainderShape> {
@@ -168,6 +181,9 @@ fn optional_looked_top_selection(input: &mut LexStream<'_>) -> WResult<ChoiceCou
         .void()
         .parse_next(input)?;
     let count = counted_looked_reference.parse_next(input)?;
+    // "put one of those cards back on top of your library" restates the
+    // origin, not a different destination.
+    opt(primitives::kw("back")).parse_next(input)?;
     library_position(input, "top")?;
     primitives::sentence_end().parse_next(input)?;
     if count == ChoiceCount::exactly(1) || count == ChoiceCount::up_to(1) {
@@ -191,10 +207,18 @@ pub fn parse_optional_looked_top_remainder_shape(
     let count = crate::grammar::primitives::probe_shape(
         optional_looked_top_selection.parse(LexStream::new(trim_lexed_commas(selection_tokens))),
     )?;
-    let remainder_order = crate::grammar::primitives::probe_shape(
-        standalone_library_bottom_remainder
-            .parse(LexStream::new(trim_lexed_commas(remainder_tokens))),
-    )?;
+    let remainder_tokens = trim_lexed_commas(remainder_tokens);
+    let remainder_order = match crate::grammar::primitives::probe_shape(
+        standalone_library_bottom_remainder.parse(LexStream::new(remainder_tokens)),
+    ) {
+        Some(order) => Some(order),
+        None => {
+            crate::grammar::primitives::probe_shape(
+                standalone_graveyard_remainder.parse(LexStream::new(remainder_tokens)),
+            )?;
+            None
+        }
+    };
     Some(OptionalLookedTopRemainderShape {
         count,
         remainder_order,
@@ -571,7 +595,7 @@ mod tests {
             ),
             Some(OptionalLookedTopRemainderShape {
                 count: ChoiceCount::exactly(1),
-                remainder_order: LibraryBottomOrderAst::Random,
+                remainder_order: Some(LibraryBottomOrderAst::Random),
             })
         );
     }

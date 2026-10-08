@@ -337,7 +337,7 @@ fn parse_source_and_target_exile_pair(
     };
     let mut source = parse_target_phrase(shape.source_tokens)?;
     let mut target = parse_target_phrase(shape.target_tokens)?;
-    if !matches!(source, TargetAst::Source(_)) {
+    if !matches!(source, TargetAst::Source(_) | TargetAst::Tagged(..)) {
         return Ok(None);
     }
     apply_exile_subject_hand_owner_context(&mut source, subject.clone());
@@ -830,10 +830,27 @@ fn parse_mixed_target_and_all_exile_list(
     face_down: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let segments = crate::grammar::primitives::split_lexed_slices_on_comma(tokens);
-    if segments.len() < 2 {
-        return Ok(None);
-    }
-    let first_segment = trim_commas(segments[0]);
+    // "Exile this artifact and all cards from all graveyards" has no comma:
+    // the list splits at the `and` that opens the universal arm.
+    let and_joined = segments.len() < 2;
+    let segments: Vec<Vec<OwnedLexToken>> = if and_joined {
+        let parts = split_exile_all_list_tail_segment(tokens.to_vec());
+        // "Exile target creature and all Auras attached to it" names the
+        // target's attachments, read by the attached-objects bundle with the
+        // back-reference bound to that target.
+        if parts.len() < 2
+            || effect_grammar::strip_exile_all_or_each_shape(&parts[0]).is_some()
+            || parts[1..]
+                .iter()
+                .any(|part| part.iter().any(|token| token.is_word("attached")))
+        {
+            return Ok(None);
+        }
+        parts
+    } else {
+        segments.iter().map(|segment| segment.to_vec()).collect()
+    };
+    let first_segment = trim_commas(&segments[0]);
     if first_segment.is_empty() {
         return Ok(None);
     }
@@ -907,6 +924,16 @@ fn parse_mixed_target_and_all_exile_list(
         union.any_of = coordinated_filters;
         union.set_conjunctive_set_surface(true);
         return Ok(Some(EffectAst::subject_verb_exile_all(union, face_down)));
+    }
+    // "Exile target nonland permanent an opponent controls and all tokens
+    // that player controls with the same name as that permanent" (Legions
+    // to Ashes) is one coordinated exile instruction.
+    if and_joined {
+        return Ok(Some(EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        }));
     }
     Ok(Some(EffectAst::Sequence { effects }))
 }

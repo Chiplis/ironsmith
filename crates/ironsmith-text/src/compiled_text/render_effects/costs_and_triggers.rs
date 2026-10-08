@@ -162,7 +162,7 @@ pub(super) fn apply_triggered_presentation_label(
         PresentationLabel::CaseSolved => format!("Solved — {line}"),
         PresentationLabel::CaseToSolve => {
             if let Some(condition) = triggered.intervening_if.as_ref() {
-                let condition = capitalize_first(&describe_condition(condition));
+                let condition = case_to_solve_condition_text(condition);
                 format!(
                     "To solve — {condition}. (If unsolved, solve at the beginning of your end step.)"
                 )
@@ -254,8 +254,24 @@ pub(super) fn describe_case_to_solve_triggered_ability(
     let condition = triggered.intervening_if.as_ref()?;
     Some(format!(
         "To solve — {}. (If unsolved, solve at the beginning of your end step.)",
-        capitalize_first(&describe_condition(condition))
+        case_to_solve_condition_text(condition)
     ))
+}
+
+/// A Case's solve condition is a standalone statement about the turn so far,
+/// so a "you <past> ... this turn" history reads in the perfect tense ("You've
+/// gained 5 or more life this turn", "You've cast four or more ... spells this
+/// turn"), unlike the same condition after an intervening "if".
+fn case_to_solve_condition_text(condition: &Condition) -> String {
+    let condition = capitalize_first(&describe_condition(condition));
+    if condition.ends_with(" this turn") {
+        for verb in ["gained", "cast"] {
+            if let Some(rest) = condition.strip_prefix(&format!("You {verb} ")) {
+                return format!("You've {verb} {rest}");
+            }
+        }
+    }
+    condition
 }
 
 pub(crate) fn granted_ability_self_subject_for_filter(filter: &ObjectFilter) -> &'static str {
@@ -536,10 +552,20 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
                     display.filter.zone = None;
                     display.zone = None;
                 }
+                let mut selection = describe_choose_selection(&display);
+                // "Reveal two cards from your hand that share a color": the
+                // revealed cards come from the payer's hand.
+                if reveal
+                    && choose_primary_zone(choose) == Some(Zone::Hand)
+                    && !selection.contains(" hand")
+                    && let Some((noun, relation)) = selection.split_once(" that share")
+                {
+                    selection = format!("{noun} from your hand that share{relation}");
+                }
                 parts.push(format!(
                     "{} {}",
                     if reveal { "Reveal" } else { "Discard" },
-                    describe_choose_selection(&display)
+                    selection
                 ));
                 compacted_choice = true;
                 index += 2;
@@ -1242,6 +1268,9 @@ pub(super) fn describe_destroy_unless_controller_pays_toughness_life(
             &unless_pays.player,
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
                 if tag == &tagged.tag
+        ) && !matches!(
+            &unless_pays.player,
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
         )
     {
         return None;
@@ -1528,6 +1557,14 @@ fn describe_collect_evidence_cost(
     {
         return None;
     }
+    // A computed minimum is authored as "collect evidence X, where X is ..."
+    // (Urgent Necropsy).
+    if !matches!(minimum.unhinted(), Value::Fixed(_) | Value::X) {
+        return Some(format!(
+            "Collect evidence X, where X is {}",
+            describe_value(minimum)
+        ));
+    }
     Some(format!("Collect evidence {}", describe_value(minimum)))
 }
 
@@ -1566,6 +1603,28 @@ fn describe_cost_component_parts_with_target(
                 idx += 3;
                 continue;
             }
+        }
+        // "Sacrifice this creature and any number of other ... creatures":
+        // the source is selected into the same sacrificed set as the others.
+        if idx + 2 < costs.len()
+            && let Some(source_choice) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && source_choice.filter
+                == (ObjectFilter { source: true, ..ObjectFilter::default() }).in_zone(Zone::Battlefield)
+            && source_choice.chooser == PlayerFilter::You
+            && source_choice.count == ChoiceCount::exactly(1)
+            && let Some(choose) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && choose.tag == source_choice.tag
+            && let Some(sacrifice) = costs[idx + 2].effect_ref().and_then(sacrifice_view)
+            && let Some(chosen) = describe_choose_then_sacrifice(choose, sacrifice)
+            && let Some(chosen) = normalize_cost_phrase(&chosen).strip_prefix("Sacrifice ")
+        {
+            parts.push(format!("Sacrifice this source and {chosen}"));
+            idx += 3;
+            continue;
         }
         if idx + 1 < costs.len()
             && costs[idx + 1].is_sacrifice_self()
@@ -1646,6 +1705,9 @@ fn describe_cost_component_parts_with_target(
                 .and_then(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
             && let Some(compact) =
                 describe_put_opponent_owned_exiled_card_into_graveyard_cost(choose, move_to_zone)
+                    .or_else(|| {
+                        describe_put_source_exiled_card_into_graveyard_cost(choose, move_to_zone)
+                    })
         {
             parts.push(compact);
             idx += 2;
@@ -1805,6 +1867,37 @@ fn describe_put_opponent_owned_exiled_card_into_graveyard_cost(
     ))
 }
 
+/// "Put a card exiled with this artifact into its owner's graveyard": a
+/// single card chosen among the source's linked exiled cards, then moved to
+/// its owner's graveyard.
+fn describe_put_source_exiled_card_into_graveyard_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    let source_exiled = choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    });
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Exile)
+        || !source_exiled
+        || !choose.count.is_single()
+        || move_to_zone.zone != Zone::Graveyard
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    let selection = filter.description();
+    let selection = strip_leading_article(&selection);
+    Some(format!(
+        "Put {} into its owner's graveyard",
+        with_indefinite_article(selection)
+    ))
+}
+
 fn describe_choose_then_put_on_top_of_library_cost(
     choose: &crate::effects::ChooseObjectsEffect,
     move_to_zone: &crate::effects::MoveToZoneEffect,
@@ -1853,10 +1946,16 @@ fn describe_choose_then_put_on_bottom_of_library_cost(
         || choose.chooser != PlayerFilter::You
         || choose_primary_zone(choose) != Some(Zone::Graveyard)
         || choose.filter.owner != Some(PlayerFilter::You)
-        || move_to_zone
-            != &crate::effects::MoveToZoneEffect::to_bottom_of_library(ChooseSpec::Tagged(
-                choose.tag.clone(),
-            ))
+        || !matches!(
+            move_to_zone.library_order,
+            None | Some(crate::effects::LibraryPlacementOrder::Owners)
+        )
+        || (crate::effects::MoveToZoneEffect {
+            library_order: None,
+            ..move_to_zone.clone()
+        }) != crate::effects::MoveToZoneEffect::to_bottom_of_library(ChooseSpec::Tagged(
+            choose.tag.clone(),
+        ))
     {
         return None;
     }
@@ -2103,6 +2202,11 @@ pub(super) fn describe_choose_then_unattach_cost(
     let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
     if exact == 0 {
         return None;
+    }
+    // "{R}{W}, Unattach this Equipment:" (Sunforger): the source unattaches
+    // itself from whatever it is attached to.
+    if choose.filter.source && exact == 1 {
+        return Some("Unattach this source".to_string());
     }
     let noun = if choose.filter.card_types == [CardType::Artifact]
         && choose.filter.subtypes == [crate::types::Subtype::Equipment]
@@ -2864,7 +2968,8 @@ pub(super) fn this_way_back_reference_filter(filter: &ObjectFilter) -> bool {
     // tapped to untapped, so it cannot imply an "untapped this way" condition.
     let untap_reference = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            && constraint.tag.as_str().starts_with("untapped_")
+            && (constraint.tag.as_str().starts_with("untapped_")
+                || constraint.tag.as_str().starts_with("created_"))
     });
     if describe_tagged_this_way_action(filter).is_none() && !untap_reference {
         return false;
@@ -3504,6 +3609,13 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         base = stripped.trim_end();
         trailing = ".";
     }
+    // The combat-partner relative clause agrees with the plural head.
+    if let Some((head, tail)) = base.split_once(" that blocked or was blocked by ") {
+        return format!(
+            "{} that blocked or were blocked by {tail}{trailing}",
+            pluralize_noun_phrase(head)
+        );
+    }
     // Coordinated color adjectives modify the following noun; they are not
     // separate nouns to pluralize ("black or red card" -> "black or red cards").
     let words: Vec<&str> = base.split_whitespace().collect();
@@ -3513,7 +3625,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     {
         let mut end = 1;
         while end + 1 < words.len()
-            && matches!(words[end], "or" | "and")
+            && matches!(words[end], "or" | "and" | "and/or")
             && crate::color::Color::from_name(words[end + 1]).is_some()
         {
             end += 2;
@@ -3528,6 +3640,14 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     }
     if let Some(rest) = base.strip_prefix("another ") {
         return format!("other {}{}", pluralize_noun_phrase(rest), trailing);
+    }
+    // "Aura cards that were attached to it" (Cass, Hand of Vengeance).
+    if let Some((head, predicate)) = base.split_once(" that was ") {
+        return format!(
+            "{} that were {}{trailing}",
+            pluralize_noun_phrase(head.trim()),
+            predicate.trim()
+        );
     }
     for (relation, plural_relation, predicate_is_adjectival) in [
         (" that isn't ", " that aren't ", true),
@@ -3696,6 +3816,36 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
             .map(str::trim)
             .filter(|part| !part.is_empty())
             .collect::<Vec<_>>();
+        // Bare card-type adjectives share the last arm's noun ("instant or
+        // sorcery card" -> "instant or sorcery cards"); only that noun is
+        // pluralized.
+        let is_card_type_adjective = |word: &str| {
+            matches!(
+                word,
+                "artifact"
+                    | "battle"
+                    | "creature"
+                    | "enchantment"
+                    | "instant"
+                    | "kindred"
+                    | "land"
+                    | "planeswalker"
+                    | "sorcery"
+            )
+        };
+        if let Some((last, leading)) = parts.split_last()
+            && !leading.is_empty()
+            && leading.iter().all(|part| is_card_type_adjective(part))
+            && last
+                .split_once(' ')
+                .is_some_and(|(head, _)| is_card_type_adjective(head))
+        {
+            return format!(
+                "{} or {}{trailing}",
+                leading.join(" or "),
+                pluralize_noun_phrase(last)
+            );
+        }
         if parts.len() > 1 {
             let plural_parts = parts
                 .iter()
@@ -3760,6 +3910,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " in target player's graveyard",
         " in that player's graveyard",
         " in single graveyard",
+        " from a single graveyard",
         " in a graveyard",
         " in graveyard",
         " in all graveyards",
@@ -4638,6 +4789,16 @@ pub(super) fn describe_counted_sacrifice_choice_selection(
 
     if choose.count.is_any_number() {
         return Some(format!("any number of {plural}"));
+    }
+    // "sacrifice a permanent for each 1 life you lost" (Lich's Tomb).
+    if choose.count.is_dynamic_x()
+        && !choose.count.is_up_to_dynamic_x()
+        && let Some(count_value) = choose.count_value.as_ref()
+        && count_value.has_surface_hint(ValueSurfaceHint::ForEach)
+        && let Some(basis) =
+            super::player_and_zone_effects::describe_create_for_each_count(count_value)
+    {
+        return Some(format!("{} for each {basis}", with_indefinite_article(&kind)));
     }
     if choose.count.is_dynamic_x() {
         let count = describe_runtime_choice_count(choose)
@@ -6085,7 +6246,10 @@ fn describe_choose_then_sacrifice_selection(
         }
         if chooser_controls_chosen {
             let chosen_kind = with_indefinite_article(strip_leading_article(&chosen));
-            return Some(format!("{player} {verb} {chosen_kind} of their choice"));
+            return Some(format!(
+                "{player} {verb} {}",
+                with_their_choice_before_relative_clause(&chosen_kind)
+            ));
         }
         if let Some(rest) = chosen.strip_prefix(&format!("{player}'s ")) {
             let chosen_kind = with_indefinite_article(rest);
@@ -6134,6 +6298,31 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
     let verb = player_verb(&player, "sacrifice", "sacrifices");
     if sacrifice.filter.source && sacrifice.count.unhinted() == &Value::Fixed(1) {
         return format!("{player} {verb} it");
+    }
+    if let Value::Count(count_filter) = sacrifice.count
+        && count_filter == sacrifice.filter
+        && let [constraint] = sacrifice.filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && sacrifice.filter.zone.is_none()
+        && sacrifice.filter.controller.is_none()
+    {
+        // "sacrifice those tokens": every object an earlier effect tagged,
+        // not every object matching the remaining characteristics.
+        let mut base = sacrifice.filter.clone();
+        base.tagged_constraints.clear();
+        let noun = base.description();
+        let noun = strip_leading_article(&noun);
+        let noun = if noun.is_empty() || noun == "permanent" || noun == "permanents" {
+            "permanents".to_string()
+        } else if noun.ends_with("tokens") || noun.ends_with("creatures") || noun.ends_with("permanents") {
+            noun.to_string()
+        } else {
+            pluralize_noun_phrase(noun)
+        };
+        if matches!(sacrifice.player, PlayerFilter::You) {
+            return format!("Sacrifice those {noun}");
+        }
+        return format!("{player} {verb} those {noun}");
     }
     if let Value::Count(count_filter) = sacrifice.count
         && count_filter == sacrifice.filter
@@ -6962,6 +7151,22 @@ fn describe_choose_then_tap_state_cost(
         ));
     }
     if choose.count.is_single() {
+        // "Tap enchanted creature:" (Veteran's Voice): the attached object
+        // is one specific permanent; the tap state is implied by the verb.
+        let mut filter = choose.filter.clone();
+        if filter
+            .with_attached_object
+            .as_deref()
+            .is_some_and(|attached| attached.source && attached.source_surface.is_some())
+        {
+            filter.untapped = false;
+            filter.tapped = false;
+            filter.controller = None;
+            let description = filter.description();
+            if description.starts_with("enchanted ") || description.starts_with("equipped ") {
+                return Some(format!("{verb} {description}"));
+            }
+        }
         return Some(format!(
             "{verb} {}",
             with_indefinite_article(&choose.filter.description())
@@ -7164,6 +7369,9 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
             PlayerFilter::Target(inner) if inner.relative_target_exclusion_base().is_some() => {
                 "another target player controls".to_string()
             }
+            // Oracle's combat-role player is article-less in a count:
+            // "the number of Forests defending player controls".
+            PlayerFilter::Defending => "defending player controls".to_string(),
             _ => format!("{} controls", describe_player_filter(controller)),
         };
         if filter.has_controller_after_qualifiers_surface() {
@@ -7366,4 +7574,19 @@ pub(super) fn describe_casting_price_payment(cost: &crate::cost::TotalCost) -> S
         }
     }
     format!("paying {}", lowercase_first(&payment))
+}
+
+/// "a creature of their choice that they controlled since the beginning of
+/// the turn": the choice phrase attaches to the noun, ahead of a relative
+/// clause. The chooser controls the object, so its continuous-control
+/// history reads from their perspective.
+fn with_their_choice_before_relative_clause(chosen: &str) -> String {
+    let chosen = chosen.replace(
+        " that its controller has controlled continuously since the beginning of the turn",
+        " that they controlled since the beginning of the turn",
+    );
+    match chosen.split_once(" that ") {
+        Some((head, relative)) => format!("{head} of their choice that {relative}"),
+        None => format!("{chosen} of their choice"),
+    }
 }

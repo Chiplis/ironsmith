@@ -598,6 +598,21 @@ fn set_choose_spec_tag_relation(
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             set_filter_tag_relation(filter, tag, from, to);
         }
+        // "If it's paired with a creature, that creature also gets +2/+2"
+        // (Joint Assault): a direct reference to the tagged object becomes
+        // the object standing in the new relation to it (its partner).
+        ChooseSpec::Tagged(found)
+            if found.as_str() == tag
+                && from == TaggedOpbjectRelation::IsTaggedObject
+                && to == TaggedOpbjectRelation::SoulbondPartnerOfTagged =>
+        {
+            let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: found.clone(),
+                relation: to,
+            });
+            *spec = ChooseSpec::Object(filter);
+        }
         _ => {}
     }
 }

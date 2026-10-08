@@ -30,6 +30,8 @@ pub enum AttackUnlessScope {
     Attack,
     Block,
     AttackOrBlock,
+    /// "can't attack alone unless ...": only the solo attack is gated.
+    AttackAlone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +165,7 @@ fn parse_attack_unless_head_lexed(input: &mut LexStream<'_>) -> WResult<AttackUn
     alt((
         primitives::phrase(&["attack", "or", "block", "unless"])
             .value(AttackUnlessScope::AttackOrBlock),
+        primitives::phrase(&["attack", "alone", "unless"]).value(AttackUnlessScope::AttackAlone),
         primitives::phrase(&["attack", "unless"]).value(AttackUnlessScope::Attack),
         primitives::phrase(&["block", "unless"]).value(AttackUnlessScope::Block),
     ))
@@ -194,7 +197,9 @@ fn parse_requirement_lexed(
             parse_controller_control_requirement,
         ))
         .parse_next(input),
-        AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => alt((
+        AttackUnlessScope::AttackOrBlock
+        | AttackUnlessScope::Block
+        | AttackUnlessScope::AttackAlone => alt((
             parse_blocking_group_requirement,
             alt((
             parse_paired_partner_requirement,

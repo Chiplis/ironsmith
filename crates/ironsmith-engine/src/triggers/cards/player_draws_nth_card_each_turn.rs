@@ -158,6 +158,9 @@ fn numbered_draw_display(player: &PlayerFilter, card_numbers: &[u32]) -> String 
         PlayerFilter::Opponent => {
             format!("Whenever an opponent draws their {ordinal_text} card each turn")
         }
+        PlayerFilter::Active => {
+            format!("Whenever a player draws their {ordinal_text} card during their turn")
+        }
         PlayerFilter::Specific(_) | PlayerFilter::IteratedPlayer => {
             format!("Whenever that player draws their {ordinal_text} card each turn")
         }
@@ -194,6 +197,10 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
         match &self.player {
             PlayerFilter::You => format!("Whenever you draw your {ordinal} card each turn"),
             PlayerFilter::Any => format!("Whenever a player draws their {ordinal} card each turn"),
+            // Only the active player's own draws: "during their turn".
+            PlayerFilter::Active => {
+                format!("Whenever a player draws their {ordinal} card during their turn")
+            }
             PlayerFilter::Opponent => {
                 format!("Whenever an opponent draws their {ordinal} card each turn")
             }

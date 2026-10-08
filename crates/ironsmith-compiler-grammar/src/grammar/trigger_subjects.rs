@@ -95,9 +95,16 @@ fn comma_continues_spell_color_list(tokens: &[OwnedLexToken]) -> bool {
     let mut words = tokens.iter().filter_map(OwnedLexToken::as_word);
     match words.next() {
         Some(word) if crate::util::parse_color(word).is_some() => true,
-        Some("and" | "or" | "and/or") => words
-            .next()
-            .is_some_and(|word| crate::util::parse_color(word).is_some()),
+        // A serial value list (`power 4, 5, or 6`) or a serial stat list
+        // (`mana value, power, or toughness equal to ...`) also continues
+        // past its commas.
+        Some(word) if word.parse::<i32>().is_ok() => true,
+        Some("power" | "toughness") => true,
+        Some("and" | "or" | "and/or") => words.next().is_some_and(|word| {
+            crate::util::parse_color(word).is_some()
+                || word.parse::<i32>().is_ok()
+                || matches!(word, "power" | "toughness")
+        }),
         _ => false,
     }
 }

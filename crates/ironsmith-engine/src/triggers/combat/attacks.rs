@@ -610,6 +610,15 @@ impl TriggerMatcher for AttacksTrigger {
         } else if let Some(stripped) = subject.strip_prefix("an ") {
             subject = stripped.to_string();
         }
+        // The implicit antecedent tag ("Whenever that creature attacks this
+        // turn") names one earlier object.
+        let antecedent_reference = display_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "__it__"
+        });
+        if antecedent_reference && !subject.starts_with("that ") {
+            subject = format!("that {subject}");
+        }
         let base_subject = subject.clone();
         let subject = if self.one_or_more {
             pluralize_one_or_more_attack_subject(&subject)
@@ -783,6 +792,9 @@ impl TriggerMatcher for AttacksTrigger {
                 && matches!(attacked_player.as_ref(), Some(PlayerFilter::You))
                 && attacked_target_must_be_player
             {
+                if explicit_attack_with_group {
+                    return "Whenever a player attacks you with one or more creatures".to_string();
+                }
                 return "Whenever a player attacks you".to_string();
             }
             if base_subject == "creature an opponent controls"
@@ -807,7 +819,7 @@ impl TriggerMatcher for AttacksTrigger {
                 .unwrap_or_else(|| "this creature".to_string());
             return format!("Whenever {source_subject} attacks{target_tail}");
         }
-        let subject = if articleless_attachment_subject {
+        let subject = if articleless_attachment_subject || antecedent_reference {
             subject
         } else {
             described_subject
@@ -894,6 +906,11 @@ fn defending_player_for_attack_target(
 }
 
 pub(crate) fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
+    // "one or more" replaces the singular article ("a creature you control").
+    let subject = subject
+        .strip_prefix("a ")
+        .or_else(|| subject.strip_prefix("an "))
+        .unwrap_or(subject);
     if subject == "creature" {
         return "creatures".to_string();
     }

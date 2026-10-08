@@ -528,7 +528,20 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             match trigger {
                 TriggerSpec::ThisBecomesUntapped | TriggerSpec::PermanentBecomesUntapped { .. }
                 | TriggerSpec::ControlChanged(_) => true,
-                TriggerSpec::Either(left, right) => is_state_transition(left) && is_state_transition(right),
+                // "When ~ leaves the battlefield or becomes untapped" (Merieke
+                // Ri Berit): the leave arm ends the same watched relationship.
+                TriggerSpec::Either(left, right) => {
+                    let leaves = |trigger: &TriggerSpec| {
+                        matches!(
+                            trigger,
+                            TriggerSpec::ThisLeavesBattlefield
+                                | TriggerSpec::ThisLeavesBattlefieldWithSurface(_)
+                        )
+                    };
+                    (is_state_transition(left) || leaves(left))
+                        && (is_state_transition(right) || leaves(right))
+                        && (is_state_transition(left) || is_state_transition(right))
+                }
                 TriggerSpec::AnyOf(branches) => !branches.is_empty() && branches.iter().all(is_state_transition),
                 _ => false,
             }

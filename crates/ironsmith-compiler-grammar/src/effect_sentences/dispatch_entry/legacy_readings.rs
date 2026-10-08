@@ -159,6 +159,9 @@ const READINGS: &[Reading] = &[
                 // is a delayed trigger the effect creates.
                 && effect_grammar::delayed_sentence_shapes::parse_delayed_next_combat_shape(tokens)
                     .is_none()
+                // "At end of combat, ..." inside a resolving effect schedules
+                // a delayed trigger for this combat.
+                && !leading_end_of_combat_delay(tokens)
         },
         read: |input| input.outcome(read_trigger_line_sentence(input)),
     },
@@ -569,6 +572,27 @@ fn read_search_library_slots_to_hand_bundle(
     }
     Ok(None)
 }
+/// A resolving effect whose sentence opens with "at end of combat, ..."
+/// (Time Elemental's "When this creature attacks or blocks, at end of combat,
+/// sacrifice it ...") schedules that action for the end of this combat.
+/// Returns the scheduled action's tokens.
+fn leading_end_of_combat_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let comma = tokens
+        .iter()
+        .position(|token| token.kind == crate::lexer::TokenKind::Comma)?;
+    let head = crate::lexer::parser_token_word_refs(&tokens[..comma]);
+    if !matches!(
+        head.as_slice(),
+        ["at", "end", "of", "combat"] | ["at", "the", "end", "of", "combat"]
+    ) {
+        return None;
+    }
+    let body = &tokens[comma + 1..];
+    (!crate::lexer::parser_token_word_refs(body).is_empty()).then_some(body)
+}
+fn leading_end_of_combat_delay(tokens: &[OwnedLexToken]) -> bool {
+    leading_end_of_combat_body(tokens).is_some()
+}
 fn read_delayed_schedule_sentence(
     input: &LegacyDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -579,6 +603,17 @@ fn read_delayed_schedule_sentence(
     // ability. Route the complete sentence through effect dispatch before
     // the public trigger-text convenience path strips the timing header and
     // returns only its payload.
+    if sentences.len() == 1
+        && let Some(body) = leading_end_of_combat_body(tokens)
+    {
+        let effects = super::parse_effect_sentences_lexed(body)?;
+        if effects.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilEndOfCombat { effects },
+        )]));
+    }
     if sentences.len() == 1
         && (effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
             .is_some()

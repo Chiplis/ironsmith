@@ -15,10 +15,9 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
         ["defending", "player"] | ["the", "defending", "player"]
     ) {
-        return Ok(TargetAst::Player(
-            PlayerFilter::Defending,
-            token_slice_span(tokens),
-        ));
+        // "defending player" names the combat's defender; it is never a
+        // target declaration.
+        return Ok(TargetAst::Player(PlayerFilter::Defending, None));
     }
 
     // `each` is a set quantifier rather than part of the object filter. Let

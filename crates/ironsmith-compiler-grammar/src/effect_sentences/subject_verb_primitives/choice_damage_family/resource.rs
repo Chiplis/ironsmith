@@ -38,7 +38,13 @@ pub fn parse_sentence_unless_pays(
     let before_unless_clause = SubjectVerbPrimitiveClause::new(shape.action_tokens);
     let before_words = before_unless_clause.word_refs();
 
-    if choice_shapes::first_choice_damage_word_is(&before_words, "counter") {
+    // A sentence-leading "then" ("..., Then counter up to one target spell
+    // unless its controller pays ...") still names the counter-unless-pays
+    // shape, which the counter primitives own.
+    let counter_words = before_words
+        .strip_prefix(&["then"][..])
+        .unwrap_or(&before_words[..]);
+    if choice_shapes::first_choice_damage_word_is(counter_words, "counter") {
         return Ok(None);
     }
     if choice_shapes::is_create_token_sacrifice_counter_shape(&before_unless_clause.word_refs()) {

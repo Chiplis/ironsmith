@@ -1381,6 +1381,33 @@ fn replace_named_source_alias_tokens(
             word_idx += 1;
             continue;
         }
+        // "until end of turn" on a card named Turn (Turn // Burn): the
+        // game's turn noun after a determiner or "of" is never the source.
+        if alias_words.len() == 1
+            && alias_words[0] == "turn"
+            && word_idx.checked_sub(1).is_some_and(|previous| {
+                matches!(
+                    pieces[previous].text,
+                    "of" | "this"
+                        | "that"
+                        | "each"
+                        | "next"
+                        | "your"
+                        | "their"
+                        | "extra"
+                        | "same"
+                        | "whose"
+                        | "a"
+                        | "an"
+                        | "its"
+                        | "his"
+                        | "her"
+                )
+            })
+        {
+            word_idx += 1;
+            continue;
+        }
         let overlaps_preserved_longer_alias = all_alias_words.iter().any(|longer_words| {
             longer_words.len() > alias_words.len()
                 && source_alias_word_span_matches(&pieces, word_idx, longer_words)
@@ -1912,7 +1939,7 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
 fn source_alias_occurrence_is_name_override_surface_lexed(
     pieces: &[SourceAliasWordPiece<'_>],
     start_word: usize,
-    _end_word: usize,
+    end_word: usize,
 ) -> bool {
     let previous_word = start_word
         .checked_sub(1)
@@ -1935,6 +1962,68 @@ fn source_alias_occurrence_is_name_override_surface_lexed(
             && matches!(previous_previous_word, Some("them" | "it"))
             && third_previous_word == Some("meld"))
         || source_alias_occurrence_ends_named_phrase_lexed(pieces, start_word)
+        || source_alias_occurrence_is_named_list_member_lexed(pieces, start_word, end_word)
+}
+
+/// "Equipment named Sword of Kaldra, Shield of Kaldra, and Helm of Kaldra"
+/// on Shield of Kaldra: the alias is one entry of a list of card names, not
+/// a reference to this object. The alias must sit inside the list (followed
+/// by a separator, or introduced by "and"/"or"), and every word walked back
+/// to "named" must be a name word or a list separator.
+fn source_alias_occurrence_is_named_list_member_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let Some(alias) = pieces.get(start_word) else {
+        return false;
+    };
+    let Some(last) = end_word.checked_sub(1).and_then(|idx| pieces.get(idx)) else {
+        return false;
+    };
+    let followed_by_separator = pieces.get(end_word).is_some_and(|next| {
+        next.sentence == last.sentence
+            && (next.clause != last.clause || matches!(next.text, "and" | "or"))
+    });
+    let introduced_by_connective = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .is_some_and(|prev| matches!(prev.text, "and" | "or"));
+    if !followed_by_separator && !introduced_by_connective {
+        return false;
+    }
+    let mut idx = start_word;
+    let mut crossed_separator = false;
+    for _ in 0..16 {
+        let Some(prev) = idx.checked_sub(1).and_then(|i| pieces.get(i)) else {
+            return false;
+        };
+        let current_clause = pieces.get(idx).map_or(alias.clause, |piece| piece.clause);
+        if prev.sentence != alias.sentence || prev.possessive {
+            return false;
+        }
+        if prev.clause != current_clause {
+            crossed_separator = true;
+        }
+        if prev.text == "named" {
+            return crossed_separator && idx != start_word;
+        }
+        if matches!(prev.text, "and" | "or") {
+            crossed_separator = true;
+        } else if matches!(
+                prev.text,
+                "this" | "that" | "it" | "its" | "you" | "your" | "a" | "an" | "if" | "then"
+                    | "when" | "whenever" | "target" | "card" | "cards" | "creature"
+                    | "creatures" | "permanent" | "permanents" | "control" | "controls"
+                    | "with" | "from" | "to" | "on" | "into" | "onto" | "is" | "are"
+                    | "deals" | "gets" | "has" | "have"
+            )
+        {
+            return false;
+        }
+        idx -= 1;
+    }
+    false
 }
 
 /// "a creature named Keeper of Kookus" on a card named Kookus: the alias is
@@ -2250,7 +2339,9 @@ fn looks_like_ability_word_label(
         && !label_tokens
             .iter()
             .any(|token| matches!(token.kind, TokenKind::Colon))
-        && token_word_refs(label_tokens).len() <= 4
+        // Flavor-word labels run up to five words ("A Test of Your
+        // Reflexes!", Magitek Scythe).
+        && token_word_refs(label_tokens).len() <= 5
 }
 
 /// Build the labeled public-route recognized form for the source-qualified
@@ -3046,7 +3137,14 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if is_named_label && let Some(keyword_line) = recognize_keyword_line(&body_line)? {
+    // A flavor-word label never changes a keyword body ("Murasame — Equip
+    // {5}"): the body still owns its keyword line.
+    let keyword_line = match recognize_keyword_line(&body_line) {
+        Ok(keyword_line) => keyword_line,
+        Err(error) if is_named_label => return Err(error),
+        Err(_) => None,
+    };
+    if let Some(keyword_line) = keyword_line {
         return Ok(Some(LineDispatchResult::single(
             RecognizedLine::Keyword(keyword_line),
             idx + 1,

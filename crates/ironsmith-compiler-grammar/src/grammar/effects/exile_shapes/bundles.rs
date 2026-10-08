@@ -163,15 +163,21 @@ pub fn starts_exile_multi_target_shape(tokens: &[OwnedLexToken]) -> bool {
 }
 
 /// Recognize two independently selected exile operands where the first is
-/// the source permanent and the second is an explicit target.
+/// the source permanent and the second is an explicit target, or "it" and a
+/// bounded non-target selection ("exile it and up to one creature that
+/// saddled it this turn").
 pub fn parse_source_and_target_exile_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceAndTargetExileShape<'_>> {
     let (source_tokens, target_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("and").void())?;
     let source_words = TokenWordView::new(source_tokens).to_word_refs();
-    if leaf::parse_leaf_this_source_reference_words(&source_words).is_none()
-        || !starts_exile_multi_target_shape(target_tokens)
+    let source_reference = leaf::parse_leaf_this_source_reference_words(&source_words).is_some();
+    let pronoun_and_up_to_one = source_words.as_slice() == ["it"]
+        && primitives::parse_prefix(target_tokens, primitives::phrase(&["up", "to", "one"]))
+            .is_some();
+    if !(source_reference && starts_exile_multi_target_shape(target_tokens))
+        && !pronoun_and_up_to_one
     {
         return None;
     }

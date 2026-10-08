@@ -5,6 +5,9 @@ pub enum CantBeRegeneratedSubject {
     It,
     They,
     CreatureDestroyedThisWay,
+    /// "Artifacts destroyed this way can't be regenerated." (Corrosion): the
+    /// whole destroyed group, named by its type.
+    GroupDestroyedThisWay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +45,7 @@ fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegenera
             primitives::phrase(&["artifacts", "destroyed", "this", "way"]),
             primitives::phrase(&["permanents", "destroyed", "this", "way"]),
         ))
-        .value(CantBeRegeneratedSubject::They),
+        .value(CantBeRegeneratedSubject::GroupDestroyedThisWay),
         alt((
             primitives::phrase(&["creature", "destroyed", "this", "way"]),
             primitives::phrase(&["creatures", "destroyed", "this", "way"]),

@@ -234,6 +234,38 @@ pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, 
     }
 }
 
+fn starts_with_trigger_intro(subject: &str) -> bool {
+    let lower = subject.trim_start().to_ascii_lowercase();
+    lower.starts_with("whenever ") || lower.starts_with("when ")
+}
+
+/// [`split_subject_predicate_clause`], also reading a loss predicate
+/// ("... controls lose all creature types") as the clause's verb.
+fn split_subject_predicate_or_loss_clause(line: &str) -> Option<(&str, &str, &str)> {
+    if let Some(split) = split_subject_predicate_clause(line)
+        && !split.0.contains(" lose")
+    {
+        return Some(split);
+    }
+    let (idx, verb) = [" loses ", " lose "]
+        .into_iter()
+        .filter_map(|verb| line.find(verb).map(|idx| (idx, verb)))
+        .min_by_key(|(idx, _)| *idx)?;
+    let subject = line[..idx].trim();
+    let rest = line[idx + verb.len()..].trim();
+    // A trigger or condition head ("Whenever you lose life, ...") is not an
+    // object subject.
+    let lower_subject = subject.to_ascii_lowercase();
+    if ["whenever ", "when ", "at ", "if ", "as long as "]
+        .iter()
+        .any(|head| lower_subject.starts_with(head))
+        || subject.contains(',')
+    {
+        return None;
+    }
+    (!subject.is_empty() && !rest.is_empty()).then_some((subject, verb.trim(), rest))
+}
+
 fn split_attack_or_block_restriction_clause(line: &str) -> Option<(&str, &str)> {
     let line = line.trim().trim_end_matches('.');
     for tail in [
@@ -304,6 +336,11 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
 
     let (subject, verb, predicate_with_condition) = split_subject_predicate_clause(trimmed)?;
     let (predicate, condition) = predicate_with_condition.rsplit_once(" as long as ")?;
+    // "for as long as ..." is a duration on a one-shot change, not a static
+    // condition; a chapter or ability label is not a subject either.
+    if predicate.trim_end().ends_with(" for") || subject.contains(" — ") {
+        return None;
+    }
     Some(ConditionalSubjectPredicate {
         condition: format!("As long as {}", condition.trim()),
         condition_precedes_subject: false,
@@ -974,10 +1011,65 @@ pub(super) fn merge_player_object_subject_union_lines(lines: Vec<String>) -> Vec
             idx += 2;
             continue;
         }
+        // "You and permanents you control have protection from Salamanders":
+        // the object grant and the player grant name the same quality.
+        if idx + 1 < lines.len()
+            && let Some((object_subject, object_quality)) = split_have_clause(&lines[idx])
+            && let Some((player_subject, player_quality)) = split_have_clause(&lines[idx + 1])
+            && player_subject.eq_ignore_ascii_case("you")
+            && object_subject.to_ascii_lowercase().ends_with(" you control")
+            && subject_is_plural(
+                object_subject
+                    .get(..object_subject.len() - " you control".len())
+                    .unwrap_or_default(),
+            )
+            && same_protection_quality(&object_quality, &player_quality)
+        {
+            merged.push(format!(
+                "You and {} have {player_quality}.",
+                lowercase_first(&object_subject)
+            ));
+            idx += 2;
+            continue;
+        }
+        // "Creatures you control have protection from the chosen card type."
+        // + "You have protection from the chosen card type." -> "You and
+        // creatures you control have ..." (Serra's Emissary).
+        if idx + 1 < lines.len()
+            && let Some((objects, quality)) =
+                lines[idx].trim().trim_end_matches('.').split_once(" have ")
+            && !objects.eq_ignore_ascii_case("you")
+            && subject_is_plural(objects)
+            && (quality.starts_with("protection from ") || is_keyword_phrase(quality))
+            && lines[idx + 1]
+                .trim()
+                .trim_end_matches('.')
+                .strip_prefix("You have ")
+                .is_some_and(|right| right == quality)
+        {
+            merged.push(format!("You and {} have {quality}.", lowercase_first(objects)));
+            idx += 2;
+            continue;
+        }
         merged.push(lines[idx].clone());
         idx += 1;
     }
     merged
+}
+
+/// Two renderings of one protection quality: equal up to case and a plural
+/// noun, or both naming the card type chosen as the permanent entered.
+fn same_protection_quality(left: &str, right: &str) -> bool {
+    let (Some(left), Some(right)) = (
+        left.to_ascii_lowercase().strip_prefix("protection from ").map(str::to_string),
+        right.to_ascii_lowercase().strip_prefix("protection from ").map(str::to_string),
+    ) else {
+        return false;
+    };
+    let singular = |text: &str| text.trim_end_matches('s').to_string();
+    singular(&left) == singular(&right)
+        || (left.contains("the chosen") && left.ends_with("type")
+            && right.contains("the chosen") && right.ends_with("type"))
 }
 
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
@@ -985,8 +1077,12 @@ pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) ->
     let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
     let is_state = |verb: &str| matches!(verb, "is" | "are");
     let is_cant_be = |verb: &str| verb == "can't be";
+    let is_lose = |verb: &str| matches!(verb, "loses" | "lose");
 
-    (is_get(left_verb) && is_trait(right_verb))
+    // "have base power and toughness 3/3 and lose all creature types"
+    // (Curse of Conformity): a trailing loss shares the subject.
+    (is_lose(right_verb) && (is_trait(left_verb) || is_get(left_verb) || is_state(left_verb)))
+        || (is_get(left_verb) && is_trait(right_verb))
         || (is_trait(left_verb) && is_get(right_verb))
         || (is_trait(left_verb) && is_trait(right_verb))
         || (is_trait(left_verb) && is_state(right_verb))
@@ -1063,7 +1159,8 @@ fn format_conditioned_subject_predicate_merge(
         );
     }
     if is_trait(&left.verb) && is_trait(right_verb) {
-        if !left.condition_precedes_subject {
+        // A trailing condition cannot follow a quoted ability's own period.
+        if !left.condition_precedes_subject && !right_predicate.trim_end().ends_with('"') {
             return format!(
                 "{ability_word}{} {} {} and {} as long as {condition}",
                 left.subject,
@@ -1196,6 +1293,69 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        // "Enchanted creature gets +2/+2, has vigilance, and can block an
+        // additional creature each combat" (Iona's Blessing): a blocking
+        // capacity grant to the same attached subject continues the authored
+        // predicate list of the preceding anthem.
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_verb, left_predicate)) =
+                split_subject_predicate_clause(&lines[idx])
+            && matches!(left_verb, "gets" | "has")
+            && !left_predicate.contains(" instead")
+            && let Some(continued) = lines[idx + 1]
+                .trim()
+                .trim_end_matches('.')
+                .strip_prefix(left_subject)
+                .and_then(|rest| rest.strip_prefix(' '))
+            && ((continued.starts_with("can block ") && continued.contains(" additional "))
+                // "gets +0/+2 and assigns combat damage equal to its
+                // toughness rather than its power" (Gauntlets of Light).
+                || continued.starts_with("assigns combat damage "))
+            && !left_predicate.contains('"')
+        {
+            let left_predicate = left_predicate.trim().trim_end_matches('.');
+            let combined = match left_predicate.split_once(" and has ") {
+                Some((gets, has)) if left_verb == "gets" && !has.contains(" and ") => format!(
+                    "{left_subject} gets {gets}, has {has}, and {continued}."
+                ),
+                _ => format!("{left_subject} {left_verb} {left_predicate} and {continued}."),
+            };
+            merged.push(combined);
+            idx += 2;
+            continue;
+        }
+        // "Equipped creature gets +1/+0. It gets +3/+1 instead as long as an
+        // opponent has eight or more cards in their graveyard" (Mind Carver):
+        // the conditional replacement continues the same printed sentence.
+        if idx + 1 < lines.len()
+            && let Some((left_subject, "gets", left_predicate)) =
+                split_subject_predicate_clause(&lines[idx])
+            && !left_predicate.contains(" instead")
+            && let Some(replacement) = lines[idx + 1]
+                .trim()
+                .strip_prefix(left_subject)
+                .and_then(|rest| rest.strip_prefix(" gets "))
+            && replacement.contains(" instead as long as ")
+        {
+            let left = lines[idx].trim().trim_end_matches('.');
+            let replacement = replacement.trim_end_matches('.');
+            // A condition on the subject itself reads as a leading "if":
+            // "If it's a Warrior, it gets +2/+1 instead" (Relic Axe).
+            let self_condition = replacement.split_once(" instead as long as ").and_then(
+                |(bonus, condition)| {
+                    let condition = condition.strip_prefix(left_subject).or_else(|| {
+                        condition.strip_prefix(lowercase_first(left_subject).as_str())
+                    })?;
+                    let state = condition.strip_prefix(" is ")?;
+                    Some(format!("{left}. If it's {state}, it gets {bonus} instead."))
+                },
+            );
+            merged.push(
+                self_condition.unwrap_or_else(|| format!("{left}. It gets {replacement}.")),
+            );
+            idx += 2;
+            continue;
+        }
         // A legendary source name can contain a comma. The generic
         // conditional splitter must not mistake that punctuation for the
         // condition/body boundary and merge mutually exclusive source states
@@ -1475,17 +1635,28 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             && let Some((left_subject, left_verb, left_rest)) =
                 split_subject_predicate_clause(&lines[idx])
             && let Some((right_subject, right_verb, right_rest)) =
-                split_subject_predicate_clause(&lines[idx + 1])
+                split_subject_predicate_or_loss_clause(&lines[idx + 1])
             // A top-level colon is the authored boundary between an
             // activated ability's cost and effect. Equal costs do not make
             // separately authored abilities one resolution program.
             && !left_subject.contains(':')
             && !right_subject.contains(':')
+            // "Whenever you gain life, ..." / "Whenever you lose life, ...":
+            // the trigger condition's own verb is not a subject predicate, and
+            // two triggered abilities never share one resolution.
+            && !starts_with_trigger_intro(left_subject)
+            && !starts_with_trigger_intro(right_subject)
             // A separately authored activated-ability grant must not be
             // absorbed into a neighboring blocking restriction merely
             // because both affect the same attached object.
             && !((left_verb == "can't be" || right_verb == "can't be")
                 && (left_rest.contains(':') || right_rest.contains(':')))
+            // A non-keyword predicate line ("gets +0/+2 and assigns combat
+            // damage ...", Gauntlets of Light) and a following quoted
+            // activated-ability grant are separately authored sentences.
+            && !(left_rest.contains(" and assigns ")
+                && right_rest.trim_start().starts_with('"')
+                && right_rest.contains(':'))
             && conditioned_subjects_equivalent(left_subject, right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
@@ -1643,6 +1814,13 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                     "{left_subject} {left_verb} {left_rest} and {right_rest}"
                 ));
             } else {
+                // A quoted grant that is not the line's last predicate
+                // ("has \"…\" and is a Wizard …") also loses its period.
+                let left_rest = if is_trait(left_verb) {
+                    trim_quoted_grant_sentence_end(&left_rest).unwrap_or(left_rest.clone())
+                } else {
+                    left_rest
+                };
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
                 ));

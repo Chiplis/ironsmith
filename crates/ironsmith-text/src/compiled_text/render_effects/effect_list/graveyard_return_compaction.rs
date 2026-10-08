@@ -33,10 +33,13 @@ pub(crate) fn describe_declared_graveyard_random_partition(effects: &[Effect]) -
     let expected_remainder = crate::effects::TagMatchingObjectsEffect::new(
         ObjectFilter::tagged(pool.clone()).not_tagged(choose.tag.clone()), remainder.tag.clone(),
     ).in_zones(vec![Zone::Graveyard]);
+    // The plural-object surface ("put the rest") is presentation only.
+    let mut bottom = bottom.clone();
+    bottom.target_plural_surface = false;
     if *choose != expected_choose || *remainder != expected_remainder
         || *returned != crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
             ChooseSpec::Tagged(choose.tag.clone()), false)
-        || *bottom != crate::effects::MoveToZoneEffect::new(
+        || bottom != crate::effects::MoveToZoneEffect::new(
             ChooseSpec::All(ObjectFilter::default().in_zone(Zone::Graveyard).match_tagged(
                 remainder.tag.clone(), crate::filter::TaggedOpbjectRelation::SameObjectId,
             )), Zone::Library, false).with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
@@ -60,6 +63,41 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
 ) -> Option<String> {
     let choose = structural_unwrap_render_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    // "That player returns a card from their graveyard to their hand"
+    // (Skullwinder): the chooser returns its own chosen card.
+    if let Some(to_hand) = structural_unwrap_render_wrappers(return_effect)
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+    {
+        if choose.is_search
+            || choose.reveal
+            || choose.top_only
+            || choose.bottom_only
+            || choose.replace_tagged_objects
+            || choose.count_value.is_some()
+            || choose.aggregate_constraint.is_some()
+            || choose_exact_count(choose) != Some(1)
+            || choose_primary_zone(choose) != Some(Zone::Graveyard)
+            || !choose.additional_zones.is_empty()
+            || choose.filter.owner.as_ref() != Some(&choose.chooser)
+            || !matches!(
+                to_hand.target.unhinted(),
+                ChooseSpec::Tagged(tag) if tag == &choose.tag
+            )
+        {
+            return None;
+        }
+        let chooser = describe_player_filter(&choose.chooser);
+        let verb = player_verb(&chooser, "return", "returns");
+        let possessive = if choose.chooser == PlayerFilter::You { "your" } else { "their" };
+        let mut owned = choose.filter.clone();
+        owned.owner = None;
+        owned.zone = None;
+        let selection = with_indefinite_article(strip_leading_article(&owned.description()));
+        return Some(format!(
+            "{} {verb} {selection} from {possessive} graveyard to {possessive} hand",
+            capitalize_first(&chooser)
+        ));
+    }
     let returned = structural_unwrap_render_wrappers(return_effect)
         .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
 

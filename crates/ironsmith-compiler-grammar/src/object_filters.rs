@@ -1991,6 +1991,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.power.is_some()
         || filter.power_parity.is_some()
         || filter.toughness.is_some()
+        || filter.power_toughness_relation.is_some()
         || filter.mana_value.is_some()
         || filter.mana_value_parity.is_some()
         || filter.total_counters_parity.is_some()
@@ -2082,6 +2083,9 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     }
     if base.power_parity.is_none() {
         base.power_parity = extra.power_parity;
+    }
+    if base.power_toughness_relation.is_none() {
+        base.power_toughness_relation = extra.power_toughness_relation;
     }
     if base.toughness.is_none() {
         base.toughness = extra.toughness;

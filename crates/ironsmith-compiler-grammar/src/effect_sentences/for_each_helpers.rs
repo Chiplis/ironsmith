@@ -170,11 +170,18 @@ pub fn parse_for_each_targeted_object_subject(
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(subject_tokens) else {
         return Ok(None);
     };
-    if !shape
-        .target_tokens
-        .iter()
-        .any(|token| token.is_word("target"))
-    {
+    // Only an announced object target makes this a target iterator. A
+    // targeted player merely scopes a set ("for each creature target player
+    // controls"), which iterates every matching object instead.
+    let words = crate::lexer::token_word_refs(shape.target_tokens);
+    let announces_object_target = words.iter().enumerate().any(|(index, word)| {
+        *word == "target"
+            && !matches!(
+                words.get(index + 1).copied(),
+                Some("player" | "opponent" | "player's" | "opponent's")
+            )
+    });
+    if !announces_object_target {
         return Ok(None);
     }
     let target = parse_target_phrase(shape.target_tokens)?;
@@ -932,7 +939,8 @@ fn rewrite_difference_bounded_search(tokens: &[OwnedLexToken]) -> Option<Vec<Own
 }
 
 /// "where X is the difference between its power and toughness" (Doran,
-/// Besieged by Time): toughness minus power of the referenced creature.
+/// Besieged by Time): the absolute difference, never negative whichever of
+/// the two is greater.
 fn parse_power_toughness_difference_binding(binding_tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(binding_tokens);
     let words =
@@ -951,24 +959,18 @@ fn parse_power_toughness_difference_binding(binding_tokens: &[OwnedLexToken]) ->
         _ => return None,
     };
     let spec = object(owner)?;
-    let (minuend, subtrahend) = match (first, second) {
+    let (left, right) = match (first, second) {
         ("power", "toughness") => (
-            Value::ToughnessOf(Box::new(spec.clone())),
-            Value::PowerOf(Box::new(spec)),
-        ),
-        ("toughness", "power") => (
             Value::PowerOf(Box::new(spec.clone())),
             Value::ToughnessOf(Box::new(spec)),
         ),
+        ("toughness", "power") => (
+            Value::ToughnessOf(Box::new(spec.clone())),
+            Value::PowerOf(Box::new(spec)),
+        ),
         _ => return None,
     };
-    Some(
-        Value::Add(
-            Box::new(minuend),
-            Box::new(Value::Scaled(Box::new(subtrahend), -1)),
-        )
-        .with_surface_hint(ValueSurfaceHint::Difference),
-    )
+    Some(Value::absolute_difference(left, right).with_surface_hint(ValueSurfaceHint::Difference))
 }
 
 /// Recover an authored where-X binding from the body of a participant-scoped

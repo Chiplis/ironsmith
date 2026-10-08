@@ -12,7 +12,10 @@ pub fn parse_conditional_anthem_replacement_line(
             PredicateAst::AttachedToSourceMatches(filter)
         }
         anthem_grant_grammar::AnthemReplacementCondition::Predicate(tokens) => {
-            parse_static_condition_clause(tokens)?
+            match parse_attached_subject_controller_condition(&subject, tokens)? {
+                Some(predicate) => predicate,
+                None => parse_static_condition_clause(tokens)?,
+            }
         }
     };
     let base = fixed_anthem_clause(
@@ -35,6 +38,54 @@ pub fn parse_conditional_anthem_replacement_line(
         )
         .into(),
     ]))
+}
+
+/// "Enchanted creature gets -2/-0. It gets -6/-0 instead as long as its
+/// controller has seven or more cards in their graveyard" (So Tiny): "its
+/// controller" is the controller of the attached subject, which static
+/// conditions name through the source's `enchanted`/`equipped` tag.
+fn parse_attached_subject_controller_condition(
+    subject: &AnthemSubjectAst,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return Ok(None);
+    };
+    let Some(tag) = filter.tagged_constraints.iter().find_map(|constraint| {
+        matches!(constraint.tag.as_str(), "enchanted" | "equipped").then(|| constraint.tag.clone())
+    }) else {
+        return Ok(None);
+    };
+    let words = crate::lexer::token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["its", "controller", "has", ..]) {
+        return Ok(None);
+    }
+    let Some(controller_idx) = tokens.iter().position(|token| token.is_word("controller")) else {
+        return Ok(None);
+    };
+    let mut rewritten = crate::lexer::synthetic_word_tokens(&["that", "player"]);
+    rewritten.extend_from_slice(&tokens[controller_idx + 1..]);
+    let predicate = parse_static_condition_clause(&rewritten)?;
+    let controller = PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag));
+    let PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    } = predicate
+    else {
+        return Ok(None);
+    };
+    let left = match left {
+        Value::CardsInGraveyard(PlayerFilter::IteratedPlayer) => Value::CardsInGraveyard(controller),
+        Value::CardsInHand(PlayerFilter::IteratedPlayer) => Value::CardsInHand(controller),
+        Value::LifeTotal(PlayerFilter::IteratedPlayer) => Value::LifeTotal(controller),
+        _ => return Ok(None),
+    };
+    Ok(Some(PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    }))
 }
 
 pub fn parse_conditional_anthem_otherwise_line(
@@ -2376,9 +2427,25 @@ fn lower_atomic_anthem_predicate(
         S::CantBeSacrificed => {
             let filter = if quoted { ObjectFilter::source() }
                 else { anthem_subject_filter(&clause.subject) };
+            // "Creatures you control but don't own get +2/+2 and can't be
+            // sacrificed" (Garland): the shared plural anthem subject stays
+            // plural in the restriction's display.
+            let description = filter.description();
+            let subject = match (quoted, clause.set_quantifier_surface) {
+                (false, None) => description
+                    .strip_prefix("a ")
+                    .or_else(|| description.strip_prefix("an "))
+                    .and_then(|rest| {
+                        let (noun, tail) = rest.split_once(' ').unwrap_or((rest, ""));
+                        (!noun.ends_with('s') && noun.chars().all(|ch| ch.is_ascii_lowercase()))
+                            .then(|| format!("{noun}s {tail}").trim_end().to_string())
+                    })
+                    .unwrap_or_else(|| description.clone()),
+                _ => description.clone(),
+            };
             let mut ability = StaticAbility::restriction(
                 crate::effect::Restriction::be_sacrificed(filter.clone()),
-                format!("{} can't be sacrificed", filter.description()),
+                format!("{subject} can't be sacrificed"),
             );
             if quoted { return Some(grant_for_anthem_subject(clause, ability)); }
             if let Some(condition) = &clause.condition {
@@ -2745,10 +2812,12 @@ pub fn parse_anthem_with_trailing_segments_line(
             };
 
             if let Some(triggered) = parse_triggered_granted_ability(&ability_tokens)? {
-                let display = format!(
-                    "{} has {}",
-                    clause_words.join(" "),
-                    crate::lexer::token_word_refs(&ability_tokens).join(" ")
+                // The grant renderer prints the subject and the `has` verb;
+                // the display is only the granted ability's own surface.
+                let display = display_text_for_tokens_in_mode(
+                    trim_outer_quotes(&trim_edge_punctuation(&ability_tokens)),
+                    false,
+                    true,
                 );
                 extras.push(grant_object_ability_for_anthem_subject(
                     &clause, triggered, display,
@@ -2797,10 +2866,10 @@ pub fn parse_anthem_with_trailing_segments_line(
         }
 
         if let Some(triggered) = parse_triggered_granted_ability(&segment)? {
-            let display = format!(
-                "{} has {}",
-                clause_words.join(" "),
-                crate::lexer::token_word_refs(&segment).join(" ")
+            let display = display_text_for_tokens_in_mode(
+                trim_outer_quotes(&trim_edge_punctuation(&segment)),
+                false,
+                true,
             );
             extras.push(grant_object_ability_for_anthem_subject(
                 &clause, triggered, display,
@@ -5638,7 +5707,9 @@ pub fn parse_base_pt_and_blocker_restriction_line(
     let restriction = StaticAbility::restriction(
         crate::effect::Restriction::block_specific_attacker(blockers, attacker),
         format!("{} can't be blocked by {}", display_text_for_tokens(base.subject_tokens, false),
-            display_text_for_tokens(blocker_tokens, false)),
+            // A blocker filter is effect text: "power 2 or less", never {2}.
+            display_text_for_tokens_in_mode(
+                blocker_tokens, false, true)),
     );
     Ok(Some([set_base, restriction].into_iter().map(|ability| {
         let ast = StaticAbilityAst::Static(ability);

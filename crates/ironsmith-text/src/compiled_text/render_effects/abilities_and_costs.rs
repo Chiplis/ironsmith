@@ -256,7 +256,10 @@ pub(super) fn describe_myriad_keyword(
         return None;
     };
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider.is_some() || !matches!(&may.fallback, crate::decision::FallbackStrategy::Decline)
+    // Inside the per-opponent iteration the controller still decides ("you
+    // may create"); an explicit `You` decider is the same choice.
+    if !matches!(may.decider, None | Some(PlayerFilter::You))
+        || !matches!(&may.fallback, crate::decision::FallbackStrategy::Decline)
     {
         return None;
     }
@@ -345,7 +348,24 @@ pub(super) fn describe_champion_keyword(
         return None;
     };
     let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    if !matches!(&sacrifice.target, ChooseSpec::Tagged(tag) if tag == &tag_triggering.tag) {
+    let sacrifices_tagged = match &sacrifice.target {
+        ChooseSpec::Tagged(tag) => tag == &tag_triggering.tag,
+        // The identity-bound form: exactly the tagged triggering object.
+        ChooseSpec::Object(filter) => {
+            let mut rest = filter.clone();
+            let constraints = std::mem::take(&mut rest.tagged_constraints);
+            matches!(constraints.as_slice(), [constraint]
+                if constraint.tag == tag_triggering.tag
+                    && matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::SameObjectId
+                            | crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    ))
+                && rest == ObjectFilter::default()
+        }
+        _ => false,
+    };
+    if !sacrifices_tagged {
         return None;
     }
 
@@ -1409,6 +1429,19 @@ pub(crate) fn describe_ability(
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
+            // A keyword label that names the whole ability ("Melee") is the
+            // complete line, not a trigger prefix for the expanded effect.
+            if matches!(
+                triggered.presentation_label,
+                Some(PresentationLabel::Keyword(
+                    PresentationKeyword::Melee | PresentationKeyword::Provoke
+                ))
+            ) {
+                return vec![format!(
+                    "Triggered ability {index}: {}",
+                    apply_triggered_presentation_label(triggered, String::new())
+                )];
+            }
             let (intervening_condition, trigger_frequency) = triggered
                 .intervening_if
                 .as_ref()
@@ -1474,6 +1507,8 @@ pub(crate) fn describe_ability(
                 triggered.presentation_label,
                 Some(PresentationLabel::Keyword(
                     PresentationKeyword::Firebending(_)
+                        | PresentationKeyword::Melee
+                        | PresentationKeyword::Provoke
                 ))
             );
             let mut clauses = Vec::new();
@@ -1506,7 +1541,11 @@ pub(crate) fn describe_ability(
                     line.push_str(&lowercase_first(&clauses.join(": ")));
                 } else if clauses.len() == 1 {
                     let only = clauses[0].trim_start();
-                    if let Some(rest) = only.strip_prefix("If ") {
+                    if triggered.trigger.saga_chapters().is_some() {
+                        // A chapter line always reads "III — If ...".
+                        line.push_str(" — ");
+                        line.push_str(&capitalize_first(only));
+                    } else if let Some(rest) = only.strip_prefix("If ") {
                         line.push_str(", if ");
                         line.push_str(rest.trim_start());
                     } else if let Some(rest) = only.strip_prefix("if ") {
@@ -2519,7 +2558,8 @@ pub(crate) fn card_self_reference_phrase_for_card(card: &crate::card::Card) -> &
     if card.subtypes.contains(&Subtype::Aura) {
         return "this Aura";
     }
-    if card.subtypes.contains(&Subtype::Equipment) {
+    // An Equipment creature (Reconfigure) is "this creature" in Oracle.
+    if card.subtypes.contains(&Subtype::Equipment) && !card.is_creature() {
         return "this Equipment";
     }
     if card.subtypes.contains(&Subtype::Fortification) {
@@ -3224,6 +3264,14 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         return format!(
             "Casualty {power} {STANDARD_REMINDER_OPEN_SENTINEL}As you cast this spell, you may sacrifice a creature with power {power} or greater. When you do, copy this spell and you may choose a new target for the copy.{STANDARD_REMINDER_CLOSE_SENTINEL}"
         );
+    }
+    // "Goblin offering": the keyword names the sacrificed subtype.
+    if cost.kind == OptionalCostKind::Offering
+        && let Some([sacrifice]) = cost.cost.as_all()
+        && let Some(filter) = sacrifice.sacrifice_filter()
+        && let [subtype] = filter.subtypes.as_slice()
+    {
+        return format!("{subtype} offering");
     }
     if matches!(cost.kind, OptionalCostKind::Conspire) {
         let reminder_cost = cost_text

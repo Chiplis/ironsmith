@@ -1174,19 +1174,44 @@ fn pre_rule_still_lands_followup(
             route: None,
         }));
     }
+    // "It's still an enchantment." (Cacophony Unleashed): the animated
+    // object keeps its other card types (CR 205.1b), so the preceding
+    // animation adds the creature type instead of replacing its types.
+    if let Some(card_type) = followup_shapes::parse_still_card_type_followup(sentence_tokens)
+        && card_type != crate::types::CardType::Land
+        && mark_last_animation_retaining(
+            state.effects,
+            ironsmith_core::TypeRetentionSurface::StillACardTypeSentence(card_type),
+        )
+    {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: None,
+        }));
+    }
     Ok(None)
 }
 
 fn mark_last_animation_as_still_a_land(effects: &mut [EffectAst]) -> bool {
+    mark_last_animation_retaining(effects, ironsmith_core::TypeRetentionSurface::StillALand)
+}
+
+fn mark_last_animation_retaining(
+    effects: &mut [EffectAst],
+    surface: ironsmith_core::TypeRetentionSurface,
+) -> bool {
     for effect in effects.iter_mut().rev() {
-        if mark_animation_as_still_a_land(effect) {
+        if mark_animation_retaining(effect, surface) {
             return true;
         }
     }
     false
 }
 
-fn mark_animation_as_still_a_land(effect: &mut EffectAst) -> bool {
+fn mark_animation_retaining(
+    effect: &mut EffectAst,
+    surface: ironsmith_core::TypeRetentionSurface,
+) -> bool {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
@@ -1198,14 +1223,14 @@ fn mark_animation_as_still_a_land(effect: &mut EffectAst) -> bool {
     }) = effect
     {
         *preserve_other_types = true;
-        *type_retention_surface = Some(ironsmith_core::TypeRetentionSurface::StillALand);
+        *type_retention_surface = Some(surface);
         return true;
     }
 
     let mut marked = false;
     for_each_nested_effects_mut(effect, true, |nested| {
         if !marked {
-            marked = mark_last_animation_as_still_a_land(nested);
+            marked = mark_last_animation_retaining(nested, surface);
         }
     });
     marked
@@ -1251,13 +1276,21 @@ fn pre_rule_cant_be_regenerated_followup(
     let Some(shape) = followup_shapes::parse_cant_be_regenerated_followup(sentence_tokens) else {
         return Ok(None);
     };
-    let applied = if shape.subject == followup_shapes::CantBeRegeneratedSubject::They {
+    let applied = if matches!(
+        shape.subject,
+        followup_shapes::CantBeRegeneratedSubject::They
+            | followup_shapes::CantBeRegeneratedSubject::GroupDestroyedThisWay
+    ) {
         apply_cant_be_regenerated_to_last_destroy_group(state.effects)
     } else {
         apply_cant_be_regenerated_to_last_destroy_effect(state.effects)
     };
     if applied {
-        if shape.subject == followup_shapes::CantBeRegeneratedSubject::CreatureDestroyedThisWay {
+        if matches!(
+            shape.subject,
+            followup_shapes::CantBeRegeneratedSubject::CreatureDestroyedThisWay
+                | followup_shapes::CantBeRegeneratedSubject::GroupDestroyedThisWay
+        ) {
             super::mark_last_destroy_creature_destroyed_this_way_surface(state.effects);
         }
         return Ok(Some(PreParseFollowupResult::Handled {

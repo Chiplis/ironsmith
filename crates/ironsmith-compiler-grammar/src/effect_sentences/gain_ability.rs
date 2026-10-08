@@ -135,7 +135,7 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
                 || gain_shapes::gain_word_is_trigger_intro(token.parser_text()))
     });
 
-    for token in tokens {
+    for (token_idx, token) in tokens.iter().enumerate() {
         if let Some(word) = token.as_word() {
             if needs_space && !text.is_empty() {
                 text.push(' ');
@@ -143,10 +143,14 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
             let numeric_like = word
                 .chars()
                 .all(|ch| ch.is_ascii_digit() || matches!(ch, 'x' | 'X' | '+' | '-' | '/'));
+            // "Pay 2 life" counts life, not generic mana.
+            let counts_life = tokens
+                .get(token_idx + 1)
+                .is_some_and(|next| next.is_word("life"));
             let rendered = match word {
                 "t" => "{T}".to_string(),
                 "q" => "{Q}".to_string(),
-                _ if in_effect_text && numeric_like => word.to_string(),
+                _ if (in_effect_text || counts_life) && numeric_like => word.to_string(),
                 _ => parse_mana_symbol(word)
                     .map(|symbol| ManaCost::from_symbols(vec![symbol]).to_oracle())
                     .unwrap_or_else(|_| word.to_ascii_lowercase()),

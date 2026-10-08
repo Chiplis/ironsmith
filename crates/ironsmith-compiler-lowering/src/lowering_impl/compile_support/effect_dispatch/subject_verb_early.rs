@@ -61,7 +61,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { .. })
             | SubjectVerbActionAst::Mana(
-                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn { .. }
             )
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. })
             | SubjectVerbActionAst::LifeResources(
@@ -812,8 +812,21 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
-            let (spec, choices) =
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // "airbend all other creatures" names every matching object, not
+            // one chosen object (CR 701.65a applies to each of them).
+            if let ChooseSpec::Object(filter) = &spec
+                && matches!(
+                    filter.set_quantifier_surface(),
+                    Some(
+                        ironsmith_core::SetQuantifierSurface::All
+                            | ironsmith_core::SetQuantifierSurface::Each
+                    )
+                )
+            {
+                spec = ChooseSpec::All(filter.clone());
+            }
             let tag = ctx.next_tag("airbent");
             let move_effect = Effect::move_to_zone(spec, Zone::Exile, true).tag_all(tag.clone());
             let grant = Effect::grant(
@@ -1018,26 +1031,29 @@ pub(super) fn compile_subject_verb_early(
 
             Ok((vec![move_rest], Vec::new()))
         }
-        SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn)
-            if !matches!(player, PlayerAst::Implicit | PlayerAst::You) =>
-        {
+        SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+            color,
+        }) if !matches!(player, PlayerAst::Implicit | PlayerAst::You) => {
             // "They don't lose this mana ..." names the player who added it
             // (for example the upkeep player in "that player adds ..."), not
             // the ability's controller.
             compile_player_role_effect(role, player, ctx, false, false, false, |subject| {
-                Effect::new(crate::effects::RetainManaUntilEndOfTurnEffect::new(
-                    subject.into_player_filter(),
-                ))
+                Effect::new(
+                    crate::effects::RetainManaUntilEndOfTurnEffect::new(
+                        subject.into_player_filter(),
+                    )
+                    .with_color(*color),
+                )
             })
         }
-        SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn) => {
-            Ok((
-                vec![Effect::new(
-                    crate::effects::RetainManaUntilEndOfTurnEffect::you(),
-                )],
-                Vec::new(),
-            ))
-        }
+        SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+            color,
+        }) => Ok((
+            vec![Effect::new(
+                crate::effects::RetainManaUntilEndOfTurnEffect::you().with_color(*color),
+            )],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { reminder }) => {
             Ok((
                 vec![Effect::open_attraction_with_reminder(*reminder)],
@@ -2932,6 +2948,7 @@ pub(super) fn compile_subject_verb_early(
                 source_target,
                 protect_source_target,
                 follow_up_effects,
+                source_would_deal_surface,
             },
         ) => {
             if !follow_up_effects.is_empty() && source_target.is_none() {
@@ -2980,6 +2997,9 @@ pub(super) fn compile_subject_verb_early(
                 }
                 if *protect_source_target {
                     effect = effect.protecting_target_source();
+                }
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
                 }
                 // Record the targeted source so a following "that creature"
                 // (Kry Shield) reads the chosen object.
@@ -3055,9 +3075,36 @@ pub(super) fn compile_subject_verb_early(
                 duration,
                 source_filter,
                 of_chosen_color,
+                source_would_deal_surface,
+                follow_up_effects,
             },
         ) => {
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
+                (Vec::new(), Vec::new())
+            } else {
+                let mut follow_up_ctx =
+                    EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+                follow_up_ctx.allow_life_event_value = true;
+                let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+                ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+                compiled
+            };
+            let prevent_from = |filter: ObjectFilter| {
+                let mut damage_filter = ironsmith_core::DamageFilter::all();
+                damage_filter.from_source = Some(filter);
+                let mut effect = crate::effects::PreventAllDamageEffect::all_with_filter(
+                    damage_filter,
+                    duration.clone(),
+                );
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
+                }
+                if !follow_up_effects.is_empty() {
+                    effect = effect.with_follow_up_effects(follow_up_effects.clone());
+                }
+                Effect::new(effect)
+            };
             if *of_chosen_color {
                 // The color is chosen on resolution: one mode per color, each
                 // shielding against sources of exactly that color.
@@ -3071,28 +3118,20 @@ pub(super) fn compile_subject_verb_early(
                                 "Prevent all damage that {} sources would deal this turn.",
                                 color.name()
                             ),
-                            effects: vec![Effect::prevent_all_damage_from_filter(
-                                filter,
-                                duration.clone(),
-                            )],
+                            effects: vec![prevent_from(filter)],
                         }
                     })
                     .collect();
-                return Ok(Some((vec![Effect::choose_one(modes)], Vec::new())));
+                return Ok(Some((vec![Effect::choose_one(modes)], follow_up_choices)));
             }
-            Ok((
-                vec![Effect::prevent_all_damage_from_filter(
-                    source_filter,
-                    duration.clone(),
-                )],
-                Vec::new(),
-            ))
+            Ok((vec![prevent_from(source_filter)], follow_up_choices))
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
                 target,
                 duration,
                 source_filter,
+                source_would_deal_surface,
             },
         ) => {
             let protect_source = matches!(target, TargetAst::Source(_));
@@ -3111,6 +3150,9 @@ pub(super) fn compile_subject_verb_early(
             );
             if protect_source {
                 effect = effect.protecting_source();
+            }
+            if *source_would_deal_surface {
+                effect = effect.with_source_would_deal_surface();
             }
             Ok((vec![Effect::new(effect)], Vec::new()))
         }

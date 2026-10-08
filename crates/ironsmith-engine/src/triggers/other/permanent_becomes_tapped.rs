@@ -61,10 +61,13 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
         if self.one_or_more {
             let mut filter = self.filter.clone();
             filter.set_plural_object_noun_surface(true);
-            format!(
-                "Whenever one or more {} become tapped",
-                filter.description()
-            )
+            let mut subject = filter.description();
+            // A filter without a plural surface still reads as a singular
+            // noun phrase ("a creature you control").
+            if subject.starts_with("a ") || subject.starts_with("an ") {
+                subject = crate::triggers::combat::pluralize_one_or_more_attack_subject(&subject);
+            }
+            format!("Whenever one or more {subject} become tapped")
         } else {
             format!("Whenever {} becomes tapped", self.filter.description())
         }

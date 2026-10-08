@@ -87,6 +87,37 @@ pub fn parse_scaled_target_power_sentence(
             // "double its power": the pronoun names the previously chosen
             // object, whose own power is the amount.
             let pronoun = crate::lexer::token_word_refs(target_tokens).as_slice() == ["its"];
+            // "Double equipped creature's power": the source's attachment
+            // host, exactly as "Equipped creature gets ..." names it.
+            let attached_host = match crate::lexer::token_word_refs(target_tokens).as_slice() {
+                [state, noun]
+                    if crate::util::strip_possessive_suffix(noun) != *noun
+                        && matches!(
+                            crate::util::strip_possessive_suffix(noun),
+                            "creature" | "permanent"
+                        ) =>
+                {
+                    match *state {
+                        "equipped" => Some(crate::tag::CompilerReferenceTag::Equipped.bind()),
+                        "enchanted" => Some(crate::tag::CompilerReferenceTag::Enchanted.bind()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(tag) = attached_host {
+                let spec = Box::new(ChooseSpec::Tagged(tag.clone().into()));
+                let scaled_stat = |value: Value| {
+                    if multiplier == 1 { value } else { Value::Scaled(Box::new(value), multiplier) }
+                };
+                return Ok(Some(vec![EffectAst::subject_verb_pump(
+                    if axes.power { scaled_stat(Value::PowerOf(spec.clone())) } else { Value::Fixed(0) },
+                    if axes.toughness { scaled_stat(Value::ToughnessOf(spec)) } else { Value::Fixed(0) },
+                    crate::cards::builders::TargetAst::Tagged(tag, None),
+                    Until::EndOfTurn,
+                    None,
+                )]));
+            }
             let target = if pronoun {
                 crate::cards::builders::TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),

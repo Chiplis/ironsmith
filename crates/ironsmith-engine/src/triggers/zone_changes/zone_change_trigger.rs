@@ -919,6 +919,21 @@ impl ZoneChangeTrigger {
                 (_, ZonePattern::Specific(Zone::Exile)) => {
                     format!("When {battlefield_subject} is exiled")
                 }
+                (
+                    ZonePattern::Specific(origin @ (Zone::Graveyard | Zone::Library | Zone::Exile)),
+                    ZonePattern::Specific(Zone::Hand),
+                ) => {
+                    let owner = self.object_filter.owner.as_ref();
+                    let origin = match origin {
+                        Zone::Graveyard => owned_zone_phrase(owner, "graveyard"),
+                        Zone::Library => owned_zone_phrase(owner, "library"),
+                        _ => "exile".to_string(),
+                    };
+                    format!(
+                        "When {card_subject} is put into {} from {origin}",
+                        owned_zone_phrase(owner, "hand")
+                    )
+                }
                 _ => "When this object changes zones".to_string(),
             };
             if let Some(cause_phrase) = cause_phrase(self) {
@@ -981,6 +996,21 @@ impl ZoneChangeTrigger {
         let mut display_filter = self.object_filter.clone();
         if enters_under_controller {
             display_filter.controller = None;
+        }
+        // "is returned to your hand" / "to its owner's hand" names the owner
+        // in the destination, not on the subject.
+        let returned_to_hand = self.from == ZonePattern::Specific(Zone::Battlefield)
+            && self.to == ZonePattern::Specific(Zone::Hand)
+            && matches!(
+                self.object_filter.owner,
+                Some(PlayerFilter::You | PlayerFilter::Any)
+            );
+        // "leaves an opponent's graveyard" names the owner in the origin.
+        let leaves_owned_graveyard = self.from == ZonePattern::Specific(Zone::Graveyard)
+            && self.to == ZonePattern::Any
+            && self.object_filter.owner.is_some();
+        if returned_to_hand || leaves_owned_graveyard {
+            display_filter.owner = None;
         }
         let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard)
             || (self.to == ZonePattern::Specific(Zone::Exile)
@@ -1131,12 +1161,96 @@ impl ZoneChangeTrigger {
                     .to_string(),
                 );
             }
+            (ZonePattern::Specific(Zone::Graveyard), ZonePattern::Any) if leaves_owned_graveyard => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "leave"
+                } else {
+                    "leaves"
+                };
+                let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                parts.push(format!("{verb} {graveyard}"));
+            }
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Hand))
+                if returned_to_hand =>
+            {
+                let one_or_more = self.count_mode == CountMode::OneOrMore;
+                let verb = if one_or_more { "are" } else { "is" };
+                let hand = match (&self.object_filter.owner, one_or_more) {
+                    (Some(PlayerFilter::You), _) => "your hand",
+                    // An unconstrained permanent returned to any hand
+                    // (Warped Devotion's "a player's hand").
+                    (Some(PlayerFilter::Any), false)
+                        if self.object_filter.controller.is_none() =>
+                    {
+                        "a player's hand"
+                    }
+                    (_, false) => "its owner's hand",
+                    (_, true) => "their owners' hands",
+                };
+                parts.push(format!("{verb} returned to {hand}"));
+            }
+            // "is returned to your hand" / "are returned to hand" (bounce
+            // triggers): the owner's hand, from the battlefield.
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Hand)) => {
+                let plural = self.count_mode == CountMode::OneOrMore;
+                // The returned-to-hand subject names its controller only;
+                // the owner is implied by "its owner's hand".
+                if let Some(last) = parts.last_mut()
+                    && last.contains(" a player owns but ")
+                {
+                    *last = last.replace(" a player owns but ", " ");
+                }
+                let hand = if self.object_filter.owner == Some(PlayerFilter::You) {
+                    if let Some(last) = parts.last_mut()
+                        && let Some(stripped) = last.strip_suffix(" you own")
+                    {
+                        *last = stripped.to_string();
+                    }
+                    "your hand"
+                } else if plural {
+                    "hand"
+                } else {
+                    "its owner's hand"
+                };
+                let verb = if plural { "are" } else { "is" };
+                parts.push(format!("{verb} returned to {hand}"));
+            }
+            // "one or more cards are put into a library from anywhere".
+            (_, ZonePattern::Specific(Zone::Library)) => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let library = if self.object_filter.owner == Some(PlayerFilter::You) {
+                    "your library"
+                } else {
+                    "a library"
+                };
+                let origin = match &self.from {
+                    ZonePattern::Any => " from anywhere".to_string(),
+                    ZonePattern::Specific(zone) => format!(" from {}", zone_origin_name(*zone)),
+                    _ => String::new(),
+                };
+                parts.push(format!("{verb} put into {library}{origin}"));
+            }
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::AnyExcept(Zone::Graveyard)) => {
                 parts.push(
                     if self.count_mode == CountMode::OneOrMore {
                         "leave the battlefield without dying"
                     } else {
                         "leaves the battlefield without dying"
+                    }
+                    .to_string(),
+                );
+            }
+            // Exile from the battlefield is narrower than leaving it.
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Exile)) => {
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "are put into exile from the battlefield"
+                    } else {
+                        "is put into exile from the battlefield"
                     }
                     .to_string(),
                 );
@@ -1175,6 +1289,17 @@ impl ZoneChangeTrigger {
                 } else {
                     parts.push(format!("{verb} put into exile"));
                 }
+            }
+            // "Whenever one or more cards are put into a library from
+            // anywhere" (Dutiful Knowledge Seeker).
+            (ZonePattern::Any, ZonePattern::Specific(Zone::Library)) => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let library = owned_zone_phrase(self.object_filter.owner.as_ref(), "library");
+                parts.push(format!("{verb} put into {library} from anywhere"));
             }
             _ => {
                 parts.push("changes zones".to_string());
@@ -2632,5 +2757,17 @@ mod tests {
             trigger.display(),
             "Whenever a land enters under an opponent's control"
         );
+    }
+}
+
+fn zone_origin_name(zone: Zone) -> &'static str {
+    match zone {
+        Zone::Battlefield => "the battlefield",
+        Zone::Graveyard => "a graveyard",
+        Zone::Hand => "a hand",
+        Zone::Exile => "exile",
+        Zone::Stack => "the stack",
+        Zone::Library => "a library",
+        _ => "anywhere",
     }
 }

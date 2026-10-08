@@ -86,7 +86,7 @@ impl TriggerMatcher for BecomesTargetedBySpellTrigger {
     fn display(&self) -> String {
         format!(
             "Whenever this permanent becomes the target of {}",
-            self.filter.description()
+            targeting_object_phrase(&self.filter)
         )
     }
 }
@@ -123,7 +123,7 @@ impl TriggerMatcher for BecomesTargetedByStackObjectTrigger {
     fn display(&self) -> String {
         format!(
             "Whenever this permanent becomes the target of {}",
-            self.filter.description()
+            targeting_object_phrase(&self.filter)
         )
     }
 }
@@ -174,8 +174,30 @@ impl TriggerMatcher for BecomesTargetedObjectByStackObjectTrigger {
         format!(
             "Whenever {} becomes the target of {}",
             self.target_filter.description(),
-            self.source_filter.description()
+            targeting_object_phrase(&self.source_filter)
         )
+    }
+}
+
+/// "a spell" rather than a bare "spell": the targeting stack object is an
+/// indefinite noun phrase unless its description already opens with one.
+fn targeting_object_phrase(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let has_determiner = [
+        "a ", "an ", "the ", "this ", "that ", "each ", "another ", "one ",
+    ]
+    .iter()
+    .any(|prefix| description.starts_with(prefix));
+    if has_determiner {
+        description
+    } else if description
+        .chars()
+        .next()
+        .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        format!("an {description}")
+    } else {
+        format!("a {description}")
     }
 }
 
@@ -377,3 +399,4 @@ mod tests {
     }
 
 }
+

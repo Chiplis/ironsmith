@@ -194,13 +194,28 @@ fn bind_cost_attachment_reference_to_source(
     filter: &ObjectFilter,
 ) -> ObjectFilter {
     let mut filter = filter.clone();
+    let attachment_noun = filter.tagged_constraints.iter().find_map(|constraint| {
+        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            .then(|| match constraint.tag.as_str() {
+                "enchanted" => Some("Aura"),
+                "equipped" => Some("Equipment"),
+                _ => None,
+            })
+            .flatten()
+    });
     let before = filter.tagged_constraints.len();
     filter.tagged_constraints.retain(|constraint| {
         !(matches!(constraint.tag.as_str(), "enchanted" | "equipped")
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
     });
     if filter.tagged_constraints.len() != before && filter.with_attached_object.is_none() {
-        filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
+        // Keep the authored attachment noun so the cost still reads
+        // "enchanted creature" / "equipped creature".
+        let mut source = ObjectFilter::source();
+        source.source_surface = attachment_noun.map(|noun| {
+            ironsmith_core::SourceReferenceSurface::ThisPermanentType(noun.to_string())
+        });
+        filter.with_attached_object = Some(Box::new(source));
     }
     filter
 }

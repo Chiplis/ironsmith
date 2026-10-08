@@ -36,6 +36,20 @@ fn exact_each_creature_damage(
     removal_id: crate::effect::EffectId,
     counter_type: crate::object::CounterType,
 ) -> bool {
+    // The simultaneous fanout form deals the same metric to every creature.
+    if let Some(each) = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::DealDamageEachEffect>()
+    {
+        // Compare the executable domain only; the noun-surface metadata of
+        // "each creature" is presentation.
+        let mut domain = each.filter.clone();
+        domain.zone = Some(Zone::Battlefield);
+        domain.union_surface = Default::default();
+        let mut expected = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        expected.union_surface = Default::default();
+        return domain == expected
+            && exact_removed_counter_metric(&each.amount, removal_id, counter_type);
+    }
     let Some(for_each) =
         structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForEachObject>()
     else {

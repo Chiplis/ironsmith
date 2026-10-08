@@ -123,6 +123,14 @@ fn lowercase_first_ascii(text: &str) -> String {
     }
 }
 
+fn capitalize_first_ascii(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => String::new(),
+    }
+}
+
 fn object_ability_is_static_keyword(ability: &Ability) -> bool {
     matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.is_keyword())
 }
@@ -147,7 +155,22 @@ fn explicit_granted_keyword_label(display: &str) -> Option<String> {
         // it unquoted while preserving the authored sentence capitalization.
         return Some(label.to_string());
     }
-    if matches!(lower.as_str(), "storm" | "gravestorm") {
+    // A bare triggered-keyword name is granted as the keyword, never quoted
+    // ("has melee, trample, and haste").
+    if matches!(
+        lower.as_str(),
+        "storm"
+            | "gravestorm"
+            | "melee"
+            | "exalted"
+            | "battle cry"
+            | "myriad"
+            | "dethrone"
+            | "evolve"
+            | "extort"
+            | "training"
+            | "mentor"
+    ) {
         return Some(lower);
     }
     let amount = lower.strip_prefix("afflict ")?;
@@ -341,25 +364,44 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         let mut attachments = Vec::new();
         for branch in &filter.any_of {
             let mut branch_base = branch.clone();
-            let Some(index) = branch_base
-                .tagged_constraints
-                .iter()
-                .position(|constraint| {
-                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
-                })
-            else {
-                attachments.clear();
-                break;
-            };
-            attachments.push(
-                branch_base
+            // "with an Aura attached to it" / "with an Equipment attached to
+            // it" is the same attachment state as the tag form.
+            let attached_adjective = branch_base.with_attached_object.as_deref().and_then(|attached| {
+                let mut rest = attached.clone();
+                rest.zone = None;
+                let adjective = match rest.subtypes.as_slice() {
+                    [crate::types::Subtype::Aura] => "enchanted",
+                    [crate::types::Subtype::Equipment] => "equipped",
+                    _ => return None,
+                };
+                rest.subtypes.clear();
+                rest.card_types.clear();
+                (rest == crate::filter::ObjectFilter::default()).then_some(adjective)
+            });
+            if let Some(adjective) = attached_adjective {
+                branch_base.with_attached_object = None;
+                attachments.push(adjective.to_string());
+            } else {
+                let Some(index) = branch_base
                     .tagged_constraints
-                    .remove(index)
-                    .tag
-                    .as_str()
-                    .to_string(),
-            );
+                    .iter()
+                    .position(|constraint| {
+                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                    })
+                else {
+                    attachments.clear();
+                    break;
+                };
+                attachments.push(
+                    branch_base
+                        .tagged_constraints
+                        .remove(index)
+                        .tag
+                        .as_str()
+                        .to_string(),
+                );
+            }
             if base_filter
                 .as_ref()
                 .is_some_and(|base| base != &branch_base)
@@ -1696,7 +1738,217 @@ fn describe_static_condition_value(value: &Value) -> String {
                 filter.description()
             )
         }
-        other => format!("{other:?}"),
+        other => crate::runtime_display::describe_value(other),
+    }
+}
+
+/// Printed forms of value thresholds whose quantity has no standalone noun
+/// phrase: "there are five or more mana values among cards in your
+/// graveyard", "you control a permanent of each color", "you've surveilled
+/// this turn", "your life total is at least 10 greater than your starting
+/// life total".
+fn describe_static_value_threshold_condition(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator as Op;
+    match (left, operator, right) {
+        // "you have more cards in hand than each opponent": compared with the
+        // opponent holding the most cards.
+        (Value::CardsInHand(player), Op::GreaterThan, Value::MaxCardsInHand(PlayerFilter::Opponent)) => {
+            let subject = describe_static_player(player);
+            let verb = if subject == "you" { "have" } else { "has" };
+            Some(format!("{subject} {verb} more cards in hand than each opponent"))
+        }
+        // "no opponent controls a white or blue creature" (Skittish Kavu).
+        (Value::Count(filter), Op::Equal, Value::Fixed(0))
+            if filter.zone == Some(Zone::Battlefield)
+                && filter.controller == Some(crate::target::PlayerFilter::Opponent) =>
+        {
+            let mut objects = filter.clone();
+            objects.zone = None;
+            objects.controller = None;
+            Some(format!(
+                "no opponent controls {}",
+                with_indefinite_article_unless_present(objects.description())
+            ))
+        }
+        // "a creature has a -1/-1 counter on it" (Tenacious Hunter).
+        (Value::Count(filter), Op::GreaterThanOrEqual, Value::Fixed(1))
+            if filter.zone == Some(Zone::Battlefield)
+                && filter.controller.is_none()
+                && filter.card_types == [crate::types::CardType::Creature]
+                && filter.subtypes.is_empty()
+                && matches!(
+                    filter.with_counter,
+                    Some(crate::filter::CounterConstraint::Typed(_))
+                ) =>
+        {
+            let Some(crate::filter::CounterConstraint::Typed(counter_type)) = &filter.with_counter
+            else {
+                return None;
+            };
+            let counter = format!("{} counter", counter_type.description());
+            Some(format!(
+                "a creature has {} on it",
+                with_indefinite_article_unless_present(counter)
+            ))
+        }
+        (
+            Value::CountPlayersWithPoisonCountersAtLeast(crate::target::PlayerFilter::Opponent, 1),
+            Op::GreaterThanOrEqual,
+            Value::Fixed(1),
+        ) => Some("an opponent is poisoned".to_string()),
+        (Value::DistinctManaValues(filter), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 1 =>
+        {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "there are {count_text} or more mana values among {}",
+                pluralized_subject_text(filter)
+            ))
+        }
+        (Value::UnlockedDoorsAmong(filter), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 1 =>
+        {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "there are {count_text} or more unlocked doors among {}",
+                pluralized_subject_text(filter)
+            ))
+        }
+        (Value::ColorsAmong(filter), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 1 =>
+        {
+            // CR 105.1: five colors means one of each.
+            if *count == 5
+                && let Some(player) = &filter.controller
+            {
+                let mut objects = filter.clone();
+                objects.controller = None;
+                objects.zone = None;
+                let noun = if objects == ObjectFilter::default() {
+                    "permanent".to_string()
+                } else {
+                    strip_article(objects.description())
+                };
+                let subject = describe_static_player(player);
+                let verb = if subject == "you" { "control" } else { "controls" };
+                return Some(format!("{subject} {verb} a {noun} of each color"));
+            }
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "there are {count_text} or more colors among {}",
+                pluralized_subject_text(filter)
+            ))
+        }
+        // "as long as any player controls a black permanent".
+        (Value::Count(filter), Op::GreaterThanOrEqual, Value::Fixed(1))
+            if filter.zone == Some(crate::zone::Zone::Battlefield) =>
+        {
+            let mut objects = filter.clone();
+            objects.zone = None;
+            let subject = match objects.controller.take() {
+                None => "any player controls".to_string(),
+                Some(PlayerFilter::You) => "you control".to_string(),
+                Some(PlayerFilter::Opponent) => "an opponent controls".to_string(),
+                Some(_) => return None,
+            };
+            let object = if objects == ObjectFilter::default() {
+                "permanent".to_string()
+            } else {
+                strip_article(objects.description())
+            };
+            let article = if object.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "an"
+            } else {
+                "a"
+            };
+            Some(format!("{subject} {article} {object}"))
+        }
+        (Value::TurnHistoryCount(query), Op::GreaterThanOrEqual, Value::Fixed(1)) => {
+            describe_static_turn_history_presence(query)
+        }
+        (Value::LifeTotal(player), Op::GreaterThan, Value::StartingLifeTotal(other))
+            if player == other =>
+        {
+            let possessive = describe_static_possessive_player(player);
+            Some(format!(
+                "{possessive} life total is greater than {possessive} starting life total"
+            ))
+        }
+        (Value::LifeTotal(player), Op::GreaterThanOrEqual, Value::Add(base, offset)) => {
+            let (Value::StartingLifeTotal(other), Value::Fixed(amount)) =
+                (base.as_ref(), offset.as_ref())
+            else {
+                return None;
+            };
+            if player != other || *amount <= 0 {
+                return None;
+            }
+            let possessive = describe_static_possessive_player(player);
+            Some(format!(
+                "{possessive} life total is at least {amount} greater than {possessive} starting life total"
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// "you've surveilled this turn": a turn-history count read as presence.
+fn describe_static_turn_history_presence(
+    query: &ironsmith_core::TurnHistoryCount,
+) -> Option<String> {
+    use ironsmith_core::TurnHistoryCount as History;
+    let subject_have = |player: &crate::target::PlayerFilter| match player {
+        crate::target::PlayerFilter::You => "you've".to_string(),
+        other => format!("{} has", describe_static_player(other)),
+    };
+    match query {
+        History::KeywordActionsPerformed { player, actions } if !actions.is_empty() => {
+            let verbs = actions
+                .iter()
+                .map(|action| match action {
+                    crate::events::KeywordActionKind::Scry => Some("scried"),
+                    crate::events::KeywordActionKind::Surveil => Some("surveilled"),
+                    crate::events::KeywordActionKind::Explore => Some("explored"),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!(
+                "{} {} this turn",
+                subject_have(player),
+                verbs.join(" or ")
+            ))
+        }
+        History::Sacrificed { player, filter } => {
+            let object = filter.description();
+            let object = if ["a ", "an ", "another ", "one "]
+                .iter()
+                .any(|prefix| object.starts_with(prefix))
+            {
+                object
+            } else if object.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                format!("an {object}")
+            } else {
+                format!("a {object}")
+            };
+            Some(format!(
+                "{} sacrificed {object} this turn",
+                subject_have(player)
+            ))
+        }
+        History::CardsDrawn(player) => {
+            Some(format!("{} drawn a card this turn", subject_have(player)))
+        }
+        History::Cycled(player) => {
+            Some(format!("{} cycled a card this turn", subject_have(player)))
+        }
+        History::Descended(player) => {
+            Some(format!("{} descended this turn", subject_have(player)))
+        }
+        _ => None,
     }
 }
 
@@ -1723,7 +1975,29 @@ fn describe_attached_subject_static_condition(
         },
         _ => return None,
     };
-    let subject = if use_pronoun { "it" } else { subject };
+    // The condition names the object the source is attached to, which is
+    // not the anthem's affected set ("as long as enchanted land is a basic
+    // Mountain, Goblin creatures get +0/+2").
+    let attached_noun;
+    let subject = if use_pronoun {
+        "it"
+    } else if !attached_subject {
+        let noun = if filter.card_types.contains(&crate::types::CardType::Creature) {
+            "creature"
+        } else if filter.card_types.contains(&crate::types::CardType::Land)
+            || filter.subtypes.iter().any(|subtype| subtype.is_land_subtype())
+        {
+            "land"
+        } else if filter.card_types.contains(&crate::types::CardType::Artifact) {
+            "artifact"
+        } else {
+            "permanent"
+        };
+        attached_noun = format!("enchanted {noun}");
+        attached_noun.as_str()
+    } else {
+        subject
+    };
     let verb = if negative {
         "isn't"
     } else if use_pronoun {
@@ -1783,6 +2057,67 @@ fn flatten_static_condition_and(
     }
 }
 
+/// "black is the most common color among all permanents or is tied for most
+/// common": at least one permanent of that color, and no fewer of it than of
+/// each other color.
+fn describe_static_most_common_color_condition(
+    clauses: &[crate::ConditionExpr],
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator as Op;
+    let single_color = |filter: &ObjectFilter| {
+        let colors = filter.colors?;
+        let mut rest = filter.clone();
+        rest.colors = None;
+        let color = crate::color::Color::ALL
+            .into_iter()
+            .find(|color| colors == crate::color::ColorSet::from_color(*color))?;
+        Some((color, rest))
+    };
+    let [presence, comparisons @ ..] = clauses else {
+        return None;
+    };
+    let crate::ConditionExpr::ValueComparison {
+        left: Value::Count(filter),
+        operator: Op::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    } = presence
+    else {
+        return None;
+    };
+    let (color, base) = single_color(filter)?;
+    if comparisons.len() != crate::color::Color::ALL.len() - 1 {
+        return None;
+    }
+    let mut others = Vec::new();
+    for clause in comparisons {
+        let crate::ConditionExpr::ValueComparison {
+            left: Value::Count(left),
+            operator: Op::GreaterThanOrEqual,
+            right: Value::Count(right),
+        } = clause
+        else {
+            return None;
+        };
+        if left != filter {
+            return None;
+        }
+        let (other, other_base) = single_color(right)?;
+        if other == color || other_base != base || others.contains(&other) {
+            return None;
+        }
+        others.push(other);
+    }
+    let noun = if base.card_types.is_empty() && base.subtypes.is_empty() {
+        "permanents".to_string()
+    } else {
+        pluralized_subject_text(&base)
+    };
+    Some(format!(
+        "{} is the most common color among all {noun} or is tied for most common",
+        color.name()
+    ))
+}
+
 fn describe_source_keyword_condition(filter: &ObjectFilter) -> Option<String> {
     if filter.static_abilities.len() + filter.ability_markers.len() != 1 {
         return None;
@@ -1798,7 +2133,62 @@ fn describe_source_keyword_condition(filter: &ObjectFilter) -> Option<String> {
     (!keyword.is_empty()).then(|| format!("as long as it has {keyword}"))
 }
 
+/// Inverse of the battlefield-population lowering for "<color> is the most
+/// common color among all permanents or is tied for most common": a presence
+/// floor for that color conjoined with one `>=` comparison per other color.
+fn most_common_permanent_color_condition(condition: &crate::ConditionExpr) -> Option<crate::color::Color> {
+    use crate::color::{Color, ColorSet};
+    use crate::effect::ValueComparisonOperator::GreaterThanOrEqual;
+    fn conjuncts<'a>(condition: &'a crate::ConditionExpr, out: &mut Vec<&'a crate::ConditionExpr>) {
+        match condition {
+            crate::ConditionExpr::And(left, right) => {
+                conjuncts(left, out);
+                conjuncts(right, out);
+            }
+            other => out.push(other),
+        }
+    }
+    let mut terms = Vec::new();
+    conjuncts(condition, &mut terms);
+    if terms.len() != Color::ALL.len() {
+        return None;
+    }
+    let color_count = |color: Color| ObjectFilter::permanent().with_colors(ColorSet::from(color));
+    let crate::ConditionExpr::ValueComparison {
+        left: Value::Count(present),
+        operator: GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    } = terms[0]
+    else {
+        return None;
+    };
+    let color = Color::ALL
+        .into_iter()
+        .find(|color| *present == color_count(*color))?;
+    let mut others = Color::ALL.into_iter().filter(|other| *other != color);
+    terms[1..]
+        .iter()
+        .all(|term| {
+            matches!(
+                term,
+                crate::ConditionExpr::ValueComparison {
+                    left: Value::Count(left),
+                    operator: GreaterThanOrEqual,
+                    right: Value::Count(right),
+                } if *left == color_count(color)
+                    && others.next().is_some_and(|other| *right == color_count(other))
+            )
+        })
+        .then_some(color)
+}
+
 pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
+    if let Some(color) = most_common_permanent_color_condition(condition) {
+        return format!(
+            "as long as {} is the most common color among all permanents or is tied for most common",
+            color.name()
+        );
+    }
     if source_is_attacking_alone_condition(condition) {
         return "as long as this creature is attacking alone".to_string();
     }
@@ -1812,6 +2202,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::And(_, _) => {
             let mut clauses = Vec::new();
             flatten_static_condition_and(condition, &mut clauses);
+            if let Some(described) = describe_static_most_common_color_condition(&clauses) {
+                return format!("as long as {described}");
+            }
             let described = clauses
                 .iter()
                 .map(describe_static_condition)
@@ -2224,6 +2617,17 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     format!("not exactly {count_text}")
                 }
             };
+            // "as long as an opponent has eight or more cards in their
+            // graveyard": another player's threshold names that player.
+            if !matches!(player, crate::target::PlayerFilter::You) {
+                let subject = match player {
+                    crate::target::PlayerFilter::ControllerOf(
+                        crate::filter::ObjectRef::Tagged(tag),
+                    ) if matches!(tag.as_str(), "enchanted" | "equipped") => "its controller",
+                    _ => describe_static_player(player),
+                };
+                return format!("as long as {subject} has {comparison} cards in their graveyard");
+            }
             format!(
                 "as long as there are {comparison} cards in {} graveyard",
                 describe_static_possessive_player(player)
@@ -2266,6 +2670,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             operator,
             right,
         } => {
+            if let Some(described) =
+                describe_static_value_threshold_condition(left, *operator, right)
+            {
+                return format!("as long as {described}");
+            }
             if let (
                 crate::effect::Value::LifeTotal(player),
                 crate::effect::ValueComparisonOperator::LessThanOrEqual,
@@ -3265,7 +3674,7 @@ impl StaticAbilityKind for Anthem {
                 .unwrap_or(&described)
                 .to_string();
             return format!(
-                "If {condition_text}, {subject} {verb} {}/{} instead",
+                "{subject} {verb} {}/{} instead as long as {condition_text}",
                 signed(surface.power),
                 signed_toughness(surface.power, surface.toughness),
             );
@@ -4506,7 +4915,16 @@ impl StaticAbilityKind for SetBasePowerToughnessValueForFilter {
             grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
         let (copula, possessive) = subject_verb_and_possessive(&subject);
         let verb = if copula == "is" { "has" } else { "have" };
-        let mut text = if self.power == self.toughness {
+        let mut text = if self.power == self.toughness
+            && self
+                .power
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+        {
+            format!(
+                "{subject} {verb} base power and toughness X/X, where X is {}",
+                describe_static_iterated_value(&self.power, possessive)
+            )
+        } else if self.power == self.toughness {
             format!(
                 "{subject} {verb} base power and base toughness each equal to {}",
                 describe_static_iterated_value(&self.power, possessive)
@@ -4886,8 +5304,29 @@ impl StaticAbilityKind for SetColorsForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
-        let (verb, _) = subject_verb_and_possessive(&subject);
+        // A characteristic-defining color names the card itself ("Ghostfire
+        // is colorless"), never a pluralized set.
+        let subject = if self.filter.is_source_only() {
+            match self.filter.source_surface.as_ref() {
+                Some(
+                    ironsmith_core::SourceReferenceSurface::FullName(name)
+                    | ironsmith_core::SourceReferenceSurface::ShortName(name),
+                ) => name.clone(),
+                Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(surface))
+                    if surface.contains(' ') =>
+                {
+                    capitalize_first_ascii(surface)
+                }
+                _ => "This card".to_string(),
+            }
+        } else {
+            pluralized_subject_text(&self.filter)
+        };
+        let (verb, _) = if self.filter.is_source_only() {
+            ("is", "its")
+        } else {
+            subject_verb_and_possessive(&subject)
+        };
         if is_all_colors(self.colors) {
             if verb == "are" {
                 let each_subject = lowercase_first_ascii(strip_plural_subject_article(

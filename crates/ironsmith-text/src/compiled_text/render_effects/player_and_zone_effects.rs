@@ -444,6 +444,127 @@ pub(crate) fn describe_each_controlled_by_iterated(filter: &ObjectFilter) -> Opt
     None
 }
 
+/// The sacrifice names exactly the chosen object, by tag or by an identity
+/// constraint against that choice.
+pub(crate) fn sacrifices_exactly_chosen(target: &ChooseSpec, chosen: &crate::TagKey) -> bool {
+    match target.base() {
+        ChooseSpec::Tagged(tag) => tag == chosen,
+        ChooseSpec::Object(filter) => {
+            let [constraint] = filter.tagged_constraints.as_slice() else {
+                return false;
+            };
+            let mut rest = filter.clone();
+            rest.tagged_constraints.clear();
+            rest.zone = None;
+            constraint.tag == *chosen
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        | crate::filter::TaggedOpbjectRelation::SameObjectId
+                        | crate::filter::TaggedOpbjectRelation::SameStableId
+                )
+                && rest == ObjectFilter::default()
+        }
+        _ => false,
+    }
+}
+
+/// "Each opponent chooses a <permanent> they control and sacrifices it": the
+/// iterated player's single choice among permanents they control, then that
+/// same player's sacrifice of exactly the chosen object.
+pub(crate) fn describe_for_players_choose_then_sacrifice_chosen(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let [choose_effect, sacrifice_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = unwrap_basic_tag_wrappers(sacrifice_effect)
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || !choose.count.is_single()
+        || choose.is_search
+        || choose.reveal
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || choose_primary_zone(choose).is_some_and(|zone| zone != Zone::Battlefield)
+        || !sacrifices_exactly_chosen(&sacrifice.target, &choose.tag)
+        || !matches!(sacrifice.player, None | Some(PlayerFilter::IteratedPlayer))
+    {
+        return None;
+    }
+    let selection = describe_choose_selection(choose)
+        .replace(" that player controls", " they control");
+    let player_filter_text = describe_for_each_player_filter(&for_players.filter);
+    let each_player = strip_leading_article(&player_filter_text);
+    Some(format!(
+        "Each {each_player} chooses {selection} and sacrifices it"
+    ))
+}
+
+/// "Each player puts a vow counter on a creature they control and
+/// sacrifices the rest." (Promise of Loyalty): a per-player choice that only
+/// selects the counter recipient, followed by sacrificing every other object
+/// of the same kind.
+pub(crate) fn describe_for_players_counter_on_chosen_sacrifice_rest(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let members: &[Effect] = match for_players.effects.as_slice() {
+        [only] => match only.downcast_ref::<crate::effects::SequenceEffect>() {
+            Some(sequence) => sequence.effects.as_slice(),
+            None => return None,
+        },
+        effects => effects,
+    };
+    let [choose_effect, counters_effect, sacrifice_effect] = members else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let counters = unwrap_basic_tag_wrappers(counters_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let sacrifice = sacrifice_view(unwrap_basic_tag_wrappers(sacrifice_effect))?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || !choose.count.is_single()
+        || choose.is_search
+        || choose.reveal
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || choose_primary_zone(choose).is_some_and(|zone| zone != Zone::Battlefield)
+        || !matches!(counters.target.base(), ChooseSpec::Tagged(tag) if *tag == choose.tag)
+        || counters.amount.unhinted() != &Value::Fixed(1)
+        || sacrifice.player != &PlayerFilter::IteratedPlayer
+        || !matches!(sacrifice.count.unhinted(), Value::Count(_))
+    {
+        return None;
+    }
+    // The sacrificed set is exactly the choice's population minus the chosen
+    // object.
+    let rest = sacrifice.filter;
+    let [constraint] = rest.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        || constraint.tag != choose.tag
+    {
+        return None;
+    }
+    if rest.card_types != choose.filter.card_types
+        || rest.subtypes != choose.filter.subtypes
+        || rest.controller != choose.filter.controller
+        || rest.token != choose.filter.token
+        || rest.nontoken != choose.filter.nontoken
+    {
+        return None;
+    }
+    let selection = describe_choose_selection(choose)
+        .replace(" that player controls", " they control");
+    let counter = describe_counter_type(counters.counter_type);
+    let player_filter_text = describe_for_each_player_filter(&for_players.filter);
+    let each_player = strip_leading_article(&player_filter_text);
+    Some(format!(
+        "Each {each_player} puts {} on {selection} and sacrifices the rest",
+        with_indefinite_article(&format!("{counter} counter"))
+    ))
+}
+
 pub(crate) fn describe_for_players_damage_and_controlled_damage(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -456,6 +577,23 @@ pub(crate) fn describe_for_players_damage_and_controlled_damage(
         ChooseSpec::Player(PlayerFilter::IteratedPlayer)
     ) {
         return None;
+    }
+    // One source dealing the same damage to each object the iterated player
+    // controls is the same "and each <object> they control" recipient list.
+    if let Some(each) = unwrap_basic_tag_wrappers(&for_players.effects[1])
+        .downcast_ref::<crate::effects::DealDamageEachEffect>()
+        && each.amount == deal_player.amount
+        && matches!(each.filter.controller, Some(PlayerFilter::IteratedPlayer))
+        && let Some(objects) = describe_each_controlled_by_iterated(&each.filter)
+    {
+        let player_filter_text = describe_for_each_player_filter(&for_players.filter);
+        let each_player = strip_leading_article(&player_filter_text);
+        return Some(format!(
+            "Deal {} damage to each {} and {}",
+            describe_value(&deal_player.amount),
+            each_player,
+            objects
+        ));
     }
     let for_each = for_players.effects[1].downcast_ref::<crate::effects::ForEachObject>()?;
     if for_each.effects.len() != 1 {
@@ -930,6 +1068,10 @@ pub(super) fn singularize_for_each_basis(basis: &str) -> String {
     if let Some((head, tail)) = basis.split_once(" counters on ") {
         return format!("{head} counter on {tail}");
     }
+    // "the number of past votes" -> "for each past vote".
+    if let Some(option) = basis.strip_suffix(" votes") {
+        return format!("{option} vote");
+    }
     basis.to_string()
 }
 
@@ -1142,6 +1284,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if let Some(counters) = describe_counters_among_players_and_permanents(value) {
         return Some(counters);
     }
+    if let Some(coin) = describe_coin_result_for_each_basis(value) {
+        return Some(coin.to_string());
+    }
     if let Some(history) = describe_turn_history_for_each_basis(value) {
         return Some(history);
     }
@@ -1228,6 +1373,13 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             "card type among {}",
             describe_count_filter_value_subject(filter)
         )),
+        // "draw a card for each card type among cards discarded this way"
+        // (Kefka, Court Mage).
+        Value::EffectMetric {
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::CardTypesAmong,
+            ..
+        } => Some("card type among those cards".to_string()),
         Value::ColorsAmong(filter) => Some(format!(
             "color among {}",
             describe_count_filter_value_subject(filter)
@@ -1393,6 +1545,18 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             describe_player_filter(player)
         )),
         Value::KickCount => Some("time it was kicked".to_string()),
+        // "+3/+3 for each opponent whose life total is less than half their
+        // starting life total" (Anya, Merciless Angel).
+        Value::CountPlayersBelowHalfStartingLifeTotal(players) => {
+            let player = match players {
+                PlayerFilter::Opponent => "opponent".to_string(),
+                PlayerFilter::Any => "player".to_string(),
+                other => describe_player_filter(other),
+            };
+            Some(format!(
+                "{player} whose life total is less than half their starting life total"
+            ))
+        }
         Value::SpellsCastThisTurn(player) => Some(describe_spells_cast_this_turn_each(player)),
         Value::SpellsCastThisTurnMatching {
             player,
@@ -1890,7 +2054,19 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
 pub(crate) fn describe_compact_create_token(
     create_token: &crate::effects::CreateTokenEffect,
 ) -> Option<String> {
-    if create_token.text_roles.is_some() { return None; }
+    // Only a token whose every characteristic is rules-implied (CR 111.10)
+    // reads as its bare predefined name.
+    if let Some(roles) = &create_token.text_roles
+        && (roles.colors != ironsmith_core::TokenWordRole::RulesImplied
+            || roles.subtypes != ironsmith_core::TokenWordRole::RulesImplied
+            || !roles.has_complete_ability_inventory(create_token.token.abilities.len())
+            || roles
+                .abilities
+                .iter()
+                .any(|role| *role != ironsmith_core::TokenWordRole::RulesImplied))
+    {
+        return None;
+    }
     if create_token.exile_at_end_of_combat
         || create_token.sacrifice_at_end_of_combat
         || create_token.sacrifice_at_next_end_step
@@ -1899,7 +2075,8 @@ pub(crate) fn describe_compact_create_token(
         return None;
     }
 
-    let token_name = create_token.token.name();
+    // CR 111.4: a subtype-named token is "<Subtype> Token".
+    let token_name = create_token.token.name().trim_end_matches(" Token");
     let is_compact_named_token = matches!(
         token_name,
         "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk" | "Mutagen"
@@ -2329,7 +2506,13 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
             crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
         };
-        if let Some(minimum) = constraint.minimum.as_ref() {
+        if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes
+            && let Some(Value::Fixed(minimum)) = constraint.minimum.as_ref().map(Value::unhinted)
+        {
+            // CR 205.2a phrasing: "with four or more card types among them".
+            let minimum = number_word(*minimum).unwrap_or_else(|| minimum.to_string());
+            selection.push_str(&format!(" with {minimum} or more card types among them"));
+        } else if let Some(minimum) = constraint.minimum.as_ref() {
             let minimum = describe_value(minimum);
             selection.push_str(&format!(" with total {metric} {minimum} or greater"));
         } else if constraint
@@ -2600,6 +2783,20 @@ pub(crate) fn describe_choose_then_exile(
     {
         return None;
     }
+    // A choice among an already named set ("look at the top two cards ...,
+    // then exile one of them") takes its origin from that set.
+    if zones.as_slice() == [Zone::Library]
+        && choose.chooser == PlayerFilter::You
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "looked")
+        })
+    {
+        let chosen = describe_choose_selection(choose).replace(" of those cards", " of them");
+        if chosen.ends_with(" of them") {
+            return Some(format!("exile {chosen}{face_state_suffix}"));
+        }
+    }
     let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
     let owner_text = describe_possessive_player_filter(owner);
     let origin_zones = if zones.as_slice() == [Zone::Graveyard]
@@ -2856,7 +3053,7 @@ pub(in crate::compiled_text) fn describe_exile_with_counters_then_gain_suspend(
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()
         && apply_grants_suspend_to_tag(apply, tag)
     {
-        return Some(format!("{exile_with_counters}, and it gains suspend"));
+        return Some(format!("{exile_with_counters} and it gains suspend"));
     }
 
     let put_then_suspend =
@@ -3176,10 +3373,36 @@ pub(super) fn describe_return_to_hand_excluded_subtypes(
     {
         return Some(format!("each {relative} to its owner's hand"));
     }
+    // "Return each non-Dinosaur creature to its owner's hand" (Cresting
+    // Mosasaurus): an "each" set keeps the excluded subtype as a prefix.
+    if return_to_hand.destination_player_surface.is_none()
+        && filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each)
+    {
+        let mut target_text = describe_choose_spec(&return_to_hand.spec);
+        for subtype in &filter.excluded_subtypes {
+            target_text = target_text.replace(
+                &format!("non-{}", subtype.to_string().to_ascii_lowercase()),
+                &format!("non-{subtype}"),
+            );
+        }
+        if target_text.starts_with("each non") {
+            return Some(format!("{target_text} to its owner's hand"));
+        }
+    }
 
     let mut base_filter = filter.clone();
     base_filter.excluded_subtypes.clear();
     let target_text = describe_choose_spec(&ChooseSpec::All(base_filter));
+    // A single excluded subtype is the prefix "all non-Horror creatures".
+    if let [excluded] = filter.excluded_subtypes.as_slice()
+        && filter.excluded_card_types.is_empty()
+        && let Some(rest) = target_text.strip_prefix("all ")
+    {
+        return Some(format!(
+            "all non-{excluded} {rest} to {}",
+            owner_hand_phrase_for_spec(&return_to_hand.spec)
+        ));
+    }
     let excluded = filter
         .excluded_subtypes
         .iter()
@@ -3788,7 +4011,10 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
     } else {
         ""
     };
-    let transformed = if move_to_zone.enters_transformed {
+    // "Return it to the battlefield tapped and transformed".
+    let transformed = if move_to_zone.enters_transformed && move_to_zone.enters_tapped {
+        " and transformed"
+    } else if move_to_zone.enters_transformed {
         " transformed"
     } else {
         ""
@@ -3923,6 +4149,21 @@ pub(crate) fn describe_choose_then_move_to_graveyard(
         )
     {
         return None;
+    }
+
+    // "Put the bottom card of your library into your graveyard" (Grenzo,
+    // Dungeon Warden): the edge-card choice is fixed, not a free choice.
+    if (choose.top_only || choose.bottom_only)
+        && choose.count.is_single()
+        && choose.chooser == PlayerFilter::You
+        && choose_primary_zone(choose) == Some(Zone::Library)
+    {
+        let owner = choose.filter.owner.clone().unwrap_or(PlayerFilter::You);
+        let possessive = describe_possessive_player_filter(&owner);
+        let edge = if choose.top_only { "top" } else { "bottom" };
+        return Some(format!(
+            "You put the {edge} card of {possessive} library into {possessive} graveyard"
+        ));
     }
 
     let chooser = describe_player_filter(&choose.chooser);
@@ -5404,6 +5645,12 @@ pub(super) fn describe_choice_aggregate_constraint_suffix(
         crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
         crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
     };
+    if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes
+        && let Some(Value::Fixed(minimum)) = constraint.minimum.as_ref().map(Value::unhinted)
+    {
+        let minimum = number_word(*minimum).unwrap_or_else(|| minimum.to_string());
+        return format!(" with {minimum} or more card types among them");
+    }
     if let Some(minimum_value) = constraint.minimum.as_ref() {
         let minimum = describe_value(minimum_value);
         return if matches!(minimum_value.unhinted(), Value::Fixed(_)) {

@@ -2106,7 +2106,56 @@ pub fn parse_static_ability_ast_line_lexed(
     if let Some(abilities) = parse_complete_attached_restriction_quoted_activation(tokens)? {
         return Ok(Some(abilities));
     }
+    if let Some(abilities) = parse_attached_subtype_and_predicate_static_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     parse_static_ability_ast_line_lexed_unstacked(tokens)
+}
+
+/// "Enchanted creature is a Spirit and can't attack or block." (Fog on the
+/// Barrow-Downs): a creature-type setting and a second predicate of the same
+/// attached subject are two independent static abilities.
+fn parse_attached_subtype_and_predicate_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["enchanted", "equipped"]))
+    {
+        return Ok(None);
+    }
+    let Some(is_idx) = tokens.iter().position(|token| token.is_word("is")) else {
+        return Ok(None);
+    };
+    let article = tokens.get(is_idx + 1);
+    let and = tokens.get(is_idx + 3);
+    // The verb follows the bare attached subject ("enchanted creature is"),
+    // and the set word is a type, not the first of a color pair ("is a green
+    // and white Citizen creature").
+    if is_idx != 2
+        || tokens.get(is_idx + 2).is_some_and(|token| {
+            token.is_any_word(&["white", "blue", "black", "red", "green", "colorless"])
+        })
+        || !article.is_some_and(|token| token.is_any_word(&["a", "an"]))
+        || !and.is_some_and(|token| token.is_word("and"))
+        || tokens.len() <= is_idx + 4
+    {
+        return Ok(None);
+    }
+    let mut type_line = tokens[..is_idx + 3].to_vec();
+    if let Some(period) = tokens.last().filter(|token| token.is_period()) {
+        type_line.push(period.clone());
+    }
+    let mut predicate_line = tokens[..is_idx].to_vec();
+    predicate_line.extend_from_slice(&tokens[is_idx + 4..]);
+    let Ok(Some(mut abilities)) = parse_static_ability_ast_line_lexed_unstacked(&type_line) else {
+        return Ok(None);
+    };
+    let Ok(Some(predicate)) = parse_static_ability_ast_line_lexed_unstacked(&predicate_line) else {
+        return Ok(None);
+    };
+    abilities.extend(predicate);
+    Ok(Some(abilities))
 }
 
 /// "Nonlegendary creatures enchanted player controls have base power and
@@ -6366,12 +6415,12 @@ pub fn parse_characteristic_defining_pt_line(
             )));
         }
 
-        let value = parse_characteristic_defining_stat_value(&value_tokens)
-            .or_else(|| {
-                previous_value.as_ref().and_then(|base| {
-                    parse_characteristic_defining_relative_value(&value_tokens, base)
-                })
-            })
+        // "that number" back-references the previous axis; resolve it before
+        // the shared value grammar reads it as a chosen-number metric.
+        let value = previous_value
+            .as_ref()
+            .and_then(|base| parse_characteristic_defining_relative_value(&value_tokens, base))
+            .or_else(|| parse_characteristic_defining_stat_value(&value_tokens))
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported characteristic defining {} value (value: '{}')",

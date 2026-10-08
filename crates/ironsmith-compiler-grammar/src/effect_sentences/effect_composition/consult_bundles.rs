@@ -250,6 +250,17 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         })
         .is_some_and(|verb| verb > 0 && shape.consult_tokens[verb - 1].is_word("may"));
     let mut effects = parts.effects;
+    // "Sacrifice X Zombies, then reveal cards ... until ...": keep the
+    // authored ", then" boundary between the leading action and the consult.
+    if !optional_consult
+        && effects.len() >= 2
+        && shape
+            .consult_tokens
+            .windows(2)
+            .any(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+    {
+        effects = vec![EffectAst::CommaThen { effects }];
+    }
     let keep_tag = match shape.middle {
         bundle_grammar::ConsultMiddleShape::MatchedMove(matched) => match matched.selection {
             bundle_grammar::ConsultMoveSelectionShape::AllMatched => {

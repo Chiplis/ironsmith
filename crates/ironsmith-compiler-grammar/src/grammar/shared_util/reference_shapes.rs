@@ -431,6 +431,13 @@ pub fn parse_filter_keyword_constraint_words(
     if prefix_one_of(words, &[&["mana", "ability"], &["mana", "abilities"]]) {
         return Some((FilterKeywordConstraint::Marker("mana ability"), 2));
     }
+    // "an Aura card with enchant creature" (Tallowisp): the Aura's enchant
+    // restriction is exactly "creature".
+    if permission_shapes::prefix_words(words, &["enchant", "creature"])
+        && !matches!(words.get(2), Some(&"you" | &"an" | &"your" | &"with" | &"without"))
+    {
+        return Some((FilterKeywordConstraint::Marker("enchant creature"), 2));
+    }
     if cycling_keyword_root(words[0]).is_some() {
         return Some((FilterKeywordConstraint::Marker("cycling"), 1));
     }

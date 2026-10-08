@@ -545,9 +545,13 @@ where
     {
         filter.any_of = serial_names
             .into_iter()
-            .map(|name| ObjectFilter {
-                name: Some(name),
-                ..ObjectFilter::default()
+            .map(|surface| {
+                let mut branch = ObjectFilter {
+                    name: Some(surface.to_ascii_lowercase()),
+                    ..ObjectFilter::default()
+                };
+                branch.set_name_surface(surface);
+                branch
             })
             .collect();
         return Ok(true);
@@ -574,7 +578,7 @@ fn split_serial_name_list(surface: &str) -> Option<Vec<String>> {
                 .or_else(|| part.strip_prefix("or "))
                 .unwrap_or(part)
                 .trim()
-                .to_ascii_lowercase()
+                .to_string()
         })
         .collect::<Vec<_>>();
     (names.len() >= 3 && names.iter().all(|name| !name.is_empty())).then_some(names)
@@ -1364,12 +1368,49 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     apply_spell_filter_word_atoms(&mut filter, words);
     apply_spell_filter_chosen_type_reference(&mut filter, words);
     apply_spell_filter_comparisons(&mut filter, words, words);
+    apply_spell_filter_power_toughness_relation(&mut filter, words);
     apply_spell_filter_tagged_relations(&mut filter, words);
     apply_spell_filter_source_creature_type_relation(&mut filter, words);
     apply_spell_filter_parity_phrases(words, &mut filter);
     apply_spell_filter_cast_origin_tail(&mut filter, words);
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+/// "creature spell with toughness greater than its power" (Doran, Besieged
+/// by Time) compares the spell's own two stats. The scalar comparison pass
+/// reads the pronoun operand as a back-reference (or rejects "their"), so the
+/// relational phrase owns the axis instead.
+fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words: &[&str]) {
+    use crate::filter::PowerToughnessRelation;
+    let relation = [
+        (["toughness", "greater", "than", "power"], PowerToughnessRelation::ToughnessGreaterThanPower),
+        (["power", "less", "than", "toughness"], PowerToughnessRelation::ToughnessGreaterThanPower),
+        (["power", "greater", "than", "toughness"], PowerToughnessRelation::PowerGreaterThanToughness),
+        (["toughness", "less", "than", "power"], PowerToughnessRelation::PowerGreaterThanToughness),
+    ]
+    .into_iter()
+    .find_map(|([axis, cmp, than, other], relation)| {
+        words
+            .windows(5)
+            .any(|window| {
+                window[0] == axis
+                    && window[1] == cmp
+                    && window[2] == than
+                    && matches!(window[3], "its" | "their")
+                    && window[4] == other
+            })
+            .then_some((axis, relation))
+    });
+    let Some((axis, relation)) = relation else {
+        return;
+    };
+    filter.power_toughness_relation = Some(relation);
+    if axis == "toughness" {
+        filter.toughness = None;
+    } else {
+        filter.power = None;
+    }
 }
 
 /// A terminal "cast from <zone> [or [from] <zone>]" constrains the

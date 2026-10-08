@@ -2172,8 +2172,10 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             Ok(match value {
                 Value::PendingComparisonLeft => left.clone(),
                 Value::PendingComparisonRight => right.clone(),
-                _ => Value::absolute_difference(left.clone(), right.clone())
-                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+                _ => Value::absolute_difference(left.clone(), right.clone()).with_surface_hints([
+                    ironsmith_core::ValueSurfaceHint::Difference,
+                    ironsmith_core::ValueSurfaceHint::ComparisonDifferenceReference,
+                ]),
             })
         }
 

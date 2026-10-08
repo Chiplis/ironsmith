@@ -57,7 +57,9 @@ pub(super) fn parse_bound_base_pt(
         return Ok(None);
     };
     let subject = setting_subject(subject)?;
-    let value = state_value(definition)?;
+    // "X/X, where X is ...": keep the authored binding surface.
+    let value = state_value(definition)?
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
     Ok(Some(StaticAbility::set_base_power_toughness_value(
         anthem_subject_filter(&subject), value.clone(), value,
     )))
@@ -132,7 +134,7 @@ mod tests {
             let StaticAbilityAst::Static(ability) = &parsed[0] else { panic!("typed static"); };
             let StaticAbilityPayload::SetBasePowerToughnessValue { filter, power, toughness } =
                 &ability.payload else { panic!("layer 7b payload: {ability:?}"); };
-            assert_eq!(power, &Value::LifeTotal(PlayerFilter::You));
+            assert_eq!(power.unhinted(), &Value::LifeTotal(PlayerFilter::You));
             assert_eq!(toughness, power);
             assert_eq!(filter.source, subject == "This creature");
             assert_eq!(filter.with_attached_object.is_some(),

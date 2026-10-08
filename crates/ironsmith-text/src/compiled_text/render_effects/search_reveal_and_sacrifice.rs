@@ -1733,17 +1733,22 @@ pub(super) fn describe_choose_two_sacrifice_one_return_other(effects: &[Effect])
     ))
 }
 
-pub(super) fn describe_choose_same_controller_sacrifice_one_return_other(
+pub(crate) fn describe_choose_same_controller_sacrifice_one_return_other(
     effects: &[Effect],
 ) -> Option<String> {
-    let [
-        target_effect,
-        choose_effect,
-        sacrifice_effect,
-        return_effect,
-    ] = effects
-    else {
-        return None;
+    // "That player sacrifices one of them of their choice" (Incriminate) is
+    // the same program without the return of the other target.
+    let (target_effect, choose_effect, sacrifice_effect, return_effect) = match effects {
+        [target_effect, choose_effect, sacrifice_effect] => {
+            (target_effect, choose_effect, sacrifice_effect, None)
+        }
+        [target_effect, choose_effect, sacrifice_effect, return_effect] => (
+            target_effect,
+            choose_effect,
+            sacrifice_effect,
+            Some(return_effect),
+        ),
+        _ => return None,
     };
     let tagged = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
     let target_only = tagged
@@ -1775,10 +1780,16 @@ pub(super) fn describe_choose_same_controller_sacrifice_one_return_other(
     }
 
     let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    if !choose_spec_is_tagged_object(&sacrifice.target, &choose.tag) {
+    if !sacrifices_exactly_chosen(&sacrifice.target, &choose.tag) {
         return None;
     }
 
+    let plural_noun = simple_filter_plural_noun(target_filter)?;
+    let Some(return_effect) = return_effect else {
+        return Some(format!(
+            "Choose two target {plural_noun} controlled by the same player. That player sacrifices one of them of their choice"
+        ));
+    };
     let return_to_hand = unwrap_basic_tag_wrappers(return_effect)
         .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
     let ChooseSpec::Object(return_filter) = return_to_hand.spec.base() else {
@@ -1788,7 +1799,6 @@ pub(super) fn describe_choose_same_controller_sacrifice_one_return_other(
         return None;
     }
 
-    let plural_noun = simple_filter_plural_noun(target_filter)?;
     Some(format!(
         "Choose two target {plural_noun} controlled by the same player. Their controller chooses and sacrifices one of them. Return the other to its owner's hand"
     ))
@@ -3726,11 +3736,16 @@ pub(super) fn describe_attack_block_if_able_grant(
         }
     }
 
-    let plural = crate::compiled_text::merge_passes::subject_is_plural(subject)
-        || subject.split_whitespace().next().is_some_and(|first| {
-            let first = first.to_ascii_lowercase();
-            first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
-        });
+    let distributive = subject
+        .split_whitespace()
+        .next()
+        .is_some_and(|first| first.eq_ignore_ascii_case("each"));
+    let plural = !distributive
+        && (crate::compiled_text::merge_passes::subject_is_plural(subject)
+            || subject.split_whitespace().next().is_some_and(|first| {
+                let first = first.to_ascii_lowercase();
+                first.ends_with('s') && !matches!(first.as_str(), "this" | "its" | "his")
+            }));
     let (attack, block) = if plural {
         ("attack", "block")
     } else {
@@ -4651,7 +4666,7 @@ pub(super) fn is_zero_zero_blue_zombie_token(create: &crate::effects::CreateToke
         return false;
     };
 
-    card.name == "Zombie"
+    card.name.trim_end_matches(" Token") == "Zombie"
         && card.color_indicator == Some(crate::color::ColorSet::BLUE)
         && card.card_types == vec![CardType::Creature]
         && card.subtypes.contains(&crate::types::Subtype::Zombie)
@@ -5177,6 +5192,9 @@ pub(in crate::compiled_text) fn describe_life_amount_phrase(amount: &Value) -> S
     if let Some(additive) = describe_additive_for_each_life_amount(amount) {
         return additive;
     }
+    if let Some((_, fraction)) = describe_fraction_of_life_amount(amount) {
+        return fraction;
+    }
     // Match through any surface hint: a hinted `ManaValueOf` is still a
     // characteristic basis and takes oracle's "life equal to ..." tail rather
     // than an inline determiner ("the sacrificed permanent's mana value life").
@@ -5200,6 +5218,12 @@ pub(in crate::compiled_text) fn describe_life_amount_phrase(amount: &Value) -> S
     for prefix in ["the number of ", "the amount of ", "the total "] {
         if desc.starts_with(prefix) {
             return format!("life equal to {desc}");
+        }
+    }
+    // "you gain half X life" keeps the rounding after the noun.
+    for rounding in [", rounded down", ", rounded up"] {
+        if let Some(base) = desc.strip_suffix(rounding) {
+            return format!("{base} life{rounding}");
         }
     }
     format!("{desc} life")
@@ -5239,38 +5263,73 @@ fn describe_additive_for_each_life_amount(amount: &Value) -> Option<String> {
     ))
 }
 
+/// "a third of their life, rounded up" is (life + 2) / 3 rounded down; the
+/// unpadded quotient is the rounded-down fraction.
+fn describe_fraction_of_life_amount(amount: &Value) -> Option<(&PlayerFilter, String)> {
+    let Value::DividedRoundedDown(inner, divisor) = amount.unhinted() else {
+        return None;
+    };
+    let fraction = match divisor {
+        3 => "a third",
+        4 => "a quarter",
+        _ => return None,
+    };
+    let (basis, rounding) = match inner.unhinted() {
+        Value::Add(basis, offset)
+            if matches!(offset.unhinted(), Value::Fixed(offset) if *offset == divisor - 1) =>
+        {
+            (basis.unhinted(), "rounded up")
+        }
+        basis => (basis, "rounded down"),
+    };
+    let Value::LifeTotal(player) = basis else {
+        return None;
+    };
+    let possessive = if matches!(player, PlayerFilter::You) {
+        "your"
+    } else {
+        "their"
+    };
+    Some((player, format!("{fraction} of {possessive} life, {rounding}")))
+}
+
 pub(super) fn describe_half_life_amount_for_same_player(
     amount: &Value,
     player_filter: &PlayerFilter,
-) -> Option<&'static str> {
+) -> Option<String> {
+    if let Some((player, fraction)) = describe_fraction_of_life_amount(amount)
+        && player == player_filter
+    {
+        return Some(fraction);
+    }
     match amount {
         Value::HalfLifeTotalRoundedUp(filter) if filter == player_filter => {
             Some(if matches!(player_filter, PlayerFilter::You) {
                 "half your life, rounded up"
             } else {
                 "half their life, rounded up"
-            })
+            }.to_string())
         }
         Value::HalfLifeTotalRoundedDown(filter) if filter == player_filter => {
             Some(if matches!(player_filter, PlayerFilter::You) {
                 "half your life, rounded down"
             } else {
                 "half their life, rounded down"
-            })
+            }.to_string())
         }
         Value::HalfStartingLifeTotalRoundedUp(filter) if filter == player_filter => {
             Some(if matches!(player_filter, PlayerFilter::You) {
                 "half your starting life total, rounded up"
             } else {
                 "half their starting life total, rounded up"
-            })
+            }.to_string())
         }
         Value::HalfStartingLifeTotalRoundedDown(filter) if filter == player_filter => {
             Some(if matches!(player_filter, PlayerFilter::You) {
                 "half your starting life total, rounded down"
             } else {
                 "half their starting life total, rounded down"
-            })
+            }.to_string())
         }
         _ => None,
     }
@@ -5470,15 +5529,34 @@ pub(super) fn describe_for_players_simple_iterated_action(
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
         && exile_top.player == PlayerFilter::IteratedPlayer
     {
+        let possessive = if subject == "You" { "your" } else { "their" };
+        let face_down = if exile_top.face_down { " face down" } else { "" };
+        // "exiles all but the bottom six cards of their library": the library
+        // size minus a fixed remainder left on the bottom.
+        if let Value::Add(left, right) = &exile_top.count
+            && matches!(
+                left.as_ref(),
+                Value::CardsInLibrary(PlayerFilter::IteratedPlayer)
+            )
+            && let Value::Fixed(offset) = right.as_ref()
+            && *offset < 0
+        {
+            let kept = -*offset;
+            let kept_text = small_number_word(kept as u32).unwrap_or_else(|| kept.to_string());
+            let noun = if kept == 1 { "card" } else { "cards" };
+            return Some(format!(
+                "{subject} {} all but the bottom {kept_text} {noun} of {possessive} library{face_down}",
+                verb("exile", "exiles"),
+            ));
+        }
         let count_text = match exile_top.count {
             Value::Fixed(1) => "the top card".to_string(),
             Value::Fixed(count) => format!("the top {count} cards"),
             _ => format!("the top {} cards", describe_value(&exile_top.count)),
         };
         return Some(format!(
-            "{subject} {} {count_text} of {} library",
+            "{subject} {} {count_text} of {possessive} library{face_down}",
             verb("exile", "exiles"),
-            if subject == "You" { "your" } else { "their" }
         ));
     }
     if let Some(shuffle) =
@@ -5589,6 +5667,13 @@ pub(super) fn describe_for_players_simple_iterated_action(
 pub(super) fn describe_for_players_iterated_action_sequence(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
+    if let Some(compact) =
+        super::player_and_zone_effects::describe_for_players_counter_on_chosen_sacrifice_rest(
+            for_players,
+        )
+    {
+        return Some(compact);
+    }
     let (effects, repeated_comma_then) = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::SequenceEffect>()
@@ -5628,6 +5713,25 @@ pub(super) fn describe_for_players_iterated_action_sequence(
             effect_idx += 2;
             continue;
         }
+        // A "sacrifices ... of their choice" clause can lower to its own
+        // nested choose-then-sacrifice sequence inside the player's action list.
+        if let Some(nested) = structural_unwrap_render_wrappers(&effects[effect_idx])
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            && let [choose_effect, sacrifice_effect] = nested.effects.as_slice()
+            && let Some(choose) = structural_unwrap_render_wrappers(choose_effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(sacrifice) =
+                sacrifice_view(structural_unwrap_render_wrappers(sacrifice_effect))
+            && let Some(inner) = describe_choose_then_sacrifice(choose, sacrifice)
+        {
+            phrases.push(iterated_player_action_phrase(
+                &inner,
+                subject,
+                &subject_lower,
+            )?);
+            effect_idx += 1;
+            continue;
+        }
 
         if let Some(phrase) =
             iterated_player_structural_action_phrase(&effects[effect_idx], subject)
@@ -5656,9 +5760,23 @@ pub(super) fn describe_for_players_iterated_action_sequence(
         effect_idx += 1;
     }
 
+    // "..., then ..., then .... Round up each time.": every step halves and
+    // rounds up, so oracle states the rounding once after the sequence.
+    let round_up_each_time = repeated_comma_then
+        && phrases.len() >= 2
+        && phrases
+            .iter()
+            .all(|phrase| phrase.ends_with(", rounded up") && phrase.matches(", rounded").count() == 1);
+    if round_up_each_time {
+        for phrase in &mut phrases {
+            phrase.truncate(phrase.len() - ", rounded up".len());
+        }
+    }
     let last = phrases.pop()?;
     let body = if phrases.is_empty() {
         last
+    } else if round_up_each_time {
+        format!("{}, then {last}. Round up each time", phrases.join(", then "))
     } else if repeated_comma_then {
         format!("{}, then {last}", phrases.join(", then "))
     } else if phrases.len() == 1

@@ -1099,6 +1099,28 @@ where
             )
             .with_secret(payload.secret),
         }
+        .with_payloads(
+            payload
+                .payloads
+                .iter()
+                .map(|vote_payload| {
+                    Ok(match vote_payload {
+                        ironsmith_core::VotePayload::ForEachVote { option, effects } => {
+                            ironsmith_core::VotePayload::ForEachVote {
+                                option: option.clone(),
+                                effects: convert_effects(effects.iter().cloned(), hooks)?,
+                            }
+                        }
+                        ironsmith_core::VotePayload::Effects(effects) => {
+                            ironsmith_core::VotePayload::Effects(convert_effects(
+                                effects.iter().cloned(),
+                                hooks,
+                            )?)
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        )
         .starting_with_controller(payload.starting_with_controller);
         return Ok(Effect::new(converted));
     }

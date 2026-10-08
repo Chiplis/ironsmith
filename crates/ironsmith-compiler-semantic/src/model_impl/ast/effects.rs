@@ -691,6 +691,7 @@ impl EffectAst {
                     source_target: None,
                     protect_source_target: false,
                     follow_up_effects: Vec::new(),
+                    source_would_deal_surface: false,
                 },
             ),
         )
@@ -714,6 +715,7 @@ impl EffectAst {
                     source_target: None,
                     protect_source_target: false,
                     follow_up_effects: Vec::new(),
+                    source_would_deal_surface: false,
                 },
             ),
         )
@@ -736,6 +738,7 @@ impl EffectAst {
                     source_target: None,
                     protect_source_target: false,
                     follow_up_effects: Vec::new(),
+                    source_would_deal_surface: false,
                 },
             ),
         )
@@ -759,6 +762,7 @@ impl EffectAst {
                     source_target: Some(source_target),
                     protect_source_target: false,
                     follow_up_effects: Vec::new(),
+                    source_would_deal_surface: false,
                 },
             ),
         )
@@ -804,9 +808,33 @@ impl EffectAst {
                     target,
                     duration,
                     source_filter,
+                    source_would_deal_surface: false,
                 },
             ),
         )
+    }
+
+    /// Mark an all-damage prevention as authored "<source> would deal".
+    pub fn with_prevention_source_would_deal_surface(mut self) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    source_would_deal_surface,
+                    ..
+                }
+                | DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    source_would_deal_surface,
+                    ..
+                }
+                | DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                    source_would_deal_surface,
+                    ..
+                },
+            ) = &mut subject.action
+        {
+            *source_would_deal_surface = true;
+        }
+        self
     }
 
     pub fn subject_verb_prevent_all_damage_from_source_filter(
@@ -821,6 +849,8 @@ impl EffectAst {
                     duration,
                     source_filter,
                     of_chosen_color: false,
+                    source_would_deal_surface: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -838,6 +868,8 @@ impl EffectAst {
                     duration,
                     source_filter,
                     of_chosen_color: true,
+                    source_would_deal_surface: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -4095,16 +4127,20 @@ impl EffectAst {
     pub fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn() -> Self {
         Self::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
             PlayerAst::Implicit,
+            None,
         )
     }
 
     pub fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
         player: PlayerAst,
+        color: Option<crate::color::Color>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
-            SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn),
+            SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+                color,
+            }),
         )
     }
 

@@ -562,8 +562,66 @@ pub fn describe_effect(effect: &Effect) -> String {
     format!("{effect:?}")
 }
 
+/// Plain words for the common printed quantities; anything else keeps its
+/// structural name, which `effect_sentences` scrubs before it reaches a
+/// prompt.
 pub fn describe_value(value: &Value) -> String {
-    format!("{value:?}")
+    match value {
+        Value::SurfaceHinted { value, .. } => describe_value(value),
+        Value::Fixed(amount) => amount.to_string(),
+        Value::X => "X".to_string(),
+        Value::Add(left, right) => {
+            if let Value::Fixed(amount) = right.as_ref()
+                && *amount < 0
+            {
+                return format!("{} minus {}", describe_value(left), -amount);
+            }
+            format!("{} plus {}", describe_value(left), describe_value(right))
+        }
+        Value::Count(filter) => format!(
+            "the number of {}",
+            crate::static_abilities::pluralized_subject_text(filter)
+        ),
+        Value::CountersOnSource(counter_type) => format!(
+            "the number of {} counters on this source",
+            counter_type.description()
+        ),
+        Value::LifeTotal(player) => format!("{} life total", possessive_player(player)),
+        Value::StartingLifeTotal(player) => {
+            format!("{} starting life total", possessive_player(player))
+        }
+        Value::CardsInHand(player) => {
+            format!("the number of cards in {} hand", possessive_player(player))
+        }
+        Value::CardsInGraveyard(player) => format!(
+            "the number of cards in {} graveyard",
+            possessive_player(player)
+        ),
+        Value::SourcePower => "this creature's power".to_string(),
+        Value::SourceToughness => "this creature's toughness".to_string(),
+        // Only the source has a context-free possessive. A tagged or chosen
+        // object ("the exiled creature card's power", "the discarded card's
+        // mana value") keeps its structure for the text renderer to name.
+        Value::PowerOf(spec) if source_object(spec) => "this object's power".to_string(),
+        Value::ToughnessOf(spec) if source_object(spec) => "this object's toughness".to_string(),
+        Value::ManaValueOf(spec) if source_object(spec) => "this object's mana value".to_string(),
+        _ => format!("{value:?}"),
+    }
+}
+
+fn source_object(spec: &crate::target::ChooseSpec) -> bool {
+    matches!(spec.base(), crate::target::ChooseSpec::Source)
+}
+
+fn possessive_player(player: &PlayerFilter) -> &'static str {
+    match player {
+        PlayerFilter::You => "your",
+        PlayerFilter::Opponent => "an opponent's",
+        PlayerFilter::Any => "a player's",
+        PlayerFilter::Active => "the active player's",
+        PlayerFilter::Defending => "the defending player's",
+        _ => "that player's",
+    }
 }
 
 pub fn describe_condition(condition: &Condition) -> String {

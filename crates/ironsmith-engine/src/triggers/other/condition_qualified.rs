@@ -105,6 +105,17 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         // "during your turn") reads directly after the event.
         // "by spending four or more mana to activate it" and "enters
         // transformed" are likewise part of the event's own wording.
+        // "Whenever a spell or ability an opponent controls destroys a
+        // noncreature permanent you control": the destroying agent reads as
+        // the subject of the active verb.
+        let event = self.trigger.display();
+        if let Some(agent) = condition.strip_prefix("by ")
+            && let Some(object) = event
+                .strip_prefix("Whenever ")
+                .and_then(|rest| rest.strip_suffix(" is destroyed"))
+        {
+            return format!("Whenever {agent} destroys {object}");
+        }
         if condition.starts_with("from ")
             || condition.starts_with("during ")
             || condition.starts_with("by ")

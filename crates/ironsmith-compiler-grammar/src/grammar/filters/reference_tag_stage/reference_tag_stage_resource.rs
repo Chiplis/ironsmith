@@ -55,6 +55,11 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     {
         return;
     }
+    // "creature or planeswalker with mana value 3 or less" (Eliminate) has
+    // no terminal noun, so the merged type list is not a card selector.
+    let has_terminal_noun = words[connector_idx + 1..mana_idx]
+        .iter()
+        .any(is_shared_noun);
 
     fn collect_mana_value(
         filter: &ObjectFilter,
@@ -171,8 +176,8 @@ pub(crate) fn lift_shared_trailing_mana_value_from_type_union(
     filter.card_types = card_types;
     filter.any_of.clear();
     filter.type_or_subtype_union = true;
-    filter.set_explicit_card_noun(true);
-    filter.set_terminal_noun_after_type_subtype_union_surface(true);
+    filter.set_explicit_card_noun(has_terminal_noun);
+    filter.set_terminal_noun_after_type_subtype_union_surface(has_terminal_noun);
 }
 
 /// "enchantment, instant, or sorcery card with equal or lesser mana value

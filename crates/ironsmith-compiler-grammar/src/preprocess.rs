@@ -839,6 +839,32 @@ fn replace_names_with_map(
                 .is_some_and(|tail| tail.starts_with(b" power") || tail.starts_with(b" toughness"))
     }
 
+    // "until end of turn" / "this turn" on a card named Turn (Turn // Burn):
+    // the game's turn noun after a determiner or "of" is never the source.
+    fn is_turn_noun_usage(bytes: &[u8], idx: usize, len: usize) -> bool {
+        bytes[idx..idx + len].eq_ignore_ascii_case(b"turn")
+            && previous_word(bytes, idx).is_some_and(|word| {
+                matches!(
+                    word.to_ascii_lowercase().as_slice(),
+                    b"of"
+                        | b"this"
+                        | b"that"
+                        | b"each"
+                        | b"next"
+                        | b"your"
+                        | b"their"
+                        | b"extra"
+                        | b"same"
+                        | b"whose"
+                        | b"a"
+                        | b"an"
+                        | b"its"
+                        | b"his"
+                        | b"her"
+                )
+            })
+    }
+
     // The planeswalker type in the named keyword action is not a self
     // reference, even on a source with that short name (CR 701.71).
     fn is_excess_damage_descriptor(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -1036,6 +1062,7 @@ fn replace_names_with_map(
             && !is_excess_damage_descriptor(bytes, idx, full_bytes.len())
             && !is_starting_life_descriptor(bytes, idx, full_bytes.len())
             && !is_base_characteristic_descriptor(bytes, idx, full_bytes.len())
+            && !is_turn_noun_usage(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
@@ -1085,6 +1112,7 @@ fn replace_names_with_map(
             && !is_excess_damage_descriptor(bytes, idx, short_bytes.len())
             && !is_starting_life_descriptor(bytes, idx, short_bytes.len())
             && !is_base_characteristic_descriptor(bytes, idx, short_bytes.len())
+            && !is_turn_noun_usage(bytes, idx, short_bytes.len())
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(
                     bytes,

@@ -198,6 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rayon_pool = rayon::ThreadPoolBuilder::new()
         .stack_size(RAYON_WORKER_STACK_SIZE)
         .build()?;
+    let non_strict = std::sync::Mutex::new(Vec::new());
     let reports = rayon_pool.install(|| {
         cards
             .par_iter()
@@ -210,8 +211,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !matches!(
                     snapshot.parse_status,
                     ironsmith_tools::ParseStatus::StrictCompiled
-                ) || snapshot.similarity_score >= args.threshold
-                {
+                ) {
+                    non_strict
+                        .lock()
+                        .expect("non-strict list")
+                        .push(snapshot.card_name.clone());
+                    return None;
+                }
+                if snapshot.similarity_score >= args.threshold {
                     return None;
                 }
                 let compiled_lines = snapshot
@@ -237,6 +244,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>()
     });
 
+    // Cards that no longer strict-compile, so coverage loss is visible next
+    // to the similarity residuals.
+    let mut non_strict = non_strict.into_inner().expect("non-strict list");
+    non_strict.sort();
+    std::fs::write(format!("{}.nonstrict", args.out), non_strict.join("\n") + "\n")?;
+    eprintln!("{} cards are not strict-compiled", non_strict.len());
     let mut writer = std::io::BufWriter::new(std::fs::File::create(&args.out)?);
     let mut card_count = 0usize;
     for (card, score, oracle_residuals, compiled_residuals) in &reports {

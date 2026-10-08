@@ -44,6 +44,8 @@ pub enum EquipCostTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EquipCostModifierHead {
     pub cost_token: usize,
+    /// Authored "Equip abilities ..." head (rather than "Equip costs ...").
+    pub equip_abilities_head: bool,
     pub payer: EquipCostPayer,
     pub source_relative_equipment: bool,
     /// "Equip abilities you activate that target this creature" (Dwarven
@@ -190,6 +192,7 @@ pub fn parse_equip_cost_modifier_head_tokens(
     };
     Some(EquipCostModifierHead {
         cost_token,
+        equip_abilities_head,
         payer,
         source_relative_equipment,
         target,

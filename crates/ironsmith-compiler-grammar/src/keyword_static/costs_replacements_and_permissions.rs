@@ -1465,6 +1465,8 @@ pub fn parse_equip_cost_modifier_line(
             format!(
                 "Equip abilities you activate of other Equipment cost {amount_text} less to activate"
             )
+        } else if head.equip_abilities_head && filter.controller == Some(PlayerFilter::You) {
+            format!("Equip abilities you activate cost {amount_text} less to activate")
         } else if filter.controller == Some(PlayerFilter::Opponent) {
             format!("Equip costs your opponents pay cost {amount_text} less")
         } else {

@@ -928,6 +928,10 @@ pub enum TypeRetentionSurface {
     /// "that's still a planeswalker"). The executable effect still adds its
     /// new types instead of replacing the object's existing types.
     StillACardType(CardType),
+    /// Oracle restates a retained card type as its own sentence after the
+    /// animation ("... becomes a 6/6 Nightmare God creature. It's still an
+    /// enchantment."). Same rules meaning as [`Self::StillACardType`].
+    StillACardTypeSentence(CardType),
 }
 
 /// Oracle surface used to express the power and toughness portion of an
@@ -3308,6 +3312,9 @@ impl<E> ExecuteWithSourceEffect<E> {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RetainManaUntilEndOfTurnEffect {
     pub player: PlayerFilter,
+    /// "you don't lose unspent red mana": only mana of this color is kept.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub color: Option<crate::color::Color>,
 }
 
 /// "Turn the exiled card face up." / "Turn it face up."
@@ -3358,7 +3365,15 @@ impl BecomeForetoldEffect {
 
 impl RetainManaUntilEndOfTurnEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            color: None,
+        }
+    }
+
+    pub fn with_color(mut self, color: Option<crate::color::Color>) -> Self {
+        self.color = color;
+        self
     }
 
     pub fn you() -> Self {

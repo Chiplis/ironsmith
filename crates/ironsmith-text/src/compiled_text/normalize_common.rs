@@ -223,6 +223,18 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         {
             "another one of your opponents".to_string()
         }
+        // Any player minus (every non-you player minus X) is the union
+        // "you and X" (Mana Clash's "you and target opponent").
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(excluded.as_ref(), PlayerFilter::Excluding { base: inner, .. }
+                    if matches!(inner.as_ref(), PlayerFilter::NotYou)) =>
+        {
+            let PlayerFilter::Excluding { excluded: other, .. } = excluded.as_ref() else {
+                unreachable!("guarded above")
+            };
+            format!("you and {}", describe_player_filter(other))
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             strip_leading_article(&describe_player_filter(base)),
@@ -1064,7 +1076,7 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
 ) -> String {
     let mut blueprint =
         describe_token_blueprint_with_name_role(&create.token, ability_presentation,
-            create.text_roles.as_ref().map(|roles| roles.name), create.text_roles.as_ref().map(|roles| roles.colors));
+            create.text_roles.as_ref());
     if create.use_source_chosen_color {
         blueprint = blueprint.replacen("colorless ", "", 1);
     }
@@ -1089,15 +1101,52 @@ pub(super) fn describe_token_blueprint_with_presentation(
     token: &CardDefinition,
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
 ) -> String {
-    describe_token_blueprint_with_name_role(token, ability_presentation, None, None)
+    describe_token_blueprint_with_name_role(token, ability_presentation, None)
+}
+
+/// CR 111.10: a predefined token whose every characteristic is supplied by
+/// the rules (not authored by the creating instruction) is printed by its
+/// name alone — "a Treasure token", "a Cursed Role token".
+fn rules_implied_predefined_token_text(
+    token: &CardDefinition,
+    text_roles: Option<&ironsmith_core::TokenTextRoles>,
+) -> Option<String> {
+    use ironsmith_core::TokenWordRole;
+    let roles = text_roles?;
+    if roles.colors != TokenWordRole::RulesImplied
+        || roles.subtypes != TokenWordRole::RulesImplied
+        || !roles.has_complete_ability_inventory(token.abilities.len())
+        || roles.abilities.iter().any(|role| *role != TokenWordRole::RulesImplied)
+    {
+        return None;
+    }
+    let card = &token.card;
+    let name = match roles.name {
+        ironsmith_core::TokenNameTextRole::Explicit => card.name.trim().to_string(),
+        // CR 111.4: the name is the subtypes' words.
+        ironsmith_core::TokenNameTextRole::SubtypeDerived => card
+            .subtypes
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" "),
+    };
+    if name.is_empty() || name.eq_ignore_ascii_case("token") {
+        return None;
+    }
+    if card.subtypes.contains(&crate::types::Subtype::Role) {
+        return Some(format!("{name} Role token"));
+    }
+    Some(format!("{name} token"))
 }
 
 fn describe_token_blueprint_with_name_role(
     token: &CardDefinition,
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
-    name_role: Option<ironsmith_core::TokenNameTextRole>,
-    color_role: Option<ironsmith_core::TokenWordRole>,
+    text_roles: Option<&ironsmith_core::TokenTextRoles>,
 ) -> String {
+    let name_role = text_roles.map(|roles| roles.name);
+    let color_role = text_roles.map(|roles| roles.colors);
     let standalone_tail_count = ability_presentation
         .map(ironsmith_core::TokenAbilityPresentation::standalone_tail_count)
         .unwrap_or(0)
@@ -1105,6 +1154,9 @@ fn describe_token_blueprint_with_name_role(
     let grouped_ability_presentation = ability_presentation
         .and_then(ironsmith_core::TokenAbilityPresentation::grouped_presentation);
     let card = &token.card;
+    if let Some(short) = rules_implied_predefined_token_text(token, text_roles) {
+        return short;
+    }
     if name_role.is_none() && card.subtypes.contains(&crate::types::Subtype::Role)
         && !card.name.trim().is_empty()
         && !card.name.eq_ignore_ascii_case("token")
@@ -1490,6 +1542,16 @@ fn describe_token_blueprint_with_name_role(
     }
     if !keyword_texts.is_empty() {
         match grouped_ability_presentation {
+            // A non-combined separate sentence follows intrinsic abilities:
+            // when it names a quoted rule, the keywords are the token's own
+            // `with` list ("token with flying. It has "{R}: ..."", Brood
+            // Keeper).
+            Some(
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain,
+            ) if !extra_ability_texts.is_empty() => {
+                text.push_str(" with ");
+            }
             Some(
                 ironsmith_core::TokenAbilityPresentation::SeparateSentence
                 | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined,

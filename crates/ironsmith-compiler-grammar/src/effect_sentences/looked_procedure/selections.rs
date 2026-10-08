@@ -342,6 +342,37 @@ fn spell_put_from_among(
     }
     let _ = graveyard_follows;
     let chosen_tag = put.tag.clone();
+    // "You may put a creature card and/or a land card from among them":
+    // up to one card per branch, each chosen into the same tag.
+    let and_or_branches = (!all_matching
+        && aggregate_constraint.is_none()
+        && choice_count == ChoiceCount::up_to(1)
+        && put.tail.iter().any(|token| token.is_word("and/or")))
+    .then(|| looked_card_choice_filter_branches(&filter))
+    .flatten();
+    let chose_by_branch = and_or_branches.is_some();
+    if let Some(branches) = and_or_branches {
+        for mut branch in branches {
+            branch.zone = Some(Zone::Library);
+            branch.tagged_constraints.push(TaggedObjectConstraint {
+                tag: group.tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+            branch.tagged_constraints.push(TaggedObjectConstraint {
+                tag: chosen_tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            group.effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: branch,
+                    count: ChoiceCount::up_to(1),
+                    player: chooser,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Library,
+                },
+            ));
+        }
+    }
     let mut choose_filter = filter;
     choose_filter.zone = Some(Zone::Library);
     choose_filter
@@ -359,7 +390,7 @@ fn spell_put_from_among(
                 vec![Zone::Library],
                 crate::tag::TagRef::of(chosen_tag.clone()),
             ));
-    } else {
+    } else if !chose_by_branch {
         group
             .effects
             .push(if let Some(constraint) = aggregate_constraint {
@@ -554,17 +585,12 @@ fn spell_hand_selection_into_graveyard(group: &mut ViewedGroup, selection: HandS
         to_battlefield: _,
     } = selection;
     let looked_tag = group.tag.clone();
-    if count == ChoiceCount::up_to(1)
-        && filter.card_types.len() > 1
-        && filter_uses_and_or
-        && filter.all_card_types.is_empty()
-        && filter.subtypes.is_empty()
-        && filter.static_abilities.is_empty()
-        && filter.any_of.is_empty()
-    {
-        for card_type in &filter.card_types {
-            let mut choice_filter = filter.clone();
-            choice_filter.card_types = vec![*card_type];
+    // "a creature card and/or a land card": up to one card per branch.
+    let and_or_branches = (count == ChoiceCount::up_to(1) && filter_uses_and_or)
+        .then(|| looked_card_choice_filter_branches(&filter))
+        .flatten();
+    if let Some(choice_filters) = and_or_branches {
+        for mut choice_filter in choice_filters {
             choice_filter.zone = Some(Zone::Library);
             choice_filter
                 .tagged_constraints

@@ -713,6 +713,11 @@ fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
     if effect.target_spec().is_some_and(|spec| spec == choice) {
         return true;
     }
+    // "Target player reveals their hand": the revealing look declares its
+    // player target itself.
+    if let Some(look) = effect.downcast_ref::<crate::effects::LookAtHandEffect>() {
+        return &look.target == choice;
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return effect_exposes_target_choice(&tagged.effect, choice);
     }

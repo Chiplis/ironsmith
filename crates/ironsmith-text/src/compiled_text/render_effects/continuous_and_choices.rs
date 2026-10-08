@@ -501,8 +501,32 @@ pub(crate) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
     {
         return None;
     }
-    if !for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str())
-        || rest.tag.as_str() != look_at_top.tag.as_str()
+    // "... and put it onto the battlefield" (Loot, Exuberant Explorer) is
+    // the same procedure with a battlefield destination.
+    let battlefield_tapped = if for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str()) {
+        None
+    } else if let Some(tapped) =
+        for_each_puts_tag_onto_battlefield(move_to_hand, choose.tag.as_str())
+    {
+        Some(tapped)
+    } else {
+        // A card from your own library enters under your control by default.
+        let [effect] = move_to_hand.effects.as_slice() else {
+            return None;
+        };
+        let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_hand.tag.as_str() != choose.tag.as_str()
+            || look_at_top.player != PlayerFilter::You
+            || move_to_zone.zone != Zone::Battlefield
+            || !matches!(move_to_zone.target, ChooseSpec::Iterated)
+            || move_to_zone.battlefield_controller
+                != crate::effects::BattlefieldController::Preserve
+        {
+            return None;
+        }
+        Some(move_to_zone.enters_tapped)
+    };
+    if rest.tag.as_str() != look_at_top.tag.as_str()
         || rest
             .keep_tagged
             .as_ref()
@@ -547,9 +571,14 @@ pub(crate) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
         | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
         _ => return None,
     };
+    let destination = match battlefield_tapped {
+        Some(true) => "onto the battlefield tapped".to_string(),
+        Some(false) => "onto the battlefield".to_string(),
+        None => format!("into {hand} hand"),
+    };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} reveal {chosen} from among them and put {selected_reference} into {hand} hand. {remainder} the rest on the bottom of {owner} library{order_text}"
+        "Look at the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} reveal {chosen} from among them and put {selected_reference} {destination}. {remainder} the rest on the bottom of {owner} library{order_text}"
     ))
 }
 

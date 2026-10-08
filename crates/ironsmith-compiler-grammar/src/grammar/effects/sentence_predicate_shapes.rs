@@ -610,6 +610,20 @@ fn parse_next_combat_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> 
 }
 
 fn parse_end_combat_delayed_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
+    // "At end of combat, exile it ..." (Fortune, Loyal Steed): the leading
+    // marker schedules the whole sentence for this turn's end of combat.
+    if opt(alt((
+        primitives::phrase(&["at", "end", "of", "combat"]),
+        primitives::phrase(&["at", "the", "end", "of", "combat"]),
+    )))
+    .parse_next(input)?
+    .is_some()
+    {
+        primitives::comma().parse_next(input)?;
+        return repeat::<_, _, (), _, _>(1.., any.void())
+            .take()
+            .parse_next(input);
+    }
     primitives::phrase(&["at", "this"]).parse_next(input)?;
     let timing_tokens = repeat_till::<_, _, (), _, _, _, _>(
         0..,

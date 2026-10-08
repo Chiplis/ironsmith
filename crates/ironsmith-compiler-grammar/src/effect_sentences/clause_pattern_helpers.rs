@@ -1384,6 +1384,7 @@ pub fn parse_prevent_all_damage_clause(
                     .is_some_and(|token| token.is_word("sources"))
                     || source_tokens.get(1).is_some_and(|token| {
                         token.is_any_word(&[
+                            "sources",
                             "creatures",
                             "permanents",
                             "spells",
@@ -1421,7 +1422,8 @@ pub fn parse_prevent_all_damage_clause(
                         target,
                         source_target,
                         Until::EndOfTurn,
-                    ),
+                    )
+                    .with_prevention_source_would_deal_surface(),
                 ));
             }
             let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
@@ -1430,13 +1432,15 @@ pub fn parse_prevent_all_damage_clause(
                     EffectAst::subject_verb_prevent_all_damage_from_source_filter_of_chosen_color(
                         source_filter,
                         Until::EndOfTurn,
-                    ),
+                    )
+                    .with_prevention_source_would_deal_surface(),
                 )),
                 None => Ok(Some(
                     EffectAst::subject_verb_prevent_all_damage_from_source_filter(
                         source_filter,
                         Until::EndOfTurn,
-                    ),
+                    )
+                    .with_prevention_source_would_deal_surface(),
                 )),
                 Some(_) if of_chosen_color => Err(CardTextError::ParseError(format!(
                     "unsupported chosen-color prevention with a protected target (clause: '{}')",
@@ -1449,7 +1453,8 @@ pub fn parse_prevent_all_damage_clause(
                             target,
                             source_filter,
                             Until::EndOfTurn,
-                        ),
+                        )
+                        .with_prevention_source_would_deal_surface(),
                     ))
                 }
             }

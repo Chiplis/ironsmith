@@ -1478,6 +1478,19 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         description.push_str(" with toughness ");
         description.push_str(&describe_comparison(toughness));
     }
+    // "with toughness greater than their power" (Doran, Besieged by Time).
+    match filter.power_toughness_relation {
+        Some(crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower) => {
+            description.push_str(" with toughness greater than their power");
+        }
+        Some(crate::filter::PowerToughnessRelation::PowerGreaterThanToughness) => {
+            description.push_str(" with power greater than their toughness");
+        }
+        Some(crate::filter::PowerToughnessRelation::NotEqual) => {
+            description.push_str(" with power and toughness that aren't equal");
+        }
+        None => {}
+    }
     if let Some(mana_value) = &filter.mana_value {
         description.push_str(" with mana value ");
         description.push_str(&describe_comparison(mana_value));
@@ -2271,18 +2284,29 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
             return describe_cost_modifier_with_condition(line, &self.condition);
         }
 
+        // A mana increase reads "cost {3} more"; a non-mana one is "an
+        // additional" quoted cost.
+        let mana_only = !self.increase.has_non_mana_costs();
         let mut line = if self.filter == ObjectFilter::source() {
-            format!("This ability costs an additional {} to activate", increase)
+            if mana_only {
+                format!("This ability costs {} more to activate", increase)
+            } else {
+                format!("This ability costs an additional {} to activate", increase)
+            }
         } else {
             let (subject, _) = super::continuous::grant_subject_with_set_quantifier(
                 &self.filter,
                 self.filter.set_quantifier_surface(),
             );
             let subject = subject.strip_prefix("All ").unwrap_or(&subject);
-            format!(
-                "Activated abilities of {} cost an additional {} to activate",
-                subject, increase
-            )
+            if mana_only {
+                format!("Activated abilities of {} cost {} more to activate", subject, increase)
+            } else {
+                format!(
+                    "Activated abilities of {} cost an additional {} to activate",
+                    subject, increase
+                )
+            }
         };
         if self.non_mana_only {
             line.push_str(" unless they're mana abilities");
@@ -3706,7 +3730,7 @@ mod tests {
         );
         assert_eq!(
             mana_increase.display(),
-            "Activated abilities of artifacts cost an additional {1} to activate"
+            "Activated abilities of artifacts cost {1} more to activate"
         );
     }
 

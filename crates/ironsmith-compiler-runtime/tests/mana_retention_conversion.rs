@@ -232,7 +232,10 @@ fn skipped_end_combat_and_end_combat_procedure_do_not_leave_firebending_units_in
 fn cleanup_expires_turn_retention_before_loss_and_keeps_mana_until_the_step_ends() {
     for definition in definitions("Horizon Stone") {
         let mut game = game(); let stone = game.create_object_from_definition(&definition, A, Zone::Battlefield);
-        ironsmith::effects::RetainManaUntilEndOfTurnEffect { player: PlayerFilter::You }
+        ironsmith::effects::RetainManaUntilEndOfTurnEffect {
+            player: PlayerFilter::You,
+            color: None,
+        }
             .execute(&mut game, &mut EffectContext::new_default(stone, A)).unwrap();
         produce(&mut game, stone, A, vec![ManaSymbol::Blue; 2]);
         game.turn.phase = Phase::Ending; game.turn.step = Some(Step::Cleanup);

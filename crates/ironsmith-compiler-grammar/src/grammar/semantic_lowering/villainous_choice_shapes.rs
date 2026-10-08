@@ -290,6 +290,89 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
     })
 }
 
+/// "Target creature's owner shuffles it into their library, then faces a
+/// villainous choice — ...": the player named by the leading clause's
+/// possessive subject faces the choice after that clause resolves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VillainousChoicePrecedingClauseShape<'a> {
+    pub clause_tokens: &'a [OwnedLexToken],
+    /// The target's owner (`true`) or controller (`false`).
+    pub target_owner: bool,
+    pub first_mode_tokens: &'a [OwnedLexToken],
+    pub second_mode_tokens: &'a [OwnedLexToken],
+    pub first_mode_program: VillainousChoiceModeProgram<'a>,
+    pub second_mode_program: VillainousChoiceModeProgram<'a>,
+}
+
+fn parse_villainous_choice_preceding_clause_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<VillainousChoicePrecedingClauseShape<'a>> {
+    let faces_then = || {
+        (
+            primitives::comma(),
+            primitives::kw("then"),
+            primitives::phrase(&["faces", "a", "villainous", "choice"]),
+        )
+    };
+    let clause_tokens = (
+        primitives::kw("target"),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(faces_then())),
+    )
+        .take()
+        .parse_next(input)?;
+    faces_then().parse_next(input)?;
+    opt(parse_choice_separator).parse_next(input)?;
+    // The chooser is the possessive subject "target <object>'s owner".
+    let words = crate::lexer::token_word_refs(clause_tokens);
+    let subject_end = words
+        .iter()
+        .position(|word| matches!(*word, "owner" | "controller"))
+        .ok_or_else(|| primitives::backtrack_err("villainous choice chooser", "owner"))?;
+    if subject_end < 2 {
+        return Err(primitives::backtrack_err(
+            "villainous choice chooser",
+            "target object's owner",
+        ));
+    }
+    let target_owner = words[subject_end] == "owner";
+
+    let first_mode_tokens =
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_mode_separator))
+            .map(|((), ())| ())
+            .take()
+            .parse_next(input)?;
+    parse_mode_separator.parse_next(input)?;
+    let second_mode_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((primitives::period().void(), eof.void()))),
+    )
+    .map(|((), ())| ())
+    .take()
+    .parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.parse_next(input)?;
+
+    Ok(VillainousChoicePrecedingClauseShape {
+        clause_tokens,
+        target_owner,
+        first_mode_tokens,
+        second_mode_tokens,
+        first_mode_program: classify_mode_program(first_mode_tokens),
+        second_mode_program: classify_mode_program(second_mode_tokens),
+    })
+}
+
+pub fn parse_villainous_choice_preceding_clause_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<VillainousChoicePrecedingClauseShape<'_>> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_villainous_choice_preceding_clause_lexed,
+        "villainous-choice preceding-clause statement",
+    )
+}
+
 pub fn parse_villainous_choice_statement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VillainousChoiceStatementShape<'_>> {

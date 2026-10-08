@@ -963,8 +963,9 @@ pub(super) fn try_apply_milled_this_turn_clause(
     }) else {
         return false;
     };
-    filter.entered_graveyard_this_turn = true;
-    filter.entered_graveyard_from_library_this_turn = true;
+    // Milling is narrower than any library-to-graveyard move (surveil and
+    // "put into your graveyard" are not mills).
+    filter.milled_into_graveyard_this_turn = true;
     all_words.drain(word_start..word_start + consumed);
     drain_segment_phrase_variants(
         segment_tokens,

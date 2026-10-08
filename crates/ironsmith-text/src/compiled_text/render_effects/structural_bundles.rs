@@ -5006,6 +5006,10 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
                 Some("a card for each card discarded this way".to_string())
             } else if hints.contains(&ValueSurfaceHint::CardsExiledThisWay) {
                 Some("a card for each card exiled this way".to_string())
+            } else if hints.contains(&ValueSurfaceHint::CardsDrawnThisWay)
+                && hints.contains(&ValueSurfaceHint::ForEach)
+            {
+                Some("a card for each card drawn this way".to_string())
             } else if hints.contains(&ValueSurfaceHint::PermanentsSacrificedThisWay) {
                 Some("a card for each permanent sacrificed this way".to_string())
             } else {
@@ -5023,6 +5027,26 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
             "a card for each {}",
             describe_for_each_filter(filter)
         )),
+        Value::PriorEffectMetric { .. } | Value::PendingPriorEffectMetric(_)
+            if describe_coin_result_for_each_basis(count).is_some() =>
+        {
+            describe_coin_result_for_each_basis(count)
+                .map(|basis| format!("a card for each {basis}"))
+        }
+        Value::Scaled(inner, factor)
+            if *factor > 1 && describe_coin_result_for_each_basis(inner).is_some() =>
+        {
+            let cards = small_number_word(*factor as u32).unwrap_or_else(|| factor.to_string());
+            describe_coin_result_for_each_basis(inner)
+                .map(|basis| format!("{cards} cards for each {basis}"))
+        }
+        // "draw a card for each card type among cards discarded this way"
+        // (Kefka, Court Mage).
+        Value::EffectMetric {
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::CardTypesAmong,
+            ..
+        } => Some("a card for each card type among those cards".to_string()),
         Value::CreaturesDiedThisTurn => {
             Some("a card for each creature that died this turn".to_string())
         }
@@ -5043,6 +5067,9 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
             describe_spells_cast_this_turn_each(spell_caster)
         )),
         Value::KickCount => Some("a card for each time this spell was kicked".to_string()),
+        Value::SourceDevouredCreatureCount => {
+            Some("a card for each creature it devoured".to_string())
+        }
         Value::SpellsCastThisTurnMatching {
             player: spell_caster,
             filter,
@@ -5179,7 +5206,19 @@ pub(super) fn describe_each_opponent_damage_then_controller_gain_shared_x(
     let [effect] = for_players.effects.as_slice() else {
         return None;
     };
-    let deal = effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    // The damage source may be an explicit referent ("it deals ...").
+    let (subject, deal) = match effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        Some(with_source) => (
+            describe_choose_spec(&with_source.source),
+            with_source
+                .effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()?,
+        ),
+        None => (
+            "it".to_string(),
+            effect.downcast_ref::<crate::effects::DealDamageEffect>()?,
+        ),
+    };
     if !matches!(
         deal.target,
         ChooseSpec::Player(PlayerFilter::IteratedPlayer)
@@ -5196,7 +5235,7 @@ pub(super) fn describe_each_opponent_damage_then_controller_gain_shared_x(
 
     let amount_text = describe_value(&deal.amount);
     Some(format!(
-        "it deals X damage to each opponent and you gain X life, where X is {amount_text}"
+        "{subject} deals X damage to each opponent and you gain X life, where X is {amount_text}"
     ))
 }
 
@@ -5246,6 +5285,24 @@ pub(super) fn describe_damage_and_controlled_damage_pair(effects: &[Effect]) -> 
         ChooseSpec::Player(PlayerFilter::IteratedPlayer)
     ) {
         return None;
+    }
+    // The damaged objects can also be one simultaneous "each" event.
+    let mut each_damage = second;
+    while let Some(tagged) = each_damage.downcast_ref::<crate::effects::TaggedEffect>() {
+        each_damage = &tagged.effect;
+    }
+    if let Some(each) = each_damage.downcast_ref::<crate::effects::DealDamageEachEffect>() {
+        if each.amount != player_damage.amount {
+            return None;
+        }
+        let objects = describe_each_controlled_by_iterated(&each.filter)?
+            .replace(" they control", " that player controls");
+        let player_text = describe_effect(first);
+        let player_text = player_text.trim().trim_end_matches('.');
+        if !player_text.ends_with(" to that player") {
+            return None;
+        }
+        return Some(format!("{player_text} and {objects}"));
     }
     let (for_each_source, for_each) = source_for_each(second)?;
     let [inner] = for_each.effects.as_slice() else {
@@ -10854,7 +10911,11 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
             )
         };
         let pronoun = if *count == 1 { "it" } else { "them" };
-        let action = if create.actor_surface_explicit {
+        // "Then that player creates ..." (Pure Reflection): the iterated
+        // player is the creating actor, not just the new controller.
+        let action = if create.actor_surface_explicit
+            || create.controller == PlayerFilter::IteratedPlayer
+        {
             lowercase_first(&describe_create_token_action(
                 &token_object,
                 &create.controller,
@@ -11356,7 +11417,9 @@ pub(super) fn describe_targeted_pump_then_grant_same_objects(effects: &[Effect])
         return None;
     }
     let pump_target = pump.target_spec.as_ref()?;
-    if !pump_target.is_target() && !matches!(pump_target.unhinted(), ChooseSpec::Source) {
+    if !pump_target.is_target()
+        && !matches!(pump_target.unhinted(), ChooseSpec::Source | ChooseSpec::Tagged(_))
+    {
         return None;
     }
     let [
@@ -11394,7 +11457,13 @@ pub(super) fn describe_targeted_pump_then_grant_same_objects(effects: &[Effect])
         && matches!(grant_target.unhinted(), ChooseSpec::Source);
     let same_tagged_target =
         pump_tag.is_some_and(|tag| choose_spec_references_exact_tag(grant_target, tag));
-    if !same_source && !same_tagged_target {
+    // Both halves naming one earlier-tagged object ("Untap target creature.
+    // It gets +2/+2 ... and ...") share identity through that tag.
+    let same_tagged_reference = matches!(
+        (pump_target.unhinted(), grant_target.unhinted()),
+        (ChooseSpec::Tagged(pump_ref), ChooseSpec::Tagged(grant_ref)) if pump_ref == grant_ref
+    );
+    if !same_source && !same_tagged_target && !same_tagged_reference {
         return None;
     }
     // Source-reference hints affect wording, but never establish object identity.
@@ -11405,6 +11474,9 @@ pub(super) fn describe_targeted_pump_then_grant_same_objects(effects: &[Effect])
         return None;
     }
 
+    let pump_text = describe_effect(pump_effect);
+    let pump_without_duration = pump_text.strip_suffix(" until end of turn")?;
+
     let mut ability_texts = Vec::new();
     for modification in grant
         .modification
@@ -11414,14 +11486,30 @@ pub(super) fn describe_targeted_pump_then_grant_same_objects(effects: &[Effect])
         let crate::continuous::Modification::AddAbility(ability) = modification else {
             return None;
         };
-        ability_texts.push(keyword_label_from_static_ability_id(ability.id())?.to_string());
+        let Some(keyword) = keyword_label_from_static_ability_id(ability.id()) else {
+            ability_texts.clear();
+            break;
+        };
+        ability_texts.push(keyword.to_string());
     }
     if ability_texts.is_empty() {
-        return None;
+        // A non-keyword rule granted for the turn ("can block an additional
+        // creature", "can attack as though it didn't have defender") reads as
+        // its own "this turn" predicate joined to the pump: "gets +2/+2 until
+        // end of turn and can block an additional creature this turn".
+        let grant_text = describe_effect(grant_effect);
+        let grant_text = grant_text.trim().trim_end_matches('.');
+        let (_, predicate) = grant_text.split_once(" can ")?;
+        if grant_text.contains('"') || !predicate.contains("this turn") {
+            return None;
+        }
+        let mut rendered = format!("{pump_text} and can {predicate}");
+        if !trailing.is_empty() {
+            rendered.push_str(". ");
+            rendered.push_str(&describe_effect_list(trailing));
+        }
+        return Some(rendered);
     }
-
-    let pump_text = describe_effect(pump_effect);
-    let pump_without_duration = pump_text.strip_suffix(" until end of turn")?;
     let gain = if pump_without_duration.contains(" get ") {
         "gain"
     } else {
@@ -11740,6 +11828,18 @@ pub(super) fn describe_leading_effect_then_pump_and_grant_same_filter(
         return None;
     };
     let suffix = describe_pump_all_then_grant_same_filter(&effects[1..])?;
+    // A lowering-only target declaration whose target the pumped set
+    // already names ("Creatures target player controls get +0/+1 and gain
+    // all creature types until end of turn" (Shields of Velis Vel)).
+    if let Some(target) = structural_unwrap_render_wrappers(leading)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && !target.explicit_declaration
+        && suffix
+            .to_ascii_lowercase()
+            .contains(&describe_choose_spec(&target.target).to_ascii_lowercase())
+    {
+        return Some(suffix);
+    }
     let leading = capitalize_first(describe_effect(leading).trim_end_matches('.'));
     Some(format!("{leading}. {suffix}"))
 }
@@ -12788,7 +12888,7 @@ pub(super) fn describe_each_player_repeat_pay_life_tokens_sequence(
         .downcast_ref::<crate::effects::CreateTokenEffect>()?;
     if create.controller != PlayerFilter::IteratedPlayer
         || !create.token.card.is_token
-        || create.token.card.name != "Rat"
+        || create.token.card.name.trim_end_matches(" Token") != "Rat"
     {
         return None;
     }

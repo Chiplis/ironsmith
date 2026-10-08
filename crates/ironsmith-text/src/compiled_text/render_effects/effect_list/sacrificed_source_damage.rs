@@ -14,6 +14,9 @@ pub(in crate::compiled_text::render_effects) fn describe_sacrificed_source_damag
     {
         return None;
     }
+    if let Some(text) = describe_sacrificed_source_damage_each_and_each_player(&sequence.effects) {
+        return Some(text);
+    }
     let (target, sacrifice_effect, damage_effect) = match sequence.effects.as_slice() {
         [sacrifice, damage] => (None, sacrifice, damage),
         [target, sacrifice, damage] => {
@@ -59,6 +62,61 @@ pub(in crate::compiled_text::render_effects) fn describe_sacrificed_source_damag
     Some(format!(
         "{} and it {predicate}",
         sacrifice_text.trim().trim_end_matches('.')
+    ))
+}
+
+/// "sacrifice this creature and it deals damage equal to the number of +1/+1
+/// counters on it to each creature without flying and each player"
+/// (Magmasaur): the sacrificed source deals the same amount to every matching
+/// object and then to each player.
+fn describe_sacrificed_source_damage_each_and_each_player(effects: &[Effect]) -> Option<String> {
+    let [sacrifice_effect, each_effect, players_effect] = effects else {
+        return None;
+    };
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target.base(), ChooseSpec::Source)
+        || !matches!(
+            sacrifice.target.source_reference_surface(),
+            Some(SourceReferenceSurface::ThisPermanentType(surface))
+                if surface.trim().eq_ignore_ascii_case("this creature")
+        )
+    {
+        return None;
+    }
+    let each = unwrap_basic_tag_wrappers(each_effect)
+        .downcast_ref::<crate::effects::DealDamageEachEffect>()?;
+    let for_players = structural_unwrap_render_wrappers(players_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [player_damage] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let player_damage = player_damage.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if player_damage.amount != each.amount
+        || !matches!(
+            player_damage.target,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+        || for_players.filter != PlayerFilter::Any
+        || each.filter.controller.is_some()
+        || !each.filter.tagged_constraints.is_empty()
+    {
+        return None;
+    }
+    let mut objects = each.filter.clone();
+    objects.zone = None;
+    objects.union_surface = Default::default();
+    let objects = objects.description();
+    let objects = strip_leading_article(&objects);
+    let amount = match each.amount.unhinted() {
+        Value::Fixed(amount) => format!("{amount} damage"),
+        amount => format!(
+            "damage equal to {}",
+            describe_value(amount).replace(" on this creature", " on it")
+        ),
+    };
+    Some(format!(
+        "{} and it deals {amount} to each {objects} and each player",
+        describe_effect(sacrifice_effect).trim().trim_end_matches('.')
     ))
 }
 

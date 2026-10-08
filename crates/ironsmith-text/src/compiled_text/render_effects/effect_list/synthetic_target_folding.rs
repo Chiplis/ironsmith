@@ -376,6 +376,9 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
         return choose_spec_references_identity(&exile.spec, identity);
     }
+    if let Some(retarget) = effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>() {
+        return choose_spec_references_identity(&retarget.target, identity);
+    }
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
         return choose_spec_references_identity(&attach.objects, identity)
             || choose_spec_references_identity(&attach.target, identity);
@@ -657,6 +660,23 @@ pub(in crate::compiled_text) fn describe_multi_consumer_synthetic_target_declara
             capitalize_first(&target_surface),
             predicate.trim_end_matches('.')
         ));
+    }
+
+    // "Flip a coin. If you win the flip, target Orc creature gets +2/+0 ...
+    // If you lose the flip, it gets -0/-2" (Orcish Captain): when the first
+    // reference to the target is the subject anaphor of a leading
+    // conditional, that anaphor is where the declaration is printed.
+    if target_index == 0
+        && let Some(first_reference) = rendered_consumers.find(", it ")
+        && !rendered_consumers[..first_reference].contains(" it")
+        && !rendered_consumers[..first_reference].contains(" its ")
+    {
+        let mut folded = rendered_consumers.clone();
+        folded.replace_range(
+            first_reference + 2..first_reference + 4,
+            &target_surface,
+        );
+        return Some(capitalize_first(folded.trim().trim_end_matches('.')));
     }
 
     // Player-filter consumers naturally render their correlated controller as
@@ -945,6 +965,19 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
         .contains(&target_text.to_ascii_lowercase())
     {
         return Some(rendered);
+    }
+    // The sole consumer leads the list and names the declared player only
+    // through the anaphor "that player" ("Creatures that player controls
+    // can't block this turn"); its first mention is the target declaration.
+    if target_text.eq_ignore_ascii_case("target player")
+        && consumer_index == target_index + 1
+        && target_index == 0
+        && rendered.starts_with(&capitalize_first(rendered_consumer.trim_end_matches('.')))
+        && let Some(anaphor_start) = rendered.to_ascii_lowercase().find("that player")
+    {
+        let mut folded = rendered.clone();
+        folded.replace_range(anaphor_start..anaphor_start + "that player".len(), &target_text);
+        return Some(capitalize_first(&folded));
     }
 
     if let Some(tag) = identity.tag

@@ -4174,3 +4174,50 @@ mod tests {
         );
     }
 }
+
+
+/// "Look at the top N cards of your library. You may put one of those cards
+/// back on top of your library. Put the rest into your graveyard." The
+/// optional selection moves exactly one looked card to the top; the
+/// remainder branch moves each looked card the selection did not name.
+pub(super) fn describe_look_may_put_one_back_rest_graveyard(effects: &[Effect]) -> Option<String> {
+    let [look_effect, may_effect, remainder_effect] = effects else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let may = structural_unwrap_render_wrappers(may_effect)
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let [choose_effect, move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_one] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let move_one = unwrap_basic_tag_wrappers(move_one)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if look.reveal
+        || look.player != PlayerFilter::You
+        || !matches!(may.decider, None | Some(PlayerFilter::You))
+        || may.pay_as_cost
+        || !exact_looked_library_choice(choose, &look.tag)
+        || exact_nonrandom_choice_count(&choose.count) != Some(1)
+        || for_each.tag != choose.tag
+        || !matches!(move_one.target.base(), ChooseSpec::Iterated)
+        || move_one.zone != Zone::Library
+        || !move_one.to_top
+        || move_one.library_order.is_some()
+        || exact_tagged_remainder_to_graveyard_surface(remainder_effect, &look.tag, &choose.tag)
+            != Some(ironsmith_core::LibraryRemainderSurface::Rest)
+    {
+        return None;
+    }
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some(format!(
+        "Look at the top {count} {noun} of your library{where_clause}. You may put one of those cards back on top of your library. Put the rest into your graveyard"
+    ))
+}

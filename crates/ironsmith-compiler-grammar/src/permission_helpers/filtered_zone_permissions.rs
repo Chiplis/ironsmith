@@ -106,9 +106,20 @@ pub(super) fn parse_permission_with_token_follow_up(tokens: &[OwnedLexToken]) ->
     let Some(PermissionClauseSpec::GrantBySpec {player, mut spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(&tokens[..separator])?
         else { return Ok(None); };
     spec.on_use_effects = crate::clause_support::parse_effect_sentences_lexed(follow_up)?;
-    let surface = crate::lexer::render_token_slice(tokens);
-    let surface = surface.trim().trim_end_matches('.'); let mut chars = surface.chars();
-    spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    // The permission keeps its own surface; the reflexive sentence restores
+    // its sentence case and the capitalized token name ("create a Food token").
+    let token_name = crate::lexer::parser_token_word_refs(follow_up)
+        .into_iter()
+        .nth(2)
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str())).unwrap_or_default()
+        })
+        .unwrap_or_default();
+    spec.filtered_zone_surface = spec
+        .filtered_zone_surface
+        .take()
+        .map(|permission| format!("{permission}. When you do, create a {token_name} token"));
     Ok(Some(PermissionClauseSpec::GrantBySpec {player, spec, lifetime: PermissionLifetime::Static}))
 }
 

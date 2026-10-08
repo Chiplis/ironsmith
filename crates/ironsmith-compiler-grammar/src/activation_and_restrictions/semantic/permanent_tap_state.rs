@@ -21,7 +21,10 @@ pub(super) fn parse_permanent_tap_state_trigger(
     else {
         return Ok(None);
     };
-    if subject.is_empty() {
+    // "this creature leaves the battlefield or becomes untapped" is a
+    // compound trigger whose first event is its own verb phrase, not a
+    // subject; leave it to the disjunctive-trigger split.
+    if subject.is_empty() || matches!(subject.last(), Some(&"or" | &"and")) {
         return Ok(None);
     }
     let grouped = subject.starts_with(&["one", "or", "more"]);

@@ -37,17 +37,17 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         (0, words.len(), Until::Forever)
     };
     let body = &words[start..end];
-    let (source_start, source_end, bidirectional) = if body.starts_with(&[
+    let (source_start, source_end, bidirectional, would_deal) = if body.starts_with(&[
         "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "and", "dealt", "by",
     ]) {
-        (start + 11, end, true)
+        (start + 11, end, true, false)
     } else if body.starts_with(&[
         "prevent", "all", "damage", "that", "would", "be", "dealt", "by",
     ]) {
-        (start + 8, end, false)
+        (start + 8, end, false, false)
     } else if body.starts_with(&["prevent", "all", "damage"]) && body.ends_with(&["would", "deal"])
     {
-        (start + 3, end - 2, false)
+        (start + 3, end - 2, false, true)
     } else {
         return Ok(None);
     };
@@ -75,11 +75,16 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     Ok(Some(if bidirectional {
         EffectAst::subject_verb_prevent_all_damage_to_and_by_target(target, duration)
     } else {
-        EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
+        let effect = EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
             TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
             target,
             duration,
-        )
+        );
+        if would_deal {
+            effect.with_prevention_source_would_deal_surface()
+        } else {
+            effect
+        }
     }))
 }
 

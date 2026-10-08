@@ -207,9 +207,19 @@ pub(super) fn read_for_each_object_filter_effect(
     let tokens = input.tokens;
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
-        if shape.filter_tokens.iter().any(|token| token.is_word("target")) {
-            // Announced targets belong to the target iterator, including
-            // its fixed or dynamic count. A set filter would lose both.
+        // Announced object targets belong to the target iterator, including
+        // their fixed or dynamic count. A set filter would lose both. A
+        // targeted player only scopes the iterated set ("for each creature
+        // target player controls"), so that set is still every match.
+        let filter_words = crate::lexer::token_word_refs(shape.filter_tokens);
+        let announces_object_target = filter_words.iter().enumerate().any(|(index, word)| {
+            *word == "target"
+                && !matches!(
+                    filter_words.get(index + 1).copied(),
+                    Some("player" | "opponent" | "player's" | "opponent's")
+                )
+        });
+        if announces_object_target {
             return Ok(None);
         }
         if let Some(effect) = parse_for_each_type_return_one_of_that_type(

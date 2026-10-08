@@ -919,6 +919,8 @@ impl KeywordAction {
             Self::ProtectionFromFilter(filter) => {
                 if *filter == ObjectFilter::default().multicolored() {
                     "Protection from multicolored".to_string()
+                } else if let Some(chosen) = filter.protection_chosen_card_type_quality() {
+                    format!("Protection from {chosen}")
                 } else {
                     format!("Protection from {}", filter.description())
                 }

@@ -91,6 +91,26 @@ impl Family {
             Self::Reveal => "revealed-card count requires its exact local reveal producer",
         }.into()))
     }
+    /// Whether an exact-choice producer must export its result ID. A revealed
+    /// hand is only a result producer when a later instruction counts the
+    /// cards revealed this way; an unconsumed reveal keeps its plain shape.
+    pub(super) fn exported_for(self, remaining: &[EffectAst]) -> bool {
+        if self != Self::Reveal { return true; }
+        fn consumes(family: Family, value: &Value) -> bool {
+            match value {
+                Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. } => family.query(query),
+                Value::SurfaceHinted { value, .. } | Value::Scaled(value, _)
+                | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => consumes(family, value),
+                Value::Add(a, b) | Value::Min(a, b) => consumes(family, a) || consumes(family, b),
+                _ => false,
+            }
+        }
+        remaining.iter().any(|later| {
+            let mut found = false;
+            visit_effect_values(later, &mut |value| found |= consumes(self, value));
+            found
+        })
+    }
     pub(super) fn rebound(self, producer: &EffectAst, remaining: &[EffectAst]) -> Option<EffectId> {
         if !self.compatible(producer) { return None; }
         fn collect(family: Family, value: &Value, ids: &mut Vec<EffectId>) {

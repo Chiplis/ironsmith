@@ -298,6 +298,15 @@ const WHOLE_LINE_STATEMENT_RECOGNIZERS: &[(
     ),
     (
         |line, _authored_words| {
+            crate::grammar::semantic_lowering::parse_villainous_choice_preceding_clause_tokens(
+                &line.info.source_tokens,
+            )
+            .is_some()
+        },
+        |line, _| line.info.raw_line.clone(),
+    ),
+    (
+        |line, _authored_words| {
             crate::lexer::split_lexed_sentences(&line.info.source_tokens) .iter() .any(|sentence| { crate::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens( sentence, ) .is_some() })
         },
         |line, _| line.info.raw_line.clone(),

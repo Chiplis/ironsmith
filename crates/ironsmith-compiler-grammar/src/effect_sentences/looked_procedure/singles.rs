@@ -159,14 +159,25 @@ pub(super) fn optional_top(
                 }),
             ],
         }));
-    group.pending_statements = std::collections::VecDeque::from([vec![
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+    let remainder = match shape.remainder_order {
+        Some(order) => EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
             crate::tag::TagRef::of(group.tag.clone()),
             Some(crate::tag::TagRef::of(selected_tag.clone())),
-            shape.remainder_order,
+            order,
             PlayerAst::You,
         ),
-    ]]);
+        None => EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                tag: crate::tag::TagRef::of(group.tag.clone()),
+                keep_tagged: crate::tag::TagRef::of(selected_tag.clone()),
+                zone: Zone::Graveyard,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
+            }),
+        ),
+    };
+    group.pending_statements = std::collections::VecDeque::from([vec![remainder]]);
     group.selected = Some(selected_tag.key.clone());
     true
 }

@@ -347,15 +347,16 @@ fn parse_simultaneous_phase_exchange<'a>(
 fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     let raw_subject = tokens_before(input, 1, phase_marker.void())?;
     let subject_words = crate::lexer::TokenWordView::new(raw_subject).word_refs();
-    let has_negated_auxiliary = subject_words.iter().any(|word| {
+    // Only an auxiliary governing the phase verb negates it; a relative
+    // clause inside the subject ("creature you don't control") does not.
+    let has_negated_auxiliary = subject_words.last().is_some_and(|word| {
         matches!(
             *word,
             "can't" | "cant" | "cannot" | "don't" | "dont" | "doesn't" | "doesnt"
         )
-    }) || crate::word_primitives::any_sequence_occurs(
-        &subject_words,
-        &[&["can", "not"], &["do", "not"], &["does", "not"]],
-    );
+    }) || [&["can", "not"][..], &["do", "not"], &["does", "not"]]
+        .iter()
+        .any(|negation| subject_words.ends_with(negation));
     if has_negated_auxiliary {
         return Err(primitives::backtrack_err(
             "phase subject",

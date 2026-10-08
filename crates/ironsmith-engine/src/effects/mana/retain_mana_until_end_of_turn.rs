@@ -15,7 +15,7 @@ impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         game.add_restriction_effect(
-            Restriction::lose_unspent_mana(self.player.clone(), None),
+            Restriction::lose_unspent_mana(self.player.clone(), self.color),
             Until::EndOfTurn,
             ctx.source,
             ctx.controller,

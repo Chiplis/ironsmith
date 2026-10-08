@@ -1074,7 +1074,15 @@ pub(super) fn matches_subject(
         return false;
     }
     if let Some(reference) = &filter.in_combat_with {
-        let partners = resolve_object_ref_ids(reference, ctx);
+        let mut partners = resolve_object_ref_ids(reference, ctx);
+        // "creature blocking equipped creature": outside resolution the
+        // attachment words name this source's current host.
+        if partners.is_empty()
+            && let ObjectRef::Tagged(tag) = reference
+            && let Some(host) = source_attachment_host_for_tag(ctx.source, tag, game)
+        {
+            partners.push(host);
+        }
         let Some(combat) = &game.combat else {
             return false;
         };

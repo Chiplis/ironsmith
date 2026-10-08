@@ -39,6 +39,30 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
         possessive_filter_words: &possessive_filter_words,
         read_by_cache: Default::default(),
     };
+    // "the number of creatures on the battlefield plus the number of
+    // artifacts on the battlefield" is a sum of two counts; no typed count
+    // reading may swallow the second term into one filter.
+    if let Some(operator_idx) = filter_words.windows(4).position(|window| {
+        matches!(window[0], "plus" | "minus") && window[1..] == ["the", "number", "of"]
+    }) {
+        if let Some(value) = equal_to_count_readings::read_value_expression(&input) {
+            return Some(value);
+        }
+        let operator_word = filter_start_word_idx + operator_idx;
+        let left_range = word_view.token_span_for_words(0, operator_word)?;
+        let right_range = word_view.token_span_for_words(operator_word + 1, word_view.len())?;
+        let left = parse_equal_to_number_of_filter_value(&tokens[left_range])?;
+        let right = parse_equal_to_number_of_filter_value(&tokens[right_range])?;
+        let right = if filter_words[operator_idx] == "minus" {
+            Value::Scaled(Box::new(right), -1)
+        } else {
+            right
+        };
+        return Some(
+            Value::Add(Box::new(left.unhinted().clone()), Box::new(right.unhinted().clone()))
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
+    }
     match equal_to_count_readings::read(&input) {
         ParseOutcome::Match(matched) => return Some(matched.value.value),
         ParseOutcome::NoMatch => {}
