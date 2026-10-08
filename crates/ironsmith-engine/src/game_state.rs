@@ -1221,6 +1221,9 @@ pub struct ChoiceStore {
     pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
     /// Chosen players for permanents ("as this enters, choose a player").
     pub chosen_players: HashMap<ObjectId, PlayerId>,
+    /// Several players chosen by one permanent ("as this enters, choose two
+    /// players", Sower of Discord), in choice order.
+    pub chosen_player_sets: HashMap<ObjectId, Vec<PlayerId>>,
     /// Singular objects chosen by a source and referenced by a later ability.
     /// Snapshots retain stable identity and last-known characteristics when the
     /// chosen object changes zones.

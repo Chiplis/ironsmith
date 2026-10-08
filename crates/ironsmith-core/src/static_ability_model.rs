@@ -1068,6 +1068,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ChoosePlayerAsEnters {
         filter: PlayerFilter,
         display: String,
+        /// How many different players are chosen ("choose two players",
+        /// Bitter Feud, Sower of Discord); one for "choose a player".
+        #[cfg_attr(feature = "serde", serde(default = "crate::static_ability_model::one_chosen_color"))]
+        count: u32,
     },
     NoteLifeTotalAsEnters(String),
     DiscardHandAsEnters(String),
@@ -2638,9 +2642,15 @@ where
                 display,
                 count,
             },
-            StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
-                StaticAbilityPayload::ChoosePlayerAsEnters { filter, display }
-            }
+            StaticAbilityPayload::ChoosePlayerAsEnters {
+                filter,
+                display,
+                count,
+            } => StaticAbilityPayload::ChoosePlayerAsEnters {
+                filter,
+                display,
+                count,
+            },
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
@@ -6081,7 +6091,29 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChoosePlayerAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChoosePlayerAsEnters { filter, display },
+            payload: StaticAbilityPayload::ChoosePlayerAsEnters {
+                filter,
+                display,
+                count: 1,
+            },
+        }
+    }
+    /// "As this enters, choose two players." (Bitter Feud, Sower of
+    /// Discord): `count` different players, recorded together.
+    pub fn choose_players_as_enters(
+        filter: PlayerFilter,
+        count: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChoosePlayerAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChoosePlayerAsEnters {
+                filter,
+                display,
+                count,
+            },
         }
     }
     pub fn note_life_total_as_enters(display: impl Into<String>) -> Self {

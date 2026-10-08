@@ -6435,6 +6435,21 @@ pub fn parse_choose_player_as_enters_line(
         return Ok(None);
     };
     let tail_words = LexedClause::new(tail_tokens).word_refs();
+    // "choose two players" (Bitter Feud, Sower of Discord): that many
+    // different players, recorded together for "the chosen players".
+    if let ["choose", count, "players"] = tail_words.as_slice()
+        && let Some(count) = match *count {
+            "two" => Some(2u32),
+            "three" => Some(3),
+            _ => None,
+        }
+    {
+        return Ok(Some(StaticAbility::choose_players_as_enters(
+            PlayerFilter::Any,
+            count,
+            format!("As {display_subject} enters, choose {} players.", tail_words[1]),
+        )));
+    }
     let (filter, choice_surface) =
         if crate::word_primitives::parse_sequence_complete(&tail_words, &["choose", "a", "player"])
         {

@@ -1997,6 +1997,7 @@ impl GameState {
             choices.chosen_creature_type_sets.remove(&id);
             choices.chosen_card_types.remove(&id);
             choices.chosen_players.remove(&id);
+            choices.chosen_player_sets.remove(&id);
             choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
             choices
@@ -2562,6 +2563,23 @@ impl GameState {
     /// Get a chosen player for a permanent, if any.
     pub fn chosen_player(&self, permanent_id: ObjectId) -> Option<PlayerId> {
         self.choice_store.chosen_players.get(&permanent_id).copied()
+    }
+
+    /// Record several chosen players for a permanent ("choose two players").
+    pub fn set_chosen_players(&mut self, permanent_id: ObjectId, players: Vec<PlayerId>) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_player_sets
+            .insert(permanent_id, players);
+    }
+
+    /// Every player chosen by a permanent: a multi-player choice, else the
+    /// single chosen player.
+    pub fn chosen_players(&self, permanent_id: ObjectId) -> Vec<PlayerId> {
+        if let Some(players) = self.choice_store.chosen_player_sets.get(&permanent_id) {
+            return players.clone();
+        }
+        self.chosen_player(permanent_id).into_iter().collect()
     }
 
     // === Chosen object helpers ===

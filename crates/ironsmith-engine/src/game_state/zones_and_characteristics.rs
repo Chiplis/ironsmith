@@ -10,6 +10,8 @@ pub(crate) struct PreparedEtbChoices {
     pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
     pub(crate) chosen_card_type: Option<crate::types::CardType>,
     pub(crate) chosen_player: Option<PlayerId>,
+    /// "choose two players": the chosen players, in choice order.
+    pub(crate) chosen_player_set: Option<Vec<PlayerId>>,
     pub(crate) chosen_named_option: Option<String>,
     pub(crate) noted_life_total: Option<i32>,
     pub(crate) power_toughness_choices:
@@ -2456,7 +2458,44 @@ impl GameState {
                     })
                     .map(|player| player.id)
                     .collect::<Vec<_>>();
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two players" (Sower of Discord): that many
+                    // different players, one choice at a time.
+                    let mut remaining = options.clone();
+                    let mut picked = Vec::new();
+                    while picked.len() < spec.count as usize && !remaining.is_empty() {
+                        let display_options = remaining
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(idx, player_id)| {
+                                self.player(*player_id).map(|player| {
+                                    crate::decisions::spec::DisplayOption::new(
+                                        idx,
+                                        player.name.to_string(),
+                                    )
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        let choice_spec =
+                            crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            prospective_controller,
+                            Some(old_id),
+                            choice_spec,
+                        );
+                        if decision_maker.awaiting_choice() {
+                            return Ok(None);
+                        }
+                        let index = chosen
+                            .pop()
+                            .filter(|idx| *idx < remaining.len())
+                            .unwrap_or(0);
+                        picked.push(remaining.remove(index));
+                    }
+                    choices.chosen_player_set = Some(picked);
+                } else if !options.is_empty() {
                     let display_options = options
                         .iter()
                         .enumerate()
@@ -3328,6 +3367,9 @@ impl GameState {
             if let Some(player) = choice_store.chosen_players.remove(&old_id) {
                 choice_store.chosen_players.insert(new_id, player);
             }
+            if let Some(players) = choice_store.chosen_player_sets.remove(&old_id) {
+                choice_store.chosen_player_sets.insert(new_id, players);
+            }
             if let Some(object) = choice_store.chosen_objects.remove(&old_id) {
                 choice_store.chosen_objects.insert(new_id, object);
             }
@@ -3601,6 +3643,9 @@ impl GameState {
         }
         if let Some(player) = choices.chosen_player {
             self.set_chosen_player(new_id, player);
+        }
+        if let Some(players) = choices.chosen_player_set.clone() {
+            self.set_chosen_players(new_id, players);
         }
         if let Some(option) = choices.chosen_named_option.clone() {
             self.set_chosen_named_option(new_id, option);

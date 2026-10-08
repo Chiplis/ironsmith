@@ -60,6 +60,12 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("other-chosen-player"),
+        head: HeadDiscriminator::Words(&["the"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_other_chosen_player(input)),
+    },
+    Reading {
         id: RuleId::new("control-votes-this-turn"),
         head: HeadDiscriminator::Words(&["you"]),
         admits: |_| true,
@@ -1285,4 +1291,44 @@ fn read_control_votes_this_turn(input: &Statement<'_>) -> Option<Vec<EffectAst>>
     )?;
     rest.is_empty()
         .then(|| vec![EffectAst::ControlVotesThisTurn])
+}
+
+/// "the other chosen player also loses that much life" (Sower of Discord):
+/// of the players this source chose, the one other than the player the
+/// triggering damage was dealt to.
+fn read_other_chosen_player(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["the", "other", "chosen", "player"]),
+    ) else {
+        return Ok(None);
+    };
+    let body = primitives::parse_prefix(rest, primitives::kw("also"))
+        .map(|(_, body)| body)
+        .unwrap_or(rest);
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let mut subject = vec![
+        OwnedLexToken::word("that", crate::cards::builders::TextSpan::synthetic()),
+        OwnedLexToken::word("player", crate::cards::builders::TextSpan::synthetic()),
+    ];
+    subject.extend_from_slice(body);
+    let effects = super::parse_effect_chain_lexed(&subject)?;
+    Ok(Some(vec![EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
+            filter: crate::target::PlayerFilter::excluding(
+                crate::target::PlayerFilter::TaggedPlayer(
+                    ironsmith_core::tag::SOURCE_CHOSEN_PLAYERS_TAG.into(),
+                ),
+                crate::target::PlayerFilter::DamagedPlayer,
+            ),
+            effects,
+        },
+    )]))
 }

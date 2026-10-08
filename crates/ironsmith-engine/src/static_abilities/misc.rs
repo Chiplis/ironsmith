@@ -2603,11 +2603,17 @@ impl StaticAbilityKind for ChooseColorAsBecomesAttached {
 pub struct ChoosePlayerAsEnters {
     pub filter: crate::target::PlayerFilter,
     pub display: String,
+    /// Number of different players chosen ("choose two players").
+    pub count: u32,
 }
 
 impl ChoosePlayerAsEnters {
     pub fn new(filter: crate::target::PlayerFilter, display: String) -> Self {
-        Self { filter, display }
+        Self {
+            filter,
+            display,
+            count: 1,
+        }
     }
 }
 
@@ -2623,6 +2629,7 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec {
             filter: self.filter.clone(),
+            count: self.count,
         })
     }
 }

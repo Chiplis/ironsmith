@@ -433,6 +433,9 @@ impl EnterBattlefieldEvent {
             if let Some(player) = choices.chosen_player {
                 prospective.set_chosen_player(self.object, player);
             }
+            if let Some(players) = choices.chosen_player_set.clone() {
+                prospective.set_chosen_players(self.object, players);
+            }
             if let Some(option) = &choices.chosen_named_option {
                 prospective.set_chosen_named_option(self.object, option.clone());
             }

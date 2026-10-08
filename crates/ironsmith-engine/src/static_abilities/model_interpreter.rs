@@ -1661,8 +1661,16 @@ impl StaticAbilityModelInterpreter {
                     StaticAbility::choose_color_as_enters(*excluded, display.clone())
                 }
             }
-            ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
-                StaticAbility::choose_player_as_enters_matching(filter.clone(), display.clone())
+            ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters {
+                filter,
+                display,
+                count,
+            } => {
+                if *count > 1 {
+                    StaticAbility::choose_players_as_enters(filter.clone(), *count, display.clone())
+                } else {
+                    StaticAbility::choose_player_as_enters_matching(filter.clone(), display.clone())
+                }
             }
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
@@ -3287,13 +3295,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn player_choice_as_enters(&self) -> Option<super::ChoosePlayerAsEntersSpec> {
-        let ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, .. } =
+        let ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters { filter, count, .. } =
             self.payload()
         else {
             return None;
         };
         Some(super::ChoosePlayerAsEntersSpec {
             filter: filter.clone(),
+            count: (*count).max(1),
         })
     }
 

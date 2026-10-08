@@ -1115,6 +1115,9 @@ impl GameState {
                 .chosen_players
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_player_sets
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_objects
                 .retain(|source, _| !removed_ids.contains(source));
             choices
@@ -3525,6 +3528,15 @@ impl GameState {
                 tagged_objects.insert(
                     crate::tag::TagKey::from(crate::tag::CHOSEN_OBJECTS_TAG),
                     vec![chosen.clone()],
+                );
+            }
+            // "one of the chosen players" (Sower of Discord): the players
+            // this source chose.
+            let chosen_players = self.chosen_players(source_id);
+            if !chosen_players.is_empty() {
+                tagged_players.insert(
+                    crate::tag::TagKey::from(crate::tag::SOURCE_CHOSEN_PLAYERS_TAG),
+                    chosen_players,
                 );
             }
             if let Some(attached_target) = source_obj.attached_to {
