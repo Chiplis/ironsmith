@@ -4,7 +4,7 @@
 //! from the graveyard (CR 113.6k); Oskar's "cast it" names the discarded card.
 use ironsmith::ability::AbilityKind;
 use ironsmith::cards::CardDefinition;
-use ironsmith::zone::Zone;
+use ironsmith::Zone;
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;
