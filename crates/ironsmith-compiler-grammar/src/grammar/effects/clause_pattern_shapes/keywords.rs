@@ -93,6 +93,8 @@ pub enum KeywordMechanicShape<'a> {
         player: ManifestPlayerShape,
     },
     ManifestFromHand,
+    /// "Cloak a card from your hand." (CR 701.58a)
+    CloakFromHand,
     Populate {
         repeat: KeywordRepeatShape<'a>,
     },
@@ -492,6 +494,12 @@ fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanic
     Ok(KeywordMechanicShape::CloakTop {
         player: ManifestPlayerShape::You,
     })
+}
+
+fn parse_cloak_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["cloak", "a", "card", "from", "your", "hand"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CloakFromHand)
 }
 
 fn parse_manifest_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
