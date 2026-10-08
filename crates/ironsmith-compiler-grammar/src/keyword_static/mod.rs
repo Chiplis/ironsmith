@@ -29,6 +29,8 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod each_player_land_plays;
+pub use each_player_land_plays::parse_each_player_additional_land_play_line;
 pub use devour_quality::parse_devour_quality_line;
 pub use costs_replacements_and_permissions::*;
 
