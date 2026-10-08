@@ -710,6 +710,17 @@ fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
                 EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::IfResult {
                     predicate: crate::IfResultPredicate::DieValue(_), ..
                 }) => {}
+                // "Roll a d20 and subtract ... . If the result is 0 or less,
+                // discard your hand." (The Deck of Many Things): a condition
+                // that only reads the roll's own (modified) result is part of
+                // the roll's result handling, like a numeric row.
+                EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::ValueComparison {
+                        left: crate::effect::Value::PendingPriorEffectMetric(query),
+                        ..
+                    },
+                    ..
+                }) if query.action == Some(ironsmith_core::PriorEffectAction::Rolled) => {}
                 other => return Some(other),
             }
         }
