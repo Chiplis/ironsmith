@@ -82,6 +82,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)

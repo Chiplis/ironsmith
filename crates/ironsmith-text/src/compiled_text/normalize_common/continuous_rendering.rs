@@ -5870,6 +5870,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BecomeUntapped(filter) => {
             format!("{} can't become untapped", filter.description())
         }
+        crate::effect::Restriction::AttackBlockOrCrew(filter) => {
+            format!("{} can't attack, block, or crew Vehicles", filter.description())
+        }
         crate::effect::Restriction::BeBlocked(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());

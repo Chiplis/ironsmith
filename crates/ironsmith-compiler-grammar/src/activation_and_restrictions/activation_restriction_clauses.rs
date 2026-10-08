@@ -36,6 +36,15 @@ fn simple_negated_object_restriction(
     if words == ["become", "untapped"] {
         return Some(Restriction::become_untapped(filter.clone()));
     }
+    // "[objects] can't attack, block, or crew Vehicles" (Revoke Privileges).
+    if words
+        .iter()
+        .copied()
+        .filter(|word| *word != ",")
+        .eq(["attack", "block", "or", "crew", "vehicles"])
+    {
+        return Some(Restriction::attack_block_or_crew(filter.clone()));
+    }
 
     let kind = restriction_grammar::parse_simple_object_restriction_words(words)?;
     use restriction_grammar::SimpleObjectRestrictionKind;

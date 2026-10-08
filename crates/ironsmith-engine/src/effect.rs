@@ -1903,6 +1903,17 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::AttackBlockOrCrew(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_attack.insert(obj_id);
+                        tracker.cant_block.insert(obj_id);
+                        tracker.cant_crew.insert(obj_id);
+                    }
+                }
+            }
             Restriction::BecomeUntapped(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

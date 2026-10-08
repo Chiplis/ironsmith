@@ -1620,6 +1620,9 @@ pub fn resolve_restriction_it_tag(
         Restriction::BecomeUntapped(filter) => {
             Restriction::become_untapped(resolve_it_tag(filter, refs)?)
         }
+        Restriction::AttackBlockOrCrew(filter) => {
+            Restriction::attack_block_or_crew(resolve_it_tag(filter, refs)?)
+        }
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),
         Restriction::BeDestroyed(filter) => {
             Restriction::be_destroyed(resolve_it_tag(filter, refs)?)

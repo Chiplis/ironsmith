@@ -728,6 +728,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::AttackOrBlockAlone(filter) | R::EnterBattlefield(filter)
         | R::PreventDamageFrom { sources: filter, .. } | R::ActivateLoyaltyAbilitiesOf(filter)
         | R::MustAttack(filter) | R::BecomeSuspected(filter) | R::BecomeUntapped(filter)
+        | R::AttackBlockOrCrew(filter)
         | R::MaximumBlockers { filter, .. }
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }

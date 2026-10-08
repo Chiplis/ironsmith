@@ -1873,6 +1873,10 @@ pub struct CantEffectTracker {
     /// Example: Blossombind "Enchanted creature can't become untapped".
     pub cant_become_untapped: HashSet<ObjectId>,
 
+    /// Creatures that can't be tapped to pay a crew cost.
+    /// Example: Revoke Privileges "can't attack, block, or crew Vehicles".
+    pub cant_crew: HashSet<ObjectId>,
+
     /// Permanents that can't be destroyed (indestructible via effect, not ability).
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
     pub cant_be_destroyed: crate::incremental::ObjectSet,
@@ -2618,6 +2622,7 @@ impl CantEffectTracker {
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
         self.cant_become_untapped.extend(other.cant_become_untapped);
+        self.cant_crew.extend(other.cant_crew);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
@@ -2728,6 +2733,7 @@ impl CantEffectTracker {
         self.cant_block_alone.clear();
         self.cant_untap.clear();
         self.cant_become_untapped.clear();
+        self.cant_crew.clear();
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
