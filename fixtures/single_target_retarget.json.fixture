@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Meddle",
+    "oracle_id": "67d6fbcb-2df7-4b5a-8464-158f6b720a2e",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "If target spell has only one target and that target is a creature, change that spell's target to another creature.",
+    "text": "Mana cost: {1}{U}\nType: Instant\nIf target spell has only one target and that target is a creature, change that spell's target to another creature."
+  },
+  {
+    "name": "Quicksilver Dragon",
+    "oracle_id": "f9701c1f-66c7-4ac7-8106-074d6f557ad6",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Creature — Dragon",
+    "oracle_text": "Flying\n{U}: If target spell has only one target and that target is this creature, change that spell's target to another creature.\nMorph {4}{U}",
+    "power": "5",
+    "toughness": "5",
+    "text": "Mana cost: {4}{U}{U}\nType: Creature — Dragon\nPower/Toughness: 5/5\nFlying\n{U}: If target spell has only one target and that target is this creature, change that spell's target to another creature.\nMorph {4}{U}"
+  }
+]

@@ -4256,6 +4256,7 @@ pub(super) fn compile_subject_verb_middle(
             mode,
             require_change,
             copy_reference_plural,
+            new_target_restriction,
         }) => {
             let refs = current_reference_env(ctx);
             if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
@@ -4303,6 +4304,11 @@ pub(super) fn compile_subject_verb_middle(
 
             if *require_change {
                 effect = effect.require_change();
+            }
+            if let Some(filter) = new_target_restriction {
+                effect = effect.with_restriction(ironsmith_core::NewTargetRestriction::Object(
+                    filter.clone(),
+                ));
             }
 
             let compiled_mode = match mode {

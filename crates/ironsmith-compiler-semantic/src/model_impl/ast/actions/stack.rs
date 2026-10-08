@@ -74,6 +74,9 @@ pub enum StackActionAst {
         /// Preserve authored "the copies" independently of the copied
         /// stack-object tag and the per-event copy count.
         copy_reference_plural: bool,
+        /// "change that spell's target to another creature" (Meddle): the
+        /// new target must match this filter (CR 115.7).
+        new_target_restriction: Option<ObjectFilter>,
     },
     Counter {
         target: TargetAst,

@@ -2062,13 +2062,19 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 mode,
                 require_change,
                 copy_reference_plural,
-            }) => f
-                .debug_struct("RetargetStackObject")
-                .field("target", target)
-                .field("mode", mode)
-                .field("require_change", require_change)
-                .field("copy_reference_plural", copy_reference_plural)
-                .finish(),
+                new_target_restriction,
+            }) => {
+                let mut debug = f.debug_struct("RetargetStackObject");
+                debug
+                    .field("target", target)
+                    .field("mode", mode)
+                    .field("require_change", require_change)
+                    .field("copy_reference_plural", copy_reference_plural);
+                if let Some(filter) = new_target_restriction {
+                    debug.field("new_target_restriction", filter);
+                }
+                debug.finish()
+            }
             Self::Grants(GrantActionAst::GrantAbilityToSource { ability, duration }) => f
                 .debug_struct("GrantAbilityToSource")
                 .field("ability", ability)

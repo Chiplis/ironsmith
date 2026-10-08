@@ -3426,8 +3426,25 @@ impl EffectAst {
                 mode,
                 require_change,
                 copy_reference_plural: false,
+                new_target_restriction: None,
             }),
         )
+    }
+
+    /// Restrict the new target of a retarget instruction to matching objects.
+    pub fn with_retarget_new_target_restriction(mut self, filter: ObjectFilter) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
+                    new_target_restriction,
+                    ..
+                }),
+            ..
+        }) = &mut self
+        {
+            *new_target_restriction = Some(filter);
+        }
+        self
     }
 
     /// Preserve an authored plural copy back-reference ("the copies").
