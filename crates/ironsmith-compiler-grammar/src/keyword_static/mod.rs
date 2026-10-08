@@ -561,7 +561,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_if_you_would_draw_instead_effects_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
-        "parse_activate_abilities_as_though_haste_line" => {
+        "parse_activate_abilities_as_though_haste_line"
+        | "parse_you_cast_spells_only_during_your_turn_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
         "parse_zero_loyalty_state_based_exception_line" => {
@@ -1627,6 +1628,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_skip_untap_steps_line),
         single_static_ability_ast_rule!(parse_players_cast_spells_only_during_own_turns_line),
+        multi_static_ability_ast_rule!(parse_players_cast_and_activate_only_during_own_turns_line),
+        multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2665,6 +2668,108 @@ fn parse_players_cast_spells_only_during_own_turns_line(
         }),
         "Players can cast spells only during their own turns".to_string(),
     )))
+}
+
+fn non_active_players() -> PlayerFilter {
+    PlayerFilter::Excluding {
+        base: Box::new(PlayerFilter::Any),
+        excluded: Box::new(PlayerFilter::Active),
+    }
+}
+
+/// "Players can cast spells and activate abilities only during their own
+/// turns." (City of Solitude): a player who isn't the active player can't cast
+/// spells (CR 601.3) or activate abilities (CR 602.5), mana abilities
+/// included. The activation half is the player prohibition on non-mana
+/// abilities plus the object prohibition, mana abilities included, on the
+/// permanents those players control.
+fn parse_players_cast_and_activate_only_during_own_turns_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&[
+            "players", "can", "cast", "spells", "and", "activate", "abilities", "only", "during",
+            "their", "own", "turns",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    let display = "Players can cast spells and activate abilities only during their own turns";
+    Ok(Some(vec![
+        StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells(non_active_players()),
+            display.to_string(),
+        ),
+        StaticAbility::restriction(
+            crate::effect::Restriction::activate_non_mana_abilities(non_active_players()),
+            display.to_string(),
+        ),
+        StaticAbility::restriction(
+            crate::effect::Restriction::activate_abilities_of(ObjectFilter {
+                controller: Some(non_active_players()),
+                ..ObjectFilter::default()
+            }),
+            display.to_string(),
+        ),
+    ]))
+}
+
+/// "You can cast spells only during your turn [and you can cast no more than
+/// N spells each turn]." (Fires of Invention): CR 601.3 casting prohibitions
+/// on the controller while another player is active, plus a counted cast
+/// limit (`CastMoreThanNSpellsEachTurn`).
+fn parse_you_cast_spells_only_during_your_turn_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&["you", "can", "cast", "spells", "only", "during", "your", "turn"]),
+    ) else {
+        return Ok(None);
+    };
+    let display = render_token_slice(&clean);
+    let mut abilities = vec![StaticAbility::restriction(
+        crate::effect::Restriction::cast_spells(PlayerFilter::Excluding {
+            base: Box::new(PlayerFilter::You),
+            excluded: Box::new(PlayerFilter::Active),
+        }),
+        display.clone(),
+    )];
+    if rest.is_empty() {
+        return Ok(Some(abilities));
+    }
+    let Some((maximum, tail)) = primitives::parse_prefix(
+        rest,
+        (
+            primitives::phrase(&["and", "you", "can", "cast", "no", "more", "than"]),
+            primitives::number_token,
+            primitives::phrase(&["spells", "each", "turn"]),
+        )
+            .map(|(_, maximum, _)| maximum),
+    ) else {
+        return Ok(None);
+    };
+    if !tail.is_empty() || maximum == 0 {
+        return Ok(None);
+    }
+    abilities.push(StaticAbility::restriction(
+        crate::effect::Restriction::cast_more_than_n_spells_each_turn(
+            PlayerFilter::You,
+            ObjectFilter::default(),
+            maximum,
+        ),
+        display,
+    ));
+    Ok(Some(abilities))
 }
 
 /// "Players skip their untap steps." (Stasis), "Each player skips their untap

@@ -274,7 +274,12 @@ fn restriction_references_identity(
         }
         Restriction::PlayLandsMatching(player, filter)
         | Restriction::CastSpellsMatching(player, filter)
-        | Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
+        | Restriction::CastMoreThanOneSpellEachTurn(player, filter)
+        | Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }

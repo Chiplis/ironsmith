@@ -565,7 +565,12 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
         PlayLandsMatching(player, filter)
         | CastSpellsMatching(player, filter)
-        | CastMoreThanOneSpellEachTurn(player, filter) => {
+        | CastMoreThanOneSpellEachTurn(player, filter)
+        | CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {

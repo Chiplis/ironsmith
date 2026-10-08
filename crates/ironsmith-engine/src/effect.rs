@@ -1616,6 +1616,17 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::CastMoreThanNSpellsEachTurn {
+                player: filter,
+                spells,
+                maximum,
+            } => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.add_counted_cast_limit(player.id, spells.clone(), *maximum);
+                    }
+                }
+            }
             Restriction::DrawCards(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

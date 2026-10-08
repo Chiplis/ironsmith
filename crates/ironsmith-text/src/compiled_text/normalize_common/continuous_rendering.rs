@@ -5621,6 +5621,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             describe_player_set_filter(filter),
             describe_cast_limit_spell_filter(spell_filter)
         ),
+        crate::effect::Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        } => format!(
+            "{} can cast no more than {} {} each turn",
+            describe_player_set_filter(player),
+            maximum,
+            pluralize_cast_spell_description(&describe_cast_limit_spell_filter(spells))
+        ),
         crate::effect::Restriction::DrawCards(filter) => {
             format!("{} can't draw cards", describe_player_set_filter(filter))
         }

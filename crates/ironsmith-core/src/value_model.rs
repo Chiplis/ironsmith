@@ -1235,6 +1235,14 @@ pub enum Restriction {
     /// Like `AttackYouUnlessControllerPaysPerAttacker` it outlives its source.
     /// Appended to preserve existing serialized variant ordinals.
     AttackTax(AttackTaxRule),
+    /// "[players] can cast no more than N [matching] spells each turn" (Fires
+    /// of Invention): a cast-limit like `CastMoreThanOneSpellEachTurn` with a
+    /// general maximum. Appended to preserve existing serialized ordinals.
+    CastMoreThanNSpellsEachTurn {
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    },
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -1669,6 +1677,18 @@ impl Restriction {
 
     pub fn attack_tax(rule: AttackTaxRule) -> Self {
         Self::AttackTax(rule)
+    }
+
+    pub fn cast_more_than_n_spells_each_turn(
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    ) -> Self {
+        Self::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        }
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {

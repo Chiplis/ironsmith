@@ -1949,6 +1949,10 @@ pub struct CantEffectTracker {
     /// without hard-coding one tracker set per variant.
     pub cant_cast_limit_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
 
+    /// Counted cast limits ("can cast no more than two spells each turn",
+    /// Fires of Invention): the matching spell filter and its maximum.
+    pub cant_cast_more_than: HashMap<PlayerId, Vec<(crate::target::ObjectFilter, u32)>>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -2707,6 +2711,11 @@ impl CantEffectTracker {
                 self.add_cast_limit_filter(player, filter);
             }
         }
+        for (player, limits) in other.cant_cast_more_than {
+            for (filter, maximum) in limits {
+                self.add_counted_cast_limit(player, filter, maximum);
+            }
+        }
         self.cant_draw.extend(other.cant_draw);
         self.cant_draw_extra_cards
             .extend(other.cant_draw_extra_cards);
@@ -2795,6 +2804,7 @@ impl CantEffectTracker {
         self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_limit_filters.clear();
+        self.cant_cast_more_than.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -3100,6 +3110,30 @@ impl CantEffectTracker {
         if !filters.iter().any(|existing| existing == &spell_filter) {
             filters.push(spell_filter);
         }
+    }
+
+    /// Add a counted cast limit ("no more than `maximum` matching spells each
+    /// turn"). The strictest maximum per filter wins.
+    pub fn add_counted_cast_limit(
+        &mut self,
+        player: PlayerId,
+        spell_filter: crate::target::ObjectFilter,
+        maximum: u32,
+    ) {
+        let limits = self.cant_cast_more_than.entry(player).or_default();
+        if let Some(existing) = limits.iter_mut().find(|(filter, _)| filter == &spell_filter) {
+            existing.1 = existing.1.min(maximum);
+        } else {
+            limits.push((spell_filter, maximum));
+        }
+    }
+
+    /// Get active counted cast limits for a player, if any.
+    pub fn counted_cast_limits_for_player(
+        &self,
+        player: PlayerId,
+    ) -> Option<&[(crate::target::ObjectFilter, u32)]> {
+        self.cant_cast_more_than.get(&player).map(Vec::as_slice)
     }
 
     /// Get active cast-limit filters for a player, if any.

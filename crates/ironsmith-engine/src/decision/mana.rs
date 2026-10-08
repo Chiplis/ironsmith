@@ -1473,14 +1473,22 @@ pub(crate) fn violates_any_cast_limit(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> bool {
-    game.effect_store
-        .cant_effects
-        .cast_limit_filters_for_player(player)
+    let cant = &game.effect_store.cant_effects;
+    cant.cast_limit_filters_for_player(player)
         .is_some_and(|filters| {
             filters
                 .iter()
                 .any(|spell_filter| violates_cast_limit(game, player, spell, spell_filter))
         })
+        || cant
+            .counted_cast_limits_for_player(player)
+            .is_some_and(|limits| {
+                limits.iter().any(|(spell_filter, maximum)| {
+                    spell_matches_cast_filter(game, spell, spell_filter)
+                        && spells_cast_this_turn_matching_filter(game, player, spell_filter)
+                            >= *maximum
+                })
+            })
 }
 
 pub(crate) fn violates_any_cant_cast_restriction(
