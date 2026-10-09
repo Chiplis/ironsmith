@@ -316,7 +316,13 @@ fn mana_rewrite_filtered_source<'a>(input: &mut LexStream<'a>) -> Result<ManaOut
     };
     if has_if {
         opt(primitives::comma()).parse_next(input)?;
-        primitives::phrase(&["it", "produces"]).parse_next(input)?;
+        // "..., that Mountain produces colorless mana instead" (Chaos Moon):
+        // the tapped source named again, same as "it".
+        alt((
+            primitives::phrase(&["it", "produces"]),
+            (primitives::kw("that"), any, primitives::kw("produces")).void(),
+        ))
+        .parse_next(input)?;
     } else { primitives::kw("produce").parse_next(input)?; }
     let output = mana_rewrite_output(input)?;
     let (affected, quantity) = mana_rewrite_tail(input)?;
