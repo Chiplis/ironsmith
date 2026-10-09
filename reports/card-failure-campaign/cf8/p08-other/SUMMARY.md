@@ -4,9 +4,9 @@
 
 | status | count |
 |---|---|
-| source-proposed | 60 |
+| source-proposed | 71 |
 | already-on-main | 2 (Loathsome Troll, cba78f342; Titania, c000cb0a1 — both unvalidated) |
-| blocked | 113, each with its precise missing mechanism |
+| blocked | 102, each with its precise missing mechanism |
 | untriaged | 0 |
 
 ## Clusters fixed (general fixes)
@@ -87,30 +87,20 @@ Synthetic token insertions replaced with grammar:
 
 Test: `villainous_and_recipient_routing.rs`.
 
-## Coordinator's requested groups
-- **Opponent chooses the mode at cast:** still blocked.
-  - Rules: CR 700.2e (cited from memory; the repo has no CR text) has the other player choose the mode while the spell is being cast, with the caster picking which opponent. The caster still chooses targets (601.2c). In Fatal Lore, "that player" also narrows the target filter, so the chooser must be bound before targeting.
-  - Design needed:
-    - a cast-time chooser field on ChooseModeEffect/ModalSpec;
-    - a cast stage for choosing the opponent;
-    - routing ModesContext to that player;
-    - a stack-entry player binding usable by both target legality and mode effects.
-  - Not attempted: it spans the cast pipeline, decision routing, targeting and lowering, and could not be compile-checked.
-- **Die tables not last:** Deck of Many Things and Druid are done.
-  - Wand of Wonder needs an X-table: rows "X is N" binding X in the preceding sentences, plus "exile until, cast up to X from among" grammar.
-  - Wizard's Spellbook needs a probe of its exile-then-roll owner, and its row 3 (copy each card exiled with this artifact) is unsupported.
-- **Player-plus-object recipients:** damage is done (Cerebral Eruption).
-  - Kitsune Palliator (prevention) and Faith's Shield (protection for you and your permanents) need the same union in those effect families.
-  - Sewers of Estark needs "it and each creature it's blocking" as a prevention source set.
-- **Pay any amount of mana:** not generalized.
-  - Karn's "that many" is the only case the join-forces collective payment would cover.
-  - Errant Minion and Power Leak need partial prevention of one damage event.
-  - Leyline Tyrant needs a colour-restricted variable payment plus a reflexive "that much".
-  - Liege of the Hollows needs per-player paid amounts.
-- **Villainous choice:** Dalek and Ensnared are done (see Round 3).
-- **Claim Jumper:** needs the repeat-this-process owner (p11). Unlucky Cabbage Merchant is done.
+## Round 4 (coordinator's requested mechanisms)
+| mechanism | cards | fix |
+|---|---|---|
+| opponent chooses the mode at cast | Fatal Lore, Library of Lat-Nam, Misfortune | `ChooseModeEffect.cast_chooser` (+ `ModalSpec.cast_chooser`). New cast stage `ChoosingModeChooser`: with several eligible opponents the caster picks one (SelectOptions to the caster); the `ModesContext` goes to that player (CR 700.2, 601.2b). The chooser is stored as the spell's chosen player (`set_chosen_player`), so the stack entry, target legality and resolution read `ChosenPlayer`; modes import `last_player_filter = ChosenPlayer` so "that player" binds before the caster picks targets (601.2c). Header "An opponent chooses one —" parsed in `modal_support`; abilities with an opponent chooser are rejected in lowering. |
+| variable mana payments | Leyline Tyrant, Karn Living Legacy, Liege of the Hollows, Errant Minion, Power Leak | Pay reading "pay any amount of mana/{C}" = PayMana {X} (colored: `OnX` spending restriction). `CollectManaPaymentsEffect` gained `payers`, `x_colors`, `apnap_order`, `per_payer` (all plumbing: core, interpreter, materializer, decoder unchanged generic). Pair procedures: "that player may pay any amount of mana" + damage + "Prevent X of that damage" and "each player may pay ..." + "Then each player ... they paid this way" (per-payer body, X = own payment). New `PreventDamagePortionEffect` (p07 had no partial-prevention shape yet): an X shield (PreventionTarget::All) that exists only while the wrapped damage instruction runs, then is removed. Value phrase "the amount of mana that player/they/you paid this way" = X. |
+| die rows that set X | (Wand of Wonder still blocked by its body) | `effect_sentences/die_x_table.rs`: trailing rows "N—M \| X is K." attach to a roll followed by X-reading sentences (recognition in `statement_recognition`), and each row becomes `IfResult(DieValue) { BindX(K) { post-roll sentences } }`. New `BindXValueEffect` sets ctx X for its children. |
+| "X and each Y" unions | Kitsune Palliator, Faith's Shield, Sewers of Estark | prevent-next shields per object and per player; `GrantProtectionChoice.also_each` (one choice, locked grant to each permanent); "it and each creature it's blocking" source set. |
+
+Tests: `compound_recipient_unions.rs`, `variable_mana_payments.rs`, `die_x_table_rows.rs` (Wand test ignored), `opponent_chosen_modes.rs` (gameplay: mode prompt addressed to the chosen opponent; Fatal Lore offers only that player's creatures). Shared harness `cf8_p08/play.rs`.
+
+Still blocked from the requested list: Wand of Wonder (body: per-opponent exile-until with "then shuffles the rest", counted cast from the exiled cards), Wizard's Spellbook (multi-card copy-and-cast row 3, copy-cast across die rows, copy alternative cost).
 
 ## Risk notes
+- **Round 4 risks:** new enum/struct fields — `ChooseModeEffect.cast_chooser` (two struct literals updated: text-program codec, modal remove-mode merge), `ModalSpec.cast_chooser`, `PendingCast.mode_chooser`, `CastStage::ChoosingModeChooser`, `EffectAst::CollectManaPayments` fields, new `EffectAst::PreventDamagePortion` / `BindX`, `GrantActionAst::GrantProtectionChoice.also_each`, `ParsedModalHeader.cast_chooser`. New effects registered in effect-registry.tsv and decoder families (not regenerated by script). Chosen-player binding reuses the object choice store, so a spell that also "chooses a player" would share it. Liege's tokens are created payer by payer, not simultaneously. Leyline's reflexive trigger fires on a 0 payment.
 - **Shared hot spots touched:**
   - `target_semantics/reference.rs` (bare-noun fallback)
   - `trigger_players.rs` (zone-change player inference changes the compiled output of already-passing cards)
@@ -131,15 +121,15 @@ Test: `villainous_and_recipient_routing.rs`.
 - **unresolved-it-reference** (10): Desolation, Elite Arcanist, Instill Furor, Ixhel, Scion of Atraxa, Nascent Metamorph, Replicating Ring, Snort, Talion's Messenger, Tavern Brawler, Teo, Spirited Glider. 'it' without prior reference: 'each player who tapped a land for mana this turn' / 'who sacrificed a Plains this way' player-history predicates.
 - **selection-phrases** (8): Crashing Wave, Dwarven Catapult, Legion's End, Sorrow's Path, Split the Party, Sword of Hearth and Home, Ulamog, the Defiler, Ultimate Nullification. Unsupported selection phrase ('both cards', 'both of them' with block rewiring, 'graveyard(s)' as exile recipient, 'half the creatures/library rounded up', 'divided evenly', 'tapped creatures ... distribute'); each needs its own typed selection.
 - **dynamic-mana-or-roll-amounts** (5): Danse Macabre, Drain Power, Elemental Resonance, Radiant Lotus, Quag Feast. roll plus toughness of sacrificed creature, rows not represented.
-- **pay-any-amount-of-mana** (5): Errant Minion, Karn, Living Legacy, Leyline Tyrant, Liege of the Hollows, Power Leak. Single-payer 'pay any amount of mana' is not represented. Generalizing CollectManaPaymentsEffect with a payer would cover only Karn's X binding; Errant Minion/Power Leak need partial prevention of one damage event ('Prevent X of that damage'), Leyline Tyrant a red-only payment plus reflexive 'that much', and Liege of the Hollows per-player amounts. Each needs its own mechanism, so the generalization was not done.
+- **pay-any-amount-of-mana**: resolved in round 4. Single-payer 'pay any amount of mana' is not represented. Generalizing CollectManaPaymentsEffect with a payer would cover only Karn's X binding; Errant Minion/Power Leak need partial prevention of one damage event ('Prevent X of that damage'), Leyline Tyrant a red-only payment plus reflexive 'that much', and Liege of the Hollows per-player amounts. Each needs its own mechanism, so the generalization was not done.
 - **damage-modification-replacement** (3): Neriv, Heart of the Storm, Benevolent Unicorn, Lashknife Barrier. 'deals that much damage minus 1 / twice that much damage ... instead' as a static damage replacement needs a typed amount-modifying replacement reading.
-- **compound-recipient-sets** (3): Faith's Shield, Kitsune Palliator, Sewers of Estark. Compound recipient 'X and each Y' (player+objects, two object sets) in damage/prevention/protection needs a union recipient spec.
+- **compound-recipient-sets**: resolved in round 4. Compound recipient 'X and each Y' (player+objects, two object sets) in damage/prevention/protection needs a union recipient spec.
 - **up-to-that-many-targets** (3): Cephalid Constable, Coveted Falcon, Froghemoth. 'up to that many target ...' from combat damage amount / 'for each one they gained control of this way' needs an event-amount target count and per-object result metrics.
-- **opponent-chooses-mode** (3): Fatal Lore, Library of Lat-Nam, Misfortune. 'An opponent chooses one' needs the opponent to choose the mode when the controller normally would, i.e. while casting (CR 700.2e, 601.2b), with the controller picking which opponent and 'that player' bound to that chooser. The cast pipeline announces modes only through the caster's ModesContext; ChooseModeEffect.chooser is a resolution-time chooser, so lowering to it would move the choice to resolution (observably wrong for Fatal Lore's targets). Design needed: a cast-time mode chooser on ChooseModeEffect/ModalSpec, a cast stage where the caster picks which opponent chooses (multiplayer), routing the ModesContext to that player while the caster still picks targets (601.2c), and a stack-entry player binding so 'that player' in modes and target filters ('target creatures that player controls') name the chooser.
+- **opponent-chooses-mode**: resolved in round 4.
 - **conditional-has-and-is-type** (3): Ezio, Brash Novice, Hero of Bretagard, Skyknight Squire. 'As long as ... counters on it, it has K and is a T in addition to its other types' needs a conditional keyword+type-addition static pair reading.
 - **mana-trigger-additional-chosen-color** (2): Caged Sun, Gauntlet of Power. 'adds an additional one mana of that color' for a chosen-color mana-production trigger is not represented.
 - **pay-life-equal-to-dynamic** (2): Lorcan, Warlock Collector, Madame Null, Power Broker. 'you may pay life equal to its mana value/power' needs a dynamic life cost bound to the trigger object.
-- **die-result-owner** (2): Wand of Wonder, Wizard's Spellbook. The die-row owner requires the roll to be the last unconditional action. Here the roll is modified ('subtract the number of cards in your hand' then an If-result), is preceded by a search-and-reveal whose probe fails, or the rows bind X for a later sentence (Wand of Wonder). Needs a non-terminal roll owner with a modified-result value and row-bound X; not attempted without a probe.
+- **die-result-owner** (2): Wand of Wonder (X-table built in round 4; body still needs per-opponent exile-until + 'then shuffles the rest' and a counted cast from the exiled cards), Wizard's Spellbook (multi-card copy-and-cast row 3, copy-cast across die rows, copy alternative cost).
 - **return-with-attached-auras** (2): Essence Reliquary, Orzhov Charm. 'target permanent and all Auras you control attached to it' needs a return-to-hand counterpart of the exile attached-bundle (simultaneous move).
 - **past-tense-that-creature** (2): Taborax, Hope's Demise, Venom, Eddie Brock. 'If that creature was a X' after an intervening source action: conditional lowering loses the trigger object antecedent (saved last tag is None); needs the dies-trigger object kept as the 'that creature' antecedent across source-targeted actions.
 - **filtered-result-metric** (2): Convert to Slime, The Hunger Tide Rises. Aggregate over objects destroyed/sacrificed this way requires a memory-producing effect id binding for the filtered metric.
