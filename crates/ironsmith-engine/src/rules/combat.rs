@@ -78,8 +78,11 @@ pub(crate) fn can_block_with_view(
         return false;
     }
 
-    // Tapped creatures can't block.
-    if game.is_tapped(blocker.id) {
+    // Tapped creatures can't block, unless they can block as though they
+    // were untapped (CR 509.1a).
+    if game.is_tapped(blocker.id)
+        && !view.object_has_static_ability_id(blocker.id, StaticAbilityId::CanBlockAsThoughUntapped)
+    {
         return false;
     }
 

@@ -558,6 +558,22 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// "This creature can block as though it were untapped" (Masako the
+/// Humorless grants it to tapped creatures): being tapped doesn't stop it
+/// from being declared as a blocker (CR 509.1a); it stays tapped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughUntapped;
+
+impl StaticAbilityKind for CanBlockAsThoughUntapped {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughUntapped
+    }
+
+    fn display(&self) -> String {
+        "This creature can block as though it were untapped".to_string()
+    }
+}
+
 /// This creature can block an attacker with shadow by ignoring only the
 /// attacker's shadow evasion restriction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

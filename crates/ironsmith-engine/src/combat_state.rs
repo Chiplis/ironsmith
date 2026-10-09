@@ -895,8 +895,15 @@ fn declare_blockers_internal(
             });
         }
 
-        // Must be untapped
-        if game.is_tapped(*blocker_id) {
+        // Must be untapped, unless it can block as though it were untapped
+        // (CR 509.1a).
+        if game.is_tapped(*blocker_id)
+            && !game.object_has_ability_with_effects(
+                *blocker_id,
+                &StaticAbility::can_block_as_though_untapped(),
+                &all_effects,
+            )
+        {
             return Err(CombatError::CreatureTapped(*blocker_id));
         }
 
@@ -1300,7 +1307,12 @@ fn legal_block_edge(
             crate::types::CardType::Battle,
             effects,
         )
-        && !game.is_tapped(blocker_id)
+        && (!game.is_tapped(blocker_id)
+            || game.object_has_ability_with_effects(
+                blocker_id,
+                &StaticAbility::can_block_as_though_untapped(),
+                effects,
+            ))
         && !game.object_has_ability_with_effects(blocker_id, &StaticAbility::cant_block(), effects)
         && game.can_block_attacker(blocker_id, attacker_id)
         && game.can_be_blocked(attacker_id)

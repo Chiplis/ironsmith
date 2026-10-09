@@ -403,6 +403,8 @@ pub enum StaticAbilityId {
     /// "No more than N creatures can attack this planeswalker each combat";
     /// appended for wire compatibility.
     MaxCreaturesCanAttackSourceEachCombat,
+    /// "can block as though it were untapped"; appended for wire compatibility.
+    CanBlockAsThoughUntapped,
 }
 
 impl StaticAbilityId {
@@ -487,6 +489,7 @@ impl StaticAbilityId {
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanAttackSourceEachCombat
+            | CanBlockAsThoughUntapped
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater

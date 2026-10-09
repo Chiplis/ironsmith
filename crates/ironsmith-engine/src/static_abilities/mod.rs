@@ -2948,6 +2948,10 @@ impl StaticAbility {
         Self::new(MaxCreaturesCanAttackYouEachCombat::new(maximum))
     }
 
+    pub fn can_block_as_though_untapped() -> Self {
+        Self::new(CanBlockAsThoughUntapped)
+    }
+
     pub fn max_attackers_can_attack_source_each_combat(maximum: usize) -> Self {
         Self::new(MaxCreaturesCanAttackSourceEachCombat::new(maximum))
     }

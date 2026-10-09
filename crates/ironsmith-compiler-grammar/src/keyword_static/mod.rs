@@ -44,6 +44,8 @@ mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
 mod first_spell_permissions;
+mod block_as_though_untapped;
+pub use block_as_though_untapped::parse_can_block_as_though_untapped_line;
 pub use first_spell_permissions::parse_first_spell_flash_permission_line;
 pub use each_player_land_plays::parse_each_player_additional_land_play_line;
 pub use devour_quality::parse_devour_quality_line;
@@ -788,6 +790,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "your"),
+        ],
+        "parse_can_block_as_though_untapped_line" => vec![
+            StaticAbilityLineHeadHint::Single("tapped"),
+            StaticAbilityLineHeadHint::Pair("tapped", "creatures"),
         ],
         "parse_first_spell_flash_permission_line" => vec![
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1739,6 +1745,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_source_can_block_shadow_as_though_no_shadow_line
         ),
+        single_static_ability_ast_passthrough_rule!(parse_can_block_as_though_untapped_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_to_and_by_attached_line
         ),

@@ -875,6 +875,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanBlockEachCombat(usize),
     /// "No more than N creatures can attack this planeswalker each combat."
     MaxCreaturesCanAttackSourceEachCombat(usize),
+    /// "can block as though it were untapped" (CR 509.1a).
+    CanBlockAsThoughUntapped,
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
     Enchant(crate::AuraAttachmentFilter),
@@ -2358,6 +2360,9 @@ where
             }
             StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum)
+            }
+            StaticAbilityPayload::CanBlockAsThoughUntapped => {
+                StaticAbilityPayload::CanBlockAsThoughUntapped
             }
             StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display)
@@ -4229,6 +4234,14 @@ impl<
         match self.payload {
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
             _ => None,
+        }
+    }
+
+    pub fn can_block_as_though_untapped() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAsThoughUntapped),
+            label: "This creature can block as though it were untapped".to_string(),
+            payload: StaticAbilityPayload::CanBlockAsThoughUntapped,
         }
     }
 
