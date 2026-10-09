@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Thran Turbine",
+    "oracle_id": "6c31f06d-bf02-48a7-9c17-be2a226b8eae",
+    "text": "Mana cost: {1}\nType: Artifact\nAt the beginning of your upkeep, you may add {C}{C}. This mana can't be spent to cast spells."
+  }
+]

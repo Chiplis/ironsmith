@@ -597,7 +597,11 @@ fn parse_cant_be_spent_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsage
     let start = parse_any_prefix_word_count(&words, PREFIXES)?;
     (start < words.len()).then_some(())?;
     let spec = token_slice_for_words(tokens, &view, start, words.len())?;
-    let forbidden_filter = if matches_any_exact_tokens(
+    // "This mana can't be spent to cast spells." (Thran Turbine): no spell at
+    // all; abilities and other costs may still use it (CR 106.6).
+    let forbidden_filter = if matches_any_exact_tokens(spec, &[&["spells"], &["a", "spell"]]) {
+        ObjectFilter::default()
+    } else if matches_any_exact_tokens(
         spec,
         &[
             &["a", "nonartifact", "spell"],
