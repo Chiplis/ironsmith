@@ -88,5 +88,85 @@
     "name": "Thran Power Suit",
     "oracle_id": "3952c288-5633-4e40-abe6-18940d079644",
     "text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 for each Aura and Equipment attached to it and has ward {2}. (Whenever equipped creature becomes the target of a spell or ability an opponent controls, counter it unless that player pays {2}.)\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Burden of Proof",
+    "oracle_id": "d1767573-713d-4f63-a09d-e94150655093",
+    "text": "Mana cost: {1}{U}\nType: Enchantment — Aura\nFirst printed set: Murders at Karlov Manor\nFlash\nEnchant creature\nEnchanted creature gets +2/+2 as long as it's a Detective you control. Otherwise, it has base power and toughness 1/1 and can't block Detectives."
+  },
+  {
+    "name": "Cairn Wanderer",
+    "oracle_id": "a549d54f-2640-455c-8a93-bef4df2f9e8b",
+    "text": "Mana cost: {4}{B}\nType: Creature — Shapeshifter\nFirst printed set: Lorwyn\nPower/Toughness: 4/4\nChangeling (This card is every creature type.)\nAs long as a creature card with flying is in a graveyard, this creature has flying. The same is true for fear, first strike, double strike, deathtouch, haste, landwalk, lifelink, protection, reach, trample, shroud, and vigilance."
+  },
+  {
+    "name": "Clutch of Undeath",
+    "oracle_id": "5a68c925-db79-44f2-a5c1-5a607298f6cf",
+    "text": "Mana cost: {3}{B}{B}\nType: Enchantment — Aura\nFirst printed set: Scourge\nEnchant creature\nEnchanted creature gets +3/+3 as long as it's a Zombie. Otherwise, it gets -3/-3."
+  },
+  {
+    "name": "Dancer's Chakrams",
+    "oracle_id": "7465d02f-3eee-483c-8de3-404381aa21eb",
+    "text": "Mana cost: {3}{W}\nType: Artifact — Equipment\nFirst printed set: Final Fantasy Commander\nJob select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has lifelink and \"Other commanders you control get +2/+2 and have lifelink,\" and is a Performer in addition to its other types.\nKrishna — Equip {3}"
+  },
+  {
+    "name": "Death-Mask Duplicant",
+    "oracle_id": "8bdaa661-861b-4f91-83ea-467e34e11cc3",
+    "text": "Mana cost: {7}\nType: Artifact Creature — Shapeshifter\nFirst printed set: Darksteel\nPower/Toughness: 5/5\nImprint — {1}: Exile target creature card from your graveyard.\nAs long as a card exiled with this creature has flying, this creature has flying. The same is true for fear, first strike, double strike, haste, landwalk, protection, and trample."
+  },
+  {
+    "name": "Escaped Shapeshifter",
+    "oracle_id": "17f2342b-4dd8-445a-a7c1-4a15a5688294",
+    "text": "Mana cost: {3}{U}{U}\nType: Creature — Shapeshifter\nFirst printed set: Tempest\nPower/Toughness: 3/4\nAs long as an opponent controls a creature with flying not named Escaped Shapeshifter, this creature has flying. The same is true for first strike, trample, and protection from any color."
+  },
+  {
+    "name": "Evolved Spinoderm",
+    "oracle_id": "482ec736-7d4a-49c6-a757-e134123329ca",
+    "text": "Mana cost: {2}{G}{G}\nType: Creature — Phyrexian Beast\nFirst printed set: Phyrexia: All Will Be One\nPower/Toughness: 5/5\nThis creature enters with four oil counters on it.\nThis creature has trample as long as it has two or fewer oil counters on it. Otherwise, it has hexproof.\nAt the beginning of your upkeep, remove an oil counter from this creature. Then if it has no oil counters on it, sacrifice it."
+  },
+  {
+    "name": "Gift of Fangs",
+    "oracle_id": "901f0a8f-7462-4970-8d21-265c8c0188e6",
+    "text": "Mana cost: {B}\nType: Enchantment — Aura\nFirst printed set: Innistrad: Crimson Vow\nEnchant creature\nEnchanted creature gets +2/+2 as long as it's a Vampire. Otherwise, it gets -2/-2."
+  },
+  {
+    "name": "Idris, Soul of the TARDIS",
+    "oracle_id": "abb5210f-597c-450d-9239-6253a9136680",
+    "text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Human Incarnation\nFirst printed set: Doctor Who\nPower/Toughness: 3/3\nVanishing 3\nImprint — When Idris enters, exile another artifact you control until Idris leaves the battlefield.\nIdris has all activated and triggered abilities of the exiled card and gets +X/+X, where X is the exiled card's mana value."
+  },
+  {
+    "name": "Nyx Infusion",
+    "oracle_id": "52e3bcc0-0c1f-4846-bf52-4af66b7abd6f",
+    "text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nFirst printed set: Journey into Nyx\nEnchant creature\nEnchanted creature gets +2/+2 as long as it's an enchantment. Otherwise, it gets -2/-2."
+  },
+  {
+    "name": "Phyrexian Boon",
+    "oracle_id": "a18e6468-b8a2-4681-b8fa-223ab5f3061a",
+    "text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nFirst printed set: Alliances\nEnchant creature\nEnchanted creature gets +2/+1 as long as it's black. Otherwise, it gets -1/-2."
+  },
+  {
+    "name": "Rayami, First of the Fallen",
+    "oracle_id": "f196ae91-be5c-461b-a69f-aecb538923b4",
+    "text": "Mana cost: {1}{B}{G}{U}\nType: Legendary Creature — Vampire\nFirst printed set: Commander 2019\nPower/Toughness: 5/4\nIf a nontoken creature would die, exile that card with a blood counter on it instead.\nAs long as an exiled creature card with a blood counter on it has flying, Rayami has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, and vigilance."
+  },
+  {
+    "name": "Relic Axe",
+    "oracle_id": "d851312f-8b4e-4d8e-bfee-c470853be930",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nFirst printed set: Zendikar Rising\nWhen this Equipment enters, attach it to target creature you control.\nEquipped creature gets +1/+1. If it's a Warrior, it gets +2/+1 instead.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Runechanter's Pike",
+    "oracle_id": "2efea460-c3e1-4578-a587-134e13bdf264",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nFirst printed set: Innistrad\nEquipped creature has first strike and gets +X/+0, where X is the number of instant and sorcery cards in your graveyard.\nEquip {2}"
+  },
+  {
+    "name": "Sea Legs",
+    "oracle_id": "2e66dc2f-44f3-44f1-8ed7-7f991b3718be",
+    "text": "Mana cost: {U}\nType: Enchantment — Aura\nFirst printed set: Rivals of Ixalan\nFlash\nEnchant creature\nEnchanted creature gets +0/+2 as long as it's a Pirate. Otherwise, it gets -2/-0."
+  },
+  {
+    "name": "Serra's Boon",
+    "oracle_id": "1521f26b-9972-4e95-9e14-3ccbb078a1c8",
+    "text": "Mana cost: {2}{W}\nType: Enchantment — Aura\nFirst printed set: Planar Chaos\nEnchant creature\nEnchanted creature gets +1/+2 as long as it's white. Otherwise, it gets -2/-1."
   }
 ]

@@ -2606,6 +2606,16 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
         return Ok(Some(abilities));
     }
+    // A quoted attached grant has its own complete tail grammar, including
+    // type additions. Keep its quoted body out of the sibling-clause splitter.
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        if let Some(abilities) = parse_anthem_with_trailing_segments_line(tokens)? {
+            return Ok(Some(abilities));
+        }
+        if let Some(abilities) = parse_attached_gets_and_has_ability_line(tokens)? {
+            return Ok(Some(abilities));
+        }
+    }
     // Complete sibling stat/grant clauses must own the line before a
     // characteristic-only or attached-continuation probe can reject a tail.
     if let Some(abilities) = parse_composed_anthem_effects_line(tokens)? {
@@ -4431,6 +4441,15 @@ pub fn parse_composed_anthem_effects_line(
 
     let mut comma_segments = anthem_grant_grammar::split_trailing_grant_segments(tokens);
     if comma_segments.len() < 2 {
+        return Ok(None);
+    }
+    // Establish ownership before invoking any committed segment reader.
+    // Commas in conditions, keyword enumerations, and a lone where-X
+    // definition do not create omitted-subject sibling predicates.
+    if !comma_segments.iter().skip(1).any(|segment| {
+        keyword_static_lines::parse_composed_anthem_segment_tokens(segment)
+            .is_some_and(|segment| segment.omitted_subject)
+    }) {
         return Ok(None);
     }
 

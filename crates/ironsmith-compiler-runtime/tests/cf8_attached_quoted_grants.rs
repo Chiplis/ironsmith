@@ -143,3 +143,80 @@ fn source_linked_permission_allows_only_its_exiled_cards_while_source_remains() 
         assert!(!can_cast(&game, linked));
     }
 }
+
+fn full_composition_fixture(name: &str) -> serde_json::Value {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/cf8_attached_quoted_grants.json.fixture"
+    )).unwrap();
+    rows.into_iter().find(|row| row["name"] == name).unwrap()
+}
+
+#[test]
+fn conditional_attached_stats_keep_both_branches() {
+    use ironsmith::{GameState, PlayerId, Zone};
+    let player = PlayerId(0);
+    let row = full_composition_fixture("Clutch of Undeath");
+    for aura in support::definitions_for_text("Clutch of Undeath", row["text"].as_str().unwrap()) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let human = ironsmith_compiler_runtime::compile_to_runtime_definition("Human", "Type: Creature — Human\nPower/Toughness: 5/5", false).unwrap();
+        let zombie = ironsmith_compiler_runtime::compile_to_runtime_definition("Zombie", "Type: Creature — Zombie\nPower/Toughness: 5/5", false).unwrap();
+        let human = game.create_object_from_definition(&human, player, Zone::Battlefield);
+        let zombie = game.create_object_from_definition(&zombie, player, Zone::Battlefield);
+        let aura = game.create_object_from_definition(&aura, player, Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(human)));
+        assert_eq!(game.current_power(human), Some(2));
+        assert_eq!(game.current_toughness(human), Some(2));
+        assert!(game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(zombie)));
+        assert_eq!(game.current_power(zombie), Some(8));
+        assert_eq!(game.current_toughness(zombie), Some(8));
+        assert_eq!(game.current_power(human), Some(5));
+    }
+}
+
+#[test]
+fn a_single_x_definition_stays_with_its_keyword_and_stat_predicates() {
+    use ironsmith::{GameState, PlayerId, Zone};
+    use ironsmith::static_abilities::StaticAbilityId;
+    let player = PlayerId(0);
+    let opponent = PlayerId(1);
+    let row = full_composition_fixture("Runechanter's Pike");
+    for pike in support::definitions_for_text("Runechanter's Pike", row["text"].as_str().unwrap()) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let bear = ironsmith_compiler_runtime::compile_to_runtime_definition("Bear", "Type: Creature — Bear\nPower/Toughness: 2/2", false).unwrap();
+        let instant = ironsmith_compiler_runtime::compile_to_runtime_definition("Instant", "Type: Instant\nDraw a card.", false).unwrap();
+        let sorcery = ironsmith_compiler_runtime::compile_to_runtime_definition("Sorcery", "Type: Sorcery\nDraw a card.", false).unwrap();
+        let host = game.create_object_from_definition(&bear, player, Zone::Battlefield);
+        let pike = game.create_object_from_definition(&pike, player, Zone::Battlefield);
+        let first = game.create_object_from_definition(&instant, player, Zone::Graveyard);
+        game.create_object_from_definition(&sorcery, player, Zone::Graveyard);
+        game.create_object_from_definition(&bear, player, Zone::Graveyard);
+        game.create_object_from_definition(&instant, opponent, Zone::Graveyard);
+        assert!(game.attach_object_to_target(pike, ironsmith::object::AttachmentTarget::Object(host)));
+        assert_eq!(game.current_power(host), Some(4));
+        assert_eq!(game.current_toughness(host), Some(2));
+        assert!(game.calculated_characteristics(host).unwrap().static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::FirstStrike));
+        game.move_object_by_game_rule(first, Zone::Exile).unwrap();
+        assert_eq!(game.current_power(host), Some(3));
+    }
+}
+
+#[test]
+fn keyword_sharing_keeps_the_full_graveyard_condition() {
+    use ironsmith::{GameState, PlayerId, Zone};
+    use ironsmith::static_abilities::StaticAbilityId;
+    let player = PlayerId(0);
+    let opponent = PlayerId(1);
+    let row = full_composition_fixture("Cairn Wanderer");
+    for wanderer in support::definitions_for_text("Cairn Wanderer", row["text"].as_str().unwrap()) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let bird = ironsmith_compiler_runtime::compile_to_runtime_definition("Bird", "Type: Creature — Bird\nPower/Toughness: 2/2\nFlying", false).unwrap();
+        let wanderer = game.create_object_from_definition(&wanderer, player, Zone::Battlefield);
+        let has_flying = |game: &GameState| game.calculated_characteristics(wanderer).unwrap().static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Flying);
+        game.create_object_from_definition(&bird, player, Zone::Battlefield);
+        assert!(!has_flying(&game));
+        let graveyard_bird = game.create_object_from_definition(&bird, opponent, Zone::Graveyard);
+        assert!(has_flying(&game));
+        game.move_object_by_game_rule(graveyard_bird, Zone::Exile).unwrap();
+        assert!(!has_flying(&game));
+    }
+}
