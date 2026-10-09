@@ -25,6 +25,8 @@ pub enum RandomActionAst {
         count: u32,
         sides: u32,
         surface: Option<DieSurface>,
+        /// "... and ignore the lower roll" instead of choosing one result.
+        ignore_lower: bool,
     },
     /// "Choose 1, 2, or 3 at random": the result is the chosen number.
     ChooseNumberAtRandom {

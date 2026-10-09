@@ -2021,7 +2021,8 @@ where
                 payload.count,
                 payload.sides,
                 payload.die_text.clone(),
-            ),
+            )
+            .with_ignore_lower(payload.ignore_lower),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::EmitGiftGivenEffect>(&effect) {

@@ -5036,6 +5036,26 @@ impl EffectAst {
                 count,
                 sides,
                 surface,
+                ignore_lower: false,
+            }),
+        )
+    }
+
+    /// "Roll two d20 and ignore the lower roll."
+    pub fn subject_verb_roll_dice_ignore_lower_with_surface(
+        player: PlayerAst,
+        count: u32,
+        sides: u32,
+        surface: Option<DieSurface>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult {
+                count,
+                sides,
+                surface,
+                ignore_lower: true,
             }),
         )
     }

@@ -49,6 +49,23 @@ pub(super) fn run_sentence_parse_rules_lexed(
                     ],
                 ));
             }
+            SentencePreludeShape::RollDiceIgnoreLower {
+                count,
+                sides,
+                surface,
+            } => {
+                return Ok((
+                    "roll_dice_ignore_lower",
+                    vec![
+                        EffectAst::subject_verb_roll_dice_ignore_lower_with_surface(
+                            crate::cards::builders::PlayerAst::Implicit,
+                            count,
+                            sides,
+                            Some(surface),
+                        ),
+                    ],
+                ));
+            }
         }
     }
 

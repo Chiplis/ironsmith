@@ -440,11 +440,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 count,
                 sides,
                 surface,
+                ignore_lower,
             }) => f
                 .debug_struct("RollDiceChooseResult")
                 .field("count", count)
                 .field("sides", sides)
                 .field("surface", surface)
+                .field("ignore_lower", ignore_lower)
                 .finish(),
             Self::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary) => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")

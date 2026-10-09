@@ -2469,6 +2469,10 @@ pub struct RollDiceChooseResultEffect {
     pub count: u32,
     pub sides: u32,
     pub die_text: Option<String>,
+    /// "... and ignore the lower roll": the result is the highest roll,
+    /// with no choice (Berserker's Frenzy).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ignore_lower: bool,
 }
 
 impl RollDiceChooseResultEffect {
@@ -2478,6 +2482,7 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text: None,
+            ignore_lower: false,
         }
     }
 
@@ -2492,7 +2497,14 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text,
+            ignore_lower: false,
         }
+    }
+
+    /// Keep the highest roll instead of choosing one.
+    pub fn with_ignore_lower(mut self, ignore_lower: bool) -> Self {
+        self.ignore_lower = ignore_lower;
+        self
     }
 }
 

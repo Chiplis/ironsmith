@@ -1205,12 +1205,14 @@ pub(super) fn compile_subject_verb_early(
             count,
             sides,
             surface,
+            ignore_lower,
         }) => compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-            Effect::roll_dice_choose_result_with_surface(
+            Effect::roll_dice_choose_result_with_surface_ignoring_lower(
                 *count,
                 *sides,
                 subject.into_player_filter(),
                 *surface,
+                *ignore_lower,
             )
         }),
         SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary) => {

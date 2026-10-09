@@ -6991,6 +6991,15 @@
             2 => "two".to_string(),
             n => n.to_string(),
         };
+        if roll_dice.ignore_lower {
+            if player == "you" {
+                return format!("Roll {count} {die_text} and ignore the lower roll");
+            }
+            return format!(
+                "{player} {} {count} {die_text} and ignores the lower roll",
+                player_verb(&player, "roll", "rolls"),
+            );
+        }
         if player == "you" {
             return format!("Roll {count} {die_text} and choose one result");
         }
