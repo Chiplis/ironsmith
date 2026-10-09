@@ -1807,6 +1807,21 @@ impl StaticAbilityKind for CostReduction {
             && intersection.against_source_chosen_colors
         {
             line.push_str(" for each of the chosen colors it is");
+        } else if let Some(intersection) = &self.characteristic_intersection
+            && intersection.count_matching_objects
+            && intersection.characteristic == crate::ObjectCharacteristic::Name
+        {
+            let comparison = intersection
+                .comparison_surface
+                .clone()
+                .unwrap_or_else(|| intersection.comparison.description());
+            let (noun, location) = match comparison.split_once(" in ") {
+                Some((noun, location)) => (noun.to_string(), format!(" in {location}")),
+                None => (comparison, String::new()),
+            };
+            line.push_str(&format!(
+                " for each {noun} with the same name as that spell{location}"
+            ));
         } else if let Some(intersection) = &self.characteristic_intersection {
             let characteristic = intersection.characteristic.sharing_phrase();
             let characteristic = characteristic.strip_prefix("a ").unwrap_or(&characteristic);

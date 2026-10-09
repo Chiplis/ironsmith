@@ -234,6 +234,7 @@ const SHAPES: &[Shape] = &[
     creatures_attacked_this_turn,
     card_exiled_with_it,
     source_kicked_twice,
+    same_name_object_exists,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -1119,4 +1120,47 @@ fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     Some(at_least(Value::KickCount, 2))
+}
+
+/// "if another permanent with the same name is on the battlefield" (Winnow),
+/// "if a card with the same name is in a graveyard or a nontoken permanent
+/// with the same name is on the battlefield" (Bazaar of Wonders): an object
+/// in that zone shares a name with the referenced object; "another" excludes
+/// the referenced object itself.
+fn same_name_object_exists(words: &[&str]) -> Option<PredicateAst> {
+    let (another, rest) = match words {
+        ["another", rest @ ..] => (true, rest),
+        ["a" | "an", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let marker = rest
+        .windows(5)
+        .position(|window| window == ["with", "the", "same", "name", "is"])?;
+    let noun = &rest[..marker];
+    if noun.is_empty() {
+        return None;
+    }
+    let zone = match &rest[marker + 5..] {
+        ["on", "the", "battlefield"] => Zone::Battlefield,
+        ["in", "a" | "any", "graveyard"] => Zone::Graveyard,
+        _ => return None,
+    };
+    let tokens = crate::lexer::synthetic_word_tokens(noun.iter().copied());
+    let mut filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).ok()?;
+    filter.zone = Some(zone);
+    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    if another {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    }
+    Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some(words.join(" ")),
+    })
 }
