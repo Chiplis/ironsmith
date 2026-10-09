@@ -257,13 +257,21 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     "a partial next-time prevention shield has no prevented-damage rider".into(),
                 ));
             }
-            let replacement_action = match self.portion {
+            let replacement_action = match &self.portion {
                 ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown => {
                     ReplacementAction::PreventHalfDamage { round_up: false }
                 }
                 ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining) => {
                     ReplacementAction::PreventDamageByRule(
-                        ironsmith_core::StaticDamagePreventionAmount::AllBut(remaining),
+                        ironsmith_core::StaticDamagePreventionAmount::AllBut(*remaining),
+                    )
+                }
+                // The amount is fixed as the shield is created (CR 615.7):
+                // "Prevent X of that damage" names X's value now.
+                ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                    let amount = crate::effects::helpers::resolve_value(game, amount, ctx)?.max(0);
+                    ReplacementAction::PreventDamageByRule(
+                        ironsmith_core::StaticDamagePreventionAmount::Amount(Value::Fixed(amount)),
                     )
                 }
                 ironsmith_core::NextTimeDamagePreventionPortion::All => ReplacementAction::Prevent,

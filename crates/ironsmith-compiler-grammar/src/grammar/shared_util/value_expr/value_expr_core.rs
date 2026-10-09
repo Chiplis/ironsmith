@@ -279,6 +279,19 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     {
         return Some((Value::EventValue(EventValueSpec::Amount), *used));
     }
+    // "the amount of mana that player/they paid this way": the published
+    // amount of the preceding "pay any amount of mana" payment, read through
+    // the ordinary this-way result binding (per player inside a player loop).
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["the", "amount", "of", "mana", "that", "player", "paid", "this", "way"],
+            &["the", "amount", "of", "mana", "they", "paid", "this", "way"],
+            &["the", "amount", "of", "mana", "you", "paid", "this", "way"],
+        ],
+    ) {
+        return Some((Value::EventValue(EventValueSpec::Amount), used));
+    }
     // The object an additional cost chose or revealed ("the revealed card's
     // power", "the power of the creature you chose or the card you
     // revealed"); it resolves through the spell's additional-cost export.

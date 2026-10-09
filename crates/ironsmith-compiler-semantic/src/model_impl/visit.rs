@@ -85,6 +85,10 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::CollectManaPayments { effects: $effects }
+            | EffectAst::BindX {
+                effects: $effects,
+                ..
+            }
             | EffectAst::Sequence { effects: $effects }
             | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
@@ -276,6 +280,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::CollectManaPayments { .. } => {}
+        EffectAst::BindX { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}

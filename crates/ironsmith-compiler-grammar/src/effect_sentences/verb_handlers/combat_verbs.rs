@@ -549,6 +549,40 @@ pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexTok
     )
 }
 
+/// "that player and each creature that player controls" (Cerebral
+/// Eruption): a named player recipient plus a quantified object set. The
+/// player half is an ordinary player reference or target; the object half is
+/// a battlefield filter.
+pub(crate) fn parse_player_and_each_object_recipients(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<(TargetAst, ObjectFilter)>, CardTextError> {
+    let Some((and_idx, (), after)) = crate::grammar::primitives::find_prefix(target_tokens, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    if and_idx == 0
+        || after.is_empty()
+        || after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["player", "players", "opponent", "opponents"]))
+    {
+        return Ok(None);
+    }
+    let Ok(player @ (TargetAst::Player(..) | TargetAst::PlayerOrPlaneswalker(..))) =
+        parse_target_phrase(&target_tokens[..and_idx])
+    else {
+        return Ok(None);
+    };
+    let Ok(mut filter) = parse_object_filter(after, false) else {
+        return Ok(None);
+    };
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some((player, filter)))
+}
+
 /// "each creature and each planeswalker": two independently quantified
 /// object sets damaged by one simultaneous event. Player sets ("and each
 /// player/opponent") are owned by the player-damage readings instead.

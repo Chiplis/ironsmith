@@ -1736,7 +1736,8 @@ mod leading_result_prefix_regressions;
 mod structure_choice_programs;
 use structure_choice_programs::parse_modal_header_choose_spec_inner;
 pub use structure_choice_programs::{
-    parse_modal_header_choose_spec, split_trailing_modal_gate_clause,
+    parse_modal_header_choose_spec, parse_opponent_modal_choose_spec,
+    split_trailing_modal_gate_clause,
 };
 #[path = "structure/structure_trigger.rs"]
 mod structure_trigger_programs;

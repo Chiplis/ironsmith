@@ -93,6 +93,9 @@ pub struct ModalSpec {
     pub distinct_player_targets_per_mode: bool,
     /// Alternate range enabled by a later optional-cost choice under CR 601.4.
     pub conditional_mode_range: Option<crate::effect::ConditionalModeRange>,
+    /// The players one of whom chooses the modes while the spell is cast,
+    /// rather than its caster ("An opponent chooses one —", CR 700.2).
+    pub cast_chooser: Option<crate::target::PlayerFilter>,
 }
 
 /// The supported runtime extension categories for effects.

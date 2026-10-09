@@ -2027,6 +2027,12 @@ pub struct ChooseModeEffect<E> {
     /// the token mode is used.
     #[cfg_attr(feature = "serde", serde(default))]
     pub endure: bool,
+    /// The players one of whom chooses the modes while the spell is cast
+    /// ("An opponent chooses one —", CR 700.2, 601.2b). The caster picks which
+    /// one when several are eligible; that player is the spell's chosen
+    /// player, so its modes' "that player" names them.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cast_chooser: Option<PlayerFilter>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2056,7 +2062,14 @@ impl<E> ChooseModeEffect<E> {
             conditional_mode_range: None,
             presentation_label: None,
             endure: false,
+            cast_chooser: None,
         }
+    }
+
+    /// One of these players chooses the modes as the spell is cast.
+    pub fn with_cast_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.cast_chooser = Some(chooser);
+        self
     }
 
     /// Mark this two-mode choice as the endure keyword action (CR 701.63a).

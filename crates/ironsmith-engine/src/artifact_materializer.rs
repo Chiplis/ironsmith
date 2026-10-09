@@ -306,6 +306,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CollectManaPaymentsEffect" => {
             decode_as::<T, ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(effect)
         }
+        "BindXValueEffect" => {
+            decode_as::<T, ironsmith_core::BindXValueEffect<wire::WireEffect>>(effect)
+        }
         "ForPlayersEffect" => {
             decode_as::<T, ironsmith_core::ForPlayersEffect<wire::WireEffect>>(effect)
         }
@@ -1717,6 +1720,15 @@ pub fn encode_runtime_effect(
         );
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::BindXValueEffect>() {
+        let converted = ironsmith_core::BindXValueEffect::new(
+            payload.value.clone(),
+            payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        );
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("BindXValueEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     if let Some(payload) = effect.downcast_ref::<crate::effects::SequenceEffect>() {

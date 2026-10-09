@@ -1944,6 +1944,33 @@ pub fn parse_deal_damage_equal_to_power_clause(
             } else {
                 None
             };
+            // "to that player and each creature that player controls"
+            // (Cerebral Eruption): the named player and the object set.
+            if union_target.is_none()
+                && let Some((player, mut filter)) =
+                    crate::effect_sentences::parse_player_and_each_object_recipients(target_tokens)?
+            {
+                filter.set_plural_object_noun_surface(true);
+                let pair = vec![
+                    EffectAst::subject_verb_damage_with_source(
+                        source.clone(),
+                        amount.clone(),
+                        player,
+                    ),
+                    EffectAst::subject_verb_damage_with_source(
+                        source,
+                        amount,
+                        TargetAst::Object(filter, None, span_from_tokens(target_tokens)),
+                    ),
+                ];
+                return Ok(Some(match iterated_source_filter {
+                    Some(filter) => EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                        filter,
+                        effects: pair,
+                    }),
+                    None => EffectAst::Sequence { effects: pair },
+                }));
+            }
             let mut target = match union_target {
                 Some(target) => target,
                 None => parse_target_phrase(target_tokens)?,

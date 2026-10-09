@@ -35,6 +35,7 @@ pub use ironsmith_core::{
     ForEachObject as CoreForEachObject,
     ForEachObjectCorrelatedResultEffect as CoreForEachObjectCorrelatedResultEffect,
     ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
+    BindXValueEffect,
     MustAttackPlayerThisTurnEffect,
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,

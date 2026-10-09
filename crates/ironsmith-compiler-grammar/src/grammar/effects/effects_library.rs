@@ -64,6 +64,17 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     };
 
+    // "search ... and reveal them, then roll a d20" (Druid of the Emerald
+    // Grove): a trailing random-result action is its own instruction, which
+    // the search program would otherwise drop. Leave the sentence to the
+    // comma-then chain, which reads each part.
+    if head_split.search_tokens.windows(3).any(|window| {
+        window[0].is_comma()
+            && window[1].is_word("then")
+            && window[2].is_any_word(&["roll", "rolls", "flip", "flips"])
+    }) {
+        return Ok(None);
+    }
     // A leading condition belongs to the complete search program. Let the
     // conditional grammar claim it rather than treating it as an actor.
     let leading_words = crate::lexer::token_word_refs(head_split.subject_tokens);

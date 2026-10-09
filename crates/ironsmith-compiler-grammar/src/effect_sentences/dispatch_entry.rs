@@ -6214,6 +6214,11 @@ pub fn parse_effect_sentences_lexed(
     if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
         return Ok(effects);
     }
+    // A trailing die table whose rows only fix X owns the sentences between
+    // the roll and the table (Wand of Wonder).
+    if let Some(effects) = super::die_x_table::parse(tokens)? {
+        return Ok(effects);
+    }
     crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     super::pair_procedure::validate_discard_replacements(tokens)?;
     super::local_self_replacement::validate(tokens)?;

@@ -6367,6 +6367,15 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
+    if let Some(bind) =
+        effect.downcast_ref::<crate::effects::BindXValueEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(
+            &bind.effects,
+            iterated_player_bound,
+            context,
+        );
+    }
     if let Some(for_players) =
         effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
     {

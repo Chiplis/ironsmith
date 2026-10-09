@@ -710,6 +710,17 @@ fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
                 EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::IfResult {
                     predicate: crate::IfResultPredicate::DieValue(_), ..
                 }) => {}
+                // "Roll a d20 and subtract ... . If the result is 0 or less,
+                // discard your hand." (The Deck of Many Things): a condition
+                // that only reads the roll's own (modified) result is part of
+                // the roll's result handling, like a numeric row.
+                EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::ValueComparison {
+                        left: crate::effect::Value::PendingPriorEffectMetric(query),
+                        ..
+                    },
+                    ..
+                }) if query.action == Some(ironsmith_core::PriorEffectAction::Rolled) => {}
                 other => return Some(other),
             }
         }
@@ -745,7 +756,13 @@ fn is_trigger_result_followup_line(line: &PreprocessedLine, owner_tokens: &[Owne
         // N+ is also the printed Station striation syntax. A resolving
         // ability may consume a numeric row only when it owns a local roll;
         // unrelated activations and triggers must leave striations alone.
-        return has_local_die_result_owner(owner_tokens);
+        // A row that only fixes X belongs to a roll followed by the
+        // sentences that read X (Wand of Wonder).
+        return has_local_die_result_owner(owner_tokens)
+            || (crate::effect_sentences::die_x_table::die_x_row(&line.tokens).is_some()
+                && crate::effect_sentences::die_x_table::owner_rolls_before_x_sentences(
+                    owner_tokens,
+                ));
     }
     if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
         return true;

@@ -755,14 +755,17 @@ impl<E> PreventAllDamageToTargetEffect<E> {
 /// How much of the next matching damage event a one-shot prevention shield
 /// prevents (CR 615.1): all of it, half of it rounded down ("prevent half
 /// that damage, rounded down", Dark Sphere), or all but a fixed amount
-/// ("prevent all but 1 of that damage", Forcefield).
+/// ("prevent all but 1 of that damage", Forcefield), or exactly an amount
+/// ("Prevent X of that damage, where X is the amount of mana that player
+/// paid this way", Errant Minion), resolved when the shield is created.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum NextTimeDamagePreventionPortion {
     #[default]
     All,
     HalfRoundedDown,
     AllBut(u32),
+    Exactly(Value),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5386,6 +5389,22 @@ pub struct CollectManaPaymentsEffect<E> {
 impl<E> CollectManaPaymentsEffect<E> {
     pub fn new(effects: Vec<E>) -> Self { Self { effects } }
 }
+
+/// A die-result table row that fixes X ("1—9 | X is one.", Wand of Wonder):
+/// run `effects` with X equal to `value`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BindXValueEffect<E> {
+    pub value: Value,
+    pub effects: Vec<E>,
+}
+
+impl<E> BindXValueEffect<E> {
+    pub fn new(value: Value, effects: Vec<E>) -> Self {
+        Self { value, effects }
+    }
+}
+
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

@@ -512,6 +512,12 @@ fn normalize_modal_ast(
             .additional_mana_cost
             .as_ref()
             .is_some_and(crate::mana::ManaCost::has_x);
+        // "An opponent chooses one — • ... that player controls": the
+        // opponent who chose is the spell's chosen player (CR 700.2), the
+        // antecedent of each mode's "that player".
+        if modal.header.cast_chooser.is_some() && mode_imports.last_player_filter.is_none() {
+            mode_imports.last_player_filter = Some(crate::target::PlayerFilter::ChosenPlayer);
+        }
         // A triggered mode's pronouns ("• Put a +1/+1 counter on that
         // creature", "• It gains double strike") name the trigger's event
         // object exactly like an unmoded trigger body does.

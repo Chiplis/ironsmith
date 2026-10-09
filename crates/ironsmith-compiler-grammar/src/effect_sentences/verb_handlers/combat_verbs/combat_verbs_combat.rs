@@ -106,6 +106,16 @@ pub fn parse_deal_damage_equal_to_clause(
         let filter = parse_damage_each_filter(&shape.target_tokens[1..])?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
+    // "to that player and each creature that player controls": the named
+    // player and the object set are both dealt the damage.
+    if let Some((player, filter)) = parse_player_and_each_object_recipients(shape.target_tokens)? {
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_damage(amount.clone(), player),
+                EffectAst::subject_verb_damage_each(amount, filter),
+            ],
+        }));
+    }
     let target = preserve_optional_single_damage_target(
         parse_target_phrase(shape.target_tokens)?,
         shape.target_tokens,

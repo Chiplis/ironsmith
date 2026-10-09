@@ -288,6 +288,7 @@ where
         converted.conditional_mode_range = payload.conditional_mode_range.clone();
         converted.presentation_label = payload.presentation_label.clone();
         converted.endure = payload.endure;
+        converted.cast_chooser = payload.cast_chooser.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -1034,6 +1035,14 @@ where
             convert_effects(payload.effects.iter().cloned(), hooks)?,
         )));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::BindXValueEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::BindXValueEffect::new(
+            payload.value.clone(),
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ForPlayersEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
         let mut converted = if payload.starting_with_controller {
@@ -1395,7 +1404,7 @@ where
         if let Some(filter) = &payload.reflect_source_filter {
             effect = effect.reflecting_only_from_source_matching(filter.clone());
         }
-        effect = effect.with_portion(payload.portion);
+        effect = effect.with_portion(payload.portion.clone());
         if payload.combat_only {
             effect = effect.combat_damage_only();
         }

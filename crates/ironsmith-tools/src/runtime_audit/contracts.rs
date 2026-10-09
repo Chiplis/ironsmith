@@ -604,6 +604,7 @@ impl Auditor {
             }
             "TaggedEffect"
             | "CollectManaPaymentsEffect"
+            | "BindXValueEffect"
             | "SequenceEffect"
             | "ManaRetainedEffect"
             | "ExecuteWithSourceEffect" => {

@@ -5179,6 +5179,24 @@ fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
             if state
                 .pending_cast
                 .as_ref()
+                .is_some_and(|pending| pending.stage == CastStage::ChoosingModeChooser)
+            {
+                let Some(choice) = result.first().copied() else {
+                    return Err(GameLoopError::InvalidState(
+                        "mode chooser selection requires one player".to_string(),
+                    ));
+                };
+                return apply_mode_chooser_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    choice,
+                    decision_maker,
+                );
+            }
+            if state
+                .pending_cast
+                .as_ref()
                 .is_some_and(|pending| pending.stage == CastStage::ChoosingTargetChooser)
                 || state
                     .pending_activation

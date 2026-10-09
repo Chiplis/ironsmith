@@ -11,6 +11,11 @@ pub enum GrantActionAst {
         allow_colorless: bool,
         allow_artifacts: bool,
         choose_card_type: bool,
+        /// "you and each permanent you control gain protection from the
+        /// color of your choice" (Faith's Shield): a quantified object set
+        /// that gains the same chosen protection alongside `target`. One
+        /// choice covers both recipients.
+        also_each: Option<ObjectFilter>,
     },
     GrantPlayTaggedUntilEndOfTurn {
         tag: TagRef,

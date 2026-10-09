@@ -1168,6 +1168,49 @@ pub(super) fn check_modes_or_continue(
     // Check if the spell has modal effects (with context for conditional effects like Akroma's Will)
     if let Some(modal_spec) = extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
     {
+        let mut pending = pending;
+        // CR 700.2 / 601.2b: "An opponent chooses one —" — that opponent
+        // chooses the modes now, as the spell is cast. When several players
+        // are eligible, the caster chooses which one.
+        if let Some(filter) = modal_spec.cast_chooser.as_ref()
+            && pending.mode_chooser.is_none()
+        {
+            let candidates =
+                target_chooser_candidates(game, pending.caster, pending.spell_id, filter);
+            match candidates.as_slice() {
+                [] => {
+                    return Err(GameLoopError::InvalidState(
+                        "No player can choose this spell's modes".to_string(),
+                    ));
+                }
+                [only] => pending.mode_chooser = Some(*only),
+                _ => {
+                    let subject = game
+                        .object(pending.spell_id)
+                        .map(|o| o.name.to_string())
+                        .unwrap_or_else(|| "spell".to_string());
+                    let ctx = mode_chooser_context(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        subject,
+                        &candidates,
+                    );
+                    pending.stage = CastStage::ChoosingModeChooser;
+                    pending.pending_mode_chooser_candidates = candidates;
+                    state.pending_cast = Some(pending);
+                    return Ok(GameProgress::NeedsDecisionCtx(
+                        crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                    ));
+                }
+            }
+        }
+        // The mode chooser is the spell's chosen player: "that player" in
+        // its modes and target restrictions names them from here on.
+        if let Some(chooser) = pending.mode_chooser {
+            game.set_chosen_player(pending.spell_id, chooser);
+        }
+        let mode_player = pending.mode_chooser.unwrap_or(pending.caster);
         let player = pending.caster;
         let source = pending.spell_id;
         let spell_effects = game
@@ -1244,14 +1287,13 @@ pub(super) fn check_modes_or_continue(
             .collect();
 
         // Set up pending cast for modes stage
-        let mut pending = pending;
         pending.stage = CastStage::ChoosingModes;
         state.pending_cast = Some(pending);
 
         Ok(GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::Modes(
                 crate::decisions::context::ModesContext {
-                    player,
+                    player: mode_player,
                     source: Some(source),
                     spell_name,
                     spec: crate::decisions::ModesSpec::new(
@@ -3500,6 +3542,61 @@ fn target_chooser_candidates(
                 .then_some(player.id)
         })
         .collect()
+}
+
+/// "Choose an opponent to choose the mode": the caster picks which eligible
+/// player chooses the spell's modes (CR 700.2).
+fn mode_chooser_context(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    subject: String,
+    candidates: &[PlayerId],
+) -> crate::decisions::context::SelectOptionsContext {
+    let options = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, player)| {
+            crate::decisions::context::SelectableOption::new(
+                index,
+                game.player(*player)
+                    .map(|candidate| candidate.name.to_string())
+                    .unwrap_or_else(|| format!("Player {}", player.0)),
+            )
+        })
+        .collect();
+    crate::decisions::context::SelectOptionsContext::new(
+        controller,
+        Some(source),
+        format!("Choose a player to choose the mode for {subject}"),
+        options,
+        1,
+        1,
+    )
+}
+
+/// Apply the caster's choice of which player chooses the spell's modes, then
+/// ask that player for the modes.
+pub(super) fn apply_mode_chooser_response(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    choice: usize,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let mut pending = state.pending_cast.take().ok_or_else(|| {
+        GameLoopError::InvalidState("No pending cast for a mode chooser".to_string())
+    })?;
+    let Some(chooser) = pending.pending_mode_chooser_candidates.get(choice).copied() else {
+        state.pending_cast = Some(pending);
+        return Err(GameLoopError::InvalidState(
+            "Invalid mode chooser".to_string(),
+        ));
+    };
+    pending.pending_mode_chooser_candidates.clear();
+    pending.mode_chooser = Some(chooser);
+    pending.stage = CastStage::ChoosingModes;
+    check_modes_or_continue(game, trigger_queue, state, pending, decision_maker)
 }
 
 fn target_chooser_context(

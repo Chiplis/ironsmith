@@ -765,6 +765,28 @@ fn classify_boundary<'a>(
         // even when its relative clause contains a finite verb.
         return None;
     }
+    if candidate.operator == CoordinationOperatorAst::And
+        && after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["add", "subtract"]))
+        && !after
+            .get(1)
+            .is_some_and(|token| token.kind == TokenKind::ManaGroup)
+        && before
+            .iter()
+            .rposition(|token| token.is_any_word(&["roll", "rolls"]))
+            .is_some_and(|roll| {
+                crate::grammar::effects::misc_action_shapes::parse_roll_die_prefix_tokens(
+                    &before[roll + 1..],
+                )
+                .is_some_and(|shape| shape.consumed == before.len() - roll - 1)
+            })
+    {
+        // "roll a d20 and add that spell's mana value" (Gale's Redirection):
+        // the arithmetic modifies the roll's result (CR 706); it is not a
+        // separate mana-adding action.
+        return None;
+    }
     if candidate.operator == CoordinationOperatorAst::Or
         && (before.last().is_some_and(|token| token.is_word("tap"))
             && after.first().is_some_and(|token| token.is_word("untap"))

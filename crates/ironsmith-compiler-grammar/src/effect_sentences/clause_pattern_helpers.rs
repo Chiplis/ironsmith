@@ -12,6 +12,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
+use winnow::Parser as _;
 
 use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
@@ -74,6 +75,14 @@ pub fn parse_prevent_next_damage_clause(
         "divided prevention targets",
     )
     .is_ok();
+    if !divided_targets
+        && !shape.protects_you_and_permanents_you_control
+        && !shape.source_of_your_choice
+        && let Some(effect) =
+            parse_prevent_next_damage_each_union(&amount, shape.target_tokens, shape.combat_only)?
+    {
+        return Ok(Some(effect));
+    }
     let target = if divided_targets {
         TargetAst::WithCount(
             Box::new(TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))),
@@ -104,6 +113,96 @@ pub fn parse_prevent_next_damage_clause(
         *divided = divided_targets;
     }
     Ok(Some(effect))
+}
+
+/// "Prevent the next N damage that would be dealt to each creature and each
+/// player this turn" (Kitsune Palliator): every member of every quantified
+/// set gets its own shield of N (CR 615.7). Object arms become a
+/// non-targeted per-object shield; player arms ("each player", "each
+/// opponent") iterate the players.
+fn parse_prevent_next_damage_each_union(
+    amount: &Value,
+    target_tokens: &[OwnedLexToken],
+    combat_only: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let target_tokens = trim_lexed_commas(target_tokens);
+    let Some(after_each) = crate::grammar::primitives::parse_prefix(
+        target_tokens,
+        crate::grammar::primitives::kw("each"),
+    )
+    .map(|(_, rest)| rest) else {
+        return Ok(None);
+    };
+    let Some((and_idx, (), right)) = crate::grammar::primitives::find_prefix(after_each, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    let left = &after_each[..and_idx];
+    if left.is_empty()
+        || right.is_empty()
+        || crate::grammar::primitives::find_prefix(right, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let mut effects = Vec::new();
+    for arm in [left, right] {
+        let Some(effect) = prevent_next_damage_each_arm(amount, arm, combat_only) else {
+            return Ok(None);
+        };
+        effects.push(effect);
+    }
+    Ok(Some(EffectAst::Sequence { effects }))
+}
+
+fn prevent_next_damage_each_arm(
+    amount: &Value,
+    arm: &[OwnedLexToken],
+    combat_only: bool,
+) -> Option<EffectAst> {
+    let span = span_from_tokens(arm);
+    let prevent = |target: TargetAst| {
+        let mut effect = EffectAst::subject_verb_prevent_damage_with_options(
+            amount.clone(),
+            target,
+            Until::EndOfTurn,
+            false,
+            false,
+            Vec::new(),
+        );
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamage { combat_only: slot, .. },
+            ) = &mut subject.action
+        {
+            *slot = combat_only;
+        }
+        effect
+    };
+    let player_arm = crate::grammar::primitives::parse_all(
+        arm,
+        winnow::combinator::alt((
+            crate::grammar::primitives::kw("player").value(false),
+            crate::grammar::primitives::kw("opponent").value(true),
+        )),
+        "prevention player arm",
+    );
+    if let Ok(opponents_only) = player_arm {
+        let effects = vec![prevent(TargetAst::Player(PlayerFilter::IteratedPlayer, span))];
+        return Some(EffectAst::ForEach(if opponents_only {
+            ForEachEffectAst::ForEachOpponent { effects }
+        } else {
+            ForEachEffectAst::ForEachPlayer { effects }
+        }));
+    }
+    let mut filter = parse_object_filter(arm, false).ok()?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Some(prevent(TargetAst::Object(filter, None, None)))
 }
 
 pub fn parse_double_counters_clause(

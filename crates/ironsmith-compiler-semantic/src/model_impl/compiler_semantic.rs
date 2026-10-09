@@ -214,6 +214,9 @@ pub struct ParsedModalHeader {
     /// into every mode while retaining their shared presentation boundary.
     pub common_suffix_effects_ast: Vec<EffectAst>,
     pub modal_gate: Option<ParsedModalGate>,
+    /// "An opponent chooses one —": the players one of whom chooses the
+    /// modes as the spell is cast (CR 700.2).
+    pub cast_chooser: Option<crate::target::PlayerFilter>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

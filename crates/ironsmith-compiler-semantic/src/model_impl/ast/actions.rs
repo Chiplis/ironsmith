@@ -921,14 +921,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_colorless,
                 allow_artifacts,
                 choose_card_type,
-            }) => f
-                .debug_struct("GrantProtectionChoice")
-                .field("target", target)
-                .field("chooser", chooser)
-                .field("allow_colorless", allow_colorless)
-                .field("allow_artifacts", allow_artifacts)
-                .field("choose_card_type", choose_card_type)
-                .finish(),
+                also_each,
+            }) => {
+                let mut debug = f.debug_struct("GrantProtectionChoice");
+                debug
+                    .field("target", target)
+                    .field("chooser", chooser)
+                    .field("allow_colorless", allow_colorless)
+                    .field("allow_artifacts", allow_artifacts)
+                    .field("choose_card_type", choose_card_type);
+                if let Some(also_each) = also_each {
+                    debug.field("also_each", also_each);
+                }
+                debug.finish()
+            }
             Self::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage {
                 duration,
             }) => f

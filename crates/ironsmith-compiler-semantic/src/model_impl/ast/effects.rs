@@ -211,6 +211,12 @@ pub enum EffectAst {
     CollectManaPayments {
         effects: Vec<EffectAst>,
     },
+    /// A die-result row that fixes X for the program it governs ("1—9 | X is
+    /// one."): run `effects` with X equal to `value`.
+    BindX {
+        value: Value,
+        effects: Vec<EffectAst>,
+    },
 }
 
 impl EffectAst {
@@ -447,6 +453,31 @@ impl EffectAst {
                 allow_colorless,
                 allow_artifacts,
                 choose_card_type,
+                also_each: None,
+            }),
+        )
+    }
+
+    /// Protection of one shared choice granted to a recipient and to every
+    /// member of a quantified object set.
+    pub fn subject_verb_grant_protection_choice_with_each(
+        target: TargetAst,
+        also_each: ObjectFilter,
+        chooser: PlayerAst,
+        allow_colorless: bool,
+        allow_artifacts: bool,
+        choose_card_type: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice {
+                target,
+                chooser,
+                allow_colorless,
+                allow_artifacts,
+                choose_card_type,
+                also_each: Some(also_each),
             }),
         )
     }

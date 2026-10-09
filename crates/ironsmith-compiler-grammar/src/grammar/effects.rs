@@ -1106,6 +1106,34 @@ fn excepted_creature_sets_complement(tokens: &[OwnedLexToken]) -> Option<ObjectF
     Some(filter)
 }
 
+/// "it and each creature it's blocking" (Sewers of Estark): the spell's
+/// target creature plus every attacking creature it blocks. A blocker is in
+/// combat with exactly the attackers it blocks (CR 506.4), so the second arm
+/// is "attacking creature in combat with the target". Both arms are
+/// target-relative and are resolved into identity shields at resolution.
+fn target_and_each_creature_it_blocks_source_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let matches = [
+        ["it", "and", "each", "creature", "it's", "blocking"],
+        ["it", "and", "each", "creature", "its", "blocking"],
+    ]
+    .iter()
+    .any(|phrase| crate::word_primitives::parse_sequence_complete(words, phrase));
+    if !matches {
+        return None;
+    }
+    let mut target_creature = ObjectFilter::creature();
+    target_creature.is_target_object = true;
+
+    let mut blocked_attackers = ObjectFilter::creature();
+    blocked_attackers.attacking = true;
+    blocked_attackers.in_combat_with = Some(ObjectRef::Target);
+
+    let mut source_filter = ObjectFilter::default();
+    source_filter.any_of = vec![target_creature, blocked_attackers];
+    source_filter.set_conjunctive_set_surface(true);
+    Some(source_filter)
+}
+
 pub fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1208,8 +1236,18 @@ pub fn parse_prevent_damage_sentence_lexed(
         // A target-relative source set must retain both identity arms. Parsing
         // this as an ordinary object filter makes "that creature" resolve to
         // the most recent collected set and silently drops the spell target.
+        let source_words = parser_token_word_refs(source_tokens);
+        if let Some(source_filter) = target_and_each_creature_it_blocks_source_filter(&source_words)
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    duration.clone(),
+                ),
+            ));
+        }
         if crate::word_primitives::parse_sequence_complete(
-            &parser_token_word_refs(source_tokens),
+            &source_words,
             &[
                 "that", "creature", "and", "each", "creature", "blocking", "it",
             ],

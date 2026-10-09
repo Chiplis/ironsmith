@@ -95,6 +95,20 @@ pub fn parse_statement_label_split_tokens(
         return None;
     }
     let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
+    // "... faces a villainous choice — <mode>, or <mode>": that dash
+    // separates the choice from its modes; it is not an ability-word label.
+    // Treating it as one strands the modes outside their trigger or
+    // statement ("At the beginning of combat ..., each opponent faces a
+    // villainous choice — That player sacrifices ...").
+    let villainous_choice = ["faces", "a", "villainous", "choice"];
+    if label_tokens.len() >= villainous_choice.len()
+        && label_tokens[label_tokens.len() - villainous_choice.len()..]
+            .iter()
+            .zip(villainous_choice)
+            .all(|(token, word)| token.is_word(word))
+    {
+        return None;
+    }
     (!label_tokens.is_empty() && !body_tokens.is_empty()).then_some(StatementLabelSplitShape {
         label_tokens,
         body_tokens,

@@ -2616,6 +2616,7 @@ pub(super) fn compile_subject_verb_early(
             allow_colorless,
             allow_artifacts,
             choose_card_type,
+            also_each,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2624,18 +2625,40 @@ pub(super) fn compile_subject_verb_early(
             } else {
                 resolve_non_target_player_filter(*chooser, &current_reference_env(ctx))?
             };
+            let also_each = also_each
+                .as_ref()
+                .map(|filter| resolve_it_tag(filter, &current_reference_env(ctx)))
+                .transpose()?;
+            // One choice covers every recipient: each mode grants the chosen
+            // protection to the named recipient and, for "you and each
+            // permanent you control", to every member of the set (locked at
+            // resolution, CR 611.2c).
+            let mode_effects = |ability: StaticAbility| {
+                let mut effects = vec![Effect::new(
+                    crate::effects::GrantAbilitiesTargetEffect::new(
+                        spec.clone(),
+                        vec![ability.clone()],
+                        crate::effect::Until::EndOfTurn,
+                    ),
+                )];
+                if let Some(filter) = &also_each {
+                    effects.push(Effect::new(
+                        crate::effects::ApplyContinuousEffect::new(
+                            crate::continuous::EffectTarget::Filter(filter.clone()),
+                            crate::continuous::Modification::AddAbility(ability),
+                            crate::effect::Until::EndOfTurn,
+                        )
+                        .lock_filter_at_resolution(),
+                    ));
+                }
+                effects
+            };
             let mut modes = Vec::new();
             if *allow_colorless {
                 let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Colorless);
                 modes.push(EffectMode {
                     source_text: "Colorless".to_string(),
-                    effects: vec![Effect::new(
-                        crate::effects::GrantAbilitiesTargetEffect::new(
-                            spec.clone(),
-                            vec![ability],
-                            crate::effect::Until::EndOfTurn,
-                        ),
-                    )],
+                    effects: mode_effects(ability),
                 });
             }
             if *allow_artifacts {
@@ -2644,13 +2667,7 @@ pub(super) fn compile_subject_verb_early(
                 ));
                 modes.push(EffectMode {
                     source_text: "Artifacts".to_string(),
-                    effects: vec![Effect::new(
-                        crate::effects::GrantAbilitiesTargetEffect::new(
-                            spec.clone(),
-                            vec![ability],
-                            crate::effect::Until::EndOfTurn,
-                        ),
-                    )],
+                    effects: mode_effects(ability),
                 });
             }
             if *choose_card_type {
@@ -2670,13 +2687,7 @@ pub(super) fn compile_subject_verb_early(
                     );
                     modes.push(EffectMode {
                         source_text: card_type.name().to_string(),
-                        effects: vec![Effect::new(
-                            crate::effects::GrantAbilitiesTargetEffect::new(
-                                spec.clone(),
-                                vec![ability],
-                                crate::effect::Until::EndOfTurn,
-                            ),
-                        )],
+                        effects: mode_effects(ability),
                     });
                 }
             } else {
@@ -2692,13 +2703,7 @@ pub(super) fn compile_subject_verb_early(
                     ));
                     modes.push(EffectMode {
                         source_text: name.to_string(),
-                        effects: vec![Effect::new(
-                            crate::effects::GrantAbilitiesTargetEffect::new(
-                                spec.clone(),
-                                vec![ability],
-                                crate::effect::Until::EndOfTurn,
-                            ),
-                        )],
+                        effects: mode_effects(ability),
                     });
                 }
             }
@@ -2889,7 +2894,16 @@ pub(super) fn compile_subject_verb_early(
             };
             let mut effect =
                 crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec)
-                    .with_portion(*portion);
+                    .with_portion(match portion {
+                        // "Prevent X of that damage, where X is ... this way":
+                        // the amount reads the producing payment's result.
+                        ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                            ironsmith_core::NextTimeDamagePreventionPortion::Exactly(
+                                resolve_value_it_tag(amount, &current_reference_env(ctx))?,
+                            )
+                        }
+                        other => other.clone(),
+                    });
             if *combat_only {
                 effect = effect.combat_damage_only();
             }

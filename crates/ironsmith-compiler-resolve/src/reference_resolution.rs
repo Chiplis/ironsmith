@@ -1739,6 +1739,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::CollectManaPayments { effects } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
+        EffectAst::BindX { effects, .. } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::PlaySubgame { nonwinner_effects } => {
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
@@ -4859,6 +4862,12 @@ fn effect_is_library_search(effect: &EffectAst) -> bool {
             action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. }),
             ..
         }) => true,
+        // "you may search your library ... . If you search your library this
+        // way, ..." (Unlucky Cabbage Merchant): the optional wrapper's result
+        // is whether the search happened.
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) => effects.first().is_some_and(effect_is_library_search),
         _ => false,
     }
 }
@@ -4878,6 +4887,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
@@ -5954,6 +5964,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
                 visit(max_exposed);
             }
         }
+        SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
+            portion: ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount),
+            ..
+        }) => visit(amount),
         _ => {}
     }
 }

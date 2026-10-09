@@ -178,6 +178,15 @@
         if choose_mode.spree {
             header = "Spree (Choose one or more additional costs.)".to_string();
         }
+        if let Some(chooser) = &choose_mode.cast_chooser
+            && let Some(rest) = header.strip_prefix("Choose ")
+        {
+            let chooser = match chooser {
+                PlayerFilter::Opponent => "An opponent".to_string(),
+                other => capitalize_first(&describe_player_filter(other)),
+            };
+            header = format!("{chooser} chooses {rest}");
+        }
         if choose_mode.tiered {
             header = "Tiered (Choose one additional cost.)".to_string();
         }
@@ -3182,10 +3191,13 @@
         } else {
             "damage"
         };
-        let prevented_part = match prevent_next_time.portion {
+        let prevented_part = match &prevent_next_time.portion {
             ironsmith_core::NextTimeDamagePreventionPortion::All => "that damage".to_string(),
             ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown => {
                 "half that damage, rounded down".to_string()
+            }
+            ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                format!("{} of that damage", describe_value(amount))
             }
             ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining) => {
                 format!("all but {remaining} of that damage")

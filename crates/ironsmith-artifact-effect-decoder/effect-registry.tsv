@@ -28,6 +28,7 @@ BecomeMonarchEffect	ironsmith_core::BecomeMonarchEffect	player
 BecomeSaddledUntilEotEffect	ironsmith_core::BecomeSaddledUntilEotEffect	permanent
 BeholdEffect	ironsmith_core::BeholdEffect	composition-a-l
 BidLifeEffect	ironsmith_core::BidLifeEffect<wire::WireEffect>	composition-a-l
+BindXValueEffect	ironsmith_core::BindXValueEffect<wire::WireEffect>	composition-a-l
 BolsterEffect	ironsmith_core::BolsterEffect	composition-a-l
 CantEffect	ironsmith_core::CantEffect	stack-event
 CastSourceEffect	ironsmith_core::CastSourceEffect	player

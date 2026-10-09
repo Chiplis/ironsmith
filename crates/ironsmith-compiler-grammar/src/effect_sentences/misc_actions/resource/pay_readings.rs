@@ -80,6 +80,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_any_amount_of_life(input)),
     },
     Reading {
+        id: RuleId::new("any-amount-of-mana"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_any_amount_of_mana(input)),
+    },
+    Reading {
         id: RuleId::new("one-or-more-energy"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -214,6 +220,62 @@ fn read_any_amount_of_life(input: &PayClause<'_>) -> Result<Option<EffectAst>, C
         return Ok(Some(EffectAst::subject_verb_pay_any_life(player, 0)));
     }
     Ok(None)
+}
+/// "pay any amount of mana" / "pay any amount of {R}": the payer chooses X
+/// and pays {X} (CR 107.3); a colored unit restricts what may be spent on X.
+/// The accepted X is the payment's result, so "that much" and a reflexive
+/// "When you do" read it.
+fn read_any_amount_of_mana(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((_, rest)) = grammar::match_any_word_prefix(input.tokens, ANY_AMOUNT_OF_PREFIXES)
+    else {
+        return Ok(None);
+    };
+    let rest = crate::lexer::trim_lexed_commas(rest);
+    let x_colors = if crate::grammar::primitives::parse_all(
+        rest,
+        crate::grammar::primitives::kw("mana"),
+        "any amount of mana",
+    )
+    .is_ok() {
+        None
+    } else {
+        let Some(parsed) = parse_leaf_mana_cost_prefix_tokens(rest) else {
+            return Ok(None);
+        };
+        if parsed.consumed != rest.len() {
+            return Ok(None);
+        }
+        let [pip] = parsed.cost.pips() else {
+            return Ok(None);
+        };
+        let color = match pip.as_slice() {
+            [crate::mana::ManaSymbol::White] => crate::color::Color::White,
+            [crate::mana::ManaSymbol::Blue] => crate::color::Color::Blue,
+            [crate::mana::ManaSymbol::Black] => crate::color::Color::Black,
+            [crate::mana::ManaSymbol::Red] => crate::color::Color::Red,
+            [crate::mana::ManaSymbol::Green] => crate::color::Color::Green,
+            _ => return Ok(None),
+        };
+        Some(crate::color::ColorSet::from(color))
+    };
+    let mut cost = ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]);
+    if let Some(colors) = x_colors {
+        cost = cost.with_spending_restriction(
+            ironsmith_core::mana::ManaSpendingRestriction::OnX {
+                colors,
+                maximum_per_color: None,
+            },
+        );
+    }
+    Ok(Some(subject_verb_player_effect(
+        SubjectVerbRoleAst::AffectedPlayer,
+        input.player,
+        SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
+            cost,
+            x_value: None,
+            x_maximum: None,
+        }),
+    )))
 }
 fn read_one_or_more_energy(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;

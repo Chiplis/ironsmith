@@ -332,15 +332,31 @@ pub(super) fn parse_effect_clause_unstacked(
         && !subject_tokens.is_empty()
         && let Some(shape) = clause_grammar::parse_protection_choice_shape(rest)
     {
+        let chooser = match shape.chooser {
+            clause_grammar::ProtectionChoiceChooserShape::You => PlayerAst::You,
+            clause_grammar::ProtectionChoiceChooserShape::TargetController => {
+                PlayerAst::ItsController
+            }
+        };
+        // "you and each permanent you control gain protection from the color
+        // of your choice" (Faith's Shield): one choice, granted to the player
+        // and to each member of the object set.
+        if let Some((player, also_each)) =
+            crate::effect_sentences::parse_player_and_each_object_recipients(subject_tokens)?
+        {
+            return Ok(EffectAst::subject_verb_grant_protection_choice_with_each(
+                player,
+                also_each,
+                chooser,
+                shape.includes_colorless,
+                shape.includes_artifacts,
+                shape.chooses_card_type,
+            ));
+        }
         let target = parse_target_phrase(subject_tokens)?;
         return Ok(EffectAst::subject_verb_grant_protection_choice(
             target,
-            match shape.chooser {
-                clause_grammar::ProtectionChoiceChooserShape::You => PlayerAst::You,
-                clause_grammar::ProtectionChoiceChooserShape::TargetController => {
-                    PlayerAst::ItsController
-                }
-            },
+            chooser,
             shape.includes_colorless,
             shape.includes_artifacts,
             shape.chooses_card_type,
