@@ -27,7 +27,7 @@ mod life_change_replacements;
 mod event_instead_replacements;
 pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
 mod prevention_follow_ups;
-pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line};
+pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line, parse_shared_color_pair_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
 pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
@@ -58,6 +58,10 @@ pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
 mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
+mod first_spell_permissions;
+mod block_as_though_untapped;
+pub use block_as_though_untapped::parse_can_block_as_though_untapped_line;
+pub use first_spell_permissions::parse_first_spell_flash_permission_line;
 pub use each_player_land_plays::parse_each_player_additional_land_play_line;
 pub use devour_quality::parse_devour_quality_line;
 pub use costs_replacements_and_permissions::*;
@@ -736,7 +740,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
         }
         "parse_prevent_all_damage_to_you_line" | "parse_permanent_self_damage_prevention_line"
-        | "parse_persistent_filtered_damage_prevention_line" => {
+        | "parse_persistent_filtered_damage_prevention_line"
+        | "parse_shared_color_pair_damage_prevention_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
         }
         "parse_if_you_would_gain_life_replacement_line"
@@ -800,6 +805,13 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "your"),
+        ],
+        "parse_can_block_as_though_untapped_line" => vec![
+            StaticAbilityLineHeadHint::Single("tapped"),
+            StaticAbilityLineHeadHint::Pair("tapped", "creatures"),
+        ],
+        "parse_first_spell_flash_permission_line" => vec![
+            StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
         "parse_surveilled_graveyard_play_life_cost_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -1525,6 +1537,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_permanent_self_damage_prevention_line),
         single_static_ability_ast_rule!(parse_persistent_filtered_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_shared_color_pair_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_first_spell_flash_permission_line),
         single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
@@ -1762,6 +1776,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_source_can_block_shadow_as_though_no_shadow_line
         ),
+        single_static_ability_ast_passthrough_rule!(parse_can_block_as_though_untapped_line),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_to_and_by_attached_line
         ),
@@ -6537,6 +6552,9 @@ pub fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
         }
         keyword_static_lines::CombatMaximumKind::Block => {
             StaticAbility::max_blockers_each_combat(maximum as usize)
+        }
+        keyword_static_lines::CombatMaximumKind::AttackThis => {
+            StaticAbility::max_attackers_can_attack_source_each_combat(maximum as usize)
         }
     };
     Ok(Some(ability))

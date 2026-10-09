@@ -318,6 +318,10 @@ pub enum CompilerReferenceTag {
     ForMirrodinCreated,
     ExchangePlayerOne,
     ExchangePlayerTwo,
+    /// Players designated "friend" by "choose friend or foe".
+    Friends,
+    /// Players designated "foe" by "choose friend or foe".
+    Foes,
     ExchangeCreaturesOne,
     ExchangeCreaturesTwo,
     EachPlayerShuffled,
@@ -489,6 +493,8 @@ impl CompilerReferenceTag {
             Self::ForMirrodinCreated => "for_mirrodin_created",
             Self::ExchangePlayerOne => "exchange_player_one",
             Self::ExchangePlayerTwo => "exchange_player_two",
+            Self::Friends => "friends",
+            Self::Foes => "foes",
             Self::ExchangeCreaturesOne => "exchange_creatures_one",
             Self::ExchangeCreaturesTwo => "exchange_creatures_two",
             Self::EachPlayerShuffled => "each_player_shuffled",
@@ -596,7 +602,9 @@ impl CompilerReferenceTag {
             | Self::VotedWithYou
             | Self::VotedAgainstYou
             | Self::ExchangePlayerOne
-            | Self::ExchangePlayerTwo => (R::Chosen, D::Player),
+            | Self::ExchangePlayerTwo
+            | Self::Friends
+            | Self::Foes => (R::Chosen, D::Player),
             Self::Sacrificed0
             | Self::SourceDevoured
             | Self::ThisWaySacrificed

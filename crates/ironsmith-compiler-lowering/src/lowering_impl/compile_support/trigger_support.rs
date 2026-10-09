@@ -1334,6 +1334,11 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_postcombat_main_phase_with_surface(player, surface)
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
+        // Only a delayed registration links to a shield; as an ordinary
+        // triggered ability the event has no "this way" referent.
+        TriggerSpec::DamagePreventedThisWay { .. } => {
+            Trigger::state_based("Whenever damage is prevented this way")
+        }
         TriggerSpec::ThisEntersBattlefield { origin_condition } => match origin_condition {
             None => Trigger::this_enters_battlefield(),
             Some(origin_condition) => Trigger::new(

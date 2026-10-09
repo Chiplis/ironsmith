@@ -39,6 +39,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::ChooseNamedOptionEffect>(payload).map(Some)
         }
         "ChoosePlayerEffect" => decode_as::<ironsmith_core::ChoosePlayerEffect>(payload).map(Some),
+        "ChooseFriendsOrFoesEffect" => {
+            decode_as::<ironsmith_core::ChooseFriendsOrFoesEffect>(payload).map(Some)
+        }
         "ControlCombatChoicesThisTurnEffect" => {
             decode_as::<ironsmith_core::ControlCombatChoicesThisTurnEffect>(payload).map(Some)
         }
@@ -225,6 +228,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "ChoosePlayerEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ChoosePlayerEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseFriendsOrFoesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseFriendsOrFoesEffect,
         >(payload, context)
         .map(Some),
         "ControlCombatChoicesThisTurnEffect" => super::card_graph::map_payload_as::<

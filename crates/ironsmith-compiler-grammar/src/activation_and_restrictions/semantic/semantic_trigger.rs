@@ -1848,6 +1848,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter) {
+        // "Whenever a nontoken creature you control enters during combat"
+        // (The Blue Spirit): the entering event is restricted to the combat
+        // phase (CR 506), like "dies during combat".
+        if enters_word_idx > 0
+            && enters_word_idx + 3 == words.len()
+            && crate::word_primitives::parse_sequence_suffix(&words, &["during", "combat"])
+        {
+            let enters_token_idx =
+                trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
+            let mut subject_tokens = &tokens[..enters_token_idx];
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            let subject_words =
+                ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
+            let mut trigger = crate::triggers::ZoneChangeTrigger::new()
+                .to(Zone::Battlefield)
+                .during_combat();
+            if is_source_reference_words(&subject_words) {
+                trigger = trigger.this();
+            } else {
+                let filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported enters-during-combat trigger subject filter (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+                trigger = trigger.filter(filter);
+            }
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            return Ok(TriggerSpec::ZoneChange(trigger));
+        }
         let enters_during_turn = trigger_pattern_accepts(&words, DURING_YOUR_TURN_TRIGGER_SUFFIX)
             .then_some(PlayerFilter::You);
         let subject_number = enter_trigger_subject_number(words[enters_word_idx]);

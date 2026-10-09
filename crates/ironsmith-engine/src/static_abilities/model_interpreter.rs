@@ -1279,6 +1279,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAsThoughNoShadow => {
                 StaticAbility::can_block_as_though_no_shadow()
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughUntapped => {
+                StaticAbility::can_block_as_though_untapped()
+            }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughNoLandwalk => {
+                StaticAbility::can_block_as_though_no_landwalk()
+            }
             ironsmith_core::StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
                 StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender()
             }
@@ -1432,6 +1438,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(maximum) => {
                 StaticAbility::max_attackers_can_attack_you_each_combat(*maximum)
+            }
+            ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum) => {
+                StaticAbility::max_attackers_can_attack_source_each_combat(*maximum)
             }
             ironsmith_core::StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
                 StaticAbility::max_blockers_each_combat(*maximum)

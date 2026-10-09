@@ -409,6 +409,14 @@ pub enum StaticAbilityId {
     /// Filtered permission to cast from a zone with a keyword's alternative
     /// cost; appended for wire compatibility.
     AlternativeCastFromZoneForFilter,
+    /// "No more than N creatures can attack this planeswalker each combat";
+    /// appended for wire compatibility.
+    MaxCreaturesCanAttackSourceEachCombat,
+    /// "can block as though it were untapped"; appended for wire compatibility.
+    CanBlockAsThoughUntapped,
+    /// Blocker-side "can block creatures with landwalk abilities as though
+    /// they didn't have those abilities"; appended for wire compatibility.
+    CanBlockAsThoughNoLandwalk,
 }
 
 impl StaticAbilityId {
@@ -492,6 +500,9 @@ impl StaticAbilityId {
             | CanBlockAdditionalForEach
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
+            | MaxCreaturesCanAttackSourceEachCombat
+            | CanBlockAsThoughUntapped
+            | CanBlockAsThoughNoLandwalk
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater

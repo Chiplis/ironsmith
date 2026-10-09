@@ -829,6 +829,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the maximum number of creatures that can attack this ability's
+    /// source (a planeswalker) each combat.
+    fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
+        None
+    }
+
     /// Returns the maximum number of creatures that can block in a combat.
     fn max_creatures_can_block_each_combat(&self) -> Option<usize> {
         None
@@ -2229,6 +2235,10 @@ impl StaticAbility {
         self.0.max_creatures_can_attack_you_each_combat()
     }
 
+    pub fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
+        self.0.max_creatures_can_attack_this_each_combat()
+    }
+
     pub fn max_creatures_can_block_each_combat(&self) -> Option<usize> {
         self.0.max_creatures_can_block_each_combat()
     }
@@ -2936,6 +2946,18 @@ impl StaticAbility {
 
     pub fn max_attackers_can_attack_you_each_combat(maximum: usize) -> Self {
         Self::new(MaxCreaturesCanAttackYouEachCombat::new(maximum))
+    }
+
+    pub fn can_block_as_though_no_landwalk() -> Self {
+        Self::new(CanBlockAsThoughNoLandwalk)
+    }
+
+    pub fn can_block_as_though_untapped() -> Self {
+        Self::new(CanBlockAsThoughUntapped)
+    }
+
+    pub fn max_attackers_can_attack_source_each_combat(maximum: usize) -> Self {
+        Self::new(MaxCreaturesCanAttackSourceEachCombat::new(maximum))
     }
 
     pub fn max_blockers_each_combat(maximum: usize) -> Self {

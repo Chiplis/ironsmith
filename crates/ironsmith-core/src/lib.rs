@@ -159,7 +159,7 @@ pub use effect::{
     PriorEffectResultQuantifier, PriorEffectResultSurface, ProliferateEffect,
     PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    ReconfigureEffect, ReselectAttackTargetEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
+    ReconfigureEffect, ReselectAttackTargetEffect, ChooseFriendsOrFoesEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
     ReflexiveTriggerEffect, RegenerateEffect, RegisterCounterPlacementReplacementEffect,

@@ -78,8 +78,11 @@ pub(crate) fn can_block_with_view(
         return false;
     }
 
-    // Tapped creatures can't block.
-    if game.is_tapped(blocker.id) {
+    // Tapped creatures can't block, unless they can block as though they
+    // were untapped (CR 509.1a).
+    if game.is_tapped(blocker.id)
+        && !view.object_has_static_ability_id(blocker.id, StaticAbilityId::CanBlockAsThoughUntapped)
+    {
         return false;
     }
 
@@ -299,9 +302,15 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    // A blocker that can block landwalkers as though they didn't have
+    // landwalk ignores every landwalk evasion of this attacker (CR 702.14).
+    let blocker_ignores_landwalk = blocker_abilities
+        .iter()
+        .any(|ability| ability.id() == StaticAbilityId::CanBlockAsThoughNoLandwalk);
     for landwalk_kind in attacker_abilities
         .iter()
         .filter_map(|ability| ability.landwalk_kind())
+        .filter(|_| !blocker_ignores_landwalk)
     {
         // CR 609.4: this permission changes only this blocking check. The
         // attacker keeps landwalk for every other characteristic query.

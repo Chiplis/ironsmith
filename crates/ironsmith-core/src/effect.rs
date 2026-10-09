@@ -18,7 +18,9 @@ use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 mod ascend;
 mod mana_damage_and_control;
 mod reselect_attack;
+mod friend_or_foe;
 pub use ascend::*;
+pub use friend_or_foe::*;
 pub use mana_damage_and_control::*;
 pub use reselect_attack::*;
 
@@ -737,6 +739,13 @@ pub enum DelayedTriggerSpec {
     /// registration's lifetime: the only creature declared as an attacker
     /// (CR 506.5).
     AttacksAlone(ObjectFilter),
+    /// "Whenever damage [from a <quality> source] is prevented this way":
+    /// the delayed ability is linked to the prevention shield created just
+    /// before it was registered (CR 603.7, 615.5); the filter qualifies the
+    /// prevented damage's source.
+    DamagePreventedThisWay {
+        source_filter: Option<ObjectFilter>,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.

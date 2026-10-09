@@ -873,6 +873,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanAttackEachCombat(usize),
     MaxCreaturesCanAttackYouEachCombat(usize),
     MaxCreaturesCanBlockEachCombat(usize),
+    /// "No more than N creatures can attack this planeswalker each combat."
+    MaxCreaturesCanAttackSourceEachCombat(usize),
+    /// "can block as though it were untapped" (CR 509.1a).
+    CanBlockAsThoughUntapped,
+    /// Blocker-side landwalk permission (CR 702.14).
+    CanBlockAsThoughNoLandwalk,
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
     Enchant(crate::AuraAttachmentFilter),
@@ -2411,6 +2417,15 @@ where
             }
             StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum)
+            }
+            StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum) => {
+                StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum)
+            }
+            StaticAbilityPayload::CanBlockAsThoughUntapped => {
+                StaticAbilityPayload::CanBlockAsThoughUntapped
+            }
+            StaticAbilityPayload::CanBlockAsThoughNoLandwalk => {
+                StaticAbilityPayload::CanBlockAsThoughNoLandwalk
             }
             StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display)
@@ -4282,6 +4297,22 @@ impl<
         match self.payload {
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
             _ => None,
+        }
+    }
+
+    pub fn can_block_as_though_no_landwalk() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAsThoughNoLandwalk),
+            label: "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string(),
+            payload: StaticAbilityPayload::CanBlockAsThoughNoLandwalk,
+        }
+    }
+
+    pub fn can_block_as_though_untapped() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAsThoughUntapped),
+            label: "This creature can block as though it were untapped".to_string(),
+            payload: StaticAbilityPayload::CanBlockAsThoughUntapped,
         }
     }
 
@@ -6190,6 +6221,14 @@ impl<
             id: Some(StaticAbilityId::MaxCreaturesCanAttackYouEachCombat),
             label: format!("no more than {n} creatures can attack you each combat"),
             payload: StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(n),
+        }
+    }
+    pub fn max_attackers_can_attack_source_each_combat(n: usize) -> Self {
+        let noun = if n == 1 { "creature" } else { "creatures" };
+        Self {
+            id: Some(StaticAbilityId::MaxCreaturesCanAttackSourceEachCombat),
+            label: format!("no more than {n} {noun} can attack this planeswalker each combat"),
+            payload: StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(n),
         }
     }
     pub fn max_blockers_each_combat(n: usize) -> Self {

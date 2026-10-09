@@ -93,6 +93,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ChooseNewTargetsEffect" => Some(EffectFamily::StackEvent),
         "ChooseObjectsEffect" => Some(EffectFamily::CompositionAL),
         "ChoosePlayerEffect" => Some(EffectFamily::Player),
+        "ChooseFriendsOrFoesEffect" => Some(EffectFamily::Player),
         "ChooseSpellCastHistoryEffect" => Some(EffectFamily::CompositionAL),
         "CipherEffect" => Some(EffectFamily::CompositionAL),
         "ClashEffect" => Some(EffectFamily::ZoneLibrary),

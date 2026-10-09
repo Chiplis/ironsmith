@@ -639,6 +639,11 @@ pub enum TriggerSpec {
         surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
     },
     DayNightChanged,
+    /// "Whenever damage [from a <quality> source] is prevented this way";
+    /// only meaningful as a delayed trigger linked to the preceding shield.
+    DamagePreventedThisWay {
+        source_filter: Option<ObjectFilter>,
+    },
     ThisEntersBattlefield {
         origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
     },

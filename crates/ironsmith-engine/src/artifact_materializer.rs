@@ -151,6 +151,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ChooseNewTargetsEffect" => decode_as::<T, ironsmith_core::ChooseNewTargetsEffect>(effect),
         "ChooseObjectsEffect" => decode_as::<T, ironsmith_core::ChooseObjectsEffect>(effect),
         "ChoosePlayerEffect" => decode_as::<T, ironsmith_core::ChoosePlayerEffect>(effect),
+        "ChooseFriendsOrFoesEffect" => {
+            decode_as::<T, ironsmith_core::ChooseFriendsOrFoesEffect>(effect)
+        }
         "ChooseSpellCastHistoryEffect" => {
             decode_as::<T, ironsmith_core::ChooseSpellCastHistoryEffect>(effect)
         }
@@ -1563,6 +1566,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TurnFaceDownEffect,
             crate::effects::TurnFaceUpEffect,
             crate::effects::ReselectAttackTargetEffect,
+            crate::effects::ChooseFriendsOrFoesEffect,
             crate::effects::UnattachObjectsEffect,
             crate::effects::UnearthEffect,
             crate::effects::UntapEffect,

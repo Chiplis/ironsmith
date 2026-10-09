@@ -2799,8 +2799,121 @@ fn parse_colored_source_prevention_followup(sentence: &[OwnedLexToken]) -> Optio
 /// parsed on its own it loses that context, so it is a rider on the shield.
 /// Returns false when the last effect is not such a shield or the sentence is
 /// none of these.
+/// "If <condition>, this effect doesn't affect combat damage that would be
+/// dealt by <colored creatures>." (Undergrowth): when the condition holds the
+/// Fog prevents only combat damage from creatures outside that color
+/// (CR 615.1); otherwise it prevents all combat damage.
+fn conditional_combat_prevention_exception(
+    last: &EffectAst,
+    sentence: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage {
+                duration,
+            }),
+        ..
+    }) = last
+    else {
+        return None;
+    };
+    let clean = crate::util::trim_edge_punctuation(sentence);
+    let (_, rest) = grammar::parse_prefix(&clean, grammar::kw("if"))?;
+    let (comma_idx, _, after_comma) = grammar::find_prefix(rest, grammar::comma)?;
+    let condition_tokens = &rest[..comma_idx];
+    const EXCEPTION_HEADS: [&[&str]; 2] = [
+        &["this", "effect", "doesn't", "affect", "combat", "damage", "that", "would", "be", "dealt", "by"],
+        &["this", "effect", "doesnt", "affect", "combat", "damage", "that", "would", "be", "dealt", "by"],
+    ];
+    let source_tokens = EXCEPTION_HEADS.iter().find_map(|head| {
+        grammar::parse_prefix(after_comma, grammar::phrase(*head)).map(|((), tail)| tail)
+    })?;
+    let condition = parse_predicate_with_grammar_entrypoint_lexed(condition_tokens).ok()?;
+    let excepted = parse_object_filter(source_tokens, false).ok()?;
+    let colors = excepted.colors?;
+    if excepted.card_types != [crate::types::CardType::Creature] {
+        return None;
+    }
+    let mut prevented = excepted.clone();
+    prevented.colors = None;
+    prevented.excluded_colors = colors;
+    Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: condition,
+        if_true: vec![EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+            prevented,
+            duration.clone(),
+        )],
+        if_false: vec![last.clone()],
+    }))
+}
+
 pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
     use crate::grammar::effects::generic_sequence_shapes as sequence_grammar;
+    if let Some(last) = effects.last()
+        && let Some(replacement) = conditional_combat_prevention_exception(last, sentence)
+    {
+        *effects.last_mut().expect("checked") = replacement;
+        return true;
+    }
+    // "If this spell was kicked, prevent the next 6 damage this way instead."
+    // (Pollen Remedy): the divided total depends on the announced kicker.
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+                amount,
+                divided: true,
+                ..
+            }),
+        ..
+    })) = effects.last_mut()
+        && let Value::Fixed(base) = *amount.unhinted()
+        && let Some(kicked) = super::prevention_source_riders::parse_kicked_amount_override(sentence)
+    {
+        *amount = Value::Add(
+            Box::new(Value::Fixed(base)),
+            Box::new(Value::Scaled(Box::new(Value::WasKicked), kicked - base)),
+        );
+        return true;
+    }
+    // CR 615.5: the additional part reads the prevented damage's source
+    // (Channel Harm, Comeuppance, Judgment of Alexander, Samite Ministration).
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut() {
+        let slot = match action {
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    of_chosen_color: false,
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    source_of_your_choice: true,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                    target: TargetAst::Player(crate::target::PlayerFilter::You, _),
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            _ => None,
+        };
+        if let Some(slot) = slot
+            && let Ok(Some(rider)) = super::prevention_source_riders::parse(sentence)
+        {
+            match rider {
+                super::prevention_source_riders::PreventionRider::Inline(rider) => {
+                    slot.push(rider);
+                }
+                // The delayed trigger is registered right after the shield it
+                // links to (CR 603.7).
+                super::prevention_source_riders::PreventionRider::Delayed(delayed) => {
+                    effects.push(delayed);
+                }
+            }
+            return true;
+        }
+    }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;

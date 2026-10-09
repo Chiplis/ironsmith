@@ -81,6 +81,8 @@ pub enum CombatMaximumKind {
     AttackYou,
     Attack,
     Block,
+    /// "... can attack this planeswalker / <this name> each combat".
+    AttackThis,
 }
 
 pub fn parse_damage_multiplier_tokens(
@@ -610,6 +612,13 @@ fn parse_combat_maximum_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Com
             primitives::phrase(&["can", "block", "each", "combat"]),
         )
             .value(CombatMaximumKind::Block),
+        (
+            alt((primitives::kw("creature"), primitives::kw("creatures"))),
+            primitives::phrase(&["can", "attack", "this"]),
+            opt(primitives::kw("planeswalker")),
+            primitives::phrase(&["each", "combat"]),
+        )
+            .value(CombatMaximumKind::AttackThis),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;

@@ -1455,6 +1455,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "AttachObjectsEffect"
             | "AttachToEffect"
             | "ChoosePlayerEffect"
+            | "ChooseFriendsOrFoesEffect"
             | "ChooseNumberEffect"
             | "ChooseNumberAtRandomEffect"
             | "ChooseCardNameEffect"

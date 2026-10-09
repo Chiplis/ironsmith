@@ -40,6 +40,11 @@ pub fn compile_delayed_trigger_spec(
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
         ),
         TriggerSpec::EndOfCombat => Ok(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
+        TriggerSpec::DamagePreventedThisWay { source_filter } => Ok(
+            ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay {
+                source_filter: source_filter.clone(),
+            },
+        ),
         TriggerSpec::BeginningOfCombat(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
         ),
@@ -1355,6 +1360,40 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
+            // "Whenever damage is prevented this way [this turn], ..." (CR
+            // 603.7, 615.5): a delayed trigger linked to the shield the
+            // preceding instruction created; it resolves on the stack with
+            // the prevented amount and the prevented damage's source.
+            if let TriggerSpec::DamagePreventedThisWay { source_filter } =
+                trigger_without_intro(trigger)
+            {
+                let mut body_ctx =
+                    EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+                body_ctx.allow_life_event_value = true;
+                let (body, body_choices) = compile_effects(effects, &mut body_ctx)?;
+                ctx.apply_id_gen_context(body_ctx.id_gen_context());
+                if !body_choices.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "a prevention-linked delayed trigger cannot declare fresh targets".into(),
+                    ));
+                }
+                let mut delayed_effects = vec![Effect::tag_triggering_object(
+                    crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+                )];
+                delayed_effects.extend(body);
+                let delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay {
+                        source_filter: source_filter.clone(),
+                    },
+                    delayed_effects,
+                    false,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+                .with_prior_prevention_event_value()
+                .until_end_of_turn();
+                return Ok(Some((vec![Effect::new(delayed)], Vec::new())));
+            }
             if matches!(
                 trigger_without_intro(trigger),
                 TriggerSpec::ConditionQualified { .. }

@@ -539,6 +539,10 @@ fn prepare_attacker_declarations_internal(
             .into());
         }
     }
+    crate::combat_state::planeswalker_attack_caps_hold(
+        game,
+        declarations.iter().map(|declaration| &declaration.target),
+    )?;
 
     if enforce_requirements
         && attack_declaration_obeying_more_requirements_exists(

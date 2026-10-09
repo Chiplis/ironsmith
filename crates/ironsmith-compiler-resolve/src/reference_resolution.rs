@@ -3557,6 +3557,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SetDayNight(_)
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::ChooseFriendsOrFoes { .. }
         | EffectAst::GrantLoyaltyActivationAllowance { .. }
         | EffectAst::PayToEndThisEffect { .. }
         | EffectAst::LookAtTopCardsAsViewer { .. }

@@ -6277,6 +6277,9 @@ pub(super) fn append_target_distribution_requirements(
     source: ObjectId,
     player: PlayerId,
     x_value: Option<u32>,
+    // CR 601.2b precedes 601.2d: an announced kicker can change the amount
+    // being divided ("If this spell was kicked, ... instead").
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
     all_targets: &[Target],
     all_assignments: &[crate::game_state::TargetAssignment],
     requirements: &[TargetRequirement],
@@ -6295,6 +6298,9 @@ pub(super) fn append_target_distribution_requirements(
         .with_targets(resolved_targets)
         .with_target_assignments(all_assignments.to_vec());
     ctx.x_value = x_value;
+    if let Some(paid) = optional_costs_paid {
+        ctx.optional_costs_paid = paid.clone();
+    }
 
     for (requirement, assignment) in requirements.iter().zip(new_assignments) {
         let Some(value) = requirement.distribution_value.as_ref() else {

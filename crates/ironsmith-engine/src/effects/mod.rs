@@ -214,6 +214,7 @@ pub use player::{
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChoosePlayerEffect,
+    ChooseFriendsOrFoesEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
     DrawTheGameEffect, EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,

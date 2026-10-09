@@ -1,8 +1,8 @@
 # p03-linefamily-b — summary
 
 176 cards, all failing with `parser does not yet support line family`. Ledger:
-`ledger.jsonl` (one row per card). Counts: **34 source-proposed**, **2 already-on-main**,
-**140 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
+`ledger.jsonl` (one row per card). Counts (after round 4): **54 source-proposed**, **2 already-on-main**,
+**120 blocked**. Nothing was built or run. The prebuilt `compile_oracle_text` probe was used
 until it disappeared mid-session; later clusters rely on reading the code only.
 
 ## Clusters fixed (source-proposed)
@@ -173,3 +173,52 @@ Risk notes for the new work: engine schema changes (`RedirectNextDamageToTargetE
 `PreventDamageEffect`, `ThisSpellCastCondition`) are serde-default/additive; the per-color expansion
 synthesizes color word tokens before the ordinary target grammar; `prevention_helpers` became
 `pub(crate)` so the redirection executor can reuse the source chooser.
+
+## Round 3 (on cf8/integration)
+
+| Mechanism | Cards | Change | Test |
+|---|---|---|---|
+| Per-opponent target groups (CR 601.2c) | Windgrace's Judgment | "For any number of opponents, <verb> target X that player controls" -> any number of targets "controlled by different players" (existing set constraint) | `per_player_target_groups.rs` |
+| Conditional Fog exception | Undergrowth | "If <pred>, this effect doesn't affect combat damage that would be dealt by <color> creatures" -> Conditional(pred){combat prevention from non-<color> creatures}{Fog} | `conditional_fog_exceptions.rs` |
+| Friend-or-foe (Battlebond) | Virtus's Maneuver, Pir's Whim, Zndrsplt's Judgment | New `ChooseFriendsOrFoesEffect` (core, engine executor, decoder family+payload+card-graph, materializer, interpreter direct list, text, effect-registry.tsv, runtime-audit contracts) + `EffectAst::ChooseFriendsOrFoes` (visit/resolve/lowering arms) + tags `Friends`/`Foes`; "Each friend/foe <verb>" = the "Each player <verb>" reading as `ForEachTaggedPlayer` | `friend_or_foe.rs` |
+| Fog with excepted sets | Inspire Awe | "... except combat damage that would be dealt by enchanted creatures and enchantment creatures" -> complement filter (without Aura attached, not Enchantment) | `conditional_fog_exceptions.rs` |
+
+Mana-spend dedupe: on the merged tree the static spend-as-any-color shapes exist only in
+`grants_and_permissions.rs` (this package). p04/p05 added resolving/tagged-play spend riders
+(`mana_replacement.rs` temporary symbol permission, `tagged_surface.rs`), which are different scopes,
+so there is one implementation per scope and nothing to remove.
+
+"needs X (pNN)" recheck: Knight Rampager and Galactus re-pointed at p05's merged MustAttackPlayer
+(remaining gaps: chosen-player binding; most-life selector + named-creature gate). Other owner
+dependencies unchanged.
+
+Next in the owned queue (not started): Khorvath's Fury / Regna's Sanction group bodies, Guff per-player mandatory groups,
+prevention riders that pick targets/branch on source type (Channel Harm, Comeuppance, Judgment of
+Alexander, Samite Ministration), Pollen Remedy, Eye for an Eye (p06 replacement), cost-modifier
+variants, keyword grants to spells, City of Solitude, Fires of Invention, labelled Doctor Who /
+Warhammer bodies.
+
+## Round 4
+
+| Mechanism | Cards | Change | Test |
+|---|---|---|---|
+| Friend-or-foe bodies | Khorvath's Fury, Regna's Sanction | Recipient reading: "... to each foe/friend ..." is read as its "each opponent"/"each player" form and iterates the tagged group (per-player hand-size damage keeps IteratedPlayer). Choice-complement program gained a tap disposition ("chooses one untapped creature they control, then taps the rest") | `friend_or_foe.rs` |
+| Prevention riders on the prevented source (CR 615.5) | Channel Harm, Comeuppance, Judgment of Alexander, Samite Ministration | New `effect_sentences/prevention_source_riders.rs`: "If/Whenever damage [from a <quality> source] is prevented this way[ this turn], <body>" with bodies "[you may have] ~ deal that much damage to <target / that creature / the source's controller>", "you gain that much life", "each <filter> deals damage equal to its power to that creature". Quality gate = TaggedMatches(triggering). `PreventAllDamageToTargetFromSourceFilter` gained `follow_up_effects`; lowering prepends `TagTriggeringSource` and returns the rider's target choices so the target is announced with the spell (CR 601.2c). Chosen-source shield protecting you now accepts follow-ups. Damage-source sets accept a controller clause after the noun ("sources you don't control / your opponents control"); "you and planeswalkers you control" recipient | `prevention_source_riders.rs` |
+| Kicked divided shield | Pollen Remedy | "If this spell was kicked, prevent the next N damage this way instead" -> amount = base + (N-base)*WasKicked; the cast-time distribution announcement now receives the pending cast's optional costs (CR 601.2b before 601.2d) | `prevention_source_riders.rs` |
+| Shared-color pair shield | Well-Laid Plans | Persistent shield + "if they share a color": recipient filter carries a SharesColorWithTagged constraint on the damage-source tag, resolved by the damage matcher (source live or LKI, distinct objects) | `prevention_source_riders.rs` |
+| First-spell flash + combat entry trigger | The Blue Spirit | Static "You may cast the first <spell> you cast each turn as though it had flash" -> flash timing grant with the first-spell filter; "enters during combat" -> generic ZoneChangeTrigger with DuringCombat timing | `first_spell_flash_and_combat_entry.rs` |
+| Gain all basic land types | Energybending | "<lands> gain all basic land types until end of turn" -> AddSubtypes(five basics) | `gain_all_basic_land_types.rs` |
+| Per-planeswalker attacker cap | The Eternal Wanderer, Tomik | New static `MaxCreaturesCanAttackSourceEachCombat` (id appended), enforced in both attack-declaration validators (CR 508.1c) | `planeswalker_attack_caps.rs` |
+| Block while tapped | Masako the Humorless | New static `CanBlockAsThoughUntapped` (id appended) granted to the filter; the three tapped-blocker gates honor it (CR 509.1a) | `block_as_though_untapped.rs` |
+| Blocker-side landwalk permission | Street Savvy | New static `CanBlockAsThoughNoLandwalk` (id appended) recognized in the heterogeneous granted tail; `can_block_with_view` skips landwalk evasion for that blocker | `blocker_landwalk_permission.rs` |
+
+Round 4 risk notes:
+- **Delayed prevention triggers (Samite Ministration, Judgment of Alexander):** "Whenever ... is prevented this way" is now a delayed triggered ability (CR 603.7). It is registered right after the shield and linked to that shield's id through `DelayedTriggerSpec::DamagePreventedThisWay` and `with_prior_prevention_event_value`. Each matching `DamagePreventedEvent` puts it on the stack with that event's prevented amount. Simultaneous damage merged into one prevention event triggers once.
+- **Channel Harm's target** is announced with the spell through the missing-target prelude. The rider then reads it from the shield's stored targets and target assignments.
+- **Engine schema hash:** three new `StaticAbilityId`/payload variants (appended) and `PreventAllDamageToTargetFromSourceFilter.follow_up_effects` change the schema. `append_target_distribution_requirements` gained an `optional_costs_paid` parameter (3 callers updated).
+- **Apostrophes:** new phrases accept both "didnt"/"didn't" and "source's"/"sources".
+- **Unverified lines:** The Eternal Wanderer's loyalty abilities and Tomik's activated ability were not checked against a build.
+- **Guff Rewrites History** stays blocked. The one-target-per-player announcement already exists (Vaevictis); the blocker is three correlated result-set sentences (see ledger).
+- **Shared hot spots touched with small additive hunks:** `chain_carry.rs` (bind_prevention_followup), `keyword_static/mod.rs` (rule table + head hints), `generic_subject_verb.rs` (complement program), core `static_ability_model.rs`/`static_ability_id.rs`, engine `static_abilities/{mod,combat,model_interpreter}.rs`.
+
+Still blocked, main remaining queues: cost-modifier variants (colored or conditional this-ability reductions, first-each-turn activation/foretell, plot/unlock, commander tax, loyalty, mana-ability life cost, Drought), keyword grants to spells (evoke, miracle, replicate, demonstrate, Weftwalking free first spell), combat variants (block-count requirements, attack-alone-only, divided combat damage, reblock), Doctor Who / Warhammer labelled bodies, and the miscellaneous singletons listed above. Not touched: City of Solitude / Fires of Invention (p10) and Eye for an Eye (p06).

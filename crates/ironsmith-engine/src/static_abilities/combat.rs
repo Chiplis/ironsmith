@@ -558,6 +558,38 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// "This creature can block creatures with landwalk abilities as though they
+/// didn't have those abilities" (Street Savvy): only this blocker ignores
+/// the attackers' landwalk evasion (CR 702.14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughNoLandwalk;
+
+impl StaticAbilityKind for CanBlockAsThoughNoLandwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughNoLandwalk
+    }
+
+    fn display(&self) -> String {
+        "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string()
+    }
+}
+
+/// "This creature can block as though it were untapped" (Masako the
+/// Humorless grants it to tapped creatures): being tapped doesn't stop it
+/// from being declared as a blocker (CR 509.1a); it stays tapped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughUntapped;
+
+impl StaticAbilityKind for CanBlockAsThoughUntapped {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughUntapped
+    }
+
+    fn display(&self) -> String {
+        "This creature can block as though it were untapped".to_string()
+    }
+}
+
 /// This creature can block an attacker with shadow by ignoring only the
 /// attacker's shadow evasion restriction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1113,6 +1145,42 @@ impl StaticAbilityKind for MaxCreaturesCanAttackYouEachCombat {
     }
 
     fn max_creatures_can_attack_you_each_combat(&self) -> Option<usize> {
+        Some(self.maximum)
+    }
+}
+
+/// "No more than N creatures can attack this planeswalker each combat"
+/// (The Eternal Wanderer, Tomik's grant): a cap on the attackers declared
+/// against this permanent (CR 508.1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaxCreaturesCanAttackSourceEachCombat {
+    pub maximum: usize,
+}
+
+impl MaxCreaturesCanAttackSourceEachCombat {
+    pub const fn new(maximum: usize) -> Self {
+        Self { maximum }
+    }
+}
+
+impl StaticAbilityKind for MaxCreaturesCanAttackSourceEachCombat {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MaxCreaturesCanAttackSourceEachCombat
+    }
+
+    fn display(&self) -> String {
+        let noun = if self.maximum == 1 {
+            "creature"
+        } else {
+            "creatures"
+        };
+        format!(
+            "No more than {} {} can attack this planeswalker each combat",
+            self.maximum, noun
+        )
+    }
+
+    fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
         Some(self.maximum)
     }
 }

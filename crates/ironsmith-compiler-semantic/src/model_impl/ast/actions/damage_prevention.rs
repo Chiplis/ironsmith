@@ -99,6 +99,10 @@ pub enum DamagePreventionActionAst {
         /// "a [red] source of your choice": one source matching
         /// `source_filter` is chosen as the effect resolves (CR 609.7a).
         source_of_your_choice: bool,
+        /// "If [damage from a <quality> source is] prevented this way, ...":
+        /// the additional part of the prevention effect, run with each
+        /// prevented amount (CR 615.5).
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,

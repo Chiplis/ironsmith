@@ -6,6 +6,7 @@ mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;
 mod duration_source_prevention;
+mod prevention_source_riders;
 #[cfg(test)]
 mod temporary_prevention_binding_tests;
 pub(crate) mod life_unit_programs;

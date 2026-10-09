@@ -156,10 +156,224 @@ fn parse_for_each_color_target_expansion(
     Ok(Some(effects))
 }
 
+/// "For any number of opponents, destroy target nonland permanent that player
+/// controls." (Windgrace's Judgment): one target per chosen opponent is the
+/// same announcement as any number of targets controlled by different
+/// opponents (CR 601.2c, 115.1). Read through the shared target grammar's
+/// "controlled by different players" set constraint.
+fn parse_for_any_number_of_opponents_target_expansion(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let Some((_, body)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["for", "any", "number", "of", "opponents"]),
+            primitives::comma(),
+        ),
+    ) else {
+        return Ok(None);
+    };
+    let Some((that_idx, (), after)) =
+        primitives::find_prefix(body, || primitives::phrase(&["that", "player", "controls"]))
+    else {
+        return Ok(None);
+    };
+    let target_positions = body
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("target"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [target_idx] = target_positions.as_slice() else {
+        return Ok(None);
+    };
+    let target_idx = *target_idx;
+    if target_idx >= that_idx
+        || primitives::find_prefix(after, || primitives::phrase(&["that", "player"])).is_some()
+    {
+        return Ok(None);
+    }
+    let mut rewritten = Vec::with_capacity(body.len() + 8);
+    rewritten.extend_from_slice(&body[..target_idx]);
+    for word in ["any", "number", "of"] {
+        rewritten.push(OwnedLexToken::synthetic_word(word));
+    }
+    rewritten.extend_from_slice(&body[target_idx..that_idx]);
+    for word in ["an", "opponent", "controls", "controlled", "by", "different", "players"] {
+        rewritten.push(OwnedLexToken::synthetic_word(word));
+    }
+    rewritten.extend_from_slice(after);
+    parse_effect_sentence_lexed(&rewritten).map(Some)
+}
+
+/// "For each player, choose friend or foe." and the "Each friend/foe <verb>
+/// ..." instructions that follow it (Battlebond). The groups are tagged by
+/// the choice; each group instruction is the ordinary "Each player ..."
+/// reading restricted to that tagged group.
+fn parse_friend_or_foe_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    if let Some((_, rest)) = primitives::parse_prefix(
+        clean,
+        (
+            primitives::phrase(&["for", "each", "player"]),
+            winnow::combinator::opt(primitives::comma()),
+            primitives::phrase(&["choose", "friend", "or", "foe"]),
+        ),
+    ) && rest.is_empty()
+    {
+        return Ok(Some(vec![EffectAst::ChooseFriendsOrFoes {
+            friends: crate::tag::CompilerReferenceTag::Friends.bind(),
+            foes: crate::tag::CompilerReferenceTag::Foes.bind(),
+        }]));
+    }
+    let group = if primitives::parse_prefix(clean, primitives::phrase(&["each", "friend"])).is_some() {
+        crate::tag::CompilerReferenceTag::Friends
+    } else if primitives::parse_prefix(clean, primitives::phrase(&["each", "foe"])).is_some() {
+        crate::tag::CompilerReferenceTag::Foes
+    } else {
+        return parse_friend_or_foe_recipient_sentence(clean);
+    };
+    let mut rewritten = clean.to_vec();
+    rewritten[1] = OwnedLexToken::synthetic_word("player");
+    let parsed = parse_effect_sentence_lexed(&rewritten)?;
+    let [EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayer { effects })] =
+        parsed.as_slice()
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachTaggedPlayer {
+            tag: group.bind(),
+            effects: effects.clone(),
+            require_evidence: false,
+        },
+    )]))
+}
+
+/// "<source> deals damage to each foe equal to the number of cards in their
+/// hand." The group is a recipient, not the subject: the sentence is read as
+/// its "each opponent" (or "each player") form and the iterated set is
+/// replaced by the tagged group, so each member is still the iterated player
+/// for per-player amounts.
+fn parse_friend_or_foe_recipient_sentence(
+    clean: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::ForEachEffectAst;
+    use crate::grammar::primitives;
+    let (idx, group) = if let Some((idx, (), _)) =
+        primitives::find_prefix(clean, || primitives::phrase(&["each", "friend"]))
+    {
+        (idx, crate::tag::CompilerReferenceTag::Friends)
+    } else if let Some((idx, (), _)) =
+        primitives::find_prefix(clean, || primitives::phrase(&["each", "foe"]))
+    {
+        (idx, crate::tag::CompilerReferenceTag::Foes)
+    } else {
+        return Ok(None);
+    };
+    if idx + 1 >= clean.len() {
+        return Ok(None);
+    }
+    for noun in ["opponent", "player"] {
+        let mut rewritten = clean.to_vec();
+        rewritten[idx + 1] = OwnedLexToken::synthetic_word(noun);
+        let Ok(parsed) = parse_effect_sentence_lexed(&rewritten) else {
+            continue;
+        };
+        let effects = match parsed.as_slice() {
+            [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]
+                if noun == "opponent" =>
+            {
+                effects.clone()
+            }
+            [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })]
+                if noun == "player" =>
+            {
+                effects.clone()
+            }
+            _ => continue,
+        };
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachTaggedPlayer {
+                tag: group.bind(),
+                effects,
+                require_evidence: false,
+            },
+        )]));
+    }
+    Ok(None)
+}
+
+/// "Lands you control gain all basic land types until end of turn."
+/// (Energybending): each land gains the five basic land types in addition to
+/// its other types (CR 205.1b, 305.6), until the duration ends.
+fn parse_gain_all_basic_land_types_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((gain_idx, (), after_gain)) = primitives::find_prefix(clean, || {
+        (
+            winnow::combinator::alt((primitives::kw("gain"), primitives::kw("gains"))),
+            primitives::phrase(&["all", "basic", "land", "types"]),
+        )
+            .void()
+    }) else {
+        return Ok(None);
+    };
+    if gain_idx == 0
+        || primitives::parse_all(
+            after_gain,
+            primitives::phrase(&["until", "end", "of", "turn"]),
+            "gain all basic land types duration",
+        )
+        .is_err()
+    {
+        return Ok(None);
+    }
+    let subject = &clean[..gain_idx];
+    let target = if subject.iter().any(|token| token.is_word("target")) {
+        crate::util::parse_target_phrase(subject)?
+    } else {
+        let Ok(filter) = crate::object_filters::parse_object_filter(subject, false) else {
+            return Ok(None);
+        };
+        if !filter.card_types.contains(&crate::types::CardType::Land) {
+            return Ok(None);
+        }
+        TargetAst::Object(filter, None, None)
+    };
+    Ok(Some(vec![EffectAst::subject_verb_add_subtypes(
+        target,
+        vec![
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ],
+        crate::effect::Until::EndOfTurn,
+    )]))
+}
+
 fn parse_effect_sentence_lexed_uncached_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_friend_or_foe_sentence(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_gain_all_basic_land_types_sentence(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_for_each_color_target_expansion(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_for_any_number_of_opponents_target_expansion(tokens)? {
         return Ok(effects);
     }
     // "Starting with you, each player chooses a creature." (The Horus

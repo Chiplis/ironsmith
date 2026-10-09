@@ -305,6 +305,28 @@ pub(super) fn compile_gain_control_action(
     Ok((vec![effect], choices))
 }
 
+/// Compile the additional part of a prevention shield (CR 615.5). It runs in
+/// the prevented damage event's context; the event's source is tagged first
+/// so "that creature" / "the source's controller" name the prevented source.
+fn compile_prevention_source_follow_ups(
+    follow_up_effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    if follow_up_effects.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let mut follow_up_ctx =
+        EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+    follow_up_ctx.allow_life_event_value = true;
+    let (compiled, choices) = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+    ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+    let mut effects = vec![Effect::tag_triggering_source(
+        crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+    )];
+    effects.extend(compiled);
+    Ok((effects, choices))
+}
+
 fn source_filter_needs_resolution_context(filter: &ObjectFilter) -> bool {
     filter.is_target_object
         || filter.in_combat_with.is_some()
@@ -3014,7 +3036,13 @@ pub(super) fn compile_subject_verb_early(
                 source_would_deal_surface,
             },
         ) => {
-            if !follow_up_effects.is_empty() && source_target.is_none() {
+            let follow_up_on_chosen_source_to_you = *source_of_your_choice
+                && !*source_choice_shares_activation_mana_color
+                && matches!(target, TargetAst::Player(crate::target::PlayerFilter::You, _));
+            if !follow_up_effects.is_empty()
+                && source_target.is_none()
+                && !follow_up_on_chosen_source_to_you
+            {
                 return Err(CardTextError::ParseError(
                     "deferred all-damage follow-up requires its bound source selector".into(),
                 ));
@@ -3083,6 +3111,16 @@ pub(super) fn compile_subject_verb_early(
                 } else {
                     effect.with_source_of_your_choice()
                 };
+                if !compiled_follow_up.is_empty() {
+                    // "Whenever damage from a <quality> source is prevented
+                    // this way this turn, ..." (Samite Ministration): the
+                    // prevented event's source is tagged for the follow-up.
+                    let mut follow_ups = vec![Effect::tag_triggering_source(
+                        crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+                    )];
+                    follow_ups.extend(compiled_follow_up);
+                    effect = effect.with_follow_up_effects(follow_ups);
+                }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
             // "Prevent all damage a source of your choice would deal this
@@ -3217,6 +3255,7 @@ pub(super) fn compile_subject_verb_early(
                 source_would_deal_surface,
                 of_chosen_color,
                 source_of_your_choice,
+                follow_up_effects,
             },
         ) => {
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
@@ -3224,6 +3263,11 @@ pub(super) fn compile_subject_verb_early(
             if source_filter != ObjectFilter::default() {
                 damage_filter.from_source = Some(source_filter);
             }
+            // CR 615.5: the additional part runs as each damage event is
+            // prevented, reading that prevented amount and its source. A
+            // fresh "target" in it is declared with the spell (CR 601.2c).
+            let (follow_up_effects, follow_up_choices) =
+                compile_prevention_source_follow_ups(follow_up_effects, ctx)?;
             let non_choice = match target {
                 TargetAst::Player(PlayerFilter::You | PlayerFilter::Any, None) => true,
                 TargetAst::Object(filter, None, None) => filter.tagged_constraints.is_empty(),
@@ -3243,7 +3287,15 @@ pub(super) fn compile_subject_verb_early(
                     // created; the filter only limits that choice.
                     effect = effect.with_source_of_your_choice();
                 }
-                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+                if !follow_up_effects.is_empty() {
+                    effect = effect.with_follow_up_effects(follow_up_effects);
+                }
+                return Ok(Some((vec![Effect::new(effect)], follow_up_choices)));
+            }
+            if !follow_up_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "prevention follow-up needs a non-targeted protected recipient".into(),
+                ));
             }
             if *source_of_your_choice {
                 return Err(CardTextError::ParseError(
