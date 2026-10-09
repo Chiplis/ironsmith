@@ -111,6 +111,12 @@ const SENTENCE_READINGS: &[Reading] = &[
         read: |input| input.outcome(part_1::read_win_the_game(input)),
     },
     Reading {
+        id: RuleId::new("look-at-hand-with-listed-followups"),
+        head: HeadDiscriminator::words(&["look"]),
+        admits: |_| true,
+        read: |input| input.outcome(part_1::read_look_at_hand_with_listed_followups(input)),
+    },
+    Reading {
         id: RuleId::new("this-turn-and-next-turn-restrictions"),
         head: HeadDiscriminator::words(&["this"]),
         admits: |_| true,

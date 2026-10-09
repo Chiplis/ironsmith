@@ -503,3 +503,27 @@ pub(super) fn read_this_turn_and_next_turn_restrictions(
             .collect(),
     ))
 }
+
+/// "Look at target player's hand, the top card of that player's library, and
+/// any face-down creatures they control." (Spy Network): one look whose list
+/// of objects is owned by the look grammar. Claim the whole sentence before
+/// the comma-list splitter reads "any face-down creatures ..." as its own
+/// verbless clause.
+pub(super) fn read_look_at_hand_with_listed_followups(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(input.tokens);
+    if !tokens.first().is_some_and(|token| token.is_word("look")) {
+        return Ok(None);
+    }
+    let Some(hand) = tokens.iter().position(|token| token.is_word("hand")) else {
+        return Ok(None);
+    };
+    if !tokens.get(hand + 1).is_some_and(|token| token.is_comma()) {
+        return Ok(None);
+    }
+    let Ok(effect) = crate::effect_sentences::verb_handlers::parse_look(&tokens[1..], None) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![effect]))
+}
