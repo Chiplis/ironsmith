@@ -675,6 +675,7 @@ fn singleton_hand_partition(
             LookedPartitionDestination::LibraryBottom(order)
         }
         LookedCardDisposition::HandAndGraveyard => LookedPartitionDestination::Graveyard,
+        LookedCardDisposition::HandAndExile => LookedPartitionDestination::Exile,
     };
     group.effects.push(EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {

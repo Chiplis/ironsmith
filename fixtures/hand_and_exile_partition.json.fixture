@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Eye of Yawgmoth",
+  "oracle_id": "e0af613a-05ba-438d-ba74-3f6a9958576c",
+  "oracle_text": "{3}, {T}, Sacrifice a creature: Reveal a number of cards from the top of your library equal to the sacrificed creature's power. Put one into your hand and exile the rest.",
+  "text": "Mana cost: {3}\nType: Artifact\n{3}, {T}, Sacrifice a creature: Reveal a number of cards from the top of your library equal to the sacrificed creature's power. Put one into your hand and exile the rest."
+ }
+]
