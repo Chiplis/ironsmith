@@ -106,3 +106,48 @@ fn noble_heritage_grants_per_opponent_protection_inside_the_granted_trigger() {
         let _ = Until::YourNextTurn;
     }
 }
+
+#[test]
+fn a_curse_controlled_by_that_player_falls_off_the_protected_player() {
+    use ironsmith::game_loop::check_and_apply_sbas_with;
+    use ironsmith::triggers::TriggerQueue;
+    let rows = support::rows(FIXTURE);
+    let row = support::row(&rows, "Eon Frolicker");
+    for definition in support::definitions(row) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        game.turn.active_player = A;
+        game.turn.phase = Phase::FirstMain;
+        let curse = compile_to_runtime_definition(
+            "Witness Curse",
+            "Mana cost: {1}{B}\nType: Enchantment — Aura Curse\nEnchant player",
+            false,
+        )
+        .unwrap();
+        let bob_curse = game.create_object_from_definition(&curse, B, Zone::Battlefield);
+        let charlie_curse = game.create_object_from_definition(&curse, C, Zone::Battlefield);
+        for curse in [bob_curse, charlie_curse] {
+            assert!(game.attach_object_to_target(curse, ironsmith::object::AttachmentTarget::Player(A)));
+        }
+        let bob_stable = game.object(bob_curse).unwrap().stable_id;
+        let charlie_stable = game.object(charlie_curse).unwrap().stable_id;
+        let frolicker = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let trigger = support::triggered(&definition)[0];
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = EffectContext::new(frolicker, A, &mut dm)
+            .with_targets(vec![ResolvedTarget::Player(B)]);
+        for effect in trigger.effects.all_effects() {
+            execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        game.refresh_continuous_state().unwrap();
+        let mut queue = TriggerQueue::new();
+        let mut dm = SelectFirstDecisionMaker;
+        check_and_apply_sbas_with(&mut game, &mut queue, &mut dm).unwrap();
+        // CR 702.16e / 704.5m: Bob's Curse can't enchant a player protected
+        // from Bob; Charlie's Curse stays.
+        let zone_of = |game: &GameState, stable| {
+            game.find_object_by_stable_id(stable).and_then(|id| game.object(id)).map(|o| o.zone)
+        };
+        assert_eq!(zone_of(&game, bob_stable), Some(Zone::Graveyard));
+        assert_eq!(zone_of(&game, charlie_stable), Some(Zone::Battlefield));
+    }
+}
