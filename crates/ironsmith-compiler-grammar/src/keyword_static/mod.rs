@@ -566,6 +566,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         | "parse_you_draw_cards_from_bottom_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
+        "parse_each_opponent_controls_more_cant_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("each", "opponent")]
+        }
         "parse_zero_loyalty_state_based_exception_line" => {
             vec![StaticAbilityLineHeadHint::Single("planeswalkers")]
         }
@@ -1632,6 +1635,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_players_cast_and_activate_only_during_own_turns_line),
         multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
         single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
+        multi_static_ability_ast_rule!(parse_each_opponent_controls_more_cant_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2763,6 +2767,103 @@ fn parse_you_cast_spells_only_during_your_turn_line(
         ),
         display,
     ));
+    Ok(Some(abilities))
+}
+
+fn plural_card_type_word(word: &str) -> Option<crate::types::CardType> {
+    use crate::types::CardType;
+    Some(match word {
+        "creatures" => CardType::Creature,
+        "artifacts" => CardType::Artifact,
+        "enchantments" => CardType::Enchantment,
+        "lands" => CardType::Land,
+        "planeswalkers" => CardType::Planeswalker,
+        "instants" => CardType::Instant,
+        "sorceries" => CardType::Sorcery,
+        _ => return None,
+    })
+}
+
+/// "Each opponent who controls more creatures than you can't cast creature
+/// spells. The same is true for artifacts and enchantments." / "Each opponent
+/// who controls more lands than you can't play lands." (Ward of Bones): the
+/// prohibition applies to each opponent who currently controls more permanents
+/// of that type than you (CR 601.3, 305.2a), re-evaluated continuously.
+fn parse_each_opponent_controls_more_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::types::CardType;
+    let clean = trim_edge_punctuation(tokens);
+    let mut sentences = clean
+        .split(|token| token.is_period())
+        .filter(|sentence| !sentence.is_empty());
+    let Some(first) = sentences.next() else {
+        return Ok(None);
+    };
+    let words = crate::lexer::token_word_refs(first);
+    let (compared, action) = match words.as_slice() {
+        [
+            "each",
+            "opponent",
+            "who",
+            "controls",
+            "more",
+            compared,
+            "than",
+            "you",
+            "can't" | "cant" | "cannot",
+            action @ ..,
+        ] => (*compared, action),
+        _ => return Ok(None),
+    };
+    let Some(compared_type) = plural_card_type_word(compared) else {
+        return Ok(None);
+    };
+    let mut types = vec![compared_type];
+    let plays_lands = match action {
+        ["play", "lands"] if compared_type == CardType::Land => true,
+        ["cast", spell_type, "spells"] if plural_card_type_word(&format!("{spell_type}s")) == Some(compared_type)
+            || (*spell_type == "sorcery" && compared_type == CardType::Sorcery) => false,
+        _ => return Ok(None),
+    };
+    if let Some(second) = sentences.next() {
+        let words = crate::lexer::token_word_refs(second);
+        let ["the", "same", "is", "true", "for", rest @ ..] = words.as_slice() else {
+            return Ok(None);
+        };
+        for word in rest {
+            if matches!(*word, "and" | "," | "or") {
+                continue;
+            }
+            let Some(card_type) = plural_card_type_word(word) else {
+                return Ok(None);
+            };
+            types.push(card_type);
+        }
+    }
+    if sentences.next().is_some() || (plays_lands && types.len() > 1) {
+        return Ok(None);
+    }
+    let display = crate::lexer::render_token_slice(&clean).trim().to_string();
+    let abilities = types
+        .into_iter()
+        .map(|card_type| {
+            let player = PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                player: Box::new(PlayerFilter::You),
+                filter: Box::new(ObjectFilter::default().with_type(card_type)),
+                fewer: false,
+            };
+            let restriction = if plays_lands {
+                crate::effect::Restriction::PlayLandsMatching(player, ObjectFilter::default())
+            } else {
+                crate::effect::Restriction::cast_spells_matching(
+                    player,
+                    ObjectFilter::default().with_type(card_type),
+                )
+            };
+            StaticAbility::restriction(restriction, display.clone())
+        })
+        .collect();
     Ok(Some(abilities))
 }
 
