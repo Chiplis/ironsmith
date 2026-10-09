@@ -107,3 +107,14 @@ fn untap_step_untaps_are_replaced_by_instead_programs() {
         }
     }
 }
+
+#[test]
+fn an_escaped_entry_replaces_the_ordinary_entry_counters() {
+    for definition in definitions("Polukranos, Unchained") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("ThisSpellEscaped"), "{debug}");
+        assert!(debug.contains("Fixed(12)"), "{debug}");
+        assert!(debug.contains("Fixed(6)"), "{debug}");
+        assert!(debug.contains("Not("), "{debug}");
+    }
+}

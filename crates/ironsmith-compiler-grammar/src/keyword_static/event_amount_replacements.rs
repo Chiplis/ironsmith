@@ -519,3 +519,40 @@ pub fn parse_damage_life_floor_static_line(
         None => ability,
     }))
 }
+
+/// "Polukranos enters with six +1/+1 counters on it. It escapes with twelve
+/// +1/+1 counters on it instead." (Polukranos, Unchained): the escaped entry
+/// replaces the ordinary one (CR 702.138c, 614.1c). Read as two entry
+/// replacements: the first unless it escaped, the second if it did.
+pub fn parse_enters_or_escapes_instead_counters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [enters, escapes] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let escapes = trim_edge_punctuation(escapes);
+    let Some((last, escapes_body)) = escapes.split_last() else {
+        return Ok(None);
+    };
+    if !last.is_word("instead")
+        || !escapes_body.iter().any(|token| token.is_word("escapes"))
+        || !enters.iter().any(|token| token.is_word("enters"))
+    {
+        return Ok(None);
+    }
+    let enters = trim_edge_punctuation(enters);
+    let mut unless_escaped = enters.clone();
+    let span = enters.last().map(OwnedLexToken::span).unwrap_or_else(TextSpan::synthetic);
+    for word in ["unless", "it", "escaped"] {
+        unless_escaped.push(OwnedLexToken::word(word.to_string(), span));
+    }
+    let Some(mut abilities) = super::parse_enters_with_counters_line(&unless_escaped)? else {
+        return Ok(None);
+    };
+    let Some(escaped) = super::parse_enters_with_counters_line(escapes_body)? else {
+        return Ok(None);
+    };
+    abilities.extend(escaped);
+    Ok(Some(abilities))
+}

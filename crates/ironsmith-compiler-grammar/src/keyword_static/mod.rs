@@ -26,7 +26,8 @@ mod event_instead_replacements;
 pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
 mod event_amount_replacements;
 pub use event_amount_replacements::{
-    parse_damage_life_floor_static_line, parse_if_event_would_happen_amount_line,
+    parse_damage_life_floor_static_line, parse_enters_or_escapes_instead_counters_line,
+    parse_if_event_would_happen_amount_line,
     parse_you_may_look_at_additional_cards_each_time_line,
 };
 mod prevention_follow_ups;
@@ -942,7 +943,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
         ],
-        "parse_enters_tapped_with_counters_line" | "parse_enters_with_counters_line" => vec![
+        "parse_enters_tapped_with_counters_line"
+        | "parse_enters_with_counters_line"
+        | "parse_enters_or_escapes_instead_counters_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
             StaticAbilityLineHeadHint::Single("if"),
@@ -1835,6 +1838,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
         multi_static_ability_ast_rule!(parse_enters_with_counters_line),
+        multi_static_ability_ast_rule!(parse_enters_or_escapes_instead_counters_line),
         single_static_ability_ast_rule!(parse_as_enters_reveal_from_hand_line),
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
