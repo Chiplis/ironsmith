@@ -101,5 +101,5 @@ fn temporary_tap_for_mana_trigger_fires_on_a_mana_ability_activation() {
     .unwrap();
     // {B} from the land plus the triggered mana ability's {B}, no stack use.
     assert_eq!(game.player(A).unwrap().mana_pool.black, 2);
-    assert!(game.stack.iter().all(|entry| entry.object_id != land));
+    assert!(game.stack.is_empty());
 }
