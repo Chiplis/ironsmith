@@ -96,6 +96,10 @@ pub enum KeywordActionKind {
     /// only so replacements can watch the whole instruction ("would draw two
     /// or more cards"); each card is still drawn as its own event (CR 121.2).
     DrawCards,
+    /// A player copies a spell N times through one instruction (CR 707.10).
+    /// Proposed only so replacements can change the number of copies
+    /// ("copy it that many times plus an additional time").
+    CopySpell,
 }
 
 impl KeywordActionKind {
@@ -257,6 +261,7 @@ impl KeywordActionKind {
             Self::BecomeSaddled => "become saddled",
             Self::Mill => "mill cards",
             Self::DrawCards => "draw cards",
+            Self::CopySpell => "copy a spell",
         }
     }
 
@@ -335,6 +340,7 @@ impl KeywordActionKind {
             Self::BecomeSaddled => "becomes saddled",
             Self::Mill => "mills cards",
             Self::DrawCards => "draws cards",
+            Self::CopySpell => "copies a spell",
         }
     }
 }

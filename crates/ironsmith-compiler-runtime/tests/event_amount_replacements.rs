@@ -289,3 +289,11 @@ fn alms_collector_replaces_a_whole_multi_card_draw() {
         assert_eq!(game.player(B).unwrap().hand.len(), b_hand + 2);
     }
 }
+
+#[test]
+fn twinning_staff_adds_one_spell_copy() {
+    assert_cluster(&[(
+        "Twinning Staff",
+        &["EventAmountReplacement", "CopySpell", "Add(1)", "CopySpellEffect"],
+    )]);
+}

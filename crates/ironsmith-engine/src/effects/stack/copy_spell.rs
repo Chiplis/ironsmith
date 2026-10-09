@@ -409,6 +409,53 @@ impl CopyCharacteristicModifiers for CopySpellEffect {
     }
 }
 
+/// Propose the number of spell copies so replacements may change it. `None`
+/// while a replacement-order choice is pending.
+fn proposed_spell_copy_count(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    copier: crate::ids::PlayerId,
+    copy_count: usize,
+) -> Result<Option<usize>, ExecutionError> {
+    use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
+    if copy_count == 0
+        || !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game)
+    {
+        return Ok(Some(copy_count));
+    }
+    let event = crate::events::Event::new_with_provenance(
+        KeywordActionEvent::new(
+            KeywordActionKind::CopySpell,
+            copier,
+            ctx.source,
+            u32::try_from(copy_count).unwrap_or(u32::MAX),
+        ),
+        ctx.provenance,
+    );
+    match process_trait_event_with_execution_context(game, event, ctx)? {
+        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => Ok(Some(
+            crate::events::downcast_event::<KeywordActionEvent>(event.inner())
+                .filter(|action| action.action == KeywordActionKind::CopySpell)
+                .map(|action| action.amount as usize)
+                .unwrap_or(copy_count),
+        )),
+        TraitEventResult::Prevented => Ok(Some(0)),
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            if ctx.decision_maker.awaiting_choice() {
+                Ok(None)
+            } else {
+                Err(ExecutionError::InternalError(
+                    "copy proposal suspended without a decision".into(),
+                ))
+            }
+        }
+        TraitEventResult::Replaced { .. } | TraitEventResult::Expanded { .. } => Err(
+            ExecutionError::InternalError("copy proposals only accept amount replacements".into()),
+        ),
+    }
+}
+
 impl EffectExecutor for CopySpellEffect {
     fn execute(
         &self,
@@ -459,6 +506,14 @@ impl EffectExecutor for CopySpellEffect {
             };
         }
         let copier = resolve_player_filter(game, &self.copier, ctx)?;
+        // CR 707.10, 614.1a: "If you would copy a spell one or more times,
+        // instead copy it that many times plus an additional time" changes
+        // the number of copies of a spell (not of an ability).
+        let Some(spell_copy_count) = proposed_spell_copy_count(game, ctx, copier, copy_count)?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+        let mut additional_copies = Vec::new();
         let mut created_ids = Vec::with_capacity(copy_count.saturating_mul(target_ids.len()));
         let mut prevented_copy = false;
 
@@ -528,7 +583,12 @@ impl EffectExecutor for CopySpellEffect {
                         .flatten()
                 })
                 .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-            for _ in 0..copy_count {
+            let this_count = if original_entry.is_ability {
+                copy_count
+            } else {
+                spell_copy_count
+            };
+            for index in 0..this_count {
                 let Some(copy_id) = create_stack_copy_from_object(
                     game,
                     &target,
@@ -544,6 +604,9 @@ impl EffectExecutor for CopySpellEffect {
                     continue;
                 };
                 created_ids.push(copy_id);
+                if index >= copy_count {
+                    additional_copies.push(copy_id);
+                }
 
                 queue_copy_becomes_targeted_events(game, ctx, copy_id);
 
@@ -570,6 +633,20 @@ impl EffectExecutor for CopySpellEffect {
             } else {
                 EffectOutcome::target_invalid()
             });
+        }
+
+        if !additional_copies.is_empty() {
+            // "You may choose new targets for the additional copy" (CR
+            // 707.10c): offered for each copy the replacement added.
+            ctx.store_outcome(
+                crate::effect::EffectId::ADDITIONAL_COPIES,
+                EffectOutcome::with_objects(additional_copies),
+            );
+            crate::effects::ChooseNewTargetsEffect::new(
+                crate::effect::EffectId::ADDITIONAL_COPIES,
+                true,
+            )
+            .execute_child(game, ctx)?;
         }
 
         Ok(EffectOutcome::with_objects(created_ids))

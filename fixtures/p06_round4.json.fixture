@@ -238,5 +238,15 @@
   "toughness": null,
   "loyalty": "6",
   "oracle_text": "Compleated ({B/P} can be paid with {B} or 2 life. If life was paid, this planeswalker enters with two fewer loyalty counters.)\n0: You draw a card and lose 1 life. Proliferate.\n−2: Target creature becomes a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color\" and loses all other card types and abilities.\n−9: If target player has fewer than nine poison counters, they get a number of poison counters equal to the difference."
+ },
+ {
+  "name": "Twinning Staff",
+  "oracle_id": "3ca8113b-f5b8-41a7-aae6-ebb32554dfe3",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you would copy a spell one or more times, instead copy it that many times plus an additional time. You may choose new targets for the additional copy.\n{7}, {T}: Copy target instant or sorcery spell you control. You may choose new targets for the copy."
  }
 ]

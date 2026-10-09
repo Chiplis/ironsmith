@@ -176,6 +176,43 @@ fn additional_looked_cards_line<'a>(
     Ok((action, additional))
 }
 
+/// "If you would copy a spell one or more times, instead copy it that many
+/// times plus an additional time. You may choose new targets for the
+/// additional copy." (Twinning Staff, CR 707.10): the engine offers new
+/// targets for each copy the replacement adds.
+fn spell_copy_count_line<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    crate::grammar::primitives::phrase(&[
+        "if", "you", "would", "copy", "a", "spell", "one", "or", "more", "times",
+    ])
+    .parse_next(input)?;
+    crate::grammar::primitives::comma().parse_next(input)?;
+    crate::grammar::primitives::phrase(&[
+        "instead", "copy", "it", "that", "many", "times", "plus",
+    ])
+    .parse_next(input)?;
+    let additional = alt((
+        crate::grammar::primitives::phrase(&["an", "additional", "time"]).value(1u32),
+        (
+            crate::grammar::primitives::number_token,
+            crate::grammar::primitives::phrase(&["additional", "times"]),
+        )
+            .map(|(additional, ())| additional),
+    ))
+    .parse_next(input)?;
+    crate::grammar::primitives::period().parse_next(input)?;
+    crate::grammar::primitives::phrase(&[
+        "you", "may", "choose", "new", "targets", "for", "the", "additional",
+    ])
+    .parse_next(input)?;
+    alt((
+        crate::grammar::primitives::kw("copy"),
+        crate::grammar::primitives::kw("copies"),
+    ))
+    .parse_next(input)?;
+    crate::grammar::primitives::sentence_end().parse_next(input)?;
+    Ok(additional)
+}
+
 /// The tokens of one phrase, up to (not including) the given phrase.
 fn phrase_until<'a>(
     input: &mut LexStream<'a>,
@@ -327,6 +364,21 @@ pub fn parse_if_event_would_happen_amount_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
+    if let Some(additional) = crate::grammar::primitives::probe_all(
+        &tokens,
+        spell_copy_count_line,
+        "spell copy count replacement",
+    ) {
+        return Ok(Some(StaticAbility::event_amount_replacement(
+            AmountEventSpec::KeywordAction {
+                action: KeywordActionKind::CopySpell,
+                performer: PlayerFilter::You,
+            },
+            AmountModifierSpec::Add(additional),
+            false,
+            amount_display(&tokens),
+        )));
+    }
     if let Some((action, performer, reading)) = crate::grammar::primitives::probe_all(
         &tokens,
         keyword_action_line,
