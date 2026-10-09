@@ -219,7 +219,8 @@ pub fn parse_if_event_would_happen_instead_line(
         && body[0].is_word("you")
         && body[1].is_word("may");
     if optional {
-        body.drain(..2);
+        body.remove(0);
+        body.remove(0);
     }
     let modification_words = event_modification_words(&event);
     if body.iter().any(|token| token.is_word("instead") || token.is_quote())
