@@ -2926,6 +2926,12 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some(branches) = split_filtered_etb_counter_if_otherwise(tokens) {
+        // Own an entry-counter instruction before interpreting its condition.
+        let Some(primary) =
+            parse_enters_with_additional_counter_for_filter_line(&branches.primary_tokens)?
+        else {
+            return Ok(None);
+        };
         let condition =
             parse_entering_object_value_comparison_condition(&branches.condition_tokens)
                 .or_else(|| parse_enters_with_counter_condition_clause(&branches.condition_tokens))
@@ -2945,11 +2951,6 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
                         ))
                     })
                 })?;
-        let Some(primary) =
-            parse_enters_with_additional_counter_for_filter_line(&branches.primary_tokens)?
-        else {
-            return Ok(None);
-        };
         let Some((otherwise_counter, otherwise_count)) =
             parse_filtered_etb_counter_otherwise_count(&branches.otherwise_tokens)?
         else {

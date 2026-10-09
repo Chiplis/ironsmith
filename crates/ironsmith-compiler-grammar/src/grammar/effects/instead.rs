@@ -55,6 +55,18 @@ fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
 }
 
 pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
+    if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote) {
+        // A quoted granted ability owns its own replacement semantics.
+        // It must not turn the enclosing grant into a self-replacement.
+        let mut quoted = false;
+        let outer: Vec<_> = tokens.iter().filter_map(|token| {
+            if token.kind == crate::lexer::TokenKind::Quote {
+                quoted = !quoted;
+                None
+            } else if quoted { None } else { Some(token.clone()) }
+        }).collect();
+        return classify_instead_followup_semantics_tokens(&outer);
+    }
     // A spell's eventual resolution destination is a future zone event,
     // including the "that card" reference used by cast-trigger bodies.
     if super::is_resolving_spell_exile_instead_shape(tokens) {
