@@ -75,3 +75,5 @@ card_reader!(tishanas_tidebinder,"Tishana's Tidebinder","Mana cost: {2}{U}\nType
 card_reader!(transcendent_dragon,"Transcendent Dragon","Mana cost: {4}{U}{U}\nType: Creature — Dragon\nPower/Toughness: 4/3\nFlash\nFlying\nWhen this creature enters, if you cast it, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard, then you may cast it without paying its mana cost.");
 
 card_reader!(flaring_flame_kin,"Flaring Flame-Kin","Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"");
+
+card_reader!(the_fallen,"The Fallen","Mana cost: {1}{B}{B}{B}\nType: Creature — Zombie\nPower/Toughness: 2/3\nAt the beginning of your upkeep, this creature deals 1 damage to each opponent and planeswalker it has dealt damage to this game.");

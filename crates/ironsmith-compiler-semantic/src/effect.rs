@@ -76,6 +76,7 @@ pub trait EffectPayload: Any + Debug + Send + Sync + erased_serde::Serialize {
     fn clone_box(&self) -> Box<dyn EffectPayload>;
     fn as_any(&self) -> &dyn Any;
     fn type_name(&self) -> &'static str;
+    fn json_payload(&self) -> Result<serde_json::Value, serde_json::Error>;
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
         None
     }
@@ -96,6 +97,14 @@ where
     fn type_name(&self) -> &'static str {
         std::any::type_name::<T>()
     }
+
+    fn json_payload(&self) -> Result<serde_json::Value, serde_json::Error> {
+        // Serialize while the concrete payload type is available. The erased
+        // serializer's struct-variant skip_field path can panic on omitted
+        // optional fields, including player-history filters.
+        serde_json::to_value(self)
+    }
+
 }
 
 #[derive(Debug)]
@@ -108,7 +117,8 @@ impl serde::Serialize for SerializablePayload<'_> {
     where
         S: serde::Serializer,
     {
-        erased_serde::serialize(self.0, serializer)
+        let payload = self.0.json_payload().map_err(serde::ser::Error::custom)?;
+        serde::Serialize::serialize(&payload, serializer)
     }
 }
 
@@ -2865,6 +2875,29 @@ mod effect_cast_price_child_tests {
                 assert!(child.downcast_ref::<crate::effects::PayLifeEffect>().is_some()); seen += 1;
             });
             assert_eq!(seen, 2);
+        }
+    }
+}
+
+#[cfg(test)]
+mod payload_serialization_tests {
+    use super::*;
+
+    #[test]
+    fn optional_struct_variant_fields_serialize_through_nested_effect_payloads() {
+        for this_turn in [false, true] {
+            let filter = crate::target::PlayerFilter::WasDealtDamageBySourceThisGame {
+                base: Box::new(crate::target::PlayerFilter::Opponent), this_turn,
+            };
+            let concrete = crate::effects::ForPlayersEffect {
+                filter, effects: vec![Effect::draw(1)], sequential: false,
+                starting_with_controller: false, stop_after_first_happened: false,
+            };
+            let expected = serde_json::to_value(&concrete).unwrap();
+            let serialized = serde_json::to_value(Effect::new(concrete)).unwrap();
+            assert_eq!(serialized["payload"], expected);
+            let field = &serialized["payload"]["filter"]["WasDealtDamageBySourceThisGame"]["this_turn"];
+            assert_eq!(field, &if this_turn { serde_json::json!(true) } else { serde_json::Value::Null });
         }
     }
 }

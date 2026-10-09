@@ -4488,6 +4488,8 @@ pub fn parse_composed_anthem_effects_line(
                 abilities
             } else if let Some(abilities) = parse_granted_keyword_static_line(&segment)? {
                 abilities
+            } else if let Some(abilities) = parse_filter_has_granted_ability_line(&segment)? {
+                abilities
             } else if let Some(ability) = parse_anthem_line(&segment)? {
                 vec![ability.into()]
             } else {
