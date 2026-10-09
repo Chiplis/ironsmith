@@ -920,6 +920,15 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
     };
     let (delayed_filter, remainder) = match shape {
         delayed_shapes::DelayedDiesShape::ThatReference { effect_tokens } => (None, effect_tokens),
+        // CR 603.7c / 603.10a: "under your control" is checked against the
+        // dying object's last-known controller.
+        delayed_shapes::DelayedDiesShape::ItReference {
+            under_your_control,
+            effect_tokens,
+        } => (
+            under_your_control.then(|| ObjectFilter::default().you_control()),
+            effect_tokens,
+        ),
         delayed_shapes::DelayedDiesShape::DefinitePriorTarget {
             subject_tokens,
             effect_tokens,

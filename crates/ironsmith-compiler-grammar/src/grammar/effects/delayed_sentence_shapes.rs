@@ -85,6 +85,12 @@ pub enum DelayedDiesShape<'a> {
     ThatReference {
         effect_tokens: &'a [OwnedLexToken],
     },
+    /// "When it dies [under your control] this turn, ..." (Desperate
+    /// Measures): the object the preceding effect acted on.
+    ItReference {
+        under_your_control: bool,
+        effect_tokens: &'a [OwnedLexToken],
+    },
     DefinitePriorTarget {
         subject_tokens: &'a [OwnedLexToken],
         effect_tokens: &'a [OwnedLexToken],
