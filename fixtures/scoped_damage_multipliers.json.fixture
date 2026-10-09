@@ -1,0 +1,26 @@
+[
+ {
+  "name": "Jeska, Thrice Reborn",
+  "oracle_id": "b1fbfcf3-6921-4417-a58e-0f5e5d34a105",
+  "mana_cost": "{2}{R}",
+  "type_line": "Legendary Planeswalker — Jeska",
+  "oracle_text": "Jeska enters with a loyalty counter on her for each time you've cast a commander from the command zone this game.\n0: Choose target creature. Until your next turn, if that creature would deal combat damage to one of your opponents, it deals triple that damage to that player instead.\n−X: Jeska deals X damage to each of up to three targets.\nJeska, Thrice Reborn can be your commander.\nPartner",
+  "loyalty": "0"
+ },
+ {
+  "name": "Lightning, Army of One",
+  "oracle_id": "585eb5bc-5a3d-44d8-b593-1ff0d67f96a7",
+  "mana_cost": "{1}{R}{W}",
+  "type_line": "Legendary Creature — Human Soldier",
+  "oracle_text": "First strike, trample, lifelink\nStagger — Whenever Lightning deals combat damage to a player, until your next turn, if a source would deal damage to that player or a permanent that player controls, it deals double that damage instead.",
+  "power": "3",
+  "toughness": "2"
+ },
+ {
+  "name": "Impulsive Maneuvers",
+  "oracle_id": "39a9323d-dddc-42ac-929d-3f4fa7c87567",
+  "mana_cost": "{2}{R}{R}",
+  "type_line": "Enchantment",
+  "oracle_text": "Whenever a creature attacks, flip a coin. If you win the flip, the next time that creature would deal combat damage this turn, it deals double that damage instead. If you lose the flip, the next time that creature would deal combat damage this turn, prevent that damage."
+ }
+]

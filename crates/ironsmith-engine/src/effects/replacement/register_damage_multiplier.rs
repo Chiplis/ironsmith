@@ -11,10 +11,21 @@ impl EffectExecutor for RegisterDamageMultiplierEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // "if that creature would deal combat damage to one of your
+        // opponents" / "to that player or a permanent that player controls":
+        // the object and player this resolution names stay the ones it named
+        // (CR 611.2c).
+        use crate::effects::player_reference_binding::{
+            bind_filter_resolution_references, bind_player_reference,
+        };
         let mut ability = crate::static_abilities::DoubleDamageAmountReplacement::new(
-            self.source_filter.clone(),
-            self.target_player_filter.clone(),
-            self.target_object_filter.clone(),
+            bind_filter_resolution_references(&self.source_filter, game, ctx),
+            self.target_player_filter
+                .as_ref()
+                .map(|player| bind_player_reference(player, game, ctx)),
+            self.target_object_filter
+                .as_ref()
+                .map(|filter| bind_filter_resolution_references(filter, game, ctx)),
             self.factor,
             self.combat_only,
             "Resolved damage multiplier",

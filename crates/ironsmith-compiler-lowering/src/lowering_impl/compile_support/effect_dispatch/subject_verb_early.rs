@@ -1923,7 +1923,27 @@ pub(super) fn compile_subject_verb_early(
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
-        }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
+        }) => {
+            // "if that creature would deal combat damage to one of your
+            // opponents" / "to that player or a permanent that player
+            // controls": the referenced object and player are the ones the
+            // instruction names (the engine locks them as it registers).
+            let refs = current_reference_env(ctx);
+            let mut spec = spec.clone();
+            spec.source_filter = resolve_it_tag(&spec.source_filter, &refs)?;
+            if let Some(filter) = spec.target_object_filter.as_mut() {
+                *filter = resolve_it_tag(filter, &refs)?;
+            }
+            if let Some(player) = spec.target_player_filter.as_mut()
+                && player.mentions_iterated_player()
+            {
+                let carrier = ObjectFilter::default().controlled_by(player.clone());
+                if let Some(resolved) = resolve_it_tag(&carrier, &refs)?.controller {
+                    *player = resolved;
+                }
+            }
+            Ok((vec![Effect::new(spec)], Vec::new()))
+        }
         SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterCounterPlacementReplacement {
                 filter,
