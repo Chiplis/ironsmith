@@ -238,7 +238,15 @@ pub fn parse_has_base_power_clause(
         )));
     }
     let Some(shape) = for_each_shapes::parse_base_power_clause_shape(tokens)? else {
-        return Ok(None);
+        let Some(shape) = for_each_shapes::parse_base_toughness_clause_shape(tokens)? else {
+            return Ok(None);
+        };
+        let target = parse_target_phrase(shape.target_tokens)?;
+        return Ok(Some(EffectAst::subject_verb_set_base_toughness(
+            shape.power,
+            target,
+            shape.duration,
+        )));
     };
     let target = parse_target_phrase(shape.target_tokens)?;
     Ok(Some(EffectAst::subject_verb_set_base_power(

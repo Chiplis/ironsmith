@@ -61,12 +61,28 @@ pub fn parse_base_power_or_toughness_clause_shape(
 pub fn parse_base_power_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<BasePowerClauseShape<'_>>, CardTextError> {
+    parse_base_axis_clause_shape(tokens, "power")
+}
+
+/// "<subject> has base toughness N [until end of turn]" (Six-Sided Die,
+/// Chariot of the Sun): the single-axis toughness counterpart. The shape's
+/// `power` field carries the toughness value.
+pub fn parse_base_toughness_clause_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<BasePowerClauseShape<'_>>, CardTextError> {
+    parse_base_axis_clause_shape(tokens, "toughness")
+}
+
+fn parse_base_axis_clause_shape<'a>(
+    tokens: &'a [OwnedLexToken],
+    axis: &'static str,
+) -> Result<Option<BasePowerClauseShape<'a>>, CardTextError> {
     let Some((subject, rest)) = split_subject_and_rest(tokens) else {
         return Ok(None);
     };
     let Some((_, value_tokens)) = primitives::parse_prefix(
         rest,
-        (primitives::kw("base"), primitives::kw("power")).void(),
+        (primitives::kw("base"), primitives::kw(axis)).void(),
     ) else {
         return Ok(None);
     };
