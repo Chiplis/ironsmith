@@ -2,7 +2,7 @@
 
 use super::add_mana_of_colors_among::{colors_among_filter, colors_among_for_execution};
 use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
+    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outputs,
 };
 use crate::color::Color;
 use crate::effect::EffectOutcome;
@@ -17,7 +17,11 @@ pub type AddOneManaOfAnyColorAmongEffect = ironsmith_core::AddOneManaOfAnyColorA
 impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::ColorsAmong { filter: &self.filter, choose_one: true, player: &self.player })
+        Some(ManaProduction::ColorsAmong {
+            filter: &self.filter,
+            choose_one: true,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -29,6 +33,15 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
         let colors = symbols
@@ -36,7 +49,9 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
             .filter_map(|symbol| color_for_symbol(*symbol))
             .collect::<Vec<_>>();
         let Some(default_color) = colors.first().copied() else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
 
         let chosen = choose_mana_colors(
@@ -50,10 +65,14 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
             default_color,
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let Some(color) = chosen.into_iter().next() else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
         let symbols = credit_mana_symbols_from_context(
             game,
@@ -61,7 +80,7 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
             vec![ManaSymbol::from_color(color)],
             ctx,
         )?;
-        Ok(mana_added_count_outcome(ctx, player_id, symbols, 1))
+        Ok(mana_added_count_outputs(ctx, player_id, symbols, 1))
     }
 
     fn producible_mana_symbols(

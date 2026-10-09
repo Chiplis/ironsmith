@@ -173,6 +173,24 @@ pub(crate) fn execute_result_decision_transaction<'a, T, E>(
     )
 }
 
+/// Native raw-decision roots restore the exact world on suspension/error and
+/// preserve the body's result, without acquiring an execution context.
+pub(crate) fn execute_result_decision_checkpoint_transaction<'a, T, E>(
+    game: &mut GameState,
+    decision_maker: &mut (dyn crate::decision::DecisionMaker + 'a),
+    body: impl FnOnce(&mut GameState, &mut (dyn crate::decision::DecisionMaker + 'a)) -> Result<T, E>,
+) -> Result<T, E> {
+    execute_transaction_with_policy(
+        game,
+        decision_maker,
+        None::<fn() -> T>,
+        |_| true,
+        |_| true,
+        PendingDecisionRetention::CheckpointResult,
+        |game, ctx, _| body(game, ctx),
+    )
+}
+
 /// Atomic world-only actions restore their complete checkpoint on error.
 /// They do not acquire a decision, context, source or new action identity.
 pub(crate) fn execute_world_checkpoint_transaction<T, E>(
@@ -268,6 +286,44 @@ pub(crate) fn execute_optional_world_transaction<'a, T, E>(
         |_| true,
         PendingDecisionRetention::SuccessfulSuspensionFromBody,
         |game, participant, _| body(game, participant.context),
+    )
+}
+
+/// Restore the complete world on errors or suspension while keeping the real
+/// instruction context and its exact result. No initial admission gate or
+/// pending-controller override is added to the native action.
+pub(crate) fn execute_world_context_checkpoint_transaction<'a, T, E>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    body: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, E>,
+) -> Result<T, E> {
+    let mut participant = WorldOnlyExecutionContext { context: ctx };
+    execute_transaction_with_policy(
+        game,
+        &mut participant,
+        None::<fn() -> T>,
+        |_| true,
+        |_| true,
+        PendingDecisionRetention::CheckpointResult,
+        |game, participant, _| body(game, participant.context),
+    )
+}
+
+/// Native resource actions roll back only the selected error classes. This
+/// world-only participant has no invented effect context or pending decision.
+pub(crate) fn execute_world_error_transaction<T, E>(
+    game: &mut GameState,
+    should_rollback_error: impl FnOnce(&E) -> bool,
+    body: impl FnOnce(&mut GameState) -> Result<T, E>,
+) -> Result<T, E> {
+    execute_transaction_with_policy(
+        game,
+        &mut (),
+        None::<fn() -> T>,
+        |_| true,
+        should_rollback_error,
+        PendingDecisionRetention::ErrorOnly,
+        |game, _, _| body(game),
     )
 }
 

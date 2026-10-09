@@ -1,6 +1,6 @@
 //! Add mana effect implementation.
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outputs};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -22,10 +22,15 @@ pub use ironsmith_core::AddManaEffect;
 /// let effect = AddManaEffect::new(vec![ManaSymbol::Green, ManaSymbol::Green], PlayerFilter::You);
 /// ```
 impl EffectExecutor for AddManaEffect {
-    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        Some(self)
+    }
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::Fixed { symbols: &self.mana, player: &self.player })
+        Some(ManaProduction::Fixed {
+            symbols: &self.mana,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -37,10 +42,21 @@ impl EffectExecutor for AddManaEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let (player_id, symbols) = self.mana_production().expect("mana production descriptor")
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let (player_id, symbols) = self
+            .mana_production()
+            .expect("mana production descriptor")
             .resolve_exact(game, ctx)?;
         let mana = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-        Ok(mana_added_value_outcome(ctx, player_id, mana))
+        Ok(mana_added_value_outputs(ctx, player_id, mana))
     }
 
     fn producible_mana_symbols(
@@ -55,7 +71,10 @@ impl EffectExecutor for AddManaEffect {
 
 impl crate::effects::CostExecutableEffect for AddManaEffect {
     fn can_execute_as_cost(
-        &self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId,
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
         crate::effects::helpers::resolve_player_filter(game, &self.player, &ctx)
@@ -178,7 +197,6 @@ mod tests {
         assert!(format!("{:?}", cloned).contains("AddManaEffect"));
     }
 }
-
 
 #[cfg(test)]
 mod replacement_contract_tests {

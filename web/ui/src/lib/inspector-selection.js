@@ -113,11 +113,12 @@ export function findObjectIdByStableId(state, stableId) {
 // "yes" for a stale inspect_object_id purely because this very stack entry
 // still names it, so asking it first would never reach the fallback. If the
 // stable id finds a card, that card *is* the source in whatever zone it now
-// occupies; only when it finds nothing is the entry's own id the best answer.
+// occupies. Otherwise use the captured inspect id; the presentation id may
+// collide with a completely unrelated card and must never be queried.
 export function resolveStackInspectObjectId(state, entry) {
   const viaStableId = findObjectIdByStableId(state, entry?.source_stable_id ?? entry?.stable_id);
   if (viaStableId != null) return viaStableId;
-  const direct = entry?.inspect_object_id ?? entry?.id ?? null;
+  const direct = entry?.inspect_object_id ?? null;
   return direct == null ? null : String(direct);
 }
 

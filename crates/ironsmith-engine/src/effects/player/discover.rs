@@ -5,11 +5,12 @@
 //! its mana cost or put it into your hand. Put the rest on the bottom of your
 //! library in a random order.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome, OutcomeValue};
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule,
+    execute_library_consult_with_outputs,
 };
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -21,8 +22,8 @@ use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 
 use super::runtime_helpers::{
-    cast_effect_driven_spell_without_paying, effect_driven_cast_options_for_card,
-    register_effect_driven_spell_cast,
+    cast_effect_driven_spell_without_paying, complete_effect_driven_cast_with_outputs,
+    effect_driven_cast_options_for_card,
 };
 
 /// Effect that resolves a discover action for a player.
@@ -143,11 +144,11 @@ impl EffectExecutor for DiscoverEffect {
                         };
                         if let Some(result) = cast_result {
                             selected_object = Some(result.new_id);
-                            casted_spell = Some(register_effect_driven_spell_cast(
+                            casted_spell = Some(complete_effect_driven_cast_with_outputs(
+                                EffectOutcome::resolved(),
                                 game,
-                                result.new_id,
+                                result,
                                 player_id,
-                                result.from_zone,
                                 ctx.provenance,
                             )?);
                         } else if ctx.decision_maker.awaiting_choice() {
@@ -223,13 +224,8 @@ impl EffectExecutor for DiscoverEffect {
                     ));
                 }
                 // Cast observations were captured at the successful cast, before cleanup.
-                if let Some(event) = casted_spell {
-                    phases.insert(
-                        0,
-                        CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::resolved().with_event(event),
-                        ),
-                    );
+                if let Some(outputs) = casted_spell {
+                    phases.insert(0, outputs);
                 }
                 phases.push(cleanup);
                 phases.push(CompletedEffectOutputs::aggregate_only(

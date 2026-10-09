@@ -88,14 +88,28 @@ pub(crate) fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    let _ = queue_triggers_from_event_with_outputs(game, trigger_queue, event, include_delayed);
+}
+
+/// Retain the actual canonical capture receipt after native publication. None
+/// means observations were suppressed or resource failure stopped capture;
+/// callers keep their existing transaction and resource-error boundaries.
+pub(crate) fn queue_triggers_from_event_with_outputs(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    event: TriggerEvent,
+    include_delayed: bool,
+) -> Option<crate::effects::CompletedEffectOutputs> {
     if game.action_observations_suppressed() {
-        return;
+        return None;
     }
     let mut event = game.event_with_retained_trigger_capture(&event);
     let include_delayed = include_delayed || event.kind() == crate::events::EventKind::SpellCast;
     if event.ordinary_triggers_captured() && (!include_delayed || event.delayed_triggers_captured())
     {
-        return;
+        // This invocation acknowledges an existing canonical capture. Its
+        // packet is a metadata view, not another action or history publisher.
+        return Some(trigger_capture_outputs(event));
     }
     if let Some(targeted) = event.downcast::<BecomesTargetedEvent>() {
         event = event.with_inner_event(targeted.clone().with_participant_snapshots(game));
@@ -104,7 +118,7 @@ pub(crate) fn queue_triggers_from_event(
     if !event.ordinary_triggers_captured() {
         queue_triggers_for_event(game, trigger_queue, event.clone());
         if game.token_resource_failure().is_some() {
-            return;
+            return None;
         }
         event.mark_ordinary_triggers_captured();
     }
@@ -113,11 +127,20 @@ pub(crate) fn queue_triggers_from_event(
             trigger_queue.add(trigger);
         }
         if game.token_resource_failure().is_some() {
-            return;
+            return None;
         }
         event.mark_delayed_triggers_captured();
     }
     game.retain_trigger_capture_receipt(&event);
+    Some(trigger_capture_outputs(event))
+}
+
+/// The capture owner returns its actual event receipt. Existing occurrence
+/// aliases retain their identity; no prior effect packet is reconstructed.
+fn trigger_capture_outputs(event: TriggerEvent) -> crate::effects::CompletedEffectOutputs {
+    crate::effects::CompletedEffectOutputs::aggregate_only(
+        crate::effect::EffectOutcome::resolved().with_event(event),
+    )
 }
 
 /// Capture the observers of one completed cast before its publishing effect
@@ -133,33 +156,54 @@ pub(crate) fn capture_completed_spell_cast(
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
 ) -> Result<(TriggerEvent, TriggerQueue), crate::effects::ExecutionError> {
+    capture_completed_spell_cast_with_outputs(game, spell, caster, from_zone, provenance)
+        .map(|(outputs, queue)| (outputs.outcome.events[0].clone(), queue))
+}
+
+pub(crate) fn capture_completed_spell_cast_with_outputs(
+    game: &mut GameState,
+    spell: ObjectId,
+    caster: PlayerId,
+    from_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<(crate::effects::CompletedEffectOutputs, TriggerQueue), crate::effects::ExecutionError>
+{
     use crate::effects::ExecutionError;
     let (root, meter) = game.begin_token_resource_scope();
-    let checkpoint = game.clone();
-    let result = (|| {
-        game.refresh_continuous_state()
-            .map_err(ExecutionError::ContinuousDiscovery)?;
-        let cast = SpellCastEvent::try_from_completed_cast(spell, caster, from_zone, game)?;
-        cast.required_completed_snapshot()?;
-        if cast.targets.is_none() {
-            return Err(ExecutionError::IncompleteEvidence(
-                "completed cast publication requires its chosen target receipt".into(),
-            ));
+    let result = crate::effects::composition::execute_world_result_transaction(game, |game| {
+        let result = (|| {
+            game.refresh_continuous_state()
+                .map_err(ExecutionError::ContinuousDiscovery)?;
+            let cast = SpellCastEvent::try_from_completed_cast(spell, caster, from_zone, game)?;
+            cast.required_completed_snapshot()?;
+            if cast.targets.is_none() {
+                return Err(ExecutionError::IncompleteEvidence(
+                    "completed cast publication requires its chosen target receipt".into(),
+                ));
+            }
+            let mut event = game.ensure_trigger_event_provenance(
+                TriggerEvent::new_with_provenance(cast, provenance),
+            );
+            let mut captured = TriggerQueue::new();
+            let capture =
+                queue_triggers_from_event_with_outputs(game, &mut captured, event.clone(), true);
+            if let Some(error) = game.token_resource_failure() {
+                return Err(error);
+            }
+            event.mark_triggers_captured();
+            let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::resolved().with_event(event),
+            );
+            if let Some(capture) = capture {
+                outputs.retain_published_children([capture]);
+            }
+            Ok((outputs, captured))
+        })();
+        if let Err(error) = &result {
+            game.record_token_resource_failure(error);
         }
-        let mut event = game
-            .ensure_trigger_event_provenance(TriggerEvent::new_with_provenance(cast, provenance));
-        let mut captured = TriggerQueue::new();
-        queue_triggers_from_event(game, &mut captured, event.clone(), true);
-        if let Some(error) = game.token_resource_failure() {
-            return Err(error);
-        }
-        event.mark_triggers_captured();
-        Ok((event, captured))
-    })();
-    if let Err(error) = &result {
-        game.record_token_resource_failure(error);
-        game.restore_execution_checkpoint(checkpoint, false);
-    }
+        result
+    });
     game.end_token_resource_scope(root, &meter);
     result
 }
@@ -188,18 +232,18 @@ fn try_queue_reported_events_with_batch_policy(
     counter_batches_only: bool,
 ) -> Result<(), crate::effects::ExecutionError> {
     let (root, meter) = game.begin_token_resource_scope();
-    let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
-    queue_reported_events_with_batch_policy(
-        game,
-        trigger_queue,
-        events,
-        include_delayed,
-        counter_batches_only,
-    );
-    let result = game.token_resource_failure().map_or(Ok(()), Err);
+    let result = crate::effects::composition::execute_world_result_transaction(game, |game| {
+        queue_reported_events_with_batch_policy(
+            game,
+            trigger_queue,
+            events,
+            include_delayed,
+            counter_batches_only,
+        );
+        game.token_resource_failure().map_or(Ok(()), Err)
+    });
     if result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, false);
         *trigger_queue = queue_checkpoint;
     }
     game.end_token_resource_scope(root, &meter);
@@ -754,73 +798,62 @@ pub(super) fn capture_announced_targeting(
     Ok(captured)
 }
 
-pub(super) fn queue_ability_activated_event(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-    decision_maker: &mut dyn DecisionMaker,
+/// Observe source characteristics at the native notification boundary without
+/// re-acquiring the declared ability or inferring a payment/action identity.
+/// Callers supply their actual original/latest native fallback snapshot.
+pub(super) fn activation_source_observation(
+    game: &GameState,
     source: ObjectId,
-    activator: PlayerId,
-    is_mana_ability: bool,
-    _source_stable_id: Option<StableId>,
-    activation_cost_has_tap: bool,
-) -> Result<(), GameLoopError> {
-    let activation_entry = game
-        .stack
-        .iter()
-        .rev()
-        .find(|entry| !is_mana_ability && entry.is_ability && entry.object_id == source);
-    let snapshot = game
-        .object(source)
+    fallback: Option<&ObjectSnapshot>,
+) -> Option<ObjectSnapshot> {
+    game.object(source)
         .map(|object| ObjectSnapshot::from_object(object, game))
         .or_else(|| game.source_departure_snapshot(source).cloned())
         .or_else(|| {
-            activation_entry
-                .and_then(|entry| entry.source_snapshot.as_ref())
+            fallback
                 .filter(|snapshot| snapshot.object_id == source)
                 .cloned()
-        });
-    let ability_index = activation_entry.and_then(|entry| entry.ability_index);
-    let activated_ability = ability_index.and_then(|index| {
-        activation_entry
-            .and_then(|entry| entry.source_snapshot.as_ref())
-            .and_then(|snapshot| snapshot.abilities.get(index))
-            .cloned()
-            .or_else(|| game.current_ability(source, index))
-    });
-    let stack_entry_provenance = activation_entry.map(|entry| entry.provenance);
-    let x_value = activation_entry.and_then(|entry| entry.x_value);
-    let activation_cost_has_x = activation_entry.is_some_and(|entry| entry.activation_cost_has_x);
-    let mana_spent_total =
-        activation_entry.map_or(0, |entry| entry.mana_spent_on_activation.total());
-    let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
-    let mana_sources_spent = game
-        .stack
-        .iter()
-        .rev()
-        .find(|entry| entry.is_ability && entry.object_id == source)
-        .and_then(|entry| entry.tagged_objects.get(&mana_sources_tag))
-        .cloned()
-        .unwrap_or_default();
-    let activation = AbilityActivatedEvent::from_effective_ability(
-        source,
-        activator,
-        is_mana_ability,
-        activated_ability,
-        snapshot,
-    )
-    .with_activation_cost_has_x(activation_cost_has_x)
-    .with_activation_cost_has_tap(activation_cost_has_tap)
-    .with_x_value(x_value)
-    .with_stack_entry_provenance(stack_entry_provenance)
-    .with_mana_sources_spent(mana_sources_spent)
-    .with_mana_spent_total(mana_spent_total);
-    queue_prepared_activation_notification_with_outputs(
+        })
+}
+
+/// Complete an actual special-action mana receipt at the caller's native
+/// notification boundary. The special-action owner already handed off its
+/// event projection; this composes only real payment/production and notification
+/// children. Suspended execution has no successful notification to publish.
+pub(super) fn queue_special_action_mana_completion_with_outputs(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+    completed: Option<crate::special_actions::CompletedManaActivation>,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, GameLoopError> {
+    if decision_maker.awaiting_choice() {
+        return Ok(Vec::new());
+    }
+    let completed = completed.ok_or_else(|| {
+        GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+            "special-action mana activation has no acknowledged completion".into(),
+        ))
+    })?;
+    if !completed.events.is_empty() {
+        return Err(GameLoopError::ExecutionFailed(
+            crate::effects::ExecutionError::IncompleteEvidence(
+                "special-action mana events have not been handed off".into(),
+            ),
+        ));
+    }
+    let activation = completed.activation_notification.ok_or_else(|| {
+        GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+            "completed special-action mana activation has no prepared notification".into(),
+        ))
+    })?;
+    let mut outputs = completed.outputs;
+    outputs.extend(queue_prepared_activation_notification_with_outputs(
         game,
         trigger_queue,
         decision_maker,
         activation,
-    )
-    .map(|_| ())
+    )?);
+    Ok(outputs)
 }
 
 /// Queue the exact prepared payload and retain actual notification and immediate
@@ -832,9 +865,13 @@ pub(super) fn queue_prepared_activation_notification_with_outputs(
     activation: crate::events::AbilityActivatedEvent,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, GameLoopError> {
     let is_mana = activation.is_mana_ability;
-    let notification = game.complete_activation_notification(activation);
-    for event in &notification.outcome.events {
-        queue_triggers_from_event(game, trigger_queue, event.clone(), true);
+    let mut notification = game.complete_activation_notification(activation);
+    for event in notification.outcome.events.clone() {
+        if let Some(capture) =
+            queue_triggers_from_event_with_outputs(game, trigger_queue, event, true)
+        {
+            notification.retain_published_children([capture]);
+        }
     }
     let mut outputs = vec![notification];
     if is_mana {

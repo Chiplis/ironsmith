@@ -31,7 +31,7 @@ pub fn static_ability_zone_defaults(
             Zone::Exile,
             Zone::Command,
         ],
-        Some(SetColors | AddColors | MakeColorless | AddSubtypes) if source_only => all_zones(),
+        Some(SetColors | AddColors | MakeColorless | AddSubtypes | AddAllSubtypesOfFamily) if source_only => all_zones(),
         Some(
             CharacteristicDefiningPT
             | ShuffleIntoLibraryFromGraveyard
@@ -58,12 +58,26 @@ impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond> {
         }
     }
 
+    /// An unconditional source-only definition of every subtype in a family.
+    pub fn is_characteristic_defining_subtype_family(&self) -> bool {
+        matches!(&self.payload, StaticAbilityPayload::AddAllSubtypesOfFamily { filter, .. }
+            if filter.is_source_only())
+    }
+
+    /// Printed color CDA contribution, independent of its gameplay color.
+    pub fn color_identity_contribution(&self) -> Option<ColorSet> {
+        if matches!(&self.payload, StaticAbilityPayload::SetColors {
+            exclude_from_color_identity: true, ..
+        }) { return None; }
+        self.characteristic_defining_colors()
+    }
+
     /// Colors a printed, unconditional source-only ability defines (CR 604.3).
     /// Callers must separately establish that the ability belongs to the
     /// object's rules text; an ordinary grant is not a CDA.
     pub fn characteristic_defining_colors(&self) -> Option<ColorSet> {
         match &self.payload {
-            StaticAbilityPayload::SetColors { filter, colors }
+            StaticAbilityPayload::SetColors { filter, colors, .. }
             | StaticAbilityPayload::AddColors { filter, colors }
                 if filter.is_source_only() => Some(*colors),
             StaticAbilityPayload::MakeColorless(filter) if filter.is_source_only() =>
@@ -85,7 +99,8 @@ impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, 
             StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
             | StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,
             _ => self.characteristic_defining_colors().is_some()
-                || self.characteristic_defining_subtypes().is_some(),
+                || self.characteristic_defining_subtypes().is_some()
+                || self.is_characteristic_defining_subtype_family(),
         };
         let source_grant_zone = match &self.payload {
             StaticAbilityPayload::Grants(spec) if spec.filter.source => Some(spec.zone),
@@ -137,5 +152,34 @@ mod subtype_tests {
         let chosen = TestStaticAbility::add_chosen_creature_type(ObjectFilter::source(), "chosen type");
         assert_eq!(chosen.default_functional_zones(), vec![Zone::Battlefield]);
         assert_eq!(chosen.characteristic_defining_subtypes(), None);
+    }
+}
+
+#[cfg(test)]
+mod cda_gap_tests {
+    use super::*;
+    use crate::{ObjectFilter, SubtypeFamily};
+    type TestAbility = StaticAbility<(), (), (), (), crate::Condition>;
+
+    #[test]
+    fn identity_exception_preserves_color_definition_and_all_zone_scope() {
+        let ability = TestAbility::set_colors_without_color_identity(ObjectFilter::source(), ColorSet::RED);
+        assert_eq!(ability.color_identity_contribution(), None);
+        assert_eq!(ability.characteristic_defining_colors(), Some(ColorSet::RED));
+        assert_eq!(ability.default_functional_zones(), all_zones());
+        assert_eq!(TestAbility::set_colors(ObjectFilter::source(), ColorSet::RED)
+            .color_identity_contribution(), Some(ColorSet::RED));
+    }
+
+    #[test]
+    fn subtype_family_cda_scope_excludes_groups_conditions_and_explicit_restrictions() {
+        let ability = TestAbility::add_all_subtypes_of_family(ObjectFilter::source(), SubtypeFamily::Creature);
+        assert_eq!(ability.default_functional_zones(), all_zones());
+        for filter in [ObjectFilter::creature(), ObjectFilter::source().in_zone(Zone::Battlefield)] {
+            assert_eq!(TestAbility::add_all_subtypes_of_family(filter, SubtypeFamily::Creature)
+                .default_functional_zones(), vec![Zone::Battlefield]);
+        }
+        assert_eq!(ability.with_condition(crate::Condition::YourTurn).default_functional_zones(),
+            vec![Zone::Battlefield]);
     }
 }

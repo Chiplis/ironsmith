@@ -3341,6 +3341,57 @@ mod live_action_rollback_tests {
         assert_eq!(view.life_options[0].life, 2);
     }
 
+    #[test]
+    fn compiled_krrik_payment_editor_offers_life_and_commits_it() {
+        use ironsmith::ability::Ability;
+        use ironsmith::static_abilities::StaticAbility;
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let helper = CardDefinitionBuilder::new(CardId::new(), "Compiled life permission")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(StaticAbility::from_model(
+                ironsmith::static_abilities::CompiledStaticAbility::krrik_black_mana_may_be_paid_with_life(),
+            )))
+            .build();
+        wasm.game
+            .create_object_from_definition(&helper, alice, Zone::Battlefield);
+        let spell = begin_manual_payment_spell_with_cost(
+            &mut wasm,
+            ManaCost::from_symbols(vec![ManaSymbol::Black]),
+        );
+        let Some(DecisionContext::ManaPayment(payment)) = wasm.pending_decision.as_ref() else {
+            panic!("casting must open the payment editor");
+        };
+        let pending = ironsmith::mana_payment::PendingManaPayment::new(
+            payment.request.clone(),
+            payment.plan.clone(),
+        );
+        let view = mana_payment_editor_view(&wasm.game, &pending, &[]);
+        assert_eq!(view.life_options.len(), 1);
+        assert_eq!(view.life_options[0].life, 2);
+        assert_eq!(wasm.game.player(alice).unwrap().life, 20);
+        // Replan through the same command as the pip menu before confirming.
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Replan {
+                    required_source_ids: vec![],
+                    required_activations: vec![],
+                    required_alternatives: vec![],
+                    excluded_source_ids: vec![],
+                    preserved_source_ids: vec![],
+                    prefer_life: false,
+                    required_life_pips: vec![0],
+                    x_allocation: None,
+                },
+            },
+        );
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().life, 18);
+        assert!(wasm.game.stack.iter().any(|entry| entry.object_id == spell));
+    }
+
     fn dispatch_pass_priority(wasm: &mut WasmGame) {
         dispatch_priority_action_matching(wasm, |action| {
             matches!(action, LegalAction::PassPriority)

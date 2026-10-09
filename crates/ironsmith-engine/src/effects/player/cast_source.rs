@@ -10,7 +10,7 @@ use crate::game_state::GameState;
 use crate::zone::Zone;
 pub use ironsmith_core::CastSourceEffect;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::complete_native_cast_with_outputs;
 
 fn restore_other_face_after_failed_cast(
     game: &mut GameState,
@@ -42,9 +42,20 @@ impl EffectExecutor for CastSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let source_id = ctx.source;
         let Some(source_obj) = game.object(source_id) else {
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         };
 
         let original_source = source_obj.clone();
@@ -67,13 +78,17 @@ impl EffectExecutor for CastSourceEffect {
             .is_none_or(|snapshot| snapshot.name == source_obj.name);
         if self.cast_other_face && source_matches_trigger_snapshot {
             if source_obj.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
             }
             let Some(other_def) = game.linked_face_definition_by_name_or_id(
                 source_obj.other_face_name.as_deref(),
                 source_obj.other_face,
             ) else {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
             };
             if let Some(source_obj) = game.object_mut(source_id) {
                 source_obj.apply_definition_face(&other_def);
@@ -81,7 +96,9 @@ impl EffectExecutor for CastSourceEffect {
         }
 
         let Some(source_obj) = game.object(source_id) else {
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         };
 
         if source_obj.is_land() {
@@ -93,7 +110,9 @@ impl EffectExecutor for CastSourceEffect {
                     trigger_face.as_ref(),
                 );
             }
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         }
         if self.require_exile && source_obj.zone != Zone::Exile {
             if self.cast_other_face {
@@ -104,7 +123,9 @@ impl EffectExecutor for CastSourceEffect {
                     trigger_face.as_ref(),
                 );
             }
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         }
 
         let from_zone = source_obj.zone;
@@ -135,7 +156,7 @@ impl EffectExecutor for CastSourceEffect {
             zone: from_zone,
             use_alternative: suspend_alternative_index,
         };
-        let result = match crate::game_loop::cast_spell_from_resolving_effect(
+        let result = match crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
             game,
             source_id,
             from_zone,
@@ -159,7 +180,7 @@ impl EffectExecutor for CastSourceEffect {
                 return Err(super::runtime_helpers::effect_driven_cast_error(error));
             }
         };
-        let Some(new_id) = result else {
+        let Some(cast) = result else {
             // The synthetic suspend permission exists only for this cast.
             if pushed_synthetic_suspend
                 && !ctx.decision_maker.awaiting_choice()
@@ -180,19 +201,23 @@ impl EffectExecutor for CastSourceEffect {
                 );
             }
             return if ctx.decision_maker.awaiting_choice() {
-                Ok(EffectOutcome::count(0))
+                Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ))
             } else {
-                Ok(EffectOutcome::impossible())
+                Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::impossible(),
+                ))
             };
         };
-        Ok(with_spell_cast_event(
-            EffectOutcome::with_objects(vec![new_id]),
+        complete_native_cast_with_outputs(
+            EffectOutcome::with_objects(vec![cast.new_id]),
             game,
-            new_id,
+            cast,
             ctx.controller,
             from_zone,
             ctx.provenance,
-        )?)
+        )
     }
 }
 

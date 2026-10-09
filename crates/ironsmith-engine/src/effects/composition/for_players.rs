@@ -2472,7 +2472,11 @@ impl ForPlayersActionState {
                                 actual_events.clone(),
                                 Some(owner_facts.clone()),
                             )?;
-                            let prefix = EffectOutcome::aggregate([completed_prefix, prefix]);
+                            let combined_prefix = EffectOutcome::aggregate([
+                                completed_prefix,
+                                prefix.outcome.clone(),
+                            ]);
+                            retained_outputs.push(prefix);
                             let pending_program_draw = Some(PendingProgramDraw {
                                 unit_index,
                                 metadata,
@@ -2482,7 +2486,7 @@ impl ForPlayersActionState {
                             });
                             return Ok((
                                 ActionRun::Paused {
-                                    prefix,
+                                    prefix: combined_prefix,
                                     state: ForPlayersContinuationState::Action(Box::new(Self {
                                         next_unit: unit_index,
                                         pending_unit_draw,

@@ -60,6 +60,19 @@ export function battlefieldPlacementForDrag(dragState) {
   return { lane: battlefieldLaneForCard(card), kind: "cast_spell" };
 }
 
+/** Content box shared by drop targeting and its arrow, excluding reserved rails. */
+export function battlefieldGridContentBounds(element, styles) {
+  const rect = element.getBoundingClientRect();
+  const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+  return {
+    left: rect.left + element.clientLeft + paddingLeft,
+    top: rect.top + element.clientTop + (Number.parseFloat(styles.paddingTop) || 0),
+    width: Math.max(0, element.clientWidth - paddingLeft - paddingRight),
+    alignStart: styles.justifyContent === "start" || styles.justifyContent === "flex-start",
+  };
+}
+
 /** Resolve a viewport pointer to the visual grid cell used by the battlefield. */
 export function battlefieldGridSlotAtPoint({
   x,
@@ -74,6 +87,7 @@ export function battlefieldGridSlotAtPoint({
   gap = 0,
   rowGap = gap,
   overlap = 0,
+  alignStart = false,
   scrollLeft = 0,
   scrollTop = 0,
 }) {
@@ -102,7 +116,7 @@ export function battlefieldGridSlotAtPoint({
   const columnStride = trackWidth + Math.max(0, Number(gap));
   const rowStride = rowHeight + Math.max(0, Number(rowGap));
   const gridWidth = (columnCount * trackWidth) + ((columnCount - 1) * Math.max(0, Number(gap)));
-  const gridLeft = Number(left) + Math.max(0, (Number(width) - gridWidth) / 2);
+  const gridLeft = Number(left) + (alignStart ? 0 : Math.max(0, (Number(width) - gridWidth) / 2));
   // x/y are viewport coordinates. Add the scroller offset so a drop over a
   // row that has been vertically scrolled still resolves to the same logical
   // cell that CSS grid is showing at that point.

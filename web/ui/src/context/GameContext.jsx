@@ -1,3 +1,4 @@
+import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
 import { COMBAT_STEPS, createPriorityStops } from "@/lib/priority-stops";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
@@ -2492,6 +2493,12 @@ export function GameProvider({ children }) {
     return () => clearTimeout(timer);
   }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
     resolveAllTick, phasePassing, state, stateRef, stopResolveAll, pausePassing, priorityStops, priorityStopsState, holdRule]);
+
+  const automaticRevealBlocked = useCallback(() =>
+    wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
+      || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current,
+  [isSnapshotRendered, multiplayer.submittingAction]);
+  useAutomaticHandReveal({ state, stateRef, dispatch, isBlocked: automaticRevealBlocked });
 
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.

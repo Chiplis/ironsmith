@@ -98,7 +98,13 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                             ChooseSpec::SpecificPlayer(player),
                         )
                         .with_x_maximum(Value::Fixed(maximum));
-                        let receipt = payment.execute_with_outputs(game, ctx)?;
+                        // Contributions retain ordinary action cancellation semantics;
+                        // mandatory payment validation belongs to cost owners.
+                        let receipt = crate::effects::execute_effect_with_outputs(
+                            game,
+                            &Effect::new(payment),
+                            ctx,
+                        )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                                 EffectOutcome::count(0),
@@ -115,10 +121,11 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                         receipts.push(receipt);
                     }
                     ctx.x_value = Some(total);
-                    receipts.push(
-                        SequenceEffect::new(self.effects.clone())
-                            .execute_with_outputs(game, ctx)?,
-                    );
+                    receipts.push(crate::effects::execute_effect_with_outputs(
+                        game,
+                        &Effect::new(SequenceEffect::new(self.effects.clone())),
+                        ctx,
+                    )?);
                     // Retain every payment/event receipt; expose the final body as
                     // the instruction result, not the sum of its unrelated counts.
                     Ok(crate::effects::CompletedEffectOutputs::from_children(

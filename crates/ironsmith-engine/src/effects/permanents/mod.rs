@@ -309,7 +309,9 @@ pub use become_color_choice::BecomeColorChoiceEffect;
 pub use become_creature_type_choice::BecomeCreatureTypeChoiceEffect;
 pub use conspire::ConspireCostEffect;
 pub use crew::CrewCostEffect;
-pub(crate) use crew::complete_crew_ability_resolution;
+pub(crate) use crew::{
+    complete_crew_ability_resolution, complete_crew_ability_resolution_with_outputs,
+};
 pub use detain::DetainEffect;
 pub use earthbend::EarthbendEffect;
 pub use evolve::EvolveEffect;

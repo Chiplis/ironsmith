@@ -28,6 +28,16 @@ pub(crate) fn can_pay_declared_resources(
     game: &GameState,
     claims: &[PaymentResourceClaim],
 ) -> bool {
+    can_pay_declared_resource_claims(game, claims)
+}
+
+/// Inspect retained declarations without cloning their resource identities or
+/// querying their prepared owners again. The existing budget policy is shared
+/// with compatibility slice callers; no state is reserved or consumed here.
+pub(crate) fn can_pay_declared_resource_claims<'claims>(
+    game: &GameState,
+    claims: impl IntoIterator<Item = &'claims PaymentResourceClaim>,
+) -> bool {
     let mut life = Vec::new();
     let mut counters = std::collections::HashMap::<(Target, CounterType), u64>::new();
     for claim in claims {

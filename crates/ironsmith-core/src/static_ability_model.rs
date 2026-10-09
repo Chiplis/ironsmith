@@ -826,6 +826,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     SetColors {
         filter: ObjectFilter,
         colors: ColorSet,
+        /// This color definition does not contribute to Commander color identity.
+        #[cfg_attr(feature = "serde", serde(default))]
+        exclude_from_color_identity: bool,
     },
     AddColors {
         filter: ObjectFilter,
@@ -2267,8 +2270,8 @@ where
             StaticAbilityPayload::ControlAttachedPermanent(display) => {
                 StaticAbilityPayload::ControlAttachedPermanent(display)
             }
-            StaticAbilityPayload::SetColors { filter, colors } => {
-                StaticAbilityPayload::SetColors { filter, colors }
+            StaticAbilityPayload::SetColors { filter, colors, exclude_from_color_identity } => {
+                StaticAbilityPayload::SetColors { filter, colors, exclude_from_color_identity }
             }
             StaticAbilityPayload::AddColors { filter, colors } => {
                 StaticAbilityPayload::AddColors { filter, colors }
@@ -4062,8 +4065,16 @@ impl<
         Self {
             id: Some(StaticAbilityId::SetColors),
             label: "set colors".to_string(),
-            payload: StaticAbilityPayload::SetColors { filter, colors },
+            payload: StaticAbilityPayload::SetColors { filter, colors, exclude_from_color_identity: false },
         }
+    }
+
+    pub fn set_colors_without_color_identity(filter: ObjectFilter, colors: ColorSet) -> Self {
+        let mut ability = Self::set_colors(filter, colors);
+        if let StaticAbilityPayload::SetColors { exclude_from_color_identity, .. } = &mut ability.payload {
+            *exclude_from_color_identity = true;
+        }
+        ability
     }
 
     pub fn add_card_types(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {

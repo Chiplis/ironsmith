@@ -108,3 +108,72 @@ their text labels; unsupported mana codes retain a numeric/text fallback.
 To intentionally upgrade Mana, update the submodule checkout, run
 `pnpm assets:mana`, and commit the submodule pointer and generated manifest
 (`src/lib/mana-assets.generated.js`). Generated public assets are ignored.
+
+### Adaptive moonlit board
+
+The game workspace mounts `ForgeBoard`, a lazy-loaded Three.js sanctuary beneath
+existing DOM cards. Original moonlit terrain artwork provides the backdrop;
+locally bundled CC0 Poly Haven rock and stone-ring glTF models provide the 3D
+scenery. Stone rings contain animated moonwell ripples, with silver motes and cool
+lighting. See `public/theme/forge-arena/CREDITS.md` for sources and the artwork prompt.
+
+Measured zone type and player ownership select the environmental treatment:
+library lecterns, recessed graveyard slabs, narrow exile fissures, command plinths, and hand
+ledges. Battlefield and exile zones have no enclosing ring or corner outlines. These follow the actual player layout
+rather than assuming two fixed seats. The engine's card packing remains authoritative.
+Public turn/combat changes and clicking free scenery provide subtle light pulses.
+
+`measure-forge.js` reads the actual battlefield, hand, and zone rectangles,
+including attachments and scroll clipping. Existing battlefield packing remains
+authoritative. Platforms grow with occupied space and wait at least 1.6 seconds
+before shrinking. Dragging, target selection, and active zone-effect overlays hold
+outgoing space. Resize and tab resume discard stale bounds. Imported scenery yields
+to cards and controls. Empty mobile support lanes do not allocate scenery.
+
+Rendering is capped at 30 FPS and 1.5 device pixel ratio. Reduced motion renders
+only while layout changes; hidden tabs and lost contexts pause rendering. WebGL
+failure uses the CSS moonlit background, leaving the game playable. Unmount releases
+observers, animation frames, geometry, materials, and the WebGL context.
+
+Run `pnpm test:forge-board` for layout tests, browser scenario fixtures, WebGL
+fallback/recovery, reduced-motion idle checks, and a real WASM puzzle smoke test.
+The latter requires the normal generated WASM/catalog assets used by Vite.
+The visual fixture is available at `/tests/forge-board.html` while Vite runs.
+Scenarios cover empty/first-card boards, 100 permanents, attachments, wipes and
+blink, uneven multiplayer boards, control-change footprints, large hands, opened
+zone viewers, interaction locks, resizing, and remounting. Fixtures exercise UI
+geometry; the existing engine tests remain responsible for rules semantics.
+
+The floor uses a rough `MeshStandardMaterial` under cool directional moonlight and
+low hemisphere fill. Imported scenery, stone zone structures, and shadow-only
+card geometry cast PCF soft shadows onto the floor. The painted albedo still has
+baked artistic shading; it is not a fully modeled terrain or ray-traced scene.
+
+Settings → Appearance exposes **Battlefield cards** (compact artwork/full cards)
+and **Noncreature lands** (small artwork tiles/match battlefield cards). Both
+compact options default on and persist locally. Live creature types take priority
+over land types, so animated lands retain their creature presentation. Full hover
+inspection and hand cards keep their existing presentation.
+
+Each visible player seat receives a separate offscreen spotlight in its HUD accent
+color (including player color overrides). The perspective player's light enters
+from the bottom; opponents have separate sources across the upper edge. Spectators
+use the nearest top/bottom edge. Sources follow visible seat rectangles, remain
+steady on empty battlefields, and disappear when a mobile opponent is hidden.
+The spotlights illuminate the floor and meshes with inverse-square falloff, soft
+cone edges, and shadow maps; card artwork is not tinted. Shadows update only when
+geometry or light placement changes. Player-color changes also render in reduced
+motion mode.
+
+Compact artwork tiles include a color-matched top name strip. Small lands use a
+1.2:1 outline, with consecutive lands packed at six pixels between hit rectangles;
+manual empty placement slots remain intact. Mixed rows retain full-sized nonland
+objects, and live creature lands do not use the small-land treatment.
+Hover highlights follow rectangular artwork frames. Floating inspection sits eight
+pixels beside the source edge, flips left at the viewport boundary, and measures
+untransformed frame dimensions so the opening animation does not skew placement.
+
+Opponent row groups are reversed in screen space: resources at the far edge,
+creatures toward the center. This applies to desktop, dense boards, and mobile.
+Token artwork uses an arched crown with an inset name strip; ordinary cards keep
+rectangular outlines.

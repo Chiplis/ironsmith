@@ -9,6 +9,8 @@ import { useDragActions, useDragSession, usePlacementActions } from "@/context/D
 import { useHoverActions, useHoveredObjectId } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import useManabrewHandScale from "@/hooks/useManabrewHandScale";
+import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
+import ForgeBoard from "@/components/board/ForgeBoard";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
 import RematchDeckView from "@/components/board/RematchDeckView";
@@ -737,6 +739,7 @@ export default function Workspace({
   zoneActionControls = null,
 }) {
   const ui = useUiText();
+  const [battlefieldAppearance] = useBattlefieldAppearance();
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
   const [pinnedInspectorObjectId, setPinnedInspectorObjectId] = useState(null);
@@ -1883,6 +1886,9 @@ export default function Workspace({
       className="relative min-h-0 h-full w-full min-w-0 overflow-visible"
       data-workspace-shell
     >
+      {battlefieldAppearance.compactCards && !deckLoadingMode && !puzzleSetupMode && !showRematchSideboarding && (
+        <ForgeBoard state={state} playerAccentOverrides={playerAccentOverrides} interactionLocked={Boolean(dragState || state?.decision?.kind === "targets")} />
+      )}
       <DragOverlay />
       {handActionMenu?.anchorRect && (
         <ActionPopover
@@ -1924,8 +1930,9 @@ export default function Workspace({
           variant="game"
         />
       )}
-      {!nonDesktopViewport && !showRematchSideboarding && (
+      {!showRematchSideboarding && (
         <FloatingCardPreview
+          automaticOnly={nonDesktopViewport}
           disabled={deckLoadingMode || puzzleSetupMode}
           pinnedObjectId={pinnedInspectorObjectId}
           onRequestClose={closeFloatingCardPreview}

@@ -56,7 +56,8 @@ impl ManaCredit {
         request: &super::ManaPaymentRequest,
     ) -> Vec<PaymentManaUnit> {
         if self.event.player != request.payer
-            || !production_satisfies_cost(&request.cost, self.event.snapshot.as_ref()) {
+            || !production_satisfies_cost(&request.cost, self.event.snapshot.as_ref())
+        {
             return Vec::new();
         }
         let snow = self.event.snapshot.as_ref().map_or_else(
@@ -83,41 +84,57 @@ impl ManaCredit {
     /// The native event owner has already validated replacements. Both native
     /// execution and projected credits use this same provenance/context shape.
     pub fn commit(&self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
-        let exact: u128 = game.players.iter().map(|player| u128::from(player.mana_pool.total_wide())).sum::<u128>()
+        let exact: u128 = game
+            .players
+            .iter()
+            .map(|player| u128::from(player.mana_pool.total_wide()))
+            .sum::<u128>()
             + self.event.mana.len() as u128;
         if exact > i32::MAX as u128 {
             return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "unspent mana scalar domain", requested: exact, maximum: i32::MAX as u128,
+                resource: "unspent mana scalar domain",
+                requested: exact,
+                maximum: i32::MAX as u128,
             });
         }
-        let checkpoint = game.clone();
-        game.with_player_mana_mut(self.event.player, |player| {
-            for &symbol in &self.event.mana {
-                if self.context.restrictions.is_empty() {
-                    player.add_unrestricted_mana_with_retention(
-                        symbol,
-                        self.event.source,
-                        self.event.snapshot.clone(),
-                        self.context.retention,
-                    );
-                } else {
-                    player.add_restricted_mana_with_snapshot_and_retention(
-                        self.restricted_unit(symbol),
-                        self.event.snapshot.clone(),
-                        self.context.retention,
-                    );
-                }
-            }
-        })
-        .ok_or(crate::effects::ExecutionError::PlayerNotFound(self.event.player))?;
-        // A representable count may still exceed P/T after its source's base
-        // stats and other layer-7 modifiers. Validate without publishing a
-        // partially recalculated board or an impossible completed production.
-        if let Err(error) = game.try_all_continuous_effects() {
-            game.restore_execution_checkpoint(checkpoint, false);
-            return Err(crate::effects::ExecutionError::ContinuousDiscovery(error));
-        }
-        Ok(())
+        crate::effects::composition::execute_world_error_transaction(
+            game,
+            |error| {
+                matches!(
+                    error,
+                    crate::effects::ExecutionError::ContinuousDiscovery(_)
+                )
+            },
+            |game| {
+                game.with_player_mana_mut(self.event.player, |player| {
+                    for &symbol in &self.event.mana {
+                        if self.context.restrictions.is_empty() {
+                            player.add_unrestricted_mana_with_retention(
+                                symbol,
+                                self.event.source,
+                                self.event.snapshot.clone(),
+                                self.context.retention,
+                            );
+                        } else {
+                            player.add_restricted_mana_with_snapshot_and_retention(
+                                self.restricted_unit(symbol),
+                                self.event.snapshot.clone(),
+                                self.context.retention,
+                            );
+                        }
+                    }
+                })
+                .ok_or(crate::effects::ExecutionError::PlayerNotFound(
+                    self.event.player,
+                ))?;
+                // A representable count may still exceed P/T after its source's base
+                // stats and other layer-7 modifiers. Validate without publishing a
+                // partially recalculated board or an impossible completed production.
+                game.try_all_continuous_effects()
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+                Ok(())
+            },
+        )
     }
 }
 
@@ -127,7 +144,10 @@ pub(crate) fn production_satisfies_cost(
     cost: &crate::mana::ManaCost,
     snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> bool {
-    fn matches(filter: &ironsmith_core::mana::ManaProducerFilter, snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+    fn matches(
+        filter: &ironsmith_core::mana::ManaProducerFilter,
+        snapshot: &crate::snapshot::ObjectSnapshot,
+    ) -> bool {
         use ironsmith_core::mana::ManaProducerFilter;
         match filter {
             ManaProducerFilter::CardType(kind) => snapshot.card_types.contains(kind),
@@ -140,8 +160,11 @@ pub(crate) fn production_satisfies_cost(
         // This restriction belongs to the final generic-pip allocation, not
         // to each unit offered for fixed/base/tax obligations.
         ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => true,
-        ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) =>
-            snapshot.is_some_and(|snapshot| snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)),
+        ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => {
+            snapshot.is_some_and(|snapshot| {
+                snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)
+            })
+        }
     })
 }
 

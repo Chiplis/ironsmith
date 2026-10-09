@@ -96,7 +96,8 @@ pub(crate) use library_arrangement::{
 pub(crate) use look::{look_at_cards, look_at_cards_with_outputs};
 
 pub(crate) use shuffle_library::{
-    commit_library_shuffle, shuffle_library, shuffle_library_action, shuffle_library_with_outputs,
+    commit_library_shuffle, commit_library_shuffle_with_outputs, shuffle_library,
+    shuffle_library_action, shuffle_library_with_outputs,
 };
 
 pub(crate) use draw_cards::{

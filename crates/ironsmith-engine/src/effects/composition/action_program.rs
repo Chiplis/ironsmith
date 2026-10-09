@@ -192,6 +192,9 @@ impl ProgramActionScope {
 #[derive(Debug)]
 pub(crate) enum NativeProgramAction {
     SharedDamage(Box<dyn SimultaneousEffectProposal>),
+    /// An already selected ordinary original. Physical input and rich output
+    /// ownership stay with its proposal; payment requests remain TotalCost.
+    PreparedOriginal(Box<dyn SimultaneousEffectProposal>),
     /// A domain request, not an already-frozen proposal. Ordinary execution
     /// retains sequential payment timing; staged execution prepares its owner.
     TotalCost {
@@ -232,6 +235,166 @@ impl ProgramAction {
             identity: Vec::new(),
         }
     }
+    /// Retain an existing selected proposal or prepare its request in the same
+    /// authored scope. Cohort admission, error policy and phase barriers belong
+    /// to the enclosing coordinator; this owner does not seal or commit it.
+    fn prepare_original_owner(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        purpose: crate::effects::EffectExecutionPurpose,
+    ) -> Result<Option<Box<dyn SimultaneousEffectProposal>>, ExecutionError> {
+        let purpose = self.execution_purpose(purpose);
+        match self.native.take() {
+            Some(NativeProgramAction::SharedDamage(proposal))
+            | Some(NativeProgramAction::PreparedOriginal(proposal)) => Ok(Some(proposal)),
+            request => self.scope.run(game, ctx, |game, ctx| match request {
+                Some(NativeProgramAction::TotalCost {
+                    cost,
+                    payer,
+                    reason,
+                }) => {
+                    crate::costs::prepare_total_cost_program_action(&cost, game, ctx, payer, reason)
+                }
+                None => super::prepared_branch::prepare_action_for_purpose(
+                    &self.effect,
+                    purpose,
+                    game,
+                    ctx,
+                ),
+                Some(NativeProgramAction::SharedDamage(_))
+                | Some(NativeProgramAction::PreparedOriginal(_)) => unreachable!(),
+            }),
+        }
+    }
+
+    /// Execute this selected child once. The cursor retains its authored identity
+    /// and acknowledgement; this owner consumes the native proposal in its scope.
+    pub(super) fn execute_with_outputs(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        purpose: crate::effects::EffectExecutionPurpose,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let purpose = self.execution_purpose(purpose);
+        let native = self.native.take();
+        self.scope.run(game, ctx, |game, ctx| {
+            execute_program_child_with_outputs(&self.effect, native, game, ctx, purpose)
+        })
+    }
+
+    /// Retain this child's actual draw/tail continuation. Deferral is a native
+    /// draw boundary, not permission to regroup unrelated authored instructions.
+    pub(super) fn prepare_draw_boundary(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::replacement::PreparedReplacementChild, ExecutionError> {
+        let purpose = self.execution_purpose(crate::effects::EffectExecutionPurpose::Action);
+        let native = self.native.take();
+        let action = &*self;
+        self.scope.run(game, ctx, |game, ctx| match native {
+            Some(NativeProgramAction::SharedDamage(mut proposal)) => {
+                    proposal.prepare_selection(game, ctx)?;
+                    proposal.prepare_original(game, ctx)?;
+                    let inputs = proposal.damage_action_inputs().ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "prepared iteration damage lost its shared inputs".into(),
+                        )
+                    })?;
+                    let opened = game.open_simultaneous_action();
+                    let receipt = (|| {
+                        let owner = inputs.seal(game, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(SimultaneousEffectCommit::finished(
+                                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                            ));
+                        }
+                        owner.commit_original_with_outputs(game, ctx)
+                    })();
+                    game.close_simultaneous_action(opened);
+                    let receipt = super::adapt_original_outcome_with_outputs(
+                        receipt?,
+                        Box::new(ProgramDamageBinding(proposal)),
+                        game,
+                        ctx,
+                    )?;
+                    crate::effects::replacement::prepare_committed_draw_boundary(game, ctx, receipt)
+            }
+            Some(NativeProgramAction::PreparedOriginal(proposal)) => {
+                    let receipt = crate::effects::replacement::prepare_native_proposal_draw_continuation_with_outputs(
+                        action.effect.0.result_action(), game, ctx, |_, _| Ok(proposal),
+                    )?;
+                    crate::effects::replacement::retain_prepared_draw_boundary(receipt, ctx)
+            }
+            None if matches!(purpose, crate::effects::EffectExecutionPurpose::Action) => {
+                crate::effects::replacement::prepare_replacement_child(game, ctx, &action.effect)
+            }
+            native => execute_program_child_with_outputs(
+                &action.effect, native, game, ctx, purpose,
+            ).map(crate::effects::replacement::PreparedReplacementChild::finished_with_outputs),
+        })
+    }
+}
+
+/// One physical dispatcher for an authored child. Bare ordered/replacement
+/// programs inherit their caller's context; selected cursors enter their actual
+/// ProgramActionScope before reaching the same domain owners here.
+pub(super) fn execute_program_child_with_outputs(
+    effect: &Effect,
+    native: Option<NativeProgramAction>,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    match native {
+        Some(NativeProgramAction::SharedDamage(proposal)) => {
+            crate::effects::damage::complete_prepared_damage_action(game, ctx, proposal)
+        }
+        Some(NativeProgramAction::PreparedOriginal(proposal)) => {
+            super::complete_prepared_original_with_outputs(proposal, game, ctx, false)
+        }
+        Some(NativeProgramAction::TotalCost {
+            cost,
+            payer,
+            reason,
+        }) => crate::costs::execute_total_cost_program_action(&cost, game, ctx, payer, reason),
+        None => purpose.execute(game, effect, ctx),
+    }
+}
+
+/// Bind the authored program only after its one physical damage owner
+/// completes. The view changes the primary result without duplicating history.
+struct ProgramDamageBinding(Box<dyn crate::effects::SimultaneousEffectProposal>);
+impl super::OriginalOutcomeAdapter for ProgramDamageBinding {
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.finish_with_outputs(
+            game,
+            ctx,
+            result.map(CompletedEffectOutputs::aggregate_only),
+        )
+        .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn finish_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<CompletedEffectOutputs, ExecutionError>,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let mut outputs = result?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(outputs);
+        }
+        let binding = self.0.bind_damage_action(game, ctx, &outputs)?;
+        let primary = binding.transfer_owned_outputs(&mut outputs);
+        let observations = outputs.outcome.clone();
+        Ok(outputs.project_aggregate(primary.with_authoritative_observations(observations)))
+    }
 }
 
 pub struct ProgramCompletion {
@@ -270,6 +433,67 @@ impl ProgramPreparation {
     }
 }
 
+/// One standalone execution selection. A borrowed definition remains with its
+/// cursor; an owned action retains native state and authored scope. Neither
+/// shape declares shared-action eligibility or freezes future operands.
+pub struct ProgramInstructionSelection<'cursor> {
+    instruction: Option<ExecutableProgramInstruction<'cursor>>,
+    preparations: Vec<ProgramPreparation>,
+    dispatch_while_pending: bool,
+}
+
+enum ExecutableProgramInstruction<'cursor> {
+    Selected(ProgramAction),
+    Borrowed(&'cursor Effect),
+}
+
+impl<'cursor> ProgramInstructionSelection<'cursor> {
+    pub fn new(action: Option<ProgramAction>, preparations: Vec<ProgramPreparation>) -> Self {
+        Self {
+            instruction: action.map(ExecutableProgramInstruction::Selected),
+            preparations,
+            dispatch_while_pending: false,
+        }
+    }
+
+    pub(super) fn borrowed(
+        instruction: Option<&'cursor Effect>,
+        dispatch_while_pending: bool,
+    ) -> Self {
+        Self {
+            instruction: instruction.map(ExecutableProgramInstruction::Borrowed),
+            preparations: Vec::new(),
+            dispatch_while_pending,
+        }
+    }
+}
+
+impl ExecutableProgramInstruction<'_> {
+    fn execute(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        purpose: crate::effects::EffectExecutionPurpose,
+    ) -> (
+        crate::effects::EffectExecutionPurpose,
+        Result<CompletedEffectOutputs, ExecutionError>,
+    ) {
+        match self {
+            Self::Selected(mut action) => {
+                let action_purpose = action.execution_purpose(purpose);
+                (
+                    action_purpose,
+                    action.execute_with_outputs(game, ctx, purpose),
+                )
+            }
+            Self::Borrowed(effect) => (
+                purpose,
+                execute_program_child_with_outputs(effect, None, game, ctx, purpose),
+            ),
+        }
+    }
+}
+
 pub trait ActionProgramCursor: std::fmt::Debug + Send {
     /// Drain selected declarations after next_action. None plus declarations
     /// pauses traversal; prepare them and retry instead of finishing the cursor.
@@ -281,7 +505,35 @@ pub trait ActionProgramCursor: std::fmt::Debug + Send {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<ProgramAction>, ExecutionError>;
+    /// Select a standalone instruction without requiring a definition clone.
+    /// Staged coordinators keep using next_action's owned declarations. Pending
+    /// selection must not drain declarations that the caller has not admitted.
+    fn select_execution_instruction(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramInstructionSelection<'_>, ExecutionError> {
+        let next = self.next_action(game, ctx)?;
+        let preparations = if ctx.decision_maker.awaiting_choice() {
+            Vec::new()
+        } else {
+            self.take_preparations()
+        };
+        Ok(ProgramInstructionSelection::new(next, preparations))
+    }
     fn accept_action(&mut self, outputs: CompletedEffectOutputs) -> Result<(), ExecutionError>;
+    /// Acknowledge the actual child packet at its owning context boundary.
+    /// Cursors with post-child observation obligations perform them here before
+    /// any next declaration is selected; legacy cursors retain pure acknowledgement.
+    fn accept_action_with_context(
+        &mut self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        outputs: CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.accept_action(outputs)
+    }
+
     fn finish(self: Box<Self>) -> Result<ProgramCompletion, ExecutionError>;
     /// The authored parent owns the packet exposed on suspension. Modal
     /// transactions use a neutral packet; Sequence retains its partial prefix.
@@ -352,6 +604,89 @@ impl ActionProgramCursor for FinishedProgramCursor {
     }
     fn finish(self: Box<Self>) -> Result<ProgramCompletion, ExecutionError> {
         Ok(self.completed)
+    }
+}
+
+/// Retain a pure enclosing result projection beside the actual selected cursor.
+/// Every terminal path consumes the real child packet once; selection, context,
+/// authored identity, declarations and contextual acknowledgement stay with it.
+pub(crate) fn projected_program_cursor<'cursor>(
+    inner: Box<dyn ActionProgramCursor + 'cursor>,
+    project: impl FnOnce(CompletedEffectOutputs) -> CompletedEffectOutputs + Send + 'cursor,
+) -> Box<dyn ActionProgramCursor + 'cursor> {
+    Box::new(ProjectedProgramCursor {
+        inner,
+        project: Box::new(project),
+    })
+}
+
+struct ProjectedProgramCursor<'cursor> {
+    inner: Box<dyn ActionProgramCursor + 'cursor>,
+    project: Box<dyn FnOnce(CompletedEffectOutputs) -> CompletedEffectOutputs + Send + 'cursor>,
+}
+
+impl std::fmt::Debug for ProjectedProgramCursor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProjectedProgramCursor")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ActionProgramCursor for ProjectedProgramCursor<'_> {
+    fn take_preparations(&mut self) -> Vec<ProgramPreparation> {
+        self.inner.take_preparations()
+    }
+    fn next_action(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<ProgramAction>, ExecutionError> {
+        self.inner.next_action(game, ctx)
+    }
+    fn select_execution_instruction(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramInstructionSelection<'_>, ExecutionError> {
+        self.inner.select_execution_instruction(game, ctx)
+    }
+    fn accept_action(&mut self, outputs: CompletedEffectOutputs) -> Result<(), ExecutionError> {
+        self.inner.accept_action(outputs)
+    }
+    fn accept_action_with_context(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outputs: CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.inner.accept_action_with_context(game, ctx, outputs)
+    }
+    fn ends_action_unit(&self) -> bool {
+        self.inner.ends_action_unit()
+    }
+    fn continues_past_illegal_targets(&self) -> bool {
+        self.inner.continues_past_illegal_targets()
+    }
+    fn finish(self: Box<Self>) -> Result<ProgramCompletion, ExecutionError> {
+        let Self { inner, project } = *self;
+        let mut completed = inner.finish()?;
+        completed.outputs = project(completed.outputs);
+        Ok(completed)
+    }
+    fn finish_pending(self: Box<Self>) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let Self { inner, project } = *self;
+        inner.finish_pending().map(project)
+    }
+    fn finish_stopped(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<ProgramCompletion, ExecutionError> {
+        let Self { inner, project } = *self;
+        let mut completed = inner.finish_stopped(game, ctx)?;
+        completed.outputs = project(completed.outputs);
+        Ok(completed)
     }
 }
 
@@ -500,6 +835,15 @@ impl ActionProgramCursor for PreparedProgramCursor {
     fn accept_action(&mut self, outputs: CompletedEffectOutputs) -> Result<(), ExecutionError> {
         self.inner.accept_action(outputs)
     }
+    fn accept_action_with_context(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outputs: CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.inner.accept_action_with_context(game, ctx, outputs)
+    }
+
     fn ends_action_unit(&self) -> bool {
         self.inner.ends_action_unit()
     }
@@ -525,9 +869,24 @@ pub(super) fn prepared_damage_program_cursor(
     effect: Effect,
     proposal: Box<dyn SimultaneousEffectProposal>,
 ) -> Box<dyn ActionProgramCursor> {
+    native_program_cursor(effect, NativeProgramAction::SharedDamage(proposal))
+}
+
+/// Forward any retained ordinary original through the shared proposal phases.
+pub(super) fn prepared_original_program_cursor(
+    effect: Effect,
+    proposal: Box<dyn SimultaneousEffectProposal>,
+) -> Box<dyn ActionProgramCursor> {
+    native_program_cursor(effect, NativeProgramAction::PreparedOriginal(proposal))
+}
+
+fn native_program_cursor(
+    effect: Effect,
+    native: NativeProgramAction,
+) -> Box<dyn ActionProgramCursor> {
     let mut action = ProgramAction::new(effect);
     action.identity = vec![0];
-    action.native = Some(NativeProgramAction::SharedDamage(proposal));
+    action.native = Some(native);
     Box::new(NativeProgramCursor {
         action: Some(action),
         outputs: None,
@@ -586,16 +945,17 @@ impl ActionProgramCursor for NativeProgramCursor {
 }
 
 pub(crate) struct ProgramParticipant {
-    cursor: Option<Box<dyn ActionProgramCursor>>,
-    context: ExecutionContextCheckpoint,
+    frame: super::CapturedProgramFrame<Option<Box<dyn ActionProgramCursor>>>,
     result: Option<CompletedEffectOutputs>,
 }
 
 impl ProgramParticipant {
     pub(crate) fn new(cursor: Box<dyn ActionProgramCursor>, ctx: &ExecutionContext) -> Self {
         Self {
-            cursor: Some(Box::new(NestedProgramCursor::new(cursor))),
-            context: ExecutionContextCheckpoint::capture(ctx),
+            frame: super::CapturedProgramFrame::capture(
+                Some(Box::new(NestedProgramCursor::new(cursor)) as Box<dyn ActionProgramCursor>),
+                ctx,
+            ),
             result: None,
         }
     }
@@ -684,7 +1044,9 @@ impl ActionProgramCursor for NestedProgramCursor {
         let mut completed = active.finish_stopped(game, ctx)?;
         while let Some(mut parent) = parents.pop() {
             completed_facts.extend(completed.facts);
-            parent.cursor.accept_action(completed.outputs)?;
+            parent
+                .cursor
+                .accept_action_with_context(game, ctx, completed.outputs)?;
             let mut outer = None;
             for ancestor in &parents {
                 let mut scope = ancestor.action.scope.clone();
@@ -781,12 +1143,22 @@ impl ActionProgramCursor for NestedProgramCursor {
                 Ok(())
             })?;
             self.completed_facts.extend(completed.facts);
-            self.active.accept_action(completed.outputs)?;
+            self.active
+                .accept_action_with_context(game, ctx, completed.outputs)?;
         }
     }
     fn accept_action(&mut self, outputs: CompletedEffectOutputs) -> Result<(), ExecutionError> {
         self.active.accept_action(outputs)
     }
+    fn accept_action_with_context(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outputs: CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.active.accept_action_with_context(game, ctx, outputs)
+    }
+
     fn ends_action_unit(&self) -> bool {
         self.active.ends_action_unit()
     }
@@ -820,9 +1192,25 @@ pub(crate) struct CompletedActionPrograms {
     pub(crate) facts: Vec<ExecutionFact>,
 }
 
+/// The actual authored declaration and its nominal resource inputs stay with
+/// the root through physical commitment, phase completion and acknowledgement.
+struct ProgramInstructionDeclaration {
+    action: ProgramAction,
+    resources: ProgramResourceDeclarations,
+}
+
+/// Capture both existing declaration boundaries. Sealing may finish selection
+/// of an owner, so the pre-seal set cannot substitute for the sealed set. These
+/// values reserve no game state and do not acknowledge a payment.
+#[derive(Default)]
+struct ProgramResourceDeclarations {
+    prepared: Vec<crate::effects::PaymentResourceClaim>,
+    sealed: Vec<crate::effects::PaymentResourceClaim>,
+}
+
 struct PreparedProgramAction {
     participant: usize,
-    action: ProgramAction,
+    declaration: ProgramInstructionDeclaration,
     proposal: Box<dyn SimultaneousEffectProposal>,
 }
 
@@ -832,6 +1220,53 @@ struct ProgramOriginalObserver {
     context: ExecutionContextCheckpoint,
     scope: ProgramActionScope,
     inner: Box<dyn SimultaneousEffectCompletion>,
+}
+
+impl ProgramOriginalObserver {
+    /// Transfer the actual continuation in its captured participant frame.
+    /// Every original/draw phase uses this boundary; the request selects only
+    /// the child phase, without changing its scalar or retained-packet contract.
+    fn advance(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        phase: crate::effects::composition::CompletionPhase,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let Self {
+            context,
+            scope,
+            inner,
+        } = *self;
+        let parent = ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = scope
+            .run(game, ctx, |game, ctx| phase.dispatch(inner, game, ctx))
+            .map(|mut receipt| {
+                receipt.completion = receipt.completion.map(|inner| {
+                    Box::new(Self {
+                        context: ExecutionContextCheckpoint::capture(ctx),
+                        scope,
+                        inner,
+                    }) as Box<dyn SimultaneousEffectCompletion>
+                });
+                receipt
+            });
+        // The participant owns successful prefix result/tag writes. Its caller
+        // captures them before another participant runs; failed attempts unwind.
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            parent.restore(ctx);
+        }
+        result
+    }
+
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::composition::CompletionInput,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        original.dispatch(self.inner, game, ctx)
+    }
 }
 
 impl SimultaneousEffectCompletion for ProgramOriginalObserver {
@@ -848,33 +1283,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            context,
-            scope,
-            inner,
-        } = *self;
-        let parent = ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = scope
-            .run(game, ctx, |game, ctx| {
-                inner.complete_original_phase_with_outputs(game, ctx, original)
-            })
-            .map(|mut receipt| {
-                receipt.completion = receipt.completion.map(|inner| {
-                    Box::new(Self {
-                        context: ExecutionContextCheckpoint::capture(ctx),
-                        scope,
-                        inner,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                });
-                receipt
-            });
-        // The participant owns successful prefix result/tag writes. Its caller
-        // captures them before another participant runs; failed attempts unwind.
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            parent.restore(ctx);
-        }
-        result
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
+        )
     }
 
     fn complete_original_phase_from_outputs(
@@ -886,33 +1299,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            context,
-            scope,
-            inner,
-        } = *self;
-        let parent = ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = scope
-            .run(game, ctx, |game, ctx| {
-                inner.complete_original_phase_from_outputs(game, ctx, original)
-            })
-            .map(|mut receipt| {
-                receipt.completion = receipt.completion.map(|inner| {
-                    Box::new(Self {
-                        context: ExecutionContextCheckpoint::capture(ctx),
-                        scope,
-                        inner,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                });
-                receipt
-            });
-        // The participant owns successful prefix result/tag writes. Its caller
-        // captures them before another participant runs; failed attempts unwind.
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            parent.restore(ctx);
-        }
-        result
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
+        )
     }
 
     fn prepare_draw_boundary_with_outputs(
@@ -924,33 +1315,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            context,
-            scope,
-            inner,
-        } = *self;
-        let parent = ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = scope
-            .run(game, ctx, |game, ctx| {
-                inner.prepare_draw_boundary_with_outputs(game, ctx, original)
-            })
-            .map(|mut receipt| {
-                receipt.completion = receipt.completion.map(|inner| {
-                    Box::new(Self {
-                        context: ExecutionContextCheckpoint::capture(ctx),
-                        scope,
-                        inner,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                });
-                receipt
-            });
-        // The participant owns successful prefix result/tag writes. Its caller
-        // captures them before another participant runs; failed attempts unwind.
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            parent.restore(ctx);
-        }
-        result
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutcome(original),
+        )
     }
 
     fn prepare_draw_boundary_from_outputs(
@@ -962,33 +1331,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            context,
-            scope,
-            inner,
-        } = *self;
-        let parent = ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = scope
-            .run(game, ctx, |game, ctx| {
-                inner.prepare_draw_boundary_from_outputs(game, ctx, original)
-            })
-            .map(|mut receipt| {
-                receipt.completion = receipt.completion.map(|inner| {
-                    Box::new(Self {
-                        context: ExecutionContextCheckpoint::capture(ctx),
-                        scope,
-                        inner,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                });
-                receipt
-            });
-        // The participant owns successful prefix result/tag writes. Its caller
-        // captures them before another participant runs; failed attempts unwind.
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            parent.restore(ctx);
-        }
-        result
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutputs(original),
+        )
     }
 
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
@@ -1020,7 +1367,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        self.inner.complete_with_outputs(game, ctx, original)
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outcome(original),
+        )
     }
 
     fn complete_from_original_outputs(
@@ -1029,8 +1380,11 @@ impl SimultaneousEffectCompletion for ProgramOriginalObserver {
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        self.inner
-            .complete_from_original_outputs(game, ctx, original)
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outputs(original),
+        )
     }
 }
 
@@ -1038,19 +1392,93 @@ struct CompletedProgramOriginal {
     participant: usize,
     scope: ProgramActionScope,
     receipt: SimultaneousEffectCommit<CompletedEffectOutputs>,
-    damage_bindings: Option<Vec<PreparedProgramAction>>,
+    original_bindings: ProgramOriginalBindings,
+}
+
+/// Actual sealed physical owners plus their original logical binding views.
+/// This value stays inside the containing observation and transaction scope.
+struct SealedProgramCohort {
+    owners: Vec<PreparedProgramOwner>,
 }
 
 struct PreparedProgramOwner {
     participant: usize,
     scope: ProgramActionScope,
-    proposal: Box<dyn SimultaneousEffectProposal>,
-    damage_bindings: Option<Vec<PreparedProgramAction>>,
+    original: SealedProgramOriginal,
+}
+
+/// Keep the actual yielded declaration with its sealed proposal until the
+/// cohort chooses physical commitment or expansion. A shared damage action
+/// retains every logical declaration under its one physical proposal.
+enum SealedProgramOriginal {
+    Instruction(PreparedProgramAction),
+    SharedDamage {
+        proposal: Box<dyn SimultaneousEffectProposal>,
+        bindings: Vec<PreparedProgramAction>,
+    },
+}
+impl SealedProgramOriginal {
+    fn capture_sealed_resource_declarations(&mut self) {
+        let actions: &mut [PreparedProgramAction] = match self {
+            Self::Instruction(action) => std::slice::from_mut(action),
+            Self::SharedDamage { bindings, .. } => bindings,
+        };
+        for action in actions {
+            action.declaration.resources.sealed = action.proposal.declared_payment_resources();
+        }
+    }
+
+    fn sealed_resource_declarations(
+        &self,
+    ) -> impl Iterator<Item = &crate::effects::PaymentResourceClaim> {
+        let actions: &[PreparedProgramAction] = match self {
+            Self::Instruction(action) => std::slice::from_ref(action),
+            Self::SharedDamage { bindings, .. } => bindings,
+        };
+        actions
+            .iter()
+            .flat_map(|action| &action.declaration.resources.sealed)
+    }
+
+    /// Consume the physical proposal once, retaining its actual declarations
+    /// through completion and cursor acknowledgement. Shared physical actions
+    /// also retain the proposals that publish their logical result views.
+    fn into_physical(self) -> (Box<dyn SimultaneousEffectProposal>, ProgramOriginalBindings) {
+        match self {
+            Self::Instruction(action) => (
+                action.proposal,
+                ProgramOriginalBindings::Instruction(action.declaration),
+            ),
+            Self::SharedDamage { proposal, bindings } => {
+                (proposal, ProgramOriginalBindings::SharedDamage(bindings))
+            }
+        }
+    }
+}
+
+/// The physical proposal and its declaration have different consumers. The
+/// declaration's effect, authored scope and identity remain owned until
+/// the enclosing cursor acknowledges its actual result; no phase reconstructs
+/// them from an output packet or a nominal event.
+enum ProgramOriginalBindings {
+    Instruction(ProgramInstructionDeclaration),
+    SharedDamage(Vec<PreparedProgramAction>),
+}
+
+/// Actual owner completion and still-unconsumed logical declarations. This
+/// transfer neither repeats the owner nor infers bindings from an aggregate.
+struct CompletedProgramOwnerOutputs {
+    participant: usize,
+    outputs: CompletedEffectOutputs,
+    original_bindings: ProgramOriginalBindings,
 }
 
 struct CompletedProgramUnit {
     owner: Option<CompletedEffectOutputs>,
     bindings: Vec<(usize, CompletedEffectOutputs)>,
+    /// Actual ordinary/shared logical declarations stay alive through every
+    /// acknowledgement in this unit, including context capture and unwind.
+    declarations: Vec<ProgramInstructionDeclaration>,
 }
 
 /// A shared physical action requires the same explicit authored child identity.
@@ -1059,9 +1487,11 @@ struct CompletedProgramUnit {
 fn program_original_groups(actions: Vec<PreparedProgramAction>) -> Vec<Vec<PreparedProgramAction>> {
     let mut groups: Vec<Vec<PreparedProgramAction>> = Vec::new();
     for action in actions {
-        if !action.action.identity.is_empty() && action.proposal.damage_action_inputs().is_some() {
+        if !action.declaration.action.identity.is_empty()
+            && action.proposal.damage_action_inputs().is_some()
+        {
             if let Some(group) = groups.iter_mut().find(|group| {
-                group[0].action.identity == action.action.identity
+                group[0].declaration.action.identity == action.declaration.action.identity
                     && group[0].proposal.damage_action_inputs().is_some()
             }) {
                 group.push(action);
@@ -1079,7 +1509,7 @@ fn program_original_groups(actions: Vec<PreparedProgramAction>) -> Vec<Vec<Prepa
 pub(crate) enum ActionProgramsProgress {
     Complete(CompletedActionPrograms),
     Paused {
-        prefix: EffectOutcome,
+        prefix: CompletedEffectOutputs,
         continuation: ActionProgramsContinuation,
     },
 }
@@ -1092,6 +1522,9 @@ pub(crate) struct ActionProgramsContinuation {
     facts: Vec<ExecutionFact>,
     shared: Vec<CompletedEffectOutputs>,
     pending_originals: Option<Vec<CompletedProgramOriginal>>,
+    /// Alternative views of actual completed children. The selected cursors
+    /// remain authoritative; these never replay actions or append history.
+    retained_prefix: Vec<CompletedEffectOutputs>,
     capture_between_units: bool,
 }
 impl ActionProgramsContinuation {
@@ -1122,6 +1555,10 @@ impl ActionProgramsContinuation {
             }
         }
         for outputs in &mut self.shared {
+            super::inherit_original_observations(&mut outputs.outcome, observed);
+            outputs.synchronize_observations();
+        }
+        for outputs in &mut self.retained_prefix {
             super::inherit_original_observations(&mut outputs.outcome, observed);
             outputs.synchronize_observations();
         }
@@ -1156,6 +1593,7 @@ pub(crate) fn execute_action_programs(
             facts: Vec::new(),
             shared: Vec::new(),
             pending_originals: None,
+            retained_prefix: Vec::new(),
             capture_between_units: defer_draws,
         },
         defer_draws,
@@ -1170,14 +1608,14 @@ fn finish_stopped_participants(
 ) -> Result<(), ExecutionError> {
     ctx.stop_resolution();
     for participant in participants {
-        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+        let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
         local.stop_resolution();
-        if let Some(cursor) = participant.cursor.take() {
+        if let Some(cursor) = participant.frame.program.take() {
             let completed = cursor.finish_stopped(game, &mut local)?;
             facts.extend(completed.facts);
             participant.result = Some(completed.outputs);
         }
-        participant.context = ExecutionContextCheckpoint::capture(&local);
+        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
     }
     Ok(())
 }
@@ -1194,11 +1632,12 @@ fn run_action_programs(
         mut facts,
         mut shared,
         mut pending_originals,
+        mut retained_prefix,
         capture_between_units,
     } = state;
     while participants
         .iter()
-        .any(|participant| participant.cursor.is_some())
+        .any(|participant| participant.frame.program.is_some())
     {
         if !events.is_empty()
             && (capture_between_units || game.effect_store.per_event_trigger_matching)
@@ -1213,230 +1652,225 @@ fn run_action_programs(
                 return Ok(None);
             }
         }
-        let (mut originals, already_observed) =
-            if let Some(originals) = pending_originals.take() {
-                (originals, true)
-            } else {
-                let mut actions = Vec::new();
-                let mut ready = vec![false; participants.len()];
-                let mut queued_actions: Vec<Option<ProgramAction>> =
-                    (0..participants.len()).map(|_| None).collect();
-                // Retain this unit's prepared originals while selected declarations
-                // pause their bodies. All offers in a wave see the original world;
-                // their claims are recorded before even a read-only reveal executes.
-                while ready.iter().any(|ready| !ready) {
-                    let mut preparations = Vec::new();
-                    for (index, participant) in participants.iter_mut().enumerate() {
-                        if ready[index] {
-                            continue;
-                        }
-                        if participant.cursor.is_none() {
-                            ready[index] = true;
-                            continue;
-                        }
-                        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-                        while let Some(cursor) = &mut participant.cursor {
-                            let next = if let Some(action) = queued_actions[index].take() {
-                                Some(action)
-                            } else {
-                                cursor.next_action(game, &mut local)?
-                            };
-                            let declared = cursor.take_preparations();
-                            if local.decision_maker.awaiting_choice() {
-                                return Ok(None);
-                            }
-                            if !declared.is_empty() {
-                                preparations.extend(declared);
-                                // Retain a yielded action, if any, while all other actors
-                                // select their offers. A None with declarations is a
-                                // barrier; retry traversal after preparing those claims.
-                                queued_actions[index] = next;
-                                break;
-                            }
-                            let Some(mut action) = next else {
-                                let completed =
-                                    participant.cursor.take().expect("active cursor").finish()?;
-                                facts.extend(completed.facts);
-                                participant.result = Some(completed.outputs);
-                                ready[index] = true;
-                                break;
-                            };
-                            let purpose = action
-                                .execution_purpose(crate::effects::EffectExecutionPurpose::Action);
-                            if action.native.is_none()
-                                && action.effect.0.is_read_only_simultaneous_player_action()
-                            {
-                                let result = action.scope.run(game, &mut local, |game, ctx| {
-                                    purpose.execute(game, &action.effect, ctx)
-                                });
-                                let outputs = map_program_action_result_for_purpose(
-                                    cursor.as_ref(),
-                                    purpose,
-                                    result,
-                                )?;
-                                if local.decision_maker.awaiting_choice() {
-                                    return Ok(None);
-                                }
-                                events.extend(outputs.outcome.events.clone());
-                                facts.extend(outputs.outcome.execution_facts.clone());
-                                cursor.accept_action(outputs)?;
-                                if local.resolution_stopped() || cursor.ends_action_unit() {
-                                    ready[index] = true;
-                                    break;
-                                }
-                                continue;
-                            }
-                            let native = action.native.take();
-                            let proposal =
-                                match native {
-                                    Some(NativeProgramAction::SharedDamage(proposal)) => proposal,
-                                    request => {
-                                        match action.scope.run(game, &mut local, |game, ctx| {
-                                            match request {
-                                    Some(NativeProgramAction::TotalCost {
-                                        cost,
-                                        payer,
-                                        reason,
-                                    }) => crate::costs::prepare_total_cost_program_action(
-                                        &cost, game, ctx, payer, reason,
-                                    ),
-                                    None => super::prepared_branch::prepare_action_for_purpose(
-                                        &action.effect,
-                                        purpose,
-                                        game,
-                                        ctx,
-                                    ),
-                                    Some(NativeProgramAction::SharedDamage(_)) => unreachable!(),
-                                }
-                                        }) {
-                                            Ok(Some(proposal)) => proposal,
-                                            Ok(None) if local.decision_maker.awaiting_choice() => {
-                                                return Ok(None);
-                                            }
-                                            Ok(None) => {
-                                                return Err(ExecutionError::InternalError(
-                                                    "selected program action has no prepared owner"
-                                                        .into(),
-                                                ));
-                                            }
-                                            Err(error) => Box::new(FinishedProgramAction {
-                                                outputs: map_program_action_result_for_purpose(
-                                                    cursor.as_ref(),
-                                                    purpose,
-                                                    Err(error),
-                                                )?,
-                                            }),
-                                        }
-                                    }
-                                };
-                            actions.push(PreparedProgramAction {
-                                participant: index,
-                                action,
-                                proposal,
-                            });
-                            ready[index] = true;
-                            break;
-                        }
+        let (mut originals, already_observed) = if let Some(originals) = pending_originals.take() {
+            (originals, true)
+        } else {
+            let mut actions = Vec::new();
+            let mut ready = vec![false; participants.len()];
+            let mut queued_actions: Vec<Option<ProgramAction>> =
+                (0..participants.len()).map(|_| None).collect();
+            // Retain this unit's prepared originals while selected declarations
+            // pause their bodies. All offers in a wave see the original world;
+            // their claims are recorded before even a read-only reveal executes.
+            while ready.iter().any(|ready| !ready) {
+                let mut preparations = Vec::new();
+                for (index, participant) in participants.iter_mut().enumerate() {
+                    if ready[index] {
+                        continue;
+                    }
+                    if participant.frame.program.is_none() {
+                        ready[index] = true;
+                        continue;
+                    }
+                    let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+                    while let Some(cursor) = &mut participant.frame.program {
+                        let next = if let Some(action) = queued_actions[index].take() {
+                            Some(action)
+                        } else {
+                            cursor.next_action(game, &mut local)?
+                        };
+                        let declared = cursor.take_preparations();
                         if local.decision_maker.awaiting_choice() {
                             return Ok(None);
                         }
-                        participant.context = ExecutionContextCheckpoint::capture(&local);
-                        let stopped = local.resolution_stopped();
-                        drop(local);
-                        if stopped {
-                            ctx.stop_resolution();
+                        if !declared.is_empty() {
+                            preparations.extend(declared);
+                            // Retain a yielded action, if any, while all other actors
+                            // select their offers. A None with declarations is a
+                            // barrier; retry traversal after preparing those claims.
+                            queued_actions[index] = next;
                             break;
                         }
-                    }
-                    if ctx.resolution_stopped() {
+                        let Some(mut action) = next else {
+                            let completed = participant
+                                .frame
+                                .program
+                                .take()
+                                .expect("active cursor")
+                                .finish()?;
+                            facts.extend(completed.facts);
+                            participant.result = Some(completed.outputs);
+                            ready[index] = true;
+                            break;
+                        };
+                        let purpose = action
+                            .execution_purpose(crate::effects::EffectExecutionPurpose::Action);
+                        if action.native.is_none()
+                            && action.effect.0.is_read_only_simultaneous_player_action()
+                        {
+                            let result = action.execute_with_outputs(game, &mut local, purpose);
+                            let outputs = map_program_action_result_for_purpose(
+                                cursor.as_ref(),
+                                purpose,
+                                result,
+                            )?;
+                            if local.decision_maker.awaiting_choice() {
+                                return Ok(None);
+                            }
+                            events.extend(outputs.outcome.events.clone());
+                            facts.extend(outputs.outcome.execution_facts.clone());
+                            if capture_between_units {
+                                retained_prefix.push(outputs.clone_projection());
+                            }
+                            cursor.accept_action_with_context(game, &mut local, outputs)?;
+                            if local.resolution_stopped() || cursor.ends_action_unit() {
+                                ready[index] = true;
+                                break;
+                            }
+                            continue;
+                        }
+                        let proposal = match action
+                            .prepare_original_owner(game, &mut local, purpose)
+                        {
+                            Ok(Some(proposal)) => proposal,
+                            Ok(None) if local.decision_maker.awaiting_choice() => return Ok(None),
+                            Ok(None) => {
+                                return Err(ExecutionError::InternalError(
+                                    "selected program action has no prepared owner".into(),
+                                ));
+                            }
+                            Err(error) => Box::new(FinishedProgramAction {
+                                outputs: map_program_action_result_for_purpose(
+                                    cursor.as_ref(),
+                                    purpose,
+                                    Err(error),
+                                )?,
+                            }),
+                        };
+                        actions.push(PreparedProgramAction {
+                            participant: index,
+                            declaration: ProgramInstructionDeclaration {
+                                action,
+                                resources: ProgramResourceDeclarations::default(),
+                            },
+                            proposal,
+                        });
+                        ready[index] = true;
                         break;
                     }
-                    for preparation in preparations {
-                        preparation.prepare(game)?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(None);
-                        }
+                    if local.decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+                    let stopped = local.resolution_stopped();
+                    drop(local);
+                    if stopped {
+                        ctx.stop_resolution();
+                        break;
                     }
                 }
                 if ctx.resolution_stopped() {
-                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
                     break;
                 }
-                // A paused earlier participant can become ready after a later one.
-                // Restore APNAP order before original preparation/sealing/cohorting.
-                actions.sort_by_key(|action| action.participant);
-                if actions.is_empty() {
-                    continue;
+                for preparation in preparations {
+                    preparation.prepare(game)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
                 }
-                for action in &mut actions {
-                    let participant = &mut participants[action.participant];
-                    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-                    action.action.scope.run(game, &mut local, |game, ctx| {
+            }
+            if ctx.resolution_stopped() {
+                finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
+                break;
+            }
+            // A paused earlier participant can become ready after a later one.
+            // Restore APNAP order before original preparation/sealing/cohorting.
+            actions.sort_by_key(|action| action.participant);
+            if actions.is_empty() {
+                continue;
+            }
+            for action in &mut actions {
+                let participant = &mut participants[action.participant];
+                let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+                action
+                    .declaration
+                    .action
+                    .scope
+                    .run(game, &mut local, |game, ctx| {
                         action.proposal.prepare_selection(game, ctx)
                     })?;
-                    if local.decision_maker.awaiting_choice() {
-                        return Ok(None);
-                    }
-                    participant.context = ExecutionContextCheckpoint::capture(&local);
-                    let stopped = local.resolution_stopped();
-                    drop(local);
-                    if stopped {
-                        ctx.stop_resolution();
-                        break;
-                    }
-                }
-                if ctx.resolution_stopped() {
-                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
-                    break;
-                }
-                for action in &mut actions {
-                    let participant = &mut participants[action.participant];
-                    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-                    action.action.scope.run(game, &mut local, |game, ctx| {
-                        action.proposal.prepare_original(game, ctx)
-                    })?;
-                    if local.decision_maker.awaiting_choice() {
-                        return Ok(None);
-                    }
-                    participant.context = ExecutionContextCheckpoint::capture(&local);
-                    let stopped = local.resolution_stopped();
-                    drop(local);
-                    if stopped {
-                        ctx.stop_resolution();
-                        break;
-                    }
-                }
-                if ctx.resolution_stopped() {
-                    finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
-                    break;
-                }
-                if !crate::effects::can_pay_declared_resources(
-                    game,
-                    &actions
-                        .iter()
-                        .flat_map(|action| action.proposal.declared_payment_resources())
-                        .collect::<Vec<_>>(),
-                ) {
-                    return Err(ExecutionError::Impossible(
-                        "program unit exceeds shared resources".into(),
-                    ));
-                }
-                let simultaneous = actions.len() > 1
-                    || actions
-                        .iter()
-                        .any(|action| action.proposal.has_simultaneous_originals());
-                let opened = simultaneous && game.open_simultaneous_action();
-                let pinned = simultaneous
-                    && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-                let originals = commit_program_originals(game, ctx, &mut participants, actions);
-                crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
-                game.close_simultaneous_action(opened);
-                let originals = originals?;
-                if ctx.decision_maker.awaiting_choice() {
+                if local.decision_maker.awaiting_choice() {
                     return Ok(None);
                 }
-                (originals, false)
-            };
+                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+                let stopped = local.resolution_stopped();
+                drop(local);
+                if stopped {
+                    ctx.stop_resolution();
+                    break;
+                }
+            }
+            if ctx.resolution_stopped() {
+                finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
+                break;
+            }
+            for action in &mut actions {
+                let participant = &mut participants[action.participant];
+                let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+                action
+                    .declaration
+                    .action
+                    .scope
+                    .run(game, &mut local, |game, ctx| {
+                        action.proposal.prepare_original(game, ctx)
+                    })?;
+                if local.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+                let stopped = local.resolution_stopped();
+                drop(local);
+                if stopped {
+                    ctx.stop_resolution();
+                    break;
+                }
+            }
+            if ctx.resolution_stopped() {
+                finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
+                break;
+            }
+            // Capture every proposal at the original budget boundary before
+            // checking any claim. Keep actual claims with their declarations.
+            for action in &mut actions {
+                action.declaration.resources.prepared =
+                    action.proposal.declared_payment_resources();
+            }
+            if !crate::effects::can_pay_declared_resource_claims(
+                game,
+                actions
+                    .iter()
+                    .flat_map(|action| &action.declaration.resources.prepared),
+            ) {
+                return Err(ExecutionError::Impossible(
+                    "program unit exceeds shared resources".into(),
+                ));
+            }
+            let simultaneous = actions.len() > 1
+                || actions
+                    .iter()
+                    .any(|action| action.proposal.has_simultaneous_originals());
+            let opened = simultaneous && game.open_simultaneous_action();
+            let pinned = simultaneous
+                && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+            let originals = commit_program_originals(game, ctx, &mut participants, actions);
+            crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
+            game.close_simultaneous_action(opened);
+            let originals = originals?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+            (originals, false)
+        };
         if !already_observed {
             originals = super::simultaneous::prepare_simultaneous_originals_with_participants(
                 game,
@@ -1463,7 +1897,7 @@ fn run_action_programs(
                     continue;
                 };
                 let participant = &mut participants[original.participant];
-                let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+                let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
                 let prior = std::mem::replace(
                     &mut original.receipt.outcome,
                     CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
@@ -1471,7 +1905,7 @@ fn run_action_programs(
                 let prepared = original.scope.run(game, &mut local, |game, ctx| {
                     completion.prepare_draw_boundary_from_outputs(game, ctx, prior)
                 })?;
-                participant.context = ExecutionContextCheckpoint::capture(&local);
+                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
                 original.receipt = prepared;
                 boundary = original.receipt.completion.is_some();
                 if local.decision_maker.awaiting_choice() {
@@ -1495,14 +1929,35 @@ fn run_action_programs(
                         original.receipt.outcome.outcome.clone(),
                     ]);
                 }
+                let mut prefix_outputs = CompletedEffectOutputs::aggregate_only(prefix);
+                prefix_outputs.retain_batch_children(
+                    retained_prefix
+                        .iter()
+                        .map(CompletedEffectOutputs::clone_projection),
+                );
+                prefix_outputs.retain_batch_children(
+                    shared.iter().map(CompletedEffectOutputs::clone_projection),
+                );
+                prefix_outputs.retain_batch_children(
+                    participants
+                        .iter()
+                        .filter_map(|participant| participant.result.as_ref())
+                        .map(CompletedEffectOutputs::clone_projection),
+                );
+                prefix_outputs.retain_batch_children(
+                    originals
+                        .iter()
+                        .map(|original| original.receipt.outcome.clone_projection()),
+                );
                 return Ok(Some(ActionProgramsProgress::Paused {
-                    prefix,
+                    prefix: prefix_outputs,
                     continuation: ActionProgramsContinuation {
                         participants,
                         events,
                         facts,
                         shared,
                         pending_originals: Some(originals),
+                        retained_prefix,
                         capture_between_units,
                     },
                 }));
@@ -1544,6 +1999,8 @@ fn run_action_programs(
             return Ok(None);
         }
         for unit in completed {
+            let declarations = unit.declarations;
+            let has_shared_owner = unit.owner.is_some();
             if let Some(owner) = unit.owner {
                 events.extend(owner.outcome.events.clone());
                 facts.extend(owner.outcome.execution_facts.clone());
@@ -1555,12 +2012,31 @@ fn run_action_programs(
                 }
             }
             for (index, outputs) in unit.bindings {
-                participants[index]
-                    .cursor
+                if capture_between_units && !has_shared_owner {
+                    retained_prefix.push(outputs.clone_projection());
+                }
+                let participant = &mut participants[index];
+                let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+                let result = participant
+                    .frame
+                    .program
                     .as_mut()
                     .expect("unfinished program")
-                    .accept_action(outputs)?;
+                    .accept_action_with_context(game, &mut local, outputs);
+                participant.frame.context = ExecutionContextCheckpoint::capture(&local);
+                let stopped = local.resolution_stopped();
+                drop(local);
+                if stopped {
+                    ctx.stop_resolution();
+                }
+                result?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
             }
+            // Acknowledgement consumed each packet in its participant frame.
+            // Only now can its actual selected declaration leave this owner.
+            drop(declarations);
         }
         if ctx.resolution_stopped() {
             finish_stopped_participants(game, ctx, &mut participants, &mut facts)?;
@@ -1573,7 +2049,7 @@ fn run_action_programs(
                 .into_iter()
                 .map(|participant| {
                     Ok(ProgramParticipantResult {
-                        context: participant.context,
+                        context: participant.frame.context,
                         outputs: participant.result.ok_or_else(|| {
                             ExecutionError::InternalError("program lost completed outputs".into())
                         })?,
@@ -1609,15 +2085,30 @@ fn commit_program_originals_inner(
     participants: &mut [ProgramParticipant],
     actions: Vec<PreparedProgramAction>,
 ) -> Result<Vec<CompletedProgramOriginal>, ExecutionError> {
+    let Some(cohort) = seal_program_originals(game, ctx, participants, actions)? else {
+        return Ok(Vec::new());
+    };
+    commit_sealed_program_originals(game, ctx, participants, cohort)
+}
+
+/// Seal the entire cohort and validate its nominal resource claims before any
+/// physical original commits. Suspension returns no admitted cohort. The outer
+/// observation/transaction scope owns this phase and the following commitment.
+fn seal_program_originals(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    actions: Vec<PreparedProgramAction>,
+) -> Result<Option<SealedProgramCohort>, ExecutionError> {
     let mut owners = Vec::new();
     for mut group in program_original_groups(actions) {
         let index = group[0].participant;
-        let scope = group[0].action.scope.clone();
+        let scope = group[0].declaration.action.scope.clone();
         let participant = &mut participants[index];
-        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-        let shared_damage = !group[0].action.identity.is_empty()
+        let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+        let shared_damage = !group[0].declaration.action.identity.is_empty()
             && group[0].proposal.damage_action_inputs().is_some();
-        let (proposal, damage_bindings) = if shared_damage {
+        let original = if shared_damage {
             let inputs = crate::effects::damage::DamageActionInputs::collect(
                 group
                     .iter()
@@ -1631,18 +2122,21 @@ fn commit_program_originals_inner(
             // Logical proposals remain unsealed: the physical owner consumes
             // replacement and prevention resources exactly once for the cohort.
             let proposal = scope.run(game, &mut local, |game, ctx| inputs.seal(game, ctx))?;
-            (proposal, Some(group))
+            SealedProgramOriginal::SharedDamage {
+                proposal,
+                bindings: group,
+            }
         } else {
             let mut action = group.pop().expect("nonempty original group");
             scope.run(game, &mut local, |game, ctx| {
                 action.proposal.seal_original(game, ctx)
             })?;
-            (action.proposal, None)
+            SealedProgramOriginal::Instruction(action)
         };
         if local.decision_maker.awaiting_choice() {
-            return Ok(Vec::new());
+            return Ok(None);
         }
-        participant.context = ExecutionContextCheckpoint::capture(&local);
+        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
         let stopped = local.resolution_stopped();
         drop(local);
         if stopped {
@@ -1651,35 +2145,45 @@ fn commit_program_originals_inner(
         owners.push(PreparedProgramOwner {
             participant: index,
             scope,
-            proposal,
-            damage_bindings,
+            original,
         });
     }
-    if !crate::effects::can_pay_declared_resources(
+    // Preserve the separate post-seal declaration boundary and logical owner
+    // order, including unsealed binding proposals under a shared damage owner.
+    for owner in &mut owners {
+        owner.original.capture_sealed_resource_declarations();
+    }
+    if !crate::effects::can_pay_declared_resource_claims(
         game,
-        &owners
+        owners
             .iter()
-            .flat_map(|owner| match &owner.damage_bindings {
-                Some(bindings) => bindings
-                    .iter()
-                    .flat_map(|action| action.proposal.declared_payment_resources())
-                    .collect::<Vec<_>>(),
-                None => owner.proposal.declared_payment_resources(),
-            })
-            .collect::<Vec<_>>(),
+            .flat_map(|owner| owner.original.sealed_resource_declarations()),
     ) {
         return Err(ExecutionError::Impossible(
             "sealed program unit exceeds shared resources".into(),
         ));
     }
+    Ok(Some(SealedProgramCohort { owners }))
+}
+
+/// Consume the admitted physical owners once, retaining their actual packets
+/// and participant bindings. Selection, sealing and affordability belong to
+/// the preceding cohort owner; this driver does not repeat those phases.
+fn commit_sealed_program_originals(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    cohort: SealedProgramCohort,
+) -> Result<Vec<CompletedProgramOriginal>, ExecutionError> {
     let mut originals = Vec::new();
-    for owner in owners {
+    for owner in cohort.owners {
+        let (proposal, original_bindings) = owner.original.into_physical();
         let participant = &mut participants[owner.participant];
-        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+        let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
         let mut receipt = owner.scope.run(game, &mut local, |game, ctx| {
-            owner.proposal.commit_original_with_outputs(game, ctx)
+            proposal.commit_original_with_outputs(game, ctx)
         })?;
-        participant.context = ExecutionContextCheckpoint::capture(&local);
+        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
         if let Some(inner) = receipt.completion.take() {
             receipt.completion = Some(Box::new(ProgramOriginalObserver {
                 context: ExecutionContextCheckpoint::capture(&local),
@@ -1691,7 +2195,7 @@ fn commit_program_originals_inner(
             participant: owner.participant,
             scope: owner.scope,
             receipt,
-            damage_bindings: owner.damage_bindings,
+            original_bindings,
         });
         if local.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
@@ -1717,10 +2221,10 @@ fn phase_program_original(
         participant: index,
         scope,
         receipt,
-        damage_bindings,
+        original_bindings,
     } = original;
     let participant = &mut participants[index];
-    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+    let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
     let mut receipt = receipt;
     if local.resolution_stopped() {
         receipt.completion = None;
@@ -1729,7 +2233,7 @@ fn phase_program_original(
             super::simultaneous::complete_retained_original_phase_with_outputs(game, ctx, receipt)
         })?;
     }
-    participant.context = ExecutionContextCheckpoint::capture(&local);
+    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
     let stopped = local.resolution_stopped();
     drop(local);
     if stopped {
@@ -1739,7 +2243,7 @@ fn phase_program_original(
         participant: index,
         scope,
         receipt,
-        damage_bindings,
+        original_bindings,
     })
 }
 
@@ -1749,13 +2253,32 @@ fn complete_program_original(
     participants: &mut [ProgramParticipant],
     original: CompletedProgramOriginal,
 ) -> Result<CompletedProgramUnit, ExecutionError> {
+    let Some(completed) = complete_program_original_outputs(game, ctx, participants, original)?
+    else {
+        return Ok(CompletedProgramUnit {
+            owner: None,
+            bindings: Vec::new(),
+            declarations: Vec::new(),
+        });
+    };
+    bind_program_original_outputs(game, ctx, participants, completed)
+}
+
+/// Finish one actual owner in its retained participant frame. Result bindings
+/// stay with the completed packet until their enclosing parent is ready.
+fn complete_program_original_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    original: CompletedProgramOriginal,
+) -> Result<Option<CompletedProgramOwnerOutputs>, ExecutionError> {
     let stopped = ctx.resolution_stopped();
     let participant = &mut participants[original.participant];
-    let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
+    let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
     if stopped {
         local.stop_resolution();
     }
-    let mut outputs = if stopped {
+    let outputs = if stopped {
         original.receipt.outcome
     } else {
         original.scope.run(game, &mut local, |game, ctx| {
@@ -1766,39 +2289,66 @@ fn complete_program_original(
             )
         })?
     };
-    participant.context = ExecutionContextCheckpoint::capture(&local);
+    participant.frame.context = ExecutionContextCheckpoint::capture(&local);
     if local.decision_maker.awaiting_choice() {
-        return Ok(CompletedProgramUnit {
-            owner: None,
-            bindings: Vec::new(),
-        });
+        return Ok(None);
     }
     let stopped = local.resolution_stopped();
     drop(local);
     if stopped {
         ctx.stop_resolution();
     }
-    let Some(bindings) = original.damage_bindings else {
-        return Ok(CompletedProgramUnit {
-            owner: None,
-            bindings: vec![(original.participant, outputs)],
-        });
+    Ok(Some(CompletedProgramOwnerOutputs {
+        participant: original.participant,
+        outputs,
+        original_bindings: original.original_bindings,
+    }))
+}
+
+/// Bind the actual completed packet once. A shared damage owner retains its
+/// one physical output while logical declarations contribute only their views.
+fn bind_program_original_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: &mut [ProgramParticipant],
+    completed: CompletedProgramOwnerOutputs,
+) -> Result<CompletedProgramUnit, ExecutionError> {
+    let CompletedProgramOwnerOutputs {
+        participant: participant_index,
+        mut outputs,
+        original_bindings,
+    } = completed;
+    let bindings = match original_bindings {
+        ProgramOriginalBindings::Instruction(declaration) => {
+            return Ok(CompletedProgramUnit {
+                owner: None,
+                bindings: vec![(participant_index, outputs)],
+                declarations: vec![declaration],
+            });
+        }
+        ProgramOriginalBindings::SharedDamage(bindings) => bindings,
     };
     // Per-participant wrappers publish their genuine result/tag/source bindings
     // from this receipt. They do not commit a second physical damage action.
     let mut rows = Vec::new();
     let mut owned_bindings = Vec::new();
+    let mut declarations = Vec::new();
     for action in bindings {
         let participant = &mut participants[action.participant];
-        let mut local = participant.context.reborrow(&mut *ctx.decision_maker);
-        let binding = action.action.scope.run(game, &mut local, |game, ctx| {
-            action.proposal.bind_damage_action(game, ctx, &outputs)
-        })?;
-        participant.context = ExecutionContextCheckpoint::capture(&local);
+        let mut local = participant.frame.context.reborrow(&mut *ctx.decision_maker);
+        let binding = action
+            .declaration
+            .action
+            .scope
+            .run(game, &mut local, |game, ctx| {
+                action.proposal.bind_damage_action(game, ctx, &outputs)
+            })?;
+        participant.frame.context = ExecutionContextCheckpoint::capture(&local);
         if local.decision_maker.awaiting_choice() {
             return Ok(CompletedProgramUnit {
                 owner: None,
                 bindings: Vec::new(),
+                declarations: Vec::new(),
             });
         }
         rows.push((
@@ -1806,12 +2356,14 @@ fn complete_program_original(
             CompletedEffectOutputs::aggregate_only(binding.outcome.clone()),
         ));
         owned_bindings.push(binding);
+        declarations.push(action.declaration);
     }
     crate::effects::DamageActionBinding::from_bindings(owned_bindings, |_| EffectOutcome::count(0))
         .transfer_owned_outputs(&mut outputs);
     Ok(CompletedProgramUnit {
         owner: Some(outputs),
         bindings: rows,
+        declarations,
     })
 }
 
@@ -1874,55 +2426,69 @@ impl SimultaneousEffectProposal for FinishedProgramAction {
 
 /// Ordinary execution uses the same selected cursor and authored scopes. The
 /// caller chooses its existing Action/Payment gateway and owns rollback.
-pub(super) fn execute_action_program_with_outputs(
-    mut cursor: Box<dyn ActionProgramCursor>,
+pub(super) fn execute_action_program_with_outputs<'cursor>(
+    mut cursor: Box<dyn ActionProgramCursor + 'cursor>,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
+    match run_program_cursor(cursor.as_mut(), game, ctx, purpose)? {
+        ProgramExecutionEnd::Finished => Ok(cursor.finish()?.outputs),
+        ProgramExecutionEnd::Pending => cursor.finish_pending(),
+        ProgramExecutionEnd::Stopped => cursor
+            .finish_stopped(game, ctx)
+            .map(|completed| completed.outputs),
+    }
+}
+
+/// Traversal and physical child execution have one owner. The caller consumes
+/// its actual cursor using its existing result/pending/stopped projection.
+pub(super) enum ProgramExecutionEnd {
+    Finished,
+    Pending,
+    Stopped,
+}
+
+pub(super) fn run_program_cursor(
+    cursor: &mut dyn ActionProgramCursor,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<ProgramExecutionEnd, ExecutionError> {
     loop {
         if ctx.resolution_stopped() {
-            return cursor
-                .finish_stopped(game, ctx)
-                .map(|completed| completed.outputs);
+            return Ok(ProgramExecutionEnd::Stopped);
         }
-
-        let next = cursor.next_action(game, ctx)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return cursor.finish_pending();
-        }
-        let preparations = cursor.take_preparations();
-        let declared = !preparations.is_empty();
-        for preparation in preparations {
-            preparation.prepare(game)?;
-        }
-        let Some(mut action) = next else {
-            if declared {
-                continue;
+        let (action_purpose, result) = {
+            let selected = cursor.select_execution_instruction(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() && !selected.dispatch_while_pending {
+                drop(selected);
+                return Ok(ProgramExecutionEnd::Pending);
             }
-            break;
+            let ProgramInstructionSelection {
+                instruction,
+                preparations,
+                ..
+            } = selected;
+            let declared = !preparations.is_empty();
+            for preparation in preparations {
+                preparation.prepare(game)?;
+            }
+            let Some(instruction) = instruction else {
+                if declared {
+                    continue;
+                }
+                break;
+            };
+            instruction.execute(game, ctx, purpose)
         };
-        let action_purpose = action.execution_purpose(purpose);
-        let native = action.native.take();
-        let result = action.scope.run(game, ctx, |game, ctx| match native {
-            Some(NativeProgramAction::SharedDamage(proposal)) => {
-                crate::effects::damage::complete_prepared_damage_action(game, ctx, proposal)
-            }
-            Some(NativeProgramAction::TotalCost {
-                cost,
-                payer,
-                reason,
-            }) => crate::costs::execute_total_cost_program_action(&cost, game, ctx, payer, reason),
-            None => action_purpose.execute(game, &action.effect, ctx),
-        });
-        let outputs =
-            map_program_action_result_for_purpose(cursor.as_ref(), action_purpose, result)?;
-        cursor.accept_action(outputs)?;
+        let outputs = map_program_action_result_for_purpose(cursor, action_purpose, result)?;
+        cursor.accept_action_with_context(game, ctx, outputs)?;
         if ctx.decision_maker.awaiting_choice() {
-            return cursor.finish_pending();
+            return Ok(ProgramExecutionEnd::Pending);
         }
     }
-    Ok(cursor.finish()?.outputs)
+    Ok(ProgramExecutionEnd::Finished)
 }
 
 /// Existing prepared leaf capabilities determine staged coverage. Containers

@@ -60,6 +60,7 @@ pub struct SubjectsAreBasicFact<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubjectColorFact<'a> {
+    pub exclude_from_color_identity: bool,
     pub subject_tokens: &'a [OwnedLexToken],
     pub color: ColorSet,
 }
@@ -401,8 +402,15 @@ fn parse_subject_color<'a>(input: &mut LexStream<'a>) -> WResult<SubjectColorFac
         color_token,
     ))
     .parse_next(input)?;
+    let exclude_from_color_identity = opt((
+        primitives::period(),
+        semantic_phrase(&["this", "ability"]),
+        alt((semantic_kw("doesn't"), semantic_phrase(&["does", "not"]))),
+        semantic_phrase(&["affect", "its", "color", "identity"]),
+    )).parse_next(input)?.is_some();
     semantic_finish(input)?;
     Ok(SubjectColorFact {
+        exclude_from_color_identity,
         subject_tokens: trim_sentence_edges(subject_tokens),
         color,
     })

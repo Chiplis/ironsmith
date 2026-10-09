@@ -960,11 +960,11 @@
   .mobile-mtga-self-hud-body--targetable { outline: 1px solid var(--player-accent, #fff); outline-offset: -1px; }
 }
 
-/* Arena mobile: combat dominates the middle; compact resources sit behind it. */
+/* Both combat rows face the center; resources sit behind each player. */
 @media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .mobile-mtga-scene { background: radial-gradient(ellipse at 50% 48%, #202326 0, #101214 55%, #08090a 100%) !important; }
   .mobile-mtga-scene-layout::before { content: ''; position: absolute; pointer-events: none; left: 12%; right: 12%; top: var(--mobile-battle-opponent-band-height); height: 1px; background: linear-gradient(90deg, transparent, #6b74753d, transparent); }
-  .mobile-opponent-controls { left: calc((100% - var(--mobile-mtga-stack-rail-width)) / 2); transform: translateX(-50%); }
+  .mobile-opponent-controls { top: 0; left: calc((100% - var(--mobile-mtga-stack-rail-width)) / 2); transform: translateX(-50%); }
   .mobile-mtga-control-row { position: static; width: 0 !important; height: 0; }
   .mobile-self-controls { position: absolute; z-index: 10; top: calc(var(--mobile-battle-opponent-band-height) + var(--mobile-battle-card-height)); left: calc((100% - var(--mobile-mtga-stack-rail-width)) / 2); transform: translateX(-50%); }
   .mobile-action-controls { position: absolute; z-index: 35; bottom: 0; right: 0; }
@@ -1018,7 +1018,11 @@
   .arena-permanent[data-kind="enchantment"] { border-top-width: 4px; }
   .arena-permanent[data-kind="artifact"] { border-color: #a0a5a5; }
   .battlefield-arena-card.tapped { transform: none !important; }
-  .battlefield-arena-card.tapped .arena-permanent { transform: rotate(8deg) scale(.90); filter: brightness(.65); }
+  .battlefield-arena-card.tapped .arena-permanent { transform: none; }
+  .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
+    transform: rotate(8deg) scale(.90); transform-origin: center;
+  }
+  .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack) { filter: brightness(.65); }
   .arena-tapped-mark { position: absolute; inset: 18% 0 0; text-align: center; font: 700 27px/1 Georgia,serif; color: #e0e5e6a6; text-shadow: 0 1px 2px black; }
   .battlefield-arena-card:is(.playable,.glow-ability,.glow-mana) .arena-permanent { box-shadow: 0 0 0 1px #80d6ef, 0 0 5px #5cc9ff70; }
   .battlefield-arena-card:is(.target-legal,.attack-candidate,.blocker-candidate) .arena-permanent { outline: 2px solid #64c9ff; outline-offset: -1px; }

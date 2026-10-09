@@ -1,3 +1,4 @@
+import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -96,6 +97,7 @@ export default function TopbarMenuSheet({
     setPlayerAccentOverride,
   } = useGame();
   const { locale, locales, setLocale, t } = useI18n();
+  const [battlefieldAppearance, setBattlefieldAppearance] = useBattlefieldAppearance();
 
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
@@ -387,6 +389,24 @@ export default function TopbarMenuSheet({
             title={t("settings.appearance.title")}
             description={t("settings.appearance.description")}
           >
+            <label className={labelClass}>
+              {ui("Battlefield cards")}
+              <select className={inputClass} aria-label={ui("Battlefield cards")}
+                value={battlefieldAppearance.compactCards ? "compact" : "full"}
+                onChange={event => setBattlefieldAppearance("compactCards", event.target.value === "compact")}>
+                <option value="compact">{ui("Compact artwork")}</option>
+                <option value="full">{ui("Full cards")}</option>
+              </select>
+            </label>
+            <label className={labelClass}>
+              {ui("Noncreature lands")}
+              <select className={inputClass} aria-label={ui("Noncreature lands")}
+                value={battlefieldAppearance.compactLands ? "compact" : "standard"}
+                onChange={event => setBattlefieldAppearance("compactLands", event.target.value === "compact")}>
+                <option value="compact">{ui("Small artwork tiles")}</option>
+                <option value="standard">{ui("Match battlefield cards")}</option>
+              </select>
+            </label>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <label className={labelClass}>
                 {t("settings.interfaceFont")}

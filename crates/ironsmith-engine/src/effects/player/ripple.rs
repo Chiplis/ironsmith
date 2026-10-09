@@ -1,7 +1,9 @@
 //! CR702.60: one optional reveal, an ordered sequence of real casts, and the
 //! exact uncast remainder. Pending input or typed execution failure restores
 //! the whole instruction, including queued cast triggers and library order.
-use super::runtime_helpers::{effect_driven_cast_options_for_card, with_spell_cast_event};
+use super::runtime_helpers::{
+    complete_native_cast_with_outputs, effect_driven_cast_options_for_card,
+};
 use crate::decisions::context::{BooleanContext, SelectOptionsContext, SelectableOption};
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::CompletedEffectOutputs;
@@ -175,32 +177,36 @@ impl EffectExecutor for RippleEffect {
                         .object(option.object_id)
                         .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
                         .ok_or(ExecutionError::ObjectNotFound(option.object_id))?;
-                    let result = match crate::game_loop::cast_spell_from_resolving_effect(
-                        game,
-                        option.object_id,
-                        option.from_zone,
-                        ctx.controller,
-                        &option.casting_method,
-                        true,
-                        None,
-                        ctx.provenance,
-                        &mut ctx.decision_maker,
-                    ) {
-                        Ok(result) => result,
-                        Err(crate::game_loop::GameLoopError::ActionCancelled(_)) => None,
-                        // In particular, an ExecutionFailed(Impossible) raised by
-                        // a real payment/replacement program is NOT an unavailable
-                        // cast. Preserve that failure instead of suppressing it.
-                        Err(error) => {
-                            return Err(super::runtime_helpers::effect_driven_cast_error(error));
-                        }
-                    };
+                    let result =
+                        match crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
+                            game,
+                            option.object_id,
+                            option.from_zone,
+                            ctx.controller,
+                            &option.casting_method,
+                            true,
+                            None,
+                            ctx.provenance,
+                            &mut ctx.decision_maker,
+                        ) {
+                            Ok(result) => result,
+                            Err(crate::game_loop::GameLoopError::ActionCancelled(_)) => None,
+                            // In particular, an ExecutionFailed(Impossible) raised by
+                            // a real payment/replacement program is NOT an unavailable
+                            // cast. Preserve that failure instead of suppressing it.
+                            Err(error) => {
+                                return Err(super::runtime_helpers::effect_driven_cast_error(
+                                    error,
+                                ));
+                            }
+                        };
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::count(0),
                         ));
                     }
-                    if let Some(new_id) = result {
+                    if let Some(cast) = result {
+                        let new_id = cast.new_id;
                         // A failed face does not exhaust another face's permission.
                         // A successful cast may also change the state via its costs,
                         // so previously unavailable proposals can be reconsidered.
@@ -211,10 +217,10 @@ impl EffectExecutor for RippleEffect {
                             ctx.provenance,
                             crate::events::EventKind::SpellCast,
                         );
-                        let mut outcome = with_spell_cast_event(
+                        let mut outputs = complete_native_cast_with_outputs(
                             EffectOutcome::with_objects(vec![new_id]),
                             game,
-                            new_id,
+                            cast,
                             ctx.controller,
                             option.from_zone,
                             provenance,
@@ -225,9 +231,9 @@ impl EffectExecutor for RippleEffect {
                             game,
                             ctx,
                             None,
-                            outcome.events.iter_mut(),
+                            outputs.outcome.events.iter_mut(),
                         )?;
-                        outcomes.push(CompletedEffectOutputs::aggregate_only(outcome));
+                        outcomes.push(outputs);
                     }
                 }
                 ctx.set_tagged_objects(kept.clone(), kept_snapshots);

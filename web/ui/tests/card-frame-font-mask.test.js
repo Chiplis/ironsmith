@@ -1,6 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {protectBottomOrnaments,isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask,findFlavorSeparator,statsGlyphMask} from '../src/lib/card-frame-font-mask.js';
+import {hasOutlinedLightText,protectBottomOrnaments,isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask,findFlavorSeparator,statsGlyphMask,residualTextQuality} from '../src/lib/card-frame-font-mask.js';
+
+test('pale holes in dark letters on gray paper are not outlined white text',()=>{
+ const width=60,height=20,data=new Uint8ClampedArray(width*height*4);
+ for(let p=0;p<width*height;p++)data.set([182,182,182,255],p*4);
+ for(let i=0;i<5;i++)for(let y=3;y<17;y++)for(let x=3+i*11;x<11+i*11;x++){
+  const ring=x===3+i*11||x===10+i*11||y===3||y===16;
+  data.set(ring?[20,20,20,255]:[245,245,245,255],(y*width+x)*4);
+ }
+ assert.equal(hasOutlinedLightText({data,width,height}),false);
+});
+
+test('outlined pale lettering is detected on a saturated bright background',()=>{
+ const width=60,height=20,data=new Uint8ClampedArray(width*height*4);
+ for(let p=0;p<width*height;p++)data.set([60,190,220,255],p*4);
+ for(let i=0;i<5;i++)for(let y=3;y<17;y++)for(let x=3+i*11;x<11+i*11;x++){
+  const ring=x===3+i*11||x===10+i*11||y===3||y===16;
+  data.set(ring?[20,20,20,255]:[245,245,245,255],(y*width+x)*4);
+ }
+ assert.equal(hasOutlinedLightText({data,width,height}),true);
+});
+
+test('residual validation rejects dark lettering left on a dark copper rail',()=>{
+  const width=8,height=8,data=new Uint8ClampedArray(width*height*4),points=[];
+  for(let p=0;p<width*height;p++)data.set([175,90,20,255],p*4);
+  const clean={data:data.slice(),width,height};
+  for(let y=2;y<6;y++)for(let x=2;x<5;x++){
+    const p=y*width+x;points.push(p);data.set([15,15,15,255],p*4);
+  }
+  const scan={data,width,height},paperAt=()=>95;
+  assert.equal(residualTextQuality(scan,scan,[{points}],paperAt,{polarity:'dark'}).safe,false);
+  assert.equal(residualTextQuality(scan,clean,[{points}],paperAt,{polarity:'dark'}).safe,true);
+});
 
 test('glyph matching distinguishes shape rather than merely dark pixels',()=>{
   const a={w:3,h:3,pixels:Uint8Array.from([1,0,0,1,0,0,1,1,1])};

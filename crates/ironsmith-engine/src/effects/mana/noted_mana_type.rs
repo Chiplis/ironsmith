@@ -1,7 +1,7 @@
 //! "Note the type of mana spent to pay this activation cost" and "Add one
 //! mana of this artifact's last noted type".
 
-use super::choice_helpers::{credit_repeated_mana_symbol_from_context, mana_added_count_outcome};
+use super::choice_helpers::{credit_repeated_mana_symbol_from_context, mana_added_count_outputs};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -45,7 +45,10 @@ impl EffectExecutor for NoteActivationManaTypeEffect {
 impl EffectExecutor for AddManaOfNotedTypeEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::NotedType { amount: &self.amount, player: &self.player })
+        Some(ManaProduction::NotedType {
+            amount: &self.amount,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -57,16 +60,29 @@ impl EffectExecutor for AddManaOfNotedTypeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let Some(symbol) = game.noted_mana_type_for_source(ctx.source) else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             mana,

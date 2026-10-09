@@ -446,43 +446,41 @@ pub(crate) fn commit_prepared_counter_removal_original_with_outputs(
         ));
     };
     let (original, programs) = result.into_expansion();
-    let deferred = if let crate::events::processing::TraitEventResult::Replaced {
-        effects,
-        source,
-        controller,
-        context,
-        ..
-    } = &original
-    {
-        crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
-            game,
-            ctx,
+    let receipt = match original {
+        crate::events::processing::TraitEventResult::Replaced {
             effects,
-            *source,
-            *controller,
+            source,
+            controller,
             context,
-            prepared.replacement_source_snapshot.clone(),
-            crate::effects::replacement::ReplacementProgramBindings {
-                targets: removal_bindings(context)?,
+            ..
+        } => {
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: removal_bindings(&context)?,
                 object_tags: Vec::new(),
-            },
-        )?
-    } else {
-        None
-    };
-    let (outcome, continuation) = if let Some(receipt) = deferred {
-        (receipt.outcome, receipt.completion)
-    } else {
-        (
-            commit_counter_removal_with_outputs(
+            };
+            crate::effects::replacement::commit_bound_replacement_program_original_with_outputs(
+                game,
+                ctx,
+                crate::events::processing::PreparedReplacementProgram {
+                    effects,
+                    source,
+                    controller,
+                    context,
+                    source_snapshot: prepared.replacement_source_snapshot,
+                },
+                bindings,
+            )?
+        }
+        original => {
+            crate::effects::SimultaneousEffectCommit::finished(commit_counter_removal_with_outputs(
                 game,
                 ctx,
                 original,
                 prepared.replacement_source_snapshot,
-            )?,
-            None,
-        )
+            )?)
+        }
     };
+    let (outcome, continuation) = (receipt.outcome, receipt.completion);
     Ok(
         crate::effects::replacement::defer_replacement_programs_with_outputs(
             crate::effects::SimultaneousEffectCommit {

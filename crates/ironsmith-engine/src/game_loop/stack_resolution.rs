@@ -1351,24 +1351,36 @@ pub(super) fn bind_stack_entry_resolution_targets<'a>(
 pub(super) fn resolve_stack_entry_full(
     game: &mut GameState,
     decision_maker: &mut dyn DecisionMaker,
-    mut trigger_queue: Option<&mut TriggerQueue>,
+    trigger_queue: Option<&mut TriggerQueue>,
 ) -> Result<(), GameLoopError> {
+    resolve_stack_entry_full_with_outputs(game, decision_maker, trigger_queue).map(|_| ())
+}
+
+/// Retain actual instruction, entry and annotation packets through the native
+/// root transaction. Unit callers project only after completion and queueing.
+pub(super) fn resolve_stack_entry_full_with_outputs(
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
+    mut trigger_queue: Option<&mut TriggerQueue>,
+) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     if !decision_maker.awaiting_choice() {
         game.clear_pending_decision_controllers();
     }
     let (resource_root, resource_meter) = game.begin_token_resource_scope();
-    let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.as_deref().cloned();
-    let mut result =
-        resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
-    if let Some(error) = game.token_resource_failure() {
-        result = Err(GameLoopError::ExecutionFailed(error));
-    }
+    let result = crate::effects::composition::execute_result_decision_transaction(
+        game,
+        decision_maker,
+        |game, decision_maker| {
+            let mut result =
+                resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
+            if let Some(error) = game.token_resource_failure() {
+                result = Err(GameLoopError::ExecutionFailed(error));
+            }
+            result
+        },
+    );
     if result.is_err() || decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && decision_maker.awaiting_choice(),
-        );
         if let (Some(queue), Some(checkpoint)) = (trigger_queue, queue_checkpoint) {
             *queue = checkpoint;
         }
@@ -1381,7 +1393,7 @@ fn resolve_stack_entry_full_inner(
     game: &mut GameState,
     decision_maker: &mut dyn DecisionMaker,
     mut trigger_queue: Option<&mut TriggerQueue>,
-) -> Result<(), GameLoopError> {
+) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     game.refresh_continuous_state().map_err(|error| {
         GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(error))
     })?;
@@ -1458,6 +1470,9 @@ fn resolve_stack_entry_full_inner(
     let mutate_resolves_as_creature_after_illegal_target =
         mutating_creature_spell && all_targets_invalid;
 
+    let mut root_outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+        crate::effect::EffectOutcome::resolved(),
+    );
     let mut completion_receipts = Vec::new();
 
     // If the spell/ability had targets and ALL are now invalid, it fizzles.
@@ -1495,18 +1510,18 @@ fn resolve_stack_entry_full_inner(
                 &mut ctx,
             )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(root_outputs);
             }
             completion_receipts.push((entry.object_id, receipt));
         }
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
-        finish_resolving_spell_receipts(
+        return finish_resolving_spell_receipts(
             game,
             &mut ctx,
             trigger_queue.as_deref_mut(),
             completion_receipts,
-        )?;
-        return Ok(());
+            root_outputs,
+        );
     }
 
     // Mark provenance only after the illegal-target exit above. Abilities
@@ -1531,7 +1546,7 @@ fn resolve_stack_entry_full_inner(
             .is_some_and(|condition| format!("{condition:?}").contains("Active")),
     ) {
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
-        return Ok(());
+        return Ok(root_outputs);
     }
 
     // Check intervening-if condition at resolution time
@@ -1563,7 +1578,7 @@ fn resolve_stack_entry_full_inner(
     {
         // Condition no longer true - ability resolves but does nothing
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
-        return Ok(());
+        return Ok(root_outputs);
     }
     // Legacy event-independent conditions retain their existing no-event path.
     // Required combat evidence is checked above, before any body can execute.
@@ -1593,7 +1608,7 @@ fn resolve_stack_entry_full_inner(
         .flatten();
 
     let initial_subgame_depth = game.subgame_depth();
-    let all_events = execute_resolution_program_with_trigger_matching(
+    let completed_program = execute_resolution_program_with_trigger_matching_outputs_typed(
         game,
         &mut ctx,
         entry.controller,
@@ -1602,9 +1617,12 @@ fn resolve_stack_entry_full_inner(
         entry.chosen_modes.as_deref(),
         &valid_target_assignments,
         true,
-    )?;
+    )
+    .map_err(GameLoopError::ExecutionFailed)?;
+    let all_events = completed_program.events;
+    root_outputs.retain_published_children(completed_program.outputs);
     if game.subgame_depth() > initial_subgame_depth {
-        return Ok(());
+        return Ok(root_outputs);
     }
     if game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
@@ -1613,10 +1631,10 @@ fn resolve_stack_entry_full_inner(
         // Preserve its newly emitted events for the procedure's deferred
         // trigger check and suppress ordinary post-resolution processing.
         game.turn.priority_player = None;
-        return Ok(());
+        return Ok(root_outputs);
     }
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(root_outputs);
     }
     // Process events from effect outcomes for triggers
     if let Some(ref mut tq) = trigger_queue {
@@ -1631,14 +1649,16 @@ fn resolve_stack_entry_full_inner(
     // CR 702.122d: "whenever this Vehicle becomes crewed" triggers when a crew
     // ability of it resolves, not when its crew cost is paid.
     if let Some(ref mut tq) = trigger_queue {
-        let completion =
-            crate::effects::permanents::complete_crew_ability_resolution(game, &mut ctx, &entry)?;
+        let completion = crate::effects::permanents::complete_crew_ability_resolution_with_outputs(
+            game, &mut ctx, &entry,
+        )?;
         crate::game_loop::try_queue_triggers_from_reported_events(
             game,
             tq,
-            completion.events,
+            completion.outcome.events.clone(),
             false,
         )?;
+        root_outputs.retain_published_children([completion]);
     }
 
     if let Some(chapter_resolution) = chapter_resolution {
@@ -1655,7 +1675,11 @@ fn resolve_stack_entry_full_inner(
         )
         .with_source_snapshot(chapter_resolution.source_snapshot);
         if let Some(ref mut tq) = trigger_queue {
-            queue_triggers_from_event(game, tq, event, false);
+            if let Some(receipt) =
+                crate::game_loop::queue_triggers_from_event_with_outputs(game, tq, event, false)
+            {
+                root_outputs.retain_published_children([receipt]);
+            }
         }
     }
 
@@ -1694,16 +1718,16 @@ fn resolve_stack_entry_full_inner(
                 &mut ctx,
             )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(root_outputs);
             }
             completion_receipts.push((entry.object_id, receipt));
-            finish_resolving_spell_receipts(
+            return finish_resolving_spell_receipts(
                 game,
                 &mut ctx,
                 trigger_queue.as_deref_mut(),
                 completion_receipts,
-            )?;
-            return Ok(());
+                root_outputs,
+            );
         }
     }
 
@@ -1713,7 +1737,7 @@ fn resolve_stack_entry_full_inner(
     if entry.is_ability {
         preserve_resolved_spell_ability_tags(game, execution_source, &ctx);
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
-        return Ok(());
+        return Ok(root_outputs);
     }
 
     // Effects can already have moved the resolving spell (for example cipher).
@@ -1743,7 +1767,7 @@ fn resolve_stack_entry_full_inner(
                     .unwrap_or(0)
                     == 0;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
 
                 if game
@@ -1753,12 +1777,14 @@ fn resolve_stack_entry_full_inner(
                     let event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::Mutated);
-                    let mut completed = vec![TriggerEvent::new_with_provenance(
-                        crate::events::other::MutatedEvent::new(target_id, entry.controller),
-                        event_provenance,
-                    )];
-                    crate::effects::observe_lifecycle_completions(game, &mut completed)?;
-                    let event = completed.remove(0);
+                    let completed = crate::effects::observe_lifecycle_completions_with_outputs(
+                        game,
+                        vec![TriggerEvent::new_with_provenance(
+                            crate::events::other::MutatedEvent::new(target_id, entry.controller),
+                            event_provenance,
+                        )],
+                    )?;
+                    let event = completed.outcome.events[0].clone();
                     if let Some(ref mut tq) = trigger_queue {
                         queue_triggers_from_event(game, tq, event, false);
                     } else {
@@ -1767,7 +1793,8 @@ fn resolve_stack_entry_full_inner(
                         // ordinary pending-trigger owner.
                         game.queue_trigger_event(event_provenance, event);
                     }
-                    return Ok(());
+                    root_outputs.retain_published_children([completed]);
+                    return Ok(root_outputs);
                 }
             }
 
@@ -1843,7 +1870,7 @@ fn resolve_stack_entry_full_inner(
                 options,
             )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(root_outputs);
             }
             let receipt = receipt.ok_or_else(|| {
                 GameLoopError::ResolutionFailed("spell entry returned no terminal receipt".into())
@@ -1853,7 +1880,9 @@ fn resolve_stack_entry_full_inner(
                 crate::effects::zones::BattlefieldEntryOutcome::Redirected(_)
                 | crate::effects::zones::BattlefieldEntryOutcome::Prevented => None,
             };
-            completion_receipts.push(receipt.into_zone_receipt());
+            let (movement, published) = receipt.into_zone_receipt_with_outputs();
+            root_outputs.retain_published_references(published);
+            completion_receipts.push(movement);
             if let Some(new_id) = new_id {
                 inherit_resolving_spell_delayed_triggers(game, entry.object_id, new_id);
                 if let Some(attack_target) = sneak_attack_target.take()
@@ -1979,15 +2008,16 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(
+                    let annotation = execute_resolved_permanent_annotation(
                         game,
                         &mut ctx,
                         new_id,
                         entry.controller,
                         &crate::effect::Effect::new(return_to_hand),
                     )?;
+                    root_outputs.retain_published_children([annotation]);
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(());
+                        return Ok(root_outputs);
                     }
                 }
                 if cast_with_blitz {
@@ -2002,15 +2032,16 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(
+                    let annotation = execute_resolved_permanent_annotation(
                         game,
                         &mut ctx,
                         new_id,
                         entry.controller,
                         &crate::effect::Effect::new(sacrifice_at_end_step),
                     )?;
+                    root_outputs.retain_published_children([annotation]);
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(());
+                        return Ok(root_outputs);
                     }
                 }
                 if cast_with_suspend && obj.has_card_type(crate::types::CardType::Creature) {
@@ -2021,15 +2052,16 @@ fn resolve_stack_entry_full_inner(
                         ),
                         crate::effect::Until::YouStopControllingThis,
                     );
-                    execute_resolved_permanent_annotation(
+                    let annotation = execute_resolved_permanent_annotation(
                         game,
                         &mut ctx,
                         new_id,
                         entry.controller,
                         &crate::effect::Effect::new(suspend_haste),
                     )?;
+                    root_outputs.retain_published_children([annotation]);
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(());
+                        return Ok(root_outputs);
                     }
                 }
                 if cast_with_warp {
@@ -2047,15 +2079,16 @@ fn resolve_stack_entry_full_inner(
                         vec![new_id],
                         crate::target::PlayerFilter::Specific(entry.controller),
                     );
-                    execute_resolved_permanent_annotation(
+                    let annotation = execute_resolved_permanent_annotation(
                         game,
                         &mut ctx,
                         new_id,
                         entry.controller,
                         &crate::effect::Effect::new(exile_then_grant),
                     )?;
+                    root_outputs.retain_published_children([annotation]);
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(());
+                        return Ok(root_outputs);
                     }
                 }
 
@@ -2074,13 +2107,13 @@ fn resolve_stack_entry_full_inner(
                 }
 
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
             }
         } else if obj.zone == Zone::Stack {
             if obj.kind == crate::object::ObjectKind::SpellCopy {
                 game.remove_object(entry.object_id);
-                return Ok(());
+                return Ok(root_outputs);
             }
 
             // It's an instant/sorcery
@@ -2219,12 +2252,12 @@ fn resolve_stack_entry_full_inner(
                     &mut ctx,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Library
                 {
-                    let shuffle = crate::effects::cards::commit_library_shuffle(
+                    let shuffle = crate::effects::cards::commit_library_shuffle_with_outputs(
                         game,
                         obj.owner,
                         &[],
@@ -2239,11 +2272,18 @@ fn resolve_stack_entry_full_inner(
                                 .alloc_root_event(crate::events::EventKind::ShuffleLibrary)
                         },
                     );
-                    for event in shuffle.events {
+                    for event in shuffle.outcome.events.iter().cloned() {
                         if let Some(ref mut tq) = trigger_queue {
-                            queue_triggers_from_event(game, tq, event, false);
+                            if let Some(capture) =
+                                crate::game_loop::queue_triggers_from_event_with_outputs(
+                                    game, tq, event, false,
+                                )
+                            {
+                                root_outputs.retain_published_children([capture]);
+                            }
                         }
                     }
+                    root_outputs.retain_published_children([shuffle]);
                 }
                 completion_receipts.push((entry.object_id, receipt));
             } else if has_rebound {
@@ -2259,7 +2299,7 @@ fn resolve_stack_entry_full_inner(
                     &mut ctx,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Exile
@@ -2317,7 +2357,7 @@ fn resolve_stack_entry_full_inner(
                     &mut ctx,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
                 if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
                     && result.final_zone == Zone::Exile
@@ -2342,7 +2382,7 @@ fn resolve_stack_entry_full_inner(
                     &mut ctx,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
                 completion_receipts.push((entry.object_id, receipt));
             } else {
@@ -2360,7 +2400,7 @@ fn resolve_stack_entry_full_inner(
                     &mut ctx,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(root_outputs);
                 }
                 completion_receipts.push((entry.object_id, receipt));
             }
@@ -2373,6 +2413,7 @@ fn resolve_stack_entry_full_inner(
         &mut ctx,
         trigger_queue.as_deref_mut(),
         completion_receipts,
+        root_outputs,
     )
 }
 
@@ -2407,27 +2448,26 @@ fn finish_resolving_spell_receipts(
         ObjectId,
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
     )>,
-) -> Result<(), GameLoopError> {
+    original: crate::effects::CompletedEffectOutputs,
+) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(original);
     }
-    let mut outcome = crate::effects::zones::finish_zone_change_receipts(
-        game,
-        ctx,
-        crate::effect::EffectOutcome::resolved(),
-        receipts,
+    let mut outputs = crate::effects::zones::finish_zone_change_receipts_with_outputs(
+        game, ctx, original, receipts,
     )?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(outputs);
     }
-    crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-    for event in outcome.events {
+    crate::effects::retain_unmatched_outcome_events(game, &mut outputs.outcome.events);
+    outputs.synchronize_observations();
+    for event in outputs.outcome.events.iter().cloned() {
         game.queue_trigger_event(event.provenance(), event);
     }
     if let Some(queue) = queue {
         drain_pending_trigger_events_with_dm(game, queue, &mut *ctx.decision_maker)?;
     }
-    Ok(())
+    Ok(outputs)
 }
 
 fn execute_resolved_permanent_annotation(
@@ -2436,7 +2476,7 @@ fn execute_resolved_permanent_annotation(
     source: ObjectId,
     controller: PlayerId,
     effect: &Effect,
-) -> Result<(), GameLoopError> {
+) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
     let snapshot = ObjectSnapshot::try_from_object_id(game, source)?;
     let mut ctx = ExecutionContext::new(source, controller, &mut *parent.decision_maker);
@@ -2444,15 +2484,16 @@ fn execute_resolved_permanent_annotation(
     ctx.source = source;
     ctx.controller = controller;
     ctx.source_snapshot = snapshot;
-    let mut outcome = crate::effects::execute_effect(game, effect, &mut ctx)?;
+    let mut outputs = crate::effects::execute_effect_with_outputs(game, effect, &mut ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(outputs);
     }
-    crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-    for event in outcome.events {
+    crate::effects::retain_unmatched_outcome_events(game, &mut outputs.outcome.events);
+    outputs.synchronize_observations();
+    for event in outputs.outcome.events.iter().cloned() {
         game.queue_trigger_event(event.provenance(), event);
     }
-    Ok(())
+    Ok(outputs)
 }
 
 struct ChapterAbilityResolutionInfo {

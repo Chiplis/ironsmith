@@ -1,7 +1,7 @@
 //! Add mana from commander color identity effect implementation.
 
 use super::choice_helpers::{
-    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outcome,
+    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outputs,
 };
 use crate::color::Color;
 use crate::effect::EffectOutcome;
@@ -31,7 +31,10 @@ pub use ironsmith_core::AddManaFromCommanderColorIdentityEffect;
 impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::CommanderIdentity { amount: &self.amount, player: &self.player })
+        Some(ManaProduction::CommanderIdentity {
+            amount: &self.amount,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -43,11 +46,22 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         // Get the commander's color identity
@@ -62,7 +76,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
                 amount,
                 ctx,
             )?;
-            return Ok(mana_added_count_outcome(
+            return Ok(mana_added_count_outputs(
                 ctx,
                 player_id,
                 mana,
@@ -102,13 +116,15 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
         .next()
         .unwrap_or(available_colors[0]);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let symbol = ManaSymbol::from_color(color);
         let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
 
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             mana,

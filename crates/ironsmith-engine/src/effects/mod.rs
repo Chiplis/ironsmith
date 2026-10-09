@@ -59,16 +59,17 @@ pub mod counters;
 pub mod damage;
 pub mod delayed;
 mod executor_trait;
+pub(crate) use executor_trait::CompletedActionPrefix;
 mod payment_resources;
 pub use payment_resources::PaymentResourceClaim;
-pub(crate) use payment_resources::can_pay_declared_resources;
+pub(crate) use payment_resources::{can_pay_declared_resource_claims, can_pay_declared_resources};
 pub mod helpers;
 pub mod life;
 pub mod mana;
 pub(crate) use action_observation::{
     observe_action_completion, observe_action_completions_retaining_groups,
     observe_lifecycle_completions, observe_lifecycle_completions_with_observations,
-    with_action_observations,
+    observe_lifecycle_completions_with_outputs, with_action_observations,
 };
 pub(crate) mod outcome_recording;
 pub mod permanents;
@@ -87,7 +88,8 @@ pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
 pub use composition::{
-    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion, ProgramPreparation,
+    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion,
+    ProgramInstructionSelection, ProgramPreparation,
 };
 pub use context::{
     DoThisLimit, ExecutionError, IterationContext, ReplacementExecutionContext, ResolvedTarget,

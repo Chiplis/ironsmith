@@ -36,12 +36,11 @@ impl EffectExecutor for ChooseModeEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // The mode choice happens at commit; earlier read-only choosers in the
-        // same action unit (e.g. pile splitting) already ran for every player.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(super::prepared_branch::prepare_selected_ordered_program(
+            crate::effect::Effect::new(self.clone()),
+            ctx,
+            super::prepared_branch::SelectedProgramTransaction::Compound,
+        ))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

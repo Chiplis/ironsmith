@@ -1,3 +1,4 @@
+import {registeredPrintedText} from './registered-printed-text.js';
 import {normalizeAbilityMatchText} from './inspector-ability-lines.js';
 
 const words = text => normalizeAbilityMatchText(text).split(' ').filter(Boolean);
@@ -25,7 +26,7 @@ export function registrationForImage(registrations, url) {
 export function registrationGeometryIsUsable(registration) {
   const fields = (registration?.fields || []).filter(field => !field.unprinted && field.bounds);
   const headers = fields.filter(field => ['name', 'type'].includes(field.kind));
-  if (headers.some(({bounds}) => bounds.height > bounds.width)) return false;
+  if (headers.some(field => !field.opaqueHeader&&!field.opaqueLettering&&(field.orientedGeometry?.bounds||field.bounds).height > (field.orientedGeometry?.bounds||field.bounds).width)) return false;
   for (const {bounds: rule} of fields.filter(field => field.kind === 'rule')) {
     for (const {bounds: header} of headers) {
       const width = Math.max(0, Math.min(rule.x + rule.width, header.x + header.width) - Math.max(rule.x, header.x));
@@ -58,7 +59,7 @@ export function registeredRuleAssignments(fields, rulesView) {
     const source=(rulesView.sourceLines?.[index]||[line]).join(' ');
     let best=null;
     for(const candidate of candidates) {
-      const score=regionTextScore(source,candidate.field.text);
+      const score=Math.max(regionTextScore(source,candidate.field.text),...(candidate.field.sourceTexts||[]).map(text=>regionTextScore(source,text)));
       if(!best || score>best.score || (score===best.score && assignments.has(best.index) && !assignments.has(candidate.index)))best={...candidate,score};
     }
     if(best && best.score>=.2) {
@@ -79,21 +80,63 @@ const letterCount = text => (String(text || '').match(/[\p{L}\p{N}]/gu) || []).l
 // stable; box heights change from line to line with ascenders, descenders and
 // OCR padding, so they only size lines that are mostly symbols.
 export function registeredFieldFontSize(field, measure) {
+  if(field.fontSizeHint)return field.fontSizeHint;
   const byWidth = [], byHeight = [];
   let parenthetical = 0;
-  for (const line of field.lines || []) {
+  const lines=field.fontLines || field.lines || [];
+  for (const [index,line] of lines.entries()) {
     const text = String(line.text || '').trim();
     // Reminder text is set in italics, which run narrower than roman type.
-    const italic = parenthetical > 0 || text.startsWith('(');
+    const italic = field.italic || parenthetical > 0 || text.startsWith('(');
     parenthetical = Math.max(0, parenthetical + (text.match(/\(/g) || []).length - (text.match(/\)/g) || []).length);
+    // OCR reads mana pips as letters/digits. Prefer the remaining prose rows
+    // when sizing an activated ability, rather than measuring a corrupted cost.
+    if(index===0&&lines.length>1&&field.kind==='rule'&&/^\{[^}]+\}.*:/.test(field.text))continue;
     const letters = letterCount(text);
+    if (['stats', 'tier-stats', 'loyalty-cost'].includes(field.kind) && /^[+−–\d*/-]+$/.test(text)) {
+      const metrics = measure(text, false);
+      if (metrics?.height) byHeight.push(line.height * (field.scanAspect||SCAN_ASPECT) / (metrics.height / 100));
+      continue;
+    }
     if (letters < 3 || !line.width || !line.height) continue;
     const metrics = measure(text, italic);
     if (!metrics?.width) continue;
-    if (letters >= 8) byWidth.push(line.width / (metrics.width / 100));
-    else if (metrics.height) byHeight.push(line.height * SCAN_ASPECT / (metrics.height / 100));
+    if (letters >= 8 || (letters >= 3 && /^[\p{L}\p{N}\s—–-]+$/u.test(text))) byWidth.push(line.width / (metrics.width / 100));
+    else if (metrics.height) byHeight.push(line.height * (field.scanAspect||SCAN_ASPECT) / (metrics.height / 100));
   }
-  return median(byWidth) ?? median(byHeight);
+  const ordered=byWidth.sort((a,b)=>a-b);
+  return ordered.length?ordered[Math.floor((ordered.length-1)/2)]:median(byHeight);
+}
+
+// Calibrate replacement typography against the unchanged printing, never the
+// live ability. Width estimates alone can add a whole line in a narrow panel.
+// Match its printed line capacity, then retain that size when live text grows.
+export function registeredSourceFontSize(field, preferred, width, measure) {
+  if (!['rule', 'flavor'].includes(field.kind) || field.fontSizeHint || !field.text || !field.lines?.length || !width || field.labelParts || field.prototypeRail) return preferred;
+  const source = registeredPrintedText(field);
+  const rows = field.lines.length;
+  const wraps = size => {
+    let count = 0;
+    for (const paragraph of source.split('\n')) {
+      let line = '';
+      count++;
+      for (const word of paragraph.trim().split(/\s+/)) {
+        const candidate = line ? line + ' ' + word : word;
+        // Symbols occupy about one em, rather than the literal {W} letters.
+        const metrics = measure(candidate.replace(/\{[^}]+\}/g, 'M'), Boolean(field.italic) || paragraph.startsWith('('));
+        if (line && metrics.width / 100 * size > width) {count++; line = word;}
+        else line = candidate;
+      }
+    }
+    return count;
+  };
+  if (wraps(preferred) <= rows) return preferred;
+  let low = preferred * .65, high = preferred;
+  for (let i = 0; i < 14; i++) {
+    const size = (low + high) / 2;
+    if (wraps(size) <= rows) low = size; else high = size;
+  }
+  return low;
 }
 
 // Baseline pitch between consecutive registered lines, as a fraction of the scan height.
@@ -106,17 +149,20 @@ export function registeredLinePitch(field) {
 // box centred on them keeps the replacement on the printed baseline. Printed
 // pitch is tighter than the face's ascent plus descent, so the box also holds
 // the first and last lines' full content area or their extremes would clip.
+const flowsInRegion = field => ['rule', 'flavor'].includes(field.kind);
+
 export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight = 1.2 } = {}) {
   const sized = fields.map(field => {
     if (!field.bounds) return null;
-    const measure = measureFor(field.kind);
+    const measure = measureFor(field.kind, field);
     const lines = Math.max(1, (field.lines || []).length);
     const measured = registeredFieldFontSize(field, measure);
-    const size = measured || field.bounds.height / lines * SCAN_ASPECT / 1.05;
+    const preferred = measured || field.bounds.height / lines * (field.scanAspect||SCAN_ASPECT) / 1.05;
+    const size = registeredSourceFontSize(field, preferred, field.region?.width || field.bounds.width, measure);
     const pitch = registeredLinePitch(field);
-    const ratio = pitch ? pitch * SCAN_ASPECT / size : null;
+    const ratio = pitch ? pitch * (field.scanAspect||SCAN_ASPECT) / size : null;
     const content = (measure('x')?.content || 0) / 100;
-    return { field, lines, size, content, lineHeight: ratio >= .9 && ratio <= 1.6 ? ratio : null };
+    return { field, lines, size, content, lineHeight: ratio >= .7 && ratio <= 1.6 ? ratio : null };
   });
   const shared = median(sized.filter(item => item?.lineHeight && ['rule', 'flavor'].includes(item.field.kind)).map(item => item.lineHeight)) ?? fallbackLineHeight;
   // Translations outgrow the printed ink. Names may run to the mana cost, type
@@ -145,14 +191,23 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     if (!item) return null;
     const lineHeight = item.lineHeight ?? shared;
     const { bounds } = item.field;
-    const span = ((item.lines - 1) * lineHeight + Math.max(lineHeight, item.content)) * item.size / SCAN_ASPECT;
+    const span = ((item.lines - 1) * lineHeight + Math.max(lineHeight, item.content)) * item.size / (item.field.scanAspect||SCAN_ASPECT);
     let height = Math.max(bounds.height, span);
     const y = bounds.y + bounds.height / 2 - height / 2;
     let width = bounds.width;
     if (item.field.kind === 'name') width = Math.max(width, (item.field.limit ?? .8) - .012 - bounds.x);
     if (item.field.kind === 'type') width = Math.max(width, .84 - bounds.x);
-    let x = bounds.x, centred = false;
-    if (['rule', 'flavor'].includes(item.field.kind) && item.lines === 1 && centredInColumn(bounds)) {
+    let x = bounds.x, centred = Boolean(item.field.centred);
+    if(item.field.kind==='loyalty-cost') {
+      const advance=measureFor(item.field.kind,item.field)(item.field.text)?.width;
+      if(advance)width=Math.max(width,advance/100*item.size);
+      x=bounds.x+bounds.width/2-width/2;
+      centred=true;
+    }
+    const printedLines = item.field.lines || [];
+    const centredParagraph = printedLines.length > 1 && column && printedLines.every(line =>
+      Math.abs(line.x + line.width / 2 - (column.x + column.width / 2)) < column.width * .025);
+    if (['rule', 'flavor'].includes(item.field.kind) && ((item.lines === 1 && centredInColumn(bounds)) || centredParagraph)) {
       centred = true;
       x = column.x;
       width = column.width;
@@ -165,7 +220,7 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     if (region) {
       const top = Math.max(region.y, y);
       return {size:item.size,lineHeight,span,centred,bounds:{x:Math.max(region.x,x),y:top,
-        width:Math.min(width,region.x+region.width-Math.max(region.x,x)),
+        width:flowsInRegion(item.field) ? region.x+region.width-Math.max(region.x,x) : Math.min(width,region.x+region.width-Math.max(region.x,x)),
         height:Math.min(Math.max(height,region.y+region.height-top),region.y+region.height-top)}};
     }
     return { size: item.size, lineHeight, span, centred, bounds: { x, width, y, height } };
@@ -237,14 +292,15 @@ const FLOWING_KINDS = ['rule', 'flavor'];
 // whether the printed layout still holds. Measures are fractions of the scan
 // height; `measured` holds the natural text heights fields have reported.
 export function registeredColumns(fields,layouts,texts,measured,{unit,scale}) {
-  const height=unit*SCAN_ASPECT;
+  const aspect=fields.find(f=>f.scanAspect)?.scanAspect||SCAN_ASPECT;
+  const height=unit*aspect;
   if(!height)return null;
   const tolerance=1.5/height;
   const positions=new Map(),forced=new Set();
   let shrink=1;
   const faces=[...new Set(fields.filter(f=>FLOWING_KINDS.includes(f.kind)&&f.bounds).map(f=>f.face))];
   for(const face of faces) {
-    const indices=fields.map((field,index)=>index).filter(index=>{const f=fields[index];return FLOWING_KINDS.includes(f.kind)&&f.bounds&&f.face===face&&layouts[index];})
+    const indices=fields.map((field,index)=>index).filter(index=>{const f=fields[index];return FLOWING_KINDS.includes(f.kind)&&!f.noFlow&&f.bounds&&f.face===face&&layouts[index];})
       .sort((a,b)=>layouts[a].bounds.y-layouts[b].bounds.y);
     if(!indices.length)continue;
     // Only a plain column flows: paragraphs stacked over one another. Level
@@ -261,7 +317,7 @@ export function registeredColumns(fields,layouts,texts,measured,{unit,scale}) {
     const regions=indices.map(index=>fields[index].region).filter(Boolean);
     const statsTop=Math.min(...fields.filter(f=>f.kind==='stats'&&f.bounds&&f.face===face).map(f=>f.bounds.y));
     const limit=regions.length?Math.min(...regions.map(r=>r.y+r.height)):Math.min(statsTop>first?statsTop:1,.875)-.006;
-    const pitch=median(indices.map(index=>layouts[index].lineHeight*layouts[index].size/SCAN_ASPECT).filter(Boolean))||.03;
+    const pitch=median(indices.map(index=>layouts[index].lineHeight*layouts[index].size/aspect).filter(Boolean))||.03;
     // Footprints are the printed paragraphs' line boxes, measured the same way
     // the browser reports the replacement text, so a translation with the
     // printed line count lands exactly on the printed ink.
@@ -277,10 +333,10 @@ export function registeredColumns(fields,layouts,texts,measured,{unit,scale}) {
     const minGap=Math.min(pitch*.3,...printedGaps);
     // The printed ink itself never overruns its box: the column reaches at
     // least as far as the lowest registered line.
-    const floor=Math.max(limit,...items.map(item=>item.top+item.footprint));
+    const floor=Math.max(limit,...indices.map(index=>fields[index].bounds.y+fields[index].bounds.height));
     const flow=registeredColumnFlow(items,{limit:floor,minGap,tolerance});
     for(const [index,place] of flow.positions)positions.set(index,{top:place.top,bottom:place.bottom,limit:floor,footprint:items.find(item=>item.index===index).footprint});
-    if(flow.displaced)forced.add(face);
+    if(flow.displaced||flow.shrink<1)forced.add(face);
     // Smaller type is a last resort, and only once every paragraph has reported
     // its height at the current scale; a stale or missing measurement would
     // otherwise ratchet the shared scale down one notch per render.
@@ -312,7 +368,7 @@ export function trimRegisteredNameCosts(fields, measure) {
     // would let the mask nibble the first pip, one that stopped short would
     // leave the last letter's edge on the card.
     const pips = lineText.slice(name.length).match(/\d+|[a-z]|\{[^}]*\}/gi)?.length || 1;
-    const disc = line.height * SCAN_ASPECT;
+    const disc = line.height * (field.scanAspect||SCAN_ASPECT);
     const bySymbols = line.width - pips * disc * .7 - disc * .25;
     const width = Math.max(0, Math.min(line.width * kept / full, bySymbols));
     const limit = line.x + width + disc * .2;

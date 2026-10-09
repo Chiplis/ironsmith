@@ -1,70 +1,122 @@
 //! Change attacking creatures to blocked without creating any blocker.
-use crate::effect::{ChoiceCount,EffectOutcome};
-use crate::effects::{EffectExecutor,ExecutionContext,ExecutionError};
+use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::BecomeBlockedEffect;
 impl EffectExecutor for BecomeBlockedEffect {
-    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError> {
-        let checkpoint=game.clone();
-        let result=(|| {
-            let mut selected=resolve_objects_for_effect(game,ctx,&self.target)?;
-            if ctx.decision_maker.awaiting_choice() {return Ok(EffectOutcome::resolved());}
-            selected.sort_unstable();selected.dedup();
-            selected.retain(|id|game.combat.as_ref().is_some_and(|combat|crate::combat_state::is_attacking(combat,*id)));
-            if selected.is_empty() && self.target.is_target() && self.target.is_single() {return Err(ExecutionError::InvalidTarget);}
-            let mut changed=Vec::new();
-            if let Some(combat)=game.combat.as_mut() {
-                for id in &selected {
-                    if !crate::combat_state::is_blocked(combat,*id) {
-                        let target=combat.attackers.iter().find(|entry|entry.creature==*id).map(|entry|(&entry.target).into());
-                        combat.blocked_attackers.insert(*id);changed.push((*id,target));
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_world_context_checkpoint_transaction(
+            game,
+            ctx,
+            |game, ctx| {
+                let mut selected = resolve_objects_for_effect(game, ctx, &self.target)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::resolved());
+                }
+                selected.sort_unstable();
+                selected.dedup();
+                selected.retain(|id| {
+                    game.combat
+                        .as_ref()
+                        .is_some_and(|combat| crate::combat_state::is_attacking(combat, *id))
+                });
+                if selected.is_empty() && self.target.is_target() && self.target.is_single() {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                let mut changed = Vec::new();
+                if let Some(combat) = game.combat.as_mut() {
+                    for id in &selected {
+                        if !crate::combat_state::is_blocked(combat, *id) {
+                            let target = combat
+                                .attackers
+                                .iter()
+                                .find(|entry| entry.creature == *id)
+                                .map(|entry| (&entry.target).into());
+                            combat.blocked_attackers.insert(*id);
+                            changed.push((*id, target));
+                        }
                     }
                 }
-            }
-            // The transition can enable continuous effects that immediately
-            // remove its attacker. Capture the event's role before that refresh.
-            let defending_references = changed.iter().map(|(id, _)| {
-                let reference = game.combat.as_ref().and_then(|combat|
-                    crate::combat_state::get_attack_target(combat, *id)).cloned()
-                    .map(|target| game.retain_attacking_role(*id, &target))
-                    .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
-                (*id, reference)
-            }).collect::<crate::FxMap<_, _>>();
-            if !changed.is_empty() {game.mark_continuous_state_dirty();game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;}
-            // All flags and role-dependent continuous effects are complete
-            // before any event captures characteristics or matches observers.
-            let mut events=Vec::with_capacity(changed.len());
-            if !changed.is_empty() {
-                let observed=game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
-                let effects=observed.try_all_continuous_effects_arc().map_err(ExecutionError::ContinuousDiscovery)?;
-                let completed=changed.into_iter().map(|(id,target)| {
+                // The transition can enable continuous effects that immediately
+                // remove its attacker. Capture the event's role before that refresh.
+                let defending_references = changed
+                    .iter()
+                    .map(|(id, _)| {
+                        let reference = game
+                            .combat
+                            .as_ref()
+                            .and_then(|combat| crate::combat_state::get_attack_target(combat, *id))
+                            .cloned()
+                            .map(|target| game.retain_attacking_role(*id, &target))
+                            .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
+                        (*id, reference)
+                    })
+                    .collect::<crate::FxMap<_, _>>();
+                if !changed.is_empty() {
+                    game.mark_continuous_state_dirty();
+                    game.refresh_continuous_state()
+                        .map_err(ExecutionError::ContinuousDiscovery)?;
+                }
+                // All flags and role-dependent continuous effects are complete
+                // before any event captures characteristics or matches observers.
+                let mut events = Vec::with_capacity(changed.len());
+                if !changed.is_empty() {
+                    let observed = game
+                        .continuous_query_snapshot()
+                        .map_err(ExecutionError::ContinuousDiscovery)?;
+                    let effects = observed
+                        .try_all_continuous_effects_arc()
+                        .map_err(ExecutionError::ContinuousDiscovery)?;
+                    let completed=changed.into_iter().map(|(id,target)| {
                     let snapshot=observed.object(id).map(|object|crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(object,&observed,&effects));
                     (id,target,snapshot)
                 }).collect::<Vec<_>>();
-                for (id,target,snapshot) in completed {
-                    let kind=crate::events::EventKind::CreatureBecameBlocked;
-                    let provenance=if game.provenance_graph().node(ctx.provenance).is_some() {
-                        game.alloc_child_event_provenance(ctx.provenance,kind)
-                    } else {game.provenance_graph_mut().alloc_root_event(kind)};
-                    let event=crate::events::CreatureBecameBlockedEvent::with_target_and_blockers(id,Vec::new(),target,snapshot,Vec::new());
-                    let reference = defending_references.get(&id).copied()
-                        .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
-                    events.push(crate::triggers::TriggerEvent::new_with_provenance(event,provenance)
-                        .with_defending_player_reference(reference));
+                    for (id, target, snapshot) in completed {
+                        let kind = crate::events::EventKind::CreatureBecameBlocked;
+                        let provenance = if game.provenance_graph().node(ctx.provenance).is_some() {
+                            game.alloc_child_event_provenance(ctx.provenance, kind)
+                        } else {
+                            game.provenance_graph_mut().alloc_root_event(kind)
+                        };
+                        let event =
+                            crate::events::CreatureBecameBlockedEvent::with_target_and_blockers(
+                                id,
+                                Vec::new(),
+                                target,
+                                snapshot,
+                                Vec::new(),
+                            );
+                        let reference = defending_references
+                            .get(&id)
+                            .copied()
+                            .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
+                        events.push(
+                            crate::triggers::TriggerEvent::new_with_provenance(event, provenance)
+                                .with_defending_player_reference(reference),
+                        );
+                    }
                 }
-            }
-            // A legal, already-blocked attacker is still the authored target
-            // of a following instruction (for example, Choking Vines damage).
-            Ok(EffectOutcome::with_objects(selected).with_events(events))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {*game=checkpoint;}
-        result
+                // A legal, already-blocked attacker is still the authored target
+                // of a following instruction (for example, Choking Vines damage).
+                Ok(EffectOutcome::with_objects(selected).with_events(events))
+            },
+        )
     }
-    fn get_target_spec(&self)->Option<&ChooseSpec> { self.target.is_target().then_some(&self.target) }
-    fn get_target_count(&self)->Option<ChoiceCount> { self.target.is_target().then(||self.target.count()) }
-    fn target_description(&self)->&'static str {"attacking creature to become blocked"}
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.target.is_target().then_some(&self.target)
+    }
+    fn get_target_count(&self) -> Option<ChoiceCount> {
+        self.target.is_target().then(|| self.target.count())
+    }
+    fn target_description(&self) -> &'static str {
+        "attacking creature to become blocked"
+    }
 }
 #[cfg(test)]
 mod tests {

@@ -7,6 +7,7 @@ mod spell_cast;
 mod spell_copied;
 
 pub use ability_activated::AbilityActivatedEvent;
+pub(crate) use ability_activated::ActivationDeclaration;
 pub use ability_triggered::{AbilityTriggerZoneChangeCause, AbilityTriggeredEvent};
 pub use becomes_targeted::BecomesTargetedEvent;
 pub use spell_cast::SpellCastEvent;

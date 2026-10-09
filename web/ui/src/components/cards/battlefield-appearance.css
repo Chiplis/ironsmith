@@ -1,0 +1,124 @@
+.game-card.field-card.battlefield-artwork-card {
+  padding: 2px !important; background: transparent !important;
+  border: 0 !important; box-shadow: none !important;
+}
+  .battlefield-arena-card .game-card-surface { width: 100%; height: 100%; overflow: visible; }
+  .battlefield-arena-card .arena-permanent { position: absolute; inset: 2px; overflow: hidden; border: 2px solid var(--arena-frame); border-radius: 4px; background: #0d1116; box-shadow: 0 .5px 1px #000, inset 0 0 0 1px #101215; transform-origin: center; }
+  .arena-permanent-art { position: absolute; inset: 2px; overflow: hidden; }
+  .arena-permanent-art > img { width: 100%; height: 100%; object-fit: cover; }
+  .arena-permanent-stat { position: absolute; right: 0; bottom: 0; min-width: 20px; padding: 0 3px; border: 1px solid #c2c7c7; border-radius: 4px 0 0 0; background: #d9dfdf; color: #12171c; font: 700 clamp(10px, calc(var(--bf-card-height, 90px) * .19), 16px)/1.05 Georgia, serif; text-align: center; }
+  .arena-permanent-counter { position: absolute; right: 0; top: 13px; min-width: 13px; height: 13px; border-radius: 50%; background: #3261a0; border: 1px solid #abc5eb; color: white; font: 700 10px/12px Georgia, serif; text-align: center; }
+  .arena-permanent[data-kind="land"] { border-width: 1px; border-radius: 2px; }
+  .arena-permanent[data-kind="planeswalker"] { left: 17%; right: 17%; border-radius: 13px 13px 3px 3px; }
+  .arena-permanent[data-kind="planeswalker"] .arena-permanent-stat,
+  .arena-permanent[data-kind="battle"] .arena-permanent-stat { left: 50%; right: auto; transform: translateX(-50%); background: #1c232b; color: white; border-radius: 0; clip-path: polygon(15% 0, 85% 0, 100% 55%, 50% 100%, 0 55%); padding: 1px 6px 5px; }
+  .arena-permanent[data-kind="battle"] { top: 15%; bottom: 15%; }
+  .arena-permanent[data-token][data-kind="creature"] { border-radius: 45% 45% 4px 4px; }
+  .arena-permanent[data-kind="saga"] { left: 20%; right: 20%; border-color: #b3a88c; }
+  .arena-saga-chapters { position: absolute; left: 0; bottom: 1px; font: 8px/1.25 Georgia,serif; color: #eee1be; background: #211e19c9; }
+  .arena-permanent[data-kind="enchantment"] { border-top-width: 4px; }
+  .arena-permanent[data-kind="artifact"] { border-color: #a0a5a5; }
+  .battlefield-arena-card.tapped { transform: none !important; }
+  .battlefield-arena-card.tapped .arena-permanent { transform: none; }
+  .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
+    transform: rotate(8deg) scale(.90); transform-origin: center;
+  }
+  .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack) { filter: brightness(.65); }
+  .arena-tapped-mark { position: absolute; inset: 18% 0 0; text-align: center; font: 700 27px/1 Georgia,serif; color: #e0e5e6a6; text-shadow: 0 1px 2px black; }
+  .battlefield-arena-card:is(.playable,.glow-ability,.glow-mana) .arena-permanent { box-shadow: 0 0 0 1px #80d6ef, 0 0 5px #5cc9ff70; }
+  .battlefield-arena-card:is(.target-legal,.attack-candidate,.blocker-candidate) .arena-permanent { outline: 2px solid #64c9ff; outline-offset: -1px; }
+  .battlefield-arena-card:is(.attack-selected,.action-link,.inspected) .arena-permanent { outline: 2px solid #eccd77; outline-offset: -1px; }
+  .battlefield-arena-card .battlefield-group-stack-layer { border: 1px solid #878e92; border-radius: 3px; }
+.game-card.field-card.battlefield-small-land {
+  --land-tile-size: max(28px, min(calc(var(--bf-card-width, 124px) * .8), calc(var(--bf-card-height, 90px) * .76)));
+  width: calc(var(--land-tile-size) * 1.2) !important;
+  min-width: calc(var(--land-tile-size) * 1.2) !important;
+  height: var(--land-tile-size) !important;
+  min-height: var(--land-tile-size) !important;
+  align-self: start;
+  justify-self: center;
+}
+.mobile-mtga-scene .game-card.field-card.battlefield-small-land {
+  /* Mobile resource lanes already allocate a shorter row than combat lanes. */
+  --land-tile-size: max(28px, min(calc(var(--bf-card-width, 62px) * .88), var(--bf-card-height, 44px)));
+}
+
+.battlefield-artwork-card .arena-permanent {
+  --arena-name-height: clamp(10px, calc(var(--bf-card-height, 90px) * .14), 16px);
+}
+.battlefield-artwork-card .arena-permanent-name {
+  position: absolute; left: 1px; right: 1px; top: 1px;
+  height: var(--arena-name-height); padding: 0 3px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  border-radius: 2px 2px 0 0; border-bottom: 1px solid #171a1e;
+  background: linear-gradient(#eee8d9, var(--arena-frame));
+  color: #111318; text-shadow: none;
+  font: 700 clamp(8px, calc(var(--bf-card-height, 90px) * .105), 12px)/var(--arena-name-height) Georgia, serif;
+}
+.battlefield-artwork-card .arena-permanent-art { top: calc(var(--arena-name-height) + 2px); }
+/* Token silhouettes have an arched crown, distinct from printed card tiles. */
+.battlefield-artwork-card .arena-permanent[data-token] { border-radius: 48% 48% 4px 4px; }
+.battlefield-artwork-card .arena-permanent[data-token] .arena-permanent-art { top: 2px; }
+.battlefield-artwork-card .arena-permanent[data-token] .arena-permanent-name {
+  top: 20%; left: 7%; right: 7%; border-radius: 2px;
+}
+.game-card.battlefield-artwork-card:has(.arena-permanent[data-token]) > .card-inspector-source-glow {
+  border-radius: 48% 48% 4px 4px;
+}
+
+.battlefield-grouped-card .arena-permanent-name { padding-right: 18px; }
+
+.battlefield-artwork-card { --mana-strip-height: clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px); }
+/* Add a footer below the original art tile instead of taking height from it. */
+.game-card.field-card.battlefield-small-land:has(.arena-land-mana-strip) {
+  height: calc(var(--land-tile-size) + var(--mana-strip-height) + 3px) !important;
+  min-height: calc(var(--land-tile-size) + var(--mana-strip-height) + 3px) !important;
+}
+.battlefield-artwork-card .arena-permanent[data-mana-strip="true"] .arena-permanent-art { bottom: calc(var(--mana-strip-height) + 5px); }
+.arena-land-mana-strip {
+  position: absolute; bottom: 1px; left: 1px; right: 1px;
+  height: var(--mana-strip-height); display: flex;
+  border: 1px solid #151a20; border-radius: 0 0 2px 2px; overflow: hidden; pointer-events: none;
+}
+.arena-land-mana-strip > span { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; background-image: linear-gradient(#ffffff24, transparent 40%, #00000038); box-shadow: inset 0 1px #ffffff26; }
+.arena-land-mana-strip > span + span { border-left: 1px solid #151a2055; }
+.arena-permanent[data-mana-strip="true"] :is(.arena-permanent-stat, .arena-permanent-pt) { bottom: calc(var(--mana-strip-height) + 3px); }
+
+/* Share the full-card badge styling; only its placement changes on art tiles. */
+.arena-permanent .arena-permanent-pt {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+
+/* Keep typed counter badges clear of the name, group count and P/T box. */
+.battlefield-artwork-card > .battlefield-counter-rail:not(.battlefield-counter-rail--power-toughness) {
+  top: calc(clamp(10px, calc(var(--bf-card-height, 90px) * .14), 16px) + 18px);
+  bottom: auto;
+}
+
+.battlefield-artwork-card .battlefield-group-stack-layer {
+  box-shadow: 0 1.5px 5px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* The layout slot is transparent; decoration follows the visible inset face. */
+.game-card.field-card.battlefield-artwork-card > .game-card-surface {
+  background: transparent;
+}
+.game-card.battlefield-artwork-card:has(.arena-permanent[data-kind="saga"]) {
+  --arena-face-inset: 2px 20%;
+  --arena-face-radius: 4px;
+}
+.game-card.battlefield-artwork-card:has(.arena-permanent[data-kind="planeswalker"]) {
+  --arena-face-inset: 2px 17%;
+  --arena-face-radius: 13px 13px 3px 3px;
+}
+.game-card.battlefield-artwork-card:has(.arena-permanent[data-kind="battle"]) {
+  --arena-face-inset: 15% 2px;
+  --arena-face-radius: 4px;
+}
+.game-card.battlefield-artwork-card:has(.arena-permanent:is([data-kind="saga"], [data-kind="planeswalker"], [data-kind="battle"])) > .card-inspector-source-glow,
+.game-card.battlefield-artwork-card:has(.arena-permanent:is([data-kind="saga"], [data-kind="planeswalker"], [data-kind="battle"])) .battlefield-group-stack-layer {
+  inset: var(--arena-face-inset);
+  border-radius: var(--arena-face-radius);
+}

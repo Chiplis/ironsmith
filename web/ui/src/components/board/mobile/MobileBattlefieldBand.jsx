@@ -52,10 +52,10 @@ export default function MobileBattlefieldBand({
   };
   // Keep six pixels clear on each side of the center line without moving HUDs.
   const combatCardHeight = Math.max(24, cardHeight - 6);
-  const creatureCardWidth = Math.floor(cardWidth * combatCardHeight / cardHeight);
+  const creatureCardWidth = Math.floor(combatCardHeight * 1.15);
   const resourceRow = <div className="arena-resource-row" key="resources">
     <MobileBattlefieldLane {...laneProps} cards={rows.backCards} cardHeight={landHeight}
-      cardWidth={Math.floor(landHeight * 1.35)} className="arena-land-lane" />
+      cardWidth={Math.floor(landHeight * 1.2)} className="arena-land-lane" />
     <div className="arena-avatar-space" aria-hidden="true" />
     <MobileBattlefieldLane {...laneProps} cards={rows.supportCards || []} cardHeight={landHeight}
       cardWidth={Math.floor(landHeight * 1.24)} className="arena-support-lane" />
@@ -68,7 +68,7 @@ export default function MobileBattlefieldBand({
   </div>;
 
   return (
-    <section
+    <section data-arena-owner={String(player?.id ?? player?.index ?? "")}
       className={cn(
         "mobile-mtga-battlefield-band",
         isOpponent

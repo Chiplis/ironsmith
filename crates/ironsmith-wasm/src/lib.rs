@@ -3030,6 +3030,7 @@ enum DecisionView {
         min: usize,
         max: Option<usize>,
         allow_partial_completion: bool,
+        automatic_public_reveal: bool,
         selection_identity: String,
         reveal_policy: String,
         candidates: Vec<ObjectChoiceView>,
@@ -3687,6 +3688,7 @@ impl DecisionView {
                 min: 0,
                 max: Some(partition.cards.len()),
                 allow_partial_completion: false,
+                automatic_public_reveal: false,
                 selection_identity: selection_identity_name(SelectionIdentity::ObjectId),
                 reveal_policy: selection_reveal_policy_name(SelectionRevealPolicy::None),
                 candidates: partition
@@ -3768,6 +3770,7 @@ impl DecisionView {
                 min: objects.min,
                 max: objects.max,
                 allow_partial_completion: objects.allow_partial_completion,
+                automatic_public_reveal: objects.automatic_public_reveal,
                 selection_identity: selection_identity_name(objects.selection_identity),
                 reveal_policy: selection_reveal_policy_name(objects.reveal_policy),
                 candidates: objects

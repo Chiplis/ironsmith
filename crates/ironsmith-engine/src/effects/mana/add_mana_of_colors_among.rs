@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_count_outcome};
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_count_outputs};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
@@ -21,7 +21,11 @@ pub type AddManaOfColorsAmongEffect = ironsmith_core::AddManaOfColorsAmongEffect
 impl EffectExecutor for AddManaOfColorsAmongEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::ColorsAmong { filter: &self.filter, choose_one: false, player: &self.player })
+        Some(ManaProduction::ColorsAmong {
+            filter: &self.filter,
+            choose_one: false,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -33,20 +37,26 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
         if symbols.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
         let count = symbols.mana_count();
-        Ok(mana_added_count_outcome(
-            ctx,
-            player_id,
-            symbols,
-            count,
-        ))
+        Ok(mana_added_count_outputs(ctx, player_id, symbols, count))
     }
 
     fn producible_mana_symbols(
@@ -72,18 +82,27 @@ pub(super) fn colors_among_for_execution(
     if !filter.is_source_only() {
         return Ok(colors_among_filter(game, filter, ctx.source, controller));
     }
-    let colors = match game.try_current_characteristics(ctx.source)
+    let colors = match game
+        .try_current_characteristics(ctx.source)
         .map_err(ExecutionError::ContinuousDiscovery)?
     {
         Some(chars) => chars.colors,
-        None => ctx.source_snapshot.as_ref()
+        None => ctx
+            .source_snapshot
+            .as_ref()
             .filter(|snapshot| snapshot.object_id == ctx.source)
             .map(|snapshot| snapshot.colors)
-            .ok_or_else(|| ExecutionError::IncompleteEvidence(
-                "source-color mana requires its exact source or last-known snapshot".into()))?,
+            .ok_or_else(|| {
+                ExecutionError::IncompleteEvidence(
+                    "source-color mana requires its exact source or last-known snapshot".into(),
+                )
+            })?,
     };
-    Ok(Color::ALL.into_iter().filter(|color| colors.contains(*color))
-        .map(ManaSymbol::from_color).collect())
+    Ok(Color::ALL
+        .into_iter()
+        .filter(|color| colors.contains(*color))
+        .map(ManaSymbol::from_color)
+        .collect())
 }
 
 pub(super) fn colors_among_filter(

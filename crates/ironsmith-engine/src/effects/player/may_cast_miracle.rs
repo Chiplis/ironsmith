@@ -14,7 +14,7 @@ use crate::events::other::CardsDrawnEvent;
 use crate::game_state::GameState;
 use crate::zone::Zone;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::complete_native_cast_with_outputs;
 
 /// Effect that allows casting a spell for its miracle cost.
 ///
@@ -32,6 +32,15 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         use crate::alternative_cast::CastingMethod;
 
         // Get card_id and owner from the triggering CardsDrawnEvent
@@ -54,7 +63,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
 
         // Get the first card drawn (miracle only works on the first card)
         let Some(card_id) = drawn.first_card() else {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         };
         let owner = drawn.player;
 
@@ -63,7 +74,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
 
         if obj.zone != Zone::Hand {
             // Card is no longer in hand (may have been discarded or played)
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         }
 
         // Get the miracle cost
@@ -74,7 +87,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
 
         let Some(miracle_cost) = miracle_cost else {
             // Card doesn't have miracle (shouldn't happen)
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         };
 
         // Find the miracle alternative cast index
@@ -84,7 +99,9 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             .position(|alt| alt.is_miracle());
 
         let Some(miracle_index) = miracle_index else {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         };
 
         let card_name = obj.name.to_string();
@@ -103,17 +120,21 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
 
         let wants_to_cast = ctx.decision_maker.decide_boolean(game, &bool_ctx);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         if !wants_to_cast {
             // Player chose not to cast - card stays in hand
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
 
         let casting_method = CastingMethod::Alternative(miracle_index);
         game.authorize_miracle_cast(card_id);
-        let result = crate::game_loop::cast_spell_from_resolving_effect(
+        let result = crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
             game,
             card_id,
             Zone::Hand,
@@ -126,66 +147,118 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         );
         game.revoke_miracle_cast(card_id);
         let result = result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
-        if let Some(new_id) = result {
-            Ok(with_spell_cast_event(
-                EffectOutcome::with_objects(vec![new_id]),
+        if let Some(cast) = result {
+            complete_native_cast_with_outputs(
+                EffectOutcome::with_objects(vec![cast.new_id]),
                 game,
-                new_id,
+                cast,
                 owner,
                 Zone::Hand,
                 ctx.provenance,
-            )?)
+            )
         } else if ctx.decision_maker.awaiting_choice() {
-            Ok(EffectOutcome::count(0))
+            Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ))
         } else {
-            Ok(EffectOutcome::impossible())
+            Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ))
         }
     }
 }
-
 
 fn execute_captured_miracle(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     drawn: &CardsDrawnEvent,
     decision: &crate::events::other::MiracleDrawDecision,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     use crate::events::other::DrawnMiraclePrice;
     let proofs = decision.revealed_instances();
-    if proofs.is_empty() { return Ok(EffectOutcome::impossible()); }
-    let [proof] = proofs else {
-        return Err(ExecutionError::IncompleteEvidence("a Miracle casting trigger has no single linked reveal instance".into()));
-    };
-    if !drawn.is_miracle_eligible(proof.card) || drawn.player != proof.player
-        || ctx.source != proof.card
-        || proof.drawn_snapshot.object_id != proof.card || proof.drawn_snapshot.stable_id != proof.stable_id
-        || proof.drawn_snapshot.zone != Zone::Hand || proof.drawn_snapshot.owner != proof.player
-    {
-        return Err(ExecutionError::IncompleteEvidence("Miracle reveal does not identify this draw, source and casting player".into()));
+    if proofs.is_empty() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::impossible(),
+        ));
     }
-    let Some(object) = game.object(proof.card).filter(|object| object.zone == Zone::Hand
-        && object.stable_id == proof.stable_id && object.owner == proof.player)
-    else { return Ok(EffectOutcome::target_invalid()); };
+    let [proof] = proofs else {
+        return Err(ExecutionError::IncompleteEvidence(
+            "a Miracle casting trigger has no single linked reveal instance".into(),
+        ));
+    };
+    if !drawn.is_miracle_eligible(proof.card)
+        || drawn.player != proof.player
+        || ctx.source != proof.card
+        || proof.drawn_snapshot.object_id != proof.card
+        || proof.drawn_snapshot.stable_id != proof.stable_id
+        || proof.drawn_snapshot.zone != Zone::Hand
+        || proof.drawn_snapshot.owner != proof.player
+    {
+        return Err(ExecutionError::IncompleteEvidence(
+            "Miracle reveal does not identify this draw, source and casting player".into(),
+        ));
+    }
+    let Some(object) = game.object(proof.card).filter(|object| {
+        object.zone == Zone::Hand
+            && object.stable_id == proof.stable_id
+            && object.owner == proof.player
+    }) else {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::target_invalid(),
+        ));
+    };
     let price = match &proof.instance.price {
         DrawnMiraclePrice::Fixed(cost) => cost.to_oracle(),
-        DrawnMiraclePrice::ReducedManaCost { generic_reduction, .. } =>
-            format!("its mana cost reduced by {{{generic_reduction}}}"),
+        DrawnMiraclePrice::ReducedManaCost {
+            generic_reduction, ..
+        } => format!("its mana cost reduced by {{{generic_reduction}}}"),
     };
     // A copy retains the exact draw/reveal but its controller makes the
     // resolution choice and pays to cast (CR 109.5, 707.10).
     let caster = ctx.controller;
-    let question = crate::decisions::context::BooleanContext::new(caster, Some(proof.card),
-        format!("Cast {} for its miracle cost ({price})?", object.name)).with_source_name(object.name.to_string());
+    let question = crate::decisions::context::BooleanContext::new(
+        caster,
+        Some(proof.card),
+        format!("Cast {} for its miracle cost ({price})?", object.name),
+    )
+    .with_source_name(object.name.to_string());
     let accepts = ctx.decision_maker.decide_boolean(game, &question);
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    if !accepts { return Ok(EffectOutcome::resolved()); }
-    let result = crate::game_loop::cast_spell_from_revealed_miracle(game, proof, caster, ctx.provenance, &mut ctx.decision_maker)
-        .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-    if let Some(new_id) = result {
-        with_spell_cast_event(EffectOutcome::with_objects(vec![new_id]), game,
-            new_id, caster, Zone::Hand, ctx.provenance)
-    } else if ctx.decision_maker.awaiting_choice() { Ok(EffectOutcome::count(0)) }
-    else { Ok(EffectOutcome::impossible()) }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    if !accepts {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
+    }
+    let result = crate::game_loop::cast_spell_from_revealed_miracle_with_outputs(
+        game,
+        proof,
+        caster,
+        ctx.provenance,
+        &mut ctx.decision_maker,
+    )
+    .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+    if let Some(cast) = result {
+        complete_native_cast_with_outputs(
+            EffectOutcome::with_objects(vec![cast.new_id]),
+            game,
+            cast,
+            caster,
+            Zone::Hand,
+            ctx.provenance,
+        )
+    } else if ctx.decision_maker.awaiting_choice() {
+        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ))
+    } else {
+        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::impossible(),
+        ))
+    }
 }
 
 #[cfg(test)]

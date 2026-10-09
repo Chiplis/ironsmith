@@ -5402,6 +5402,7 @@ fn describe_structural_threshold_color_grant_bundle(
     let ironsmith_core::StaticAbilityPayload::SetColors {
         filter: color_filter,
         colors,
+        exclude_from_color_identity: false,
     } = &inner_color.payload
     else {
         return None;
@@ -5650,6 +5651,7 @@ fn describe_structural_threshold_source_modifier_bundle(
     let ironsmith_core::StaticAbilityPayload::SetColors {
         filter: color_filter,
         colors,
+        exclude_from_color_identity: false,
     } = &inner_color.payload
     else {
         return None;
@@ -38298,7 +38300,7 @@ fn describe_source_line_attached_animation_group(members: &[Ability]) -> Option<
                         .join(" "),
                 );
             }
-            ironsmith_core::StaticAbilityPayload::SetColors { filter, colors }
+            ironsmith_core::StaticAbilityPayload::SetColors { filter, colors, exclude_from_color_identity: false }
                 if colors_text.is_none() && same_subject(filter) =>
             {
                 let names = crate::color::Color::ALL
@@ -47687,6 +47689,7 @@ fn describe_source_line_still_land_creature_group(members: &[Ability]) -> Option
             ironsmith_core::StaticAbilityPayload::SetColors {
                 filter,
                 colors: set,
+                exclude_from_color_identity: false,
             } if colors.is_none() && !set.is_empty() => {
                 colors = Some(*set);
                 (filter, true)

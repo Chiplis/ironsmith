@@ -219,6 +219,7 @@ export default function InspectorStackTimeline({
         compact && "stack-timeline-compact"
       )}
       style={embedded ? undefined : { height: `${Math.max(0, timelineHeight)}px` }}
+      data-stack-preview-anchor="true"
       data-inspector-stack-timeline
       data-density={compact ? "compact" : "default"}
       data-ordering={effectOrderingActive ? "true" : "false"}

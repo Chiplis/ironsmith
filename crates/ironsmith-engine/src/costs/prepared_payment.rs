@@ -85,6 +85,32 @@ struct PaymentCompletion {
     scope: PaymentScope,
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
+impl PaymentCompletion {
+    fn advance(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        phase: crate::effects::composition::CompletionPhase,
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        let Self { scope, inner } = *self;
+        let mut receipt = scope.run(ctx, |ctx| phase.dispatch(inner, game, ctx))?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::composition::CompletionInput,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Self { scope, inner } = *self;
+        scope.run(ctx, |ctx| original.dispatch(inner, game, ctx))
+    }
+}
 impl SimultaneousEffectCompletion for PaymentCompletion {
     fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
         self.inner.original_phase_status()
@@ -97,14 +123,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
     {
-        let Self { scope, inner } = *self;
-        let mut receipt = scope.run(ctx, |ctx| {
-            inner.complete_original_phase_with_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
+        )
     }
 
     fn complete_original_phase_from_outputs(
@@ -114,14 +137,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         original: crate::effects::CompletedEffectOutputs,
     ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
     {
-        let Self { scope, inner } = *self;
-        let mut receipt = scope.run(ctx, |ctx| {
-            inner.complete_original_phase_from_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
+        )
     }
 
     fn prepare_draw_boundary_with_outputs(
@@ -131,14 +151,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         original: EffectOutcome,
     ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
     {
-        let Self { scope, inner } = *self;
-        let mut receipt = scope.run(ctx, |ctx| {
-            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutcome(original),
+        )
     }
 
     fn prepare_draw_boundary_from_outputs(
@@ -148,14 +165,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         original: crate::effects::CompletedEffectOutputs,
     ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
     {
-        let Self { scope, inner } = *self;
-        let mut receipt = scope.run(ctx, |ctx| {
-            inner.prepare_draw_boundary_from_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutputs(original),
+        )
     }
 
     fn observe_original(
@@ -186,8 +200,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self { scope, inner } = *self;
-        scope.run(ctx, |ctx| inner.complete_with_outputs(game, ctx, original))
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outcome(original),
+        )
     }
 
     fn complete_from_original_outputs(
@@ -196,10 +213,11 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self { scope, inner } = *self;
-        scope.run(ctx, |ctx| {
-            inner.complete_from_original_outputs(game, ctx, original)
-        })
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outputs(original),
+        )
     }
 }
 impl SimultaneousEffectProposal for PreparedPayment {

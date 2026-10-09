@@ -1,7 +1,7 @@
 //! Add mana of any color effect implementation.
 
 use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
+    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outputs,
 };
 use crate::color::Color;
 use crate::effect::EffectOutcome;
@@ -34,7 +34,16 @@ pub use ironsmith_core::AddManaOfAnyColorEffect;
 impl EffectExecutor for AddManaOfAnyColorEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::ChooseColors { amount: &self.amount, available: self.available_colors.as_deref().unwrap_or(&crate::color::Color::ALL), same_color: false, distinct: self.distinct_colors, player: &self.player })
+        Some(ManaProduction::ChooseColors {
+            amount: &self.amount,
+            available: self
+                .available_colors
+                .as_deref()
+                .unwrap_or(&crate::color::Color::ALL),
+            same_color: false,
+            distinct: self.distinct_colors,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -48,11 +57,22 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let colors = choose_mana_colors(
@@ -66,7 +86,9 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             Color::Green,
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let symbols = colors
             .into_iter()
@@ -74,7 +96,7 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             .collect::<Vec<_>>();
         let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
 
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             symbols,

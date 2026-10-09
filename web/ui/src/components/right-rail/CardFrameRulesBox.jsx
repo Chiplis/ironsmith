@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef } from "react";
 import { cardFrameFitKey, measureCardFrameLayout } from '@/lib/card-frame-measurement';
 import "@/styles/card-frame-text-fit.css";
 
-export default function CardFrameRulesBox({ children, label, onFit, onMeasure, refitKey }) {
+export default function CardFrameRulesBox({ children, label, onFit, onMeasure, refitKey, measurementAxis="y" }) {
   const ui = useUiText();
   const boxRef = useRef(null);
   const fitRef = useRef(null);
@@ -67,8 +67,8 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
           range.selectNodeContents(node);
           const rect = range.getBoundingClientRect();
           if (!rect.height) continue;
-          top = Math.min(top, rect.top);
-          bottom = Math.max(bottom, rect.bottom);
+          top = Math.min(top, measurementAxis.endsWith("x")?rect.left:rect.top);
+          bottom = Math.max(bottom, measurementAxis.endsWith("x")?rect.right:rect.bottom);
         }
         onMeasureRef.current(bottom > top ? bottom - top : 0);
       }
@@ -109,12 +109,27 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
           range.selectNodeContents(node);
           const text = range.getBoundingClientRect();
           if (!text.height) return true;
+          const em = parseFloat(getComputedStyle(node).fontSize) || 16;
+          const quarterTurn=measurementAxis.endsWith('x');
+          const rects=[...range.getClientRects()];
+          const glyphRects=rects.filter(rect=>!((quarterTurn?rect.height:rect.width)<em*.45
+            &&rects.some(other=>other!==rect&&(quarterTurn
+              ?Math.abs(other.left-rect.left)<1&&(Math.abs(other.bottom-rect.top)<1||Math.abs(other.top-rect.bottom)<1)
+              :Math.abs(other.top-rect.top)<1&&(Math.abs(other.right-rect.left)<1||Math.abs(other.left-rect.right)<1)))));
+          const glyph={left:Math.min(...glyphRects.map(r=>r.left)),right:Math.max(...glyphRects.map(r=>r.right)),
+            top:Math.min(...glyphRects.map(r=>r.top)),bottom:Math.max(...glyphRects.map(r=>r.bottom))};
+          // In the normalized quarter-turn layout, physical left is the
+          // logical top. Like upright text, its font ascent may extend above
+          // the line box; fit logical left/right and bottom instead.
+          if(measurementAxis==='reverse-y')return glyph.top>=bounds.top-.5
+            && glyph.left>=bounds.left-.5&&glyph.right<=bounds.right+.5;
+          if(measurementAxis==='reverse-x')return glyph.left>=bounds.left-.5
+            && glyph.bottom<=bounds.bottom+.5&&glyph.top>=bounds.top-.5;
+          if(measurementAxis==='x')return glyph.right<=bounds.right+.5
+            && glyph.bottom<=bounds.bottom+.5&&glyph.top>=bounds.top-.5;
           // A space at a wrapped line end hangs past the box by design; it
           // must not count as horizontal overflow.
-          const em = parseFloat(getComputedStyle(node).fontSize) || 16;
-          const rects = [...range.getClientRects()];
-          const right = Math.max(...rects.filter(rect => !(rect.width < em * .45
-            && rects.some(other => other !== rect && Math.abs(other.top - rect.top) < 1 && Math.abs(other.right - rect.left) < 1))).map(rect => rect.right));
+          const right = glyph.right;
           // The P/T badge only occupies the lower-right corner. A short final
           // reminder line can use the printed space to its left without
           // forcing the entire paragraph upward to clear a full-width gutter.
@@ -145,6 +160,19 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
           apply(low);
         }
       }
+      // Names, types and stats have fixed rails. Fit changed labels into those
+      // rails; rules retain natural size and use their scrolling region.
+      const normalize=text=>String(text||'').replace(/\s+/g,' ').trim();
+      const unchangedSource=registered?.dataset.sourceText&&normalize(registered.dataset.sourceText)===normalize(registered.dataset.liveText);
+      if (registered && (!['rule', 'flavor'].includes(registered.dataset.fieldKind) || registered.dataset.fixedRail==='true'||unchangedSource) && !fits()) {
+        let low = .25, high = 1;
+        for (let i = 0; i < 12; i++) {
+          const scale = (low + high) / 2;
+          apply(scale);
+          if (fits()) low = scale; else high = scale;
+        }
+        apply(low);
+      }
       box.dataset.textOverflow = String(!fits());
       box.scrollTop = 0;
       onFitRef.current?.(Number(box.style.getPropertyValue("--card-rules-fit-scale")) || 1);
@@ -166,7 +194,7 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
       observer.disconnect();
       document.fonts.removeEventListener("loadingdone", scheduleFit);
     };
-  }, []);
+  }, [measurementAxis]);
 
   useLayoutEffect(() => {
     const key = cardFrameFitKey(boxRef.current);

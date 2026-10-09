@@ -19,6 +19,9 @@ import { samePlayerId } from "@/lib/player-display";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { canHoverInspectorObject, objectExistsInState, resolveStackInspectObjectId } from "@/lib/inspector-selection";
 
+import { requestInspectorDetails } from "@/lib/inspector-details-cache";
+import { stackFramePreview, visibleFrameCards } from "@/lib/stack-frame-preview";
+
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
 const PREVIEW_FADE_MS = 220;
@@ -54,54 +57,6 @@ function previewLeftInset({
     : minimumLeft;
 }
 
-function snapPreviewToAdjacentCardCenter({
-  source,
-  left,
-  top,
-  width,
-  height,
-  side,
-  minimumLeft,
-  maximumLeft,
-}) {
-  const zoneMenu = source?.closest?.(".zone-pile-menu");
-  const row = zoneMenu || source?.closest?.('.battlefield-row[data-bf-side="bottom"]');
-  if (!row) return left;
-
-  const sourceRect = source.getBoundingClientRect();
-  const sourceCenterX = sourceRect.left + (sourceRect.width / 2);
-  const previewBottom = top + height;
-  const proposedEdge = side === "right" ? left : left + width;
-  const candidateSelector = zoneMenu
-    ? ".zone-pile-card-row[data-object-id]"
-    : ".battlefield-row-card[data-object-id]";
-  const candidateCenters = Array.from(row.querySelectorAll(candidateSelector))
-    .map((card) => card.getBoundingClientRect())
-    .filter((cardRect) => (
-      cardRect.width > 0
-      && cardRect.height > 0
-      && cardRect.bottom > top
-      && cardRect.top < previewBottom
-      && (
-        side === "right"
-          ? cardRect.left + (cardRect.width / 2) > sourceCenterX
-          : cardRect.left + (cardRect.width / 2) < sourceCenterX
-      )
-    ))
-    .map((cardRect) => cardRect.left + (cardRect.width / 2))
-    .filter((centerX) => {
-      const snappedLeft = side === "right" ? centerX : centerX - width;
-      return snappedLeft >= minimumLeft && snappedLeft <= maximumLeft;
-    })
-    .sort((leftCenter, rightCenter) => (
-      Math.abs(leftCenter - proposedEdge) - Math.abs(rightCenter - proposedEdge)
-    ));
-
-  const centerX = candidateCenters[0];
-  if (!Number.isFinite(centerX)) return left;
-  return side === "right" ? centerX : centerX - width;
-}
-
 function objectFamilyIds(state, objectId) {
   const ids = new Set([String(objectId)]);
   for (const stackEntry of getVisibleStackObjects(state)) {
@@ -126,7 +81,7 @@ function objectFamilyIds(state, objectId) {
 
 function zonePreviewLayout(anchorRect, size, source = null) {
   const margin = 8;
-  const gap = 14;
+  const gap = 8;
   const localStrip = source?.closest?.('[data-local-zone-strip="true"]');
   if (localStrip) return battlefieldPreviewLayout(anchorRect, size, source);
   const minimumTop = phaseToolbarTop(margin);
@@ -150,28 +105,11 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     : anchorRect.bottom + gap;
   const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
   const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
-  let side = "right";
   let left = anchorRect.right + gap;
   if (left + width > window.innerWidth - margin) {
-    side = "left";
     left = anchorRect.left - width - gap;
   }
-  const wasClampedPastDecisionButton = left < minimumLeft;
   left = Math.max(minimumLeft, Math.min(maximumLeft, left));
-  if (source && !wasClampedPastDecisionButton) {
-    // Match battlefield previews: align the frame to the adjacent card's
-    // midpoint so the next card remains partially exposed and hoverable.
-    left = snapPreviewToAdjacentCardCenter({
-      source,
-      left,
-      top,
-      width,
-      height,
-      side,
-      minimumLeft,
-      maximumLeft,
-    });
-  }
   return {
     left: Math.round(left),
     top: Math.round(top),
@@ -228,27 +166,12 @@ function battlefieldPreviewLayout(rect, size, source) {
     minimumLeft: margin,
   });
   const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
-  const gap = 14;
-  let side = "right";
+  const gap = 8;
   let left = rect.right + gap;
   if (left + width > window.innerWidth - margin) {
-    side = "left";
     left = rect.left - width - gap;
   }
-  const wasClampedPastDecisionButton = left < minimumLeft;
   left = Math.max(minimumLeft, Math.min(maximumLeft, left));
-  if (!wasClampedPastDecisionButton) {
-    left = snapPreviewToAdjacentCardCenter({
-      source,
-      left,
-      top,
-      width,
-      height,
-      side,
-      minimumLeft,
-      maximumLeft,
-    });
-  }
   return {
     left: Math.round(left),
     top: Math.round(top),
@@ -257,30 +180,41 @@ function battlefieldPreviewLayout(rect, size, source) {
   };
 }
 
-// The stack's preview sits immediately to the right of the stack itself, not
-// beside whichever tile is under the pointer. Two reasons it is anchored to the
-// whole stack: the frame does not jump between tiles, and it is flush against
-// them, so the pointer can travel into it without crossing a gap that would
-// close it on the way.
+// Desktop keeps the top entry exposed and overlays the rest of its reserved rail.
+// Compact layouts retain the adjacent preview with the normal hover height budget.
 function stackAnchoredPreviewPosition(anchorRect, size) {
   if (!anchorRect || typeof window === "undefined") return null;
-  const margin = 8;
-  const availableHeight = Math.max(0, window.innerHeight - (margin * 2));
-  const height = Math.min(size.height, availableHeight);
-  const width = Math.min(size.width, height * (63 / 88));
-  const left = Math.min(
-    Math.max(margin, anchorRect.right),
-    Math.max(margin, window.innerWidth - width - margin)
-  );
-  const top = Math.min(
-    Math.max(margin, anchorRect.top),
-    Math.max(margin, window.innerHeight - margin - height)
-  );
+  const margin = 8, gap = 8;
+  const rail = window.innerWidth >= 1024
+    ? document.querySelector('[data-my-zone] .my-zone-stack-rail') : null;
+  const railBounds = rail?.getBoundingClientRect();
+  if (railBounds?.width > 0) {
+    const topEntry = rail.querySelector('.stack-timeline-entry:not([data-leaving="true"])');
+    const entryBounds = topEntry?.getBoundingClientRect();
+    const minimumTop = Math.max(margin, (entryBounds?.bottom ?? anchorRect.bottom) + 4);
+    const manaBounds = document.querySelector('.local-player-mana-dock')?.getBoundingClientRect();
+    const bottom = manaBounds?.width > 0 ? manaBounds.top - 8 : window.innerHeight - margin;
+    const maximumHeight = Math.max(0, Math.min(bottom - minimumTop, railBounds.width * 88 / 63));
+    const top = manaBounds?.width > 0 ? bottom - Math.min(size.height, maximumHeight) : minimumTop;
+    return { left: Math.round(railBounds.left), top: Math.round(top), right: 'auto',
+      maxHeight: `${Math.floor(maximumHeight)}px` };
+  }
+  const localBoard = document.querySelector('[data-my-zone] .my-zone-board-shell')?.getBoundingClientRect();
+  const minimumTop = Math.max(phaseToolbarTop(margin), localBoard?.top ?? margin);
+  const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
+  const rightSpace = Math.max(0, window.innerWidth - margin - anchorRect.right - gap);
+  const leftSpace = Math.max(0, anchorRect.left - gap - margin);
+  const desiredWidth = Math.min(size.width, availableHeight * 63 / 88);
+  const placeRight = rightSpace >= desiredWidth || rightSpace >= leftSpace;
+  const availableWidth = placeRight ? rightSpace : leftSpace;
+  const maximumHeight = Math.min(availableHeight, availableWidth * 88 / 63);
+  const height = Math.min(size.height, maximumHeight);
+  const width = Math.min(size.width, height * 63 / 88);
   return {
-    left: Math.round(left),
-    top: Math.round(top),
+    left: Math.round(placeRight ? anchorRect.right + gap : anchorRect.left - gap - width),
+    top: Math.round(Math.max(minimumTop, Math.min(anchorRect.top, window.innerHeight - margin - height))),
     right: "auto",
-    height: `${Math.max(0, Math.floor(height))}px`,
+    maxHeight: `${Math.max(0, Math.floor(maximumHeight))}px`,
   };
 }
 
@@ -323,13 +257,43 @@ function anchoredPreviewPosition(anchorRect, size) {
 
 export default function FloatingCardPreview({
   disabled: externallyDisabled = false,
+  automaticOnly = false,
   excludedObjectIds = [],
   pinnedObjectId = null,
   onRequestClose = null,
 }) {
   const previewSuppressed = useCardPreviewSuppressed();
   const disabled = externallyDisabled || previewSuppressed;
-  const { state, dispatch, cancelDecision, cancelBackgroundDispatch } = useGame();
+  const { game, state, dispatch, cancelDecision, cancelBackgroundDispatch } = useGame();
+  const [rememberedCards, setRememberedCards] = useState([]);
+  const automaticPreview = useMemo(() => stackFramePreview(state, rememberedCards), [state, rememberedCards]);
+  useEffect(() => {
+    // Keep public snapshots only, including sources that disappear on resolution.
+    queueMicrotask(() => setRememberedCards(previous => {
+      const cards = [...visibleFrameCards(state), ...previous];
+      const seen = new Set();
+      return cards.filter(card => {
+        const key = card.stable_id != null ? `stable:${card.stable_id}` : `object:${card.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 512);
+    }));
+  }, [state]);
+  useEffect(() => {
+    const preview = stackFramePreview(state);
+    const id = preview && resolveStackInspectObjectId(state, preview.entry);
+    if (!game || id == null) return undefined;
+    let active = true;
+    // Capture full spell/source details while they still exist on the stack.
+    // This shares the inspector request, so there is no extra engine query.
+    requestInspectorDetails(game, state, id).then(details => {
+      if (!active || !details) return;
+      const card = { ...details, id, stable_id: preview.entry.source_stable_id ?? preview.entry.stable_id ?? details.stable_id };
+      setRememberedCards(previous => [card, ...previous].slice(0, 512));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [game, state]);
   const paymentEditor = useManaPaymentEditor();
   const manaPaymentActions = useMemo(() => manaPaymentActionMap(state), [state]);
   const hoveredObjectId = useHoveredObjectId();
@@ -354,6 +318,7 @@ export default function FloatingCardPreview({
   );
   const directlyRequestedObjectId = (
     !disabled
+    && !automaticOnly
     && !dragState
     // The priority panel suppresses previews that would cover it -- except for
     // an option that stands for an object, where seeing the card is the point.
@@ -379,6 +344,10 @@ export default function FloatingCardPreview({
       element.getAttribute("data-object-id") === directlyRequestedObjectId
     ));
   }, [directlyRequestedObjectId]);
+  const directLookHover = directlyRequestedObjectId != null && typeof document !== "undefined"
+    && window.innerWidth >= 1024
+    && [...document.querySelectorAll('[data-zone-card="look"][data-object-id]')]
+      .some(element => element.dataset.objectId === directlyRequestedObjectId);
   // Anchored previews are explicit card-name clicks, so they may inspect a
   // spell on the stack or a card in another zone even though passive hand
   // hovers remain excluded from this surface.
@@ -395,7 +364,37 @@ export default function FloatingCardPreview({
     && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;
-  const lockedObjectId = anchoredObjectId || pinnedPreviewObjectId;
+  // Include stack depth so consecutive copies/triggers with shared presentation
+  // ids can open independently, without reopening on ordinary state refreshes.
+  const automaticPreviewKey = automaticPreview ? JSON.stringify([
+    automaticPreview.entry.id,
+    automaticPreview.entry.source_stable_id ?? automaticPreview.entry.stable_id,
+    automaticPreview.entry.ability_text ?? automaticPreview.entry.effect_text,
+    getVisibleStackObjects(state).length,
+  ]) : null;
+  const [dismissedAutomaticKey, setDismissedAutomaticKey] = useState(null);
+  useEffect(() => {
+    queueMicrotask(() => setDismissedAutomaticKey(null));
+  }, [automaticPreviewKey]);
+  useEffect(() => {
+    if (automaticPreviewKey == null) return undefined;
+    const dismissOnEmptySpace = event => {
+      if (event.button !== 0 || !(event.target instanceof Element)) return;
+      if (event.target.closest("[data-object-id], .zone-viewer, [data-card-inspector], .ironsmith-inspector-shell, .floating-card-preview, button, input, select, textarea, label, a, [role='button'], [role='dialog']")) return;
+      setDismissedAutomaticKey(automaticPreviewKey);
+      setPreviewHovered(false);
+      setRenderedObjectId(null);
+      clearAnchoredCardPreview();
+      onRequestClose?.();
+    };
+    document.addEventListener("pointerdown", dismissOnEmptySpace, true);
+    return () => document.removeEventListener("pointerdown", dismissOnEmptySpace, true);
+  }, [automaticPreviewKey, clearAnchoredCardPreview, onRequestClose]);
+  const automaticObjectId = !disabled && !dragState && automaticPreview
+    && dismissedAutomaticKey !== automaticPreviewKey
+    ? String(automaticPreview.entry.id) : null;
+  const lockedObjectId = directLookHover ? null : ((automaticOnly ? null : anchoredObjectId || pinnedPreviewObjectId)
+    || automaticObjectId);
   const requestedObjectId = lockedObjectId
     || directlyRequestedObjectId
     // In target mode the preview is only a response to the source card's
@@ -410,11 +409,13 @@ export default function FloatingCardPreview({
   const lockedStackEntry = useMemo(() => (
     lockedObjectId == null
       ? null
-      : getVisibleStackObjects(state).find(entry => String(entry.id) === lockedObjectId) || null
-  ), [lockedObjectId, state]);
+      : (lockedObjectId === automaticObjectId ? automaticPreview?.entry : null)
+        || getVisibleStackObjects(state).find(entry => String(entry.id) === lockedObjectId) || null
+  ), [lockedObjectId, automaticObjectId, automaticPreview?.entry, state]);
   const isStackSource = id => id != null && lockedStackEntry != null && id === lockedObjectId;
   const preparationCard = useMemo(() => {
     const stackEntry = lockedStackEntry && requestedObjectId === lockedObjectId ? lockedStackEntry : null;
+    if (stackEntry === automaticPreview?.entry) return automaticPreview.card;
     // A stack entry prepares its source card's frame (the entry carries no
     // type line), found by the entry's own inspect id, never by its number.
     const needle = stackEntry ? resolveStackInspectObjectId(state, stackEntry) : requestedObjectId;
@@ -433,7 +434,7 @@ export default function FloatingCardPreview({
     ].find(matches);
     if (viewedCard) return viewedCard;
     return stackEntry || getVisibleStackObjects(state).find(matches);
-  }, [lockedObjectId, lockedStackEntry, requestedObjectId, state]);
+  }, [lockedObjectId, lockedStackEntry, requestedObjectId, state, automaticPreview]);
   const preparationName = preparationCard?.name;
   const preparationType = preparationCard?.type_line;
   // Every card this surface shows is presented as a frame, whatever zone it
@@ -520,9 +521,12 @@ export default function FloatingCardPreview({
     const shell = shellRef.current;
     if (!shell) return undefined;
     const measure = () => {
-      const rect = shell.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+      // Measure layout dimensions, not the smaller animated opening transform.
+      // ResizeObserver does not fire when only that transform finishes.
+      const style = getComputedStyle(shell);
+      const width = Number.parseFloat(style.width), height = Number.parseFloat(style.height);
+      if (width > 0 && height > 0) {
+        setSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
       }
     };
     measure();
@@ -565,13 +569,40 @@ export default function FloatingCardPreview({
     onRequestClose?.();
   };
 
-  const stackPreview = renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
+  const lookStackPreview = directLookHover && renderedObjectId === directlyRequestedObjectId;
+  const stackPreview = lookStackPreview || (renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
     [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
-  );
+  ));
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
     && readyObjectId === renderedObjectId;
+  const [stackAnchorRect, setStackAnchorRect] = useState(null);
+  useLayoutEffect(() => {
+    if (!stackPreview) return undefined;
+    let frame;
+    const measure = () => {
+      const rect = [...document.querySelectorAll('[data-stack-preview-anchor]')]
+        .map(element => element.getBoundingClientRect())
+        .find(bounds => bounds.width > 0 && bounds.height > 0)
+        || (lookStackPreview ? document.querySelector('[data-my-zone] .my-zone-stack-rail')?.getBoundingClientRect() : null);
+      const topEntry = document.querySelector('[data-my-zone] .my-zone-stack-rail .stack-timeline-entry:not([data-leaving="true"])')?.getBoundingClientRect();
+      const table = document.querySelector('.table-shell[data-focused-hud="true"]');
+      const mana = table?.querySelector('.local-player-mana-dock')?.getBoundingClientRect();
+      const rail = table?.querySelector('.my-zone-stack-rail')?.getBoundingClientRect();
+      if (mana?.width && rail?.width && topEntry) {
+        const width = Math.max(0, Math.min(rail.width, (mana.top - 12 - topEntry.bottom) * 63 / 88));
+        const nextWidth = `${Math.max(0, Math.floor(width) - 1)}px`;
+        if (table.style.getPropertyValue('--stack-inspector-width') !== nextWidth) table.style.setProperty('--stack-inspector-width', nextWidth);
+      }
+      const next = rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, entryBottom: topEntry?.bottom } : null;
+      setStackAnchorRect(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      frame = requestAnimationFrame(measure);
+    };
+    frame = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(frame);
+  }, [stackPreview, lookStackPreview]);
   const positionStyle = useMemo(
     () => {
+      if (lookStackPreview) return stackAnchoredPreviewPosition(stackAnchorRect, size);
       if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
         if (anchoredCardPreview?.placement === "zone") {
           return zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size);
@@ -584,14 +615,11 @@ export default function FloatingCardPreview({
       // A stack preview locked in by a click keeps the place the hover preview
       // held, so committing to an entry never makes the frame jump.
       if (stackPreview && typeof document !== "undefined") {
-        const stackRect = document
-          .querySelector("[data-stack-preview-anchor]")
-          ?.getBoundingClientRect?.();
-        if (stackRect) return stackAnchoredPreviewPosition(stackRect, size);
+        return stackAnchoredPreviewPosition(stackAnchorRect, size);
       }
       return previewPosition(renderedObjectId, size);
     },
-    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview]
+    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview, stackAnchorRect, lookStackPreview]
   );
   const accentStyle = accent
     ? {
@@ -607,6 +635,8 @@ export default function FloatingCardPreview({
       ref={shellRef}
       className="floating-card-preview"
       data-card-hover-preview="true"
+      data-automatic-stack-preview={lockedObjectId === automaticObjectId && automaticObjectId != null ? "true" : undefined}
+      data-look-stack-preview={lookStackPreview ? "true" : undefined}
       data-stack-preview={stackPreview ? "true" : "false"}
       data-preview-object-id={renderedObjectId || undefined}
       data-visible={visible ? "true" : "false"}
@@ -643,6 +673,8 @@ export default function FloatingCardPreview({
           key={renderedObjectId}
           objectId={renderedObjectId}
           selectedStackEntry={isStackSource(renderedObjectId) ? lockedStackEntry : null}
+          transientPreview={isStackSource(renderedObjectId) && lockedStackEntry === automaticPreview?.entry
+            ? { card: automaticPreview.card } : null}
           displayMode="card-frame"
           enableFramePreparation
           sourceImageUrl={renderedImageUrl}

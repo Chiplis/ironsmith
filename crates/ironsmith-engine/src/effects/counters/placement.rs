@@ -105,9 +105,14 @@ pub(super) fn execute_counter_batch_with_limit_outputs(
     crate::effects::composition::execute_transaction(game, ctx, Vec::new, |game, ctx| {
         let mut prepared = Vec::with_capacity(events.len());
         for event in events {
-            prepared.push(super::prepared_placement::prepare_counter_placement_with_limit(
-                game, ctx, event, maximum_total,
-            )?);
+            prepared.push(
+                super::prepared_placement::prepare_counter_placement_with_limit(
+                    game,
+                    ctx,
+                    event,
+                    maximum_total,
+                )?,
+            );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(Vec::new());
             }
@@ -240,22 +245,33 @@ fn counter_cost_outcome(
         ExecutionError::InternalError("counter payment removal total exceeds outcome range".into())
     })?;
     let mut payment = EffectOutcome::aggregate(
-        outcomes.iter().map(|outcome| outcome.instruction_result().clone()),
+        outcomes
+            .iter()
+            .map(|outcome| outcome.instruction_result().clone()),
     );
     payment.status = crate::effect::OutcomeStatus::Succeeded;
     // Quantity-producing counter costs expose actual removals. Existing
     // direct payment owners (notably energy paid) retain their nominal result;
     // their complete physical child receipts remain owned by the composition.
-    payment.value = crate::effect::OutcomeValue::Count(if physical_count { removed } else { total });
+    payment.value =
+        crate::effect::OutcomeValue::Count(if physical_count { removed } else { total });
     // Child removals may be prevented or replaced while this cost is accepted.
     // Their terminal facts stay in the complete observations and owned child
     // packets, rather than becoming the payment instruction's acknowledgement.
-    payment.execution_facts.retain(|fact| !matches!(fact,
-        crate::effect::ExecutionFact::Declined | crate::effect::ExecutionFact::TargetInvalid
-        | crate::effect::ExecutionFact::Prevented | crate::effect::ExecutionFact::Protected
-        | crate::effect::ExecutionFact::Impossible | crate::effect::ExecutionFact::Replaced));
+    payment.execution_facts.retain(|fact| {
+        !matches!(
+            fact,
+            crate::effect::ExecutionFact::Declined
+                | crate::effect::ExecutionFact::TargetInvalid
+                | crate::effect::ExecutionFact::Prevented
+                | crate::effect::ExecutionFact::Protected
+                | crate::effect::ExecutionFact::Impossible
+                | crate::effect::ExecutionFact::Replaced
+        )
+    });
     let payment = payment.with_execution_fact(crate::effect::ExecutionFact::Accepted);
-    Ok(payment.with_authoritative_observations(EffectOutcome::aggregate(outcomes))
+    Ok(payment
+        .with_authoritative_observations(EffectOutcome::aggregate(outcomes))
         .with_requested_amount(total as u64))
 }
 
@@ -280,7 +296,10 @@ impl crate::effects::SimultaneousEffectProposal for PreparedCounterCost {
                 ));
             }
             Self::Originals {
-                total, physical_count, children, ..
+                total,
+                physical_count,
+                children,
+                ..
             } => (total, physical_count, children),
         };
         let mut originals = Vec::new();
@@ -443,7 +462,7 @@ pub(crate) fn execute_counter_removal_cost_batch(
         .map(CompletedEffectOutputs::into_outcome)
 }
 
-fn execute_counter_removal_cost_batch_with_outputs(
+pub(crate) fn execute_counter_removal_cost_batch_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     events: Vec<Event>,

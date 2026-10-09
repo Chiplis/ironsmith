@@ -54,6 +54,43 @@ fn pay_selected_cost(
     >,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<Option<Vec<ObjectSnapshot>>, GameLoopError> {
+    let mut completed_outputs = crate::effects::CompletedActionPrefix::default();
+    pay_selected_cost_with_outputs(
+        game,
+        cost,
+        source,
+        payer,
+        reason,
+        provenance,
+        chosen_id,
+        choice_tag,
+        tagged_objects,
+        effect_outcomes,
+        &mut completed_outputs,
+        decision_maker,
+    )
+}
+
+fn pay_selected_cost_with_outputs(
+    game: &mut GameState,
+    cost: &crate::costs::Cost,
+    source: ObjectId,
+    payer: PlayerId,
+    reason: crate::costs::PaymentReason,
+    provenance: crate::provenance::ProvNodeId,
+    chosen_id: ObjectId,
+    choice_tag: Option<&crate::tag::TagKey>,
+    tagged_objects: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    effect_outcomes: &mut std::collections::HashMap<
+        crate::effect::EffectId,
+        crate::effect::EffectOutcome,
+    >,
+    completed_outputs: &mut crate::effects::CompletedActionPrefix,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Option<Vec<ObjectSnapshot>>, GameLoopError> {
     let processing_mode = cost.processing_mode();
     let effective_choice_tag = choice_tag.cloned().or_else(|| match &processing_mode {
         crate::costs::CostProcessingMode::ExileFromHand { .. }
@@ -91,8 +128,11 @@ fn pay_selected_cost(
             .push(snapshot);
     }
 
-    match cost.pay(game, &mut cost_ctx) {
-        Ok(crate::costs::CostPaymentResult::Paid) => {
+    let payment = cost
+        .pay_with_outputs(game, &mut cost_ctx)
+        .map_err(activation_cost_error)?;
+    match payment.result {
+        crate::costs::CostPaymentResult::Paid => {
             if cost_ctx.decision_maker.awaiting_choice() {
                 return Ok(None);
             }
@@ -132,12 +172,12 @@ fn pay_selected_cost(
             }
             *tagged_objects = cost_ctx.tagged_objects;
             *effect_outcomes = cost_ctx.effect_outcomes;
+            completed_outputs.retain_completed(payment.outputs);
             Ok(completed_sacrifice)
         }
-        Ok(crate::costs::CostPaymentResult::NeedsChoice(_)) => Err(GameLoopError::InvalidState(
+        crate::costs::CostPaymentResult::NeedsChoice(_) => Err(GameLoopError::InvalidState(
             "Cost still needed a choice after preselection".to_string(),
         )),
-        Err(err) => Err(activation_cost_error(err)),
     }
 }
 
@@ -397,7 +437,10 @@ fn execute_planned_mana_activations(
         undo_locked_by_mana,
         decision_maker,
     )
-    .map(|(pending, _)| pending)
+    .map(|(pending, outputs)| {
+        payment.completed_outputs.retain_completed(outputs);
+        pending
+    })
 }
 
 fn execute_planned_mana_activations_with_outputs(
@@ -415,6 +458,7 @@ fn execute_planned_mana_activations_with_outputs(
         .get(payment.next_activation)
         .cloned()
     {
+        let completed_prefix_len = outputs.len();
         let mut replay = crate::mana_payment::WitnessDecisionMaker::for_activation(
             step.replacement_witnesses.as_deref(),
             step.production_witnesses.as_deref(),
@@ -447,7 +491,7 @@ fn execute_planned_mana_activations_with_outputs(
             // Replay-based decision makers will rerun this same activation
             // from the enclosing action checkpoint with the captured answer.
             // Do not advance the plan cursor until that replay completes.
-            return Ok((true, Vec::new()));
+            return Ok((true, outputs));
         }
         let activation = completed.activation_notification.ok_or_else(|| {
             GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
@@ -463,7 +507,10 @@ fn execute_planned_mana_activations_with_outputs(
             activation,
         )?);
         if replay.awaiting_choice() {
-            return Ok((true, Vec::new()));
+            // Only cursor-acknowledged activations belong to the retained
+            // prefix. This activation replays from its enclosing checkpoint.
+            outputs.truncate(completed_prefix_len);
+            return Ok((true, outputs));
         }
         if !replay.complete() {
             return Err(GameLoopError::InvalidState(
@@ -477,11 +524,53 @@ fn execute_planned_mana_activations_with_outputs(
     Ok((false, outputs))
 }
 
+/// Commit native confirmed spending and retain the owner's actual completed
+/// mana/life packets. Caller still owns its pending/error/rollback boundary.
+fn commit_confirmed_mana_spending(
+    game: &mut GameState,
+    payment: &mut crate::mana_payment::PendingManaPayment,
+    decision_maker: &mut impl DecisionMaker,
+    payment_owner: ProvNodeId,
+) -> Result<bool, crate::effects::ExecutionError> {
+    game.try_pay_mana_cost_with_payment_options_and_owned_outputs(
+        payment.request.payer,
+        Some(payment.request.source),
+        &payment.plan.mana_cost_after_alternatives,
+        payment.request.x_value,
+        payment.request.reason,
+        &payment.request.spend_policy,
+        payment.request.allow_life_payment,
+        payment.request.allow_black_life,
+        payment.request.preferences.prefer_life,
+        decision_maker,
+        None,
+        Some(payment_owner),
+    )
+    .map(|outputs| {
+        let Some(outputs) = outputs else {
+            return false;
+        };
+        payment.completed_outputs.retain_completed(outputs);
+        true
+    })
+}
+
+/// Completion remains after whole spending succeeds, at the native boundary.
+fn record_confirmed_waterbend_completion(
+    game: &mut GameState,
+    payment: &mut crate::mana_payment::PendingManaPayment,
+) -> Result<(), crate::effects::ExecutionError> {
+    let outputs =
+        crate::mana_payment::record_waterbend_payment_with_outputs(game, &payment.request)?;
+    payment.completed_outputs.retain_completed(outputs);
+    Ok(())
+}
+
 /// Waterbend has the same payment owner for spells, activations and effects.
 /// Emit completion only after mana/life payment succeeds below.
 fn execute_planned_waterbend_taps(
     game: &mut GameState,
-    payment: &crate::mana_payment::PendingManaPayment,
+    payment: &mut crate::mana_payment::PendingManaPayment,
 ) -> Result<(), GameLoopError> {
     if !crate::mana_payment::validate_waterbend_taps(
         game,
@@ -506,9 +595,11 @@ fn execute_planned_waterbend_taps(
             }
         }
     }
-    for event in taps.finish(game).events {
+    let outputs = taps.finish_with_outputs(game);
+    for event in outputs.outcome.events.iter().cloned() {
         game.queue_trigger_event(event.provenance(), event);
     }
+    payment.completed_outputs.retain_completed([outputs]);
     Ok(())
 }
 
@@ -556,7 +647,7 @@ fn execute_planned_keyword_payments(
                         "planned delve card is no longer available".to_string(),
                     ));
                 }
-                pay_selected_cost(
+                pay_selected_cost_with_outputs(
                     game,
                     &crate::costs::Cost::exile_from_graveyard(1, None),
                     pending.spell_id,
@@ -567,6 +658,7 @@ fn execute_planned_keyword_payments(
                     None,
                     &mut pending.tagged_objects,
                     &mut pending.effect_outcomes,
+                    &mut pending.completed_outputs,
                     _decision_maker,
                 )?;
                 continue;
@@ -692,11 +784,14 @@ pub(super) fn prompt_pending_mana_ability_payment(
             "the mana ability's activation cost has no legal payment plan: {failure:?}"
         ))
     })?;
-    pending.pending_mana_payment = Some(if refining_existing_plan {
-        crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
-    } else {
-        crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
-    });
+    pending.pending_mana_payment = Some(
+        (if refining_existing_plan {
+            crate::mana_payment::PendingManaPayment::new(request.clone(), plan.clone())
+        } else {
+            crate::mana_payment::PendingManaPayment::provisional(request.clone(), plan.clone())
+        })
+        .with_completed_prefix_from(pending.pending_mana_payment.as_ref()),
+    );
     state.pending_mana_ability = Some(pending);
     Ok(GameProgress::NeedsDecisionCtx(
         crate::decisions::context::DecisionContext::ManaPayment(
@@ -793,24 +888,11 @@ pub(super) fn commit_prepared_spell_mana_payment(
                 "spell payer is missing".to_string(),
             ));
         };
-        if !game
-            .try_pay_mana_cost_with_payment_options_and_dm(
-                payment.request.payer,
-                Some(payment.request.source),
-                &payment.plan.mana_cost_after_alternatives,
-                payment.request.x_value,
-                payment.request.reason,
-                &payment.request.spend_policy,
-                payment.request.allow_life_payment,
-                payment.request.allow_black_life,
-                payment.request.preferences.prefer_life,
-                decision_maker,
-            )
+        if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
-                state.rollback_action(game);
-                GameLoopError::ExecutionFailed(error)
-            })?
-        {
+            state.rollback_action(game);
+            GameLoopError::ExecutionFailed(error)
+        })? {
             if decision_maker.awaiting_choice() {
                 return Ok(GameProgress::Continue);
             }
@@ -819,7 +901,7 @@ pub(super) fn commit_prepared_spell_mana_payment(
                 "spell payment failed validation and was rolled back".to_string(),
             ));
         }
-        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+        record_confirmed_waterbend_completion(game, &mut payment).map_err(|error| {
             state.rollback_action(game);
             GameLoopError::ExecutionFailed(error)
         })?;
@@ -829,6 +911,9 @@ pub(super) fn commit_prepared_spell_mana_payment(
             .unwrap_or_default();
         add_spent_pool_delta(&mut pending.mana_spent_to_cast, &pool_before, &pool_after);
         pending.mana_cost_to_pay = None;
+        pending
+            .completed_outputs
+            .absorb(&mut payment.completed_outputs);
         pending.pending_mana_payment = None;
         pending.stage = spell_stage_after_targets(&pending);
         continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
@@ -913,25 +998,12 @@ pub(super) fn commit_prepared_activation_mana_payment(
                 "activation payer is missing".to_string(),
             ));
         };
-        execute_planned_waterbend_taps(game, &payment)?;
-        if !game
-            .try_pay_mana_cost_with_payment_options_and_dm(
-                payment.request.payer,
-                Some(payment.request.source),
-                &payment.plan.mana_cost_after_alternatives,
-                payment.request.x_value,
-                payment.request.reason,
-                &payment.request.spend_policy,
-                payment.request.allow_life_payment,
-                payment.request.allow_black_life,
-                payment.request.preferences.prefer_life,
-                decision_maker,
-            )
+        execute_planned_waterbend_taps(game, &mut payment)?;
+        if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
-                state.rollback_action(game);
-                GameLoopError::ExecutionFailed(error)
-            })?
-        {
+            state.rollback_action(game);
+            GameLoopError::ExecutionFailed(error)
+        })? {
             if decision_maker.awaiting_choice() {
                 return Ok(GameProgress::Continue);
             }
@@ -940,7 +1012,7 @@ pub(super) fn commit_prepared_activation_mana_payment(
                 "activation payment failed validation and was rolled back".to_string(),
             ));
         }
-        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+        record_confirmed_waterbend_completion(game, &mut payment).map_err(|error| {
             state.rollback_action(game);
             GameLoopError::ExecutionFailed(error)
         })?;
@@ -954,6 +1026,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
             &pool_after,
         );
         pending.mana_cost_to_pay = None;
+        pending
+            .completed_outputs
+            .absorb(&mut payment.completed_outputs);
         pending.pending_mana_payment = None;
         pending.stage = activation_stage_after_targets(&pending);
         continue_activation(game, trigger_queue, state, pending, decision_maker)
@@ -1156,6 +1231,35 @@ fn resume_enclosing_mana_payment(
     advance_priority_with_dm(game, trigger_queue, decision_maker)
 }
 
+/// Move the actual acknowledged child into its nearest existing payment frame.
+/// Standalone roots may project to progress after native publication finishes.
+fn retain_enclosing_mana_outputs(
+    state: &mut PriorityLoopState,
+    outputs: Option<crate::effects::CompletedEffectOutputs>,
+) {
+    let enclosing_payment = state
+        .pending_mana_ability
+        .as_mut()
+        .and_then(|parent| parent.pending_mana_payment.as_mut())
+        .or_else(|| {
+            state
+                .pending_activation
+                .as_mut()
+                .and_then(|parent| parent.pending_mana_payment.as_mut())
+        })
+        .or_else(|| {
+            state
+                .pending_cast
+                .as_mut()
+                .and_then(|parent| parent.pending_mana_payment.as_mut())
+        });
+    if let Some(enclosing_payment) = enclosing_payment {
+        enclosing_payment
+            .completed_outputs
+            .retain_completed(outputs);
+    }
+}
+
 fn apply_mana_payment_plan_response_inner(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1200,7 +1304,7 @@ fn apply_mana_payment_plan_response_inner(
         if let Some(parent) = state.pending_mana_ability.take() {
             state.pending_mana_parents.push(parent);
         }
-        let progress = super::priority_apply::begin_mana_ability_activation(
+        let completion = super::priority_apply::begin_mana_ability_activation_with_outputs(
             game,
             trigger_queue,
             state,
@@ -1213,9 +1317,10 @@ fn apply_mana_payment_plan_response_inner(
             return Ok(GameProgress::Continue);
         }
         if state.pending_mana_ability.is_some() {
-            return Ok(progress);
+            return Ok(completion.progress);
         }
         state.pending_mana_ability = state.pending_mana_parents.pop();
+        retain_enclosing_mana_outputs(state, completion.outputs);
         lock_enclosing_mana_undo(state, !undo_safe);
         let completed = crate::mana_payment::RequiredManaActivation {
             source: *source,
@@ -1296,6 +1401,41 @@ fn apply_mana_payment_plan_response_inner(
                 "mana ability has no authoritative payment proposal".to_string(),
             )
         })?;
+        let declaration = match &payment.activation_declaration {
+            Some(declaration) => declaration.clone(),
+            None => {
+                state.rollback_action(game);
+                return Err(GameLoopError::ExecutionFailed(
+                    crate::effects::ExecutionError::IncompleteEvidence(
+                        "pending mana payment lost its admitted activation declaration".into(),
+                    ),
+                ));
+            }
+        };
+        {
+            let validation = declaration
+                .validate(pending.source, pending.activator, pending.provenance)
+                .and_then(|_| {
+                    declaration.validate(
+                        payment.request.source,
+                        payment.request.payer,
+                        pending.provenance,
+                    )
+                })
+                .and_then(|_| {
+                    if payment.request.reason == pending.payment_reason {
+                        Ok(())
+                    } else {
+                        Err(crate::effects::ExecutionError::IncompleteEvidence(
+                            "mana declaration payment reason changed".into(),
+                        ))
+                    }
+                });
+            if let Err(error) = validation {
+                state.rollback_action(game);
+                return Err(GameLoopError::ExecutionFailed(error));
+            }
+        }
         match response {
             ManaPaymentResponse::Replan { preferences } => {
                 let mut preferences = preferences.clone();
@@ -1349,25 +1489,12 @@ fn apply_mana_payment_plan_response_inner(
                 return Err(error);
             }
         }
-        execute_planned_waterbend_taps(game, &payment)?;
-        if !game
-            .try_pay_mana_cost_with_payment_options_and_dm(
-                payment.request.payer,
-                Some(payment.request.source),
-                &payment.plan.mana_cost_after_alternatives,
-                payment.request.x_value,
-                payment.request.reason,
-                &payment.request.spend_policy,
-                payment.request.allow_life_payment,
-                payment.request.allow_black_life,
-                payment.request.preferences.prefer_life,
-                decision_maker,
-            )
+        execute_planned_waterbend_taps(game, &mut payment)?;
+        if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
-                state.rollback_action(game);
-                GameLoopError::ExecutionFailed(error)
-            })?
-        {
+            state.rollback_action(game);
+            GameLoopError::ExecutionFailed(error)
+        })? {
             if decision_maker.awaiting_choice() {
                 return Ok(GameProgress::Continue);
             }
@@ -1376,22 +1503,32 @@ fn apply_mana_payment_plan_response_inner(
                 "mana-ability payment failed validation and was rolled back".to_string(),
             ));
         }
-        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+        record_confirmed_waterbend_completion(game, &mut payment).map_err(|error| {
             state.rollback_action(game);
             GameLoopError::ExecutionFailed(error)
         })?;
         pending.mana_cost = crate::mana::ManaCost::new();
         pending.pending_mana_payment = None;
-        if let Err(error) =
-            execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)
-        {
-            state.rollback_action(game);
-            return Err(error);
-        }
+        let completed_outputs = match execute_pending_mana_ability_with_outputs(
+            game,
+            trigger_queue,
+            &pending,
+            decision_maker,
+            payment.completed_outputs.take_published(),
+            declaration,
+            false,
+        ) {
+            Ok(outputs) => outputs,
+            Err(error) => {
+                state.rollback_action(game);
+                return Err(error);
+            }
+        };
         if decision_maker.awaiting_choice() {
             return Ok(GameProgress::Continue);
         }
         state.pending_mana_ability = state.pending_mana_parents.pop();
+        retain_enclosing_mana_outputs(state, Some(completed_outputs));
         lock_enclosing_mana_undo(state, pending.undo_locked_by_mana);
         let completed = payment
             .plan
@@ -1563,25 +1700,12 @@ fn apply_mana_payment_plan_response_inner(
                 "Assist payer is missing".to_string(),
             ));
         };
-        execute_planned_waterbend_taps(game, &payment)?;
-        if !game
-            .try_pay_mana_cost_with_payment_options_and_dm(
-                payment.request.payer,
-                Some(payment.request.source),
-                &payment.plan.mana_cost_after_alternatives,
-                payment.request.x_value,
-                payment.request.reason,
-                &payment.request.spend_policy,
-                payment.request.allow_life_payment,
-                payment.request.allow_black_life,
-                payment.request.preferences.prefer_life,
-                decision_maker,
-            )
+        execute_planned_waterbend_taps(game, &mut payment)?;
+        if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
-                state.rollback_action(game);
-                GameLoopError::ExecutionFailed(error)
-            })?
-        {
+            state.rollback_action(game);
+            GameLoopError::ExecutionFailed(error)
+        })? {
             if decision_maker.awaiting_choice() {
                 return Ok(GameProgress::Continue);
             }
@@ -1600,6 +1724,9 @@ fn apply_mana_payment_plan_response_inner(
             &pool_after,
         );
         add_spent_pool_delta(&mut pending.mana_spent_to_cast, &pool_before, &pool_after);
+        pending
+            .completed_outputs
+            .absorb(&mut payment.completed_outputs);
         pending.pending_mana_payment = None;
         pending.assist_payment_complete = true;
         pending.display_mana_pips.clear();
@@ -2210,163 +2337,261 @@ pub(super) fn execute_pending_mana_ability(
     pending: &PendingManaAbility,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
-    let checkpoint = (game.clone(), trigger_queue.clone());
-    let result = (|| -> Result<(), GameLoopError> {
-        use crate::costs::CostContext;
-        use crate::effects::ExecutionContext;
+    // Retain a real admitted frame when one exists. A standalone direct
+    // entry acquires before costs; both retain completion-time observation.
+    let (funding, declaration) = match pending.pending_mana_payment.as_ref() {
+        Some(payment) => (
+            payment.completed_outputs.clone().take_published(),
+            payment.activation_declaration.clone().ok_or_else(|| {
+                GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                    "direct pending mana payment lost its admitted activation declaration".into(),
+                ))
+            })?,
+        ),
+        None => {
+            let ability = game.current_ability(pending.source, pending.ability_index);
+            let activation_cost_has_tap =
+                ability.as_ref().is_some_and(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(activated) => activated.has_tap_cost(),
+                    _ => false,
+                });
+            let declaration = crate::events::spells::ActivationDeclaration::new(
+                pending.provenance,
+                crate::events::AbilityActivatedEvent::from_effective_ability(
+                    pending.source,
+                    pending.activator,
+                    true,
+                    ability,
+                    None,
+                )
+                .with_activation_cost_has_x(pending.x_value.is_some())
+                .with_activation_cost_has_tap(activation_cost_has_tap),
+            );
+            (Vec::new(), declaration)
+        }
+    };
+    execute_pending_mana_ability_with_outputs(
+        game,
+        trigger_queue,
+        pending,
+        decision_maker,
+        funding,
+        declaration,
+        true,
+    )
+    .map(|_| ())
+}
 
-        crate::linked_exile::validate_program_owner(
-            pending.effects.linked_exile_pair,
-            pending.linked_exile_owner.as_ref(),
-        )
-        .map_err(GameLoopError::ExecutionFailed)?;
-        game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(
-            pending.provenance,
-        ));
-        // Snapshot with continuous effects applied so tap-for-mana triggers see the
-        // source's real characteristics (an animated land is a creature only there).
-        let source_snapshot = game
-            .object(pending.source)
-            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+pub(super) fn execute_pending_mana_ability_with_outputs(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    pending: &PendingManaAbility,
+    decision_maker: &mut impl DecisionMaker,
+    funding: Vec<crate::effects::PublishedEffectOutputs>,
+    declaration: crate::events::spells::ActivationDeclaration,
+    // Direct entry observes current/departed source characteristics at the
+    // notification boundary; native deferred entry retains acquired evidence.
+    observe_source_at_notification: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
+    let checkpoint = trigger_queue.clone();
+    let result = crate::effects::composition::execute_result_decision_checkpoint_transaction(
+        game,
+        decision_maker,
+        |game, decision_maker| {
+            declaration
+                .validate(pending.source, pending.activator, pending.provenance)
+                .map_err(GameLoopError::ExecutionFailed)?;
+            let mut payment_children = funding.clone();
+            let mut root_outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::resolved(),
+            );
+            root_outputs.retain_published_references(funding);
+            use crate::costs::CostContext;
+            use crate::effects::ExecutionContext;
 
-        // Pay the mana cost
-        if !game
-            .try_pay_mana_cost_with_reason_and_dm(
-                pending.activator,
-                Some(pending.source),
-                &pending.mana_cost,
-                0,
-                pending.payment_reason,
-                decision_maker,
+            crate::linked_exile::validate_program_owner(
+                pending.effects.linked_exile_pair,
+                pending.linked_exile_owner.as_ref(),
             )
-            .map_err(GameLoopError::ExecutionFailed)?
-        {
-            if decision_maker.awaiting_choice() {
-                return Ok(());
-            }
-            return Err(GameLoopError::InvalidState(
-                "Failed to pay mana cost".to_string(),
-            ));
-        }
+            .map_err(GameLoopError::ExecutionFailed)?;
+            game.begin_library_top_announcement(
+                crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance),
+            );
+            // Snapshot with continuous effects applied so tap-for-mana triggers see the
+            // source's real characteristics (an animated land is a creature only there).
+            let source_snapshot = game
+                .object(pending.source)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
 
-        // Pay other costs from TotalCost
-        let mut cost_ctx = CostContext::new(pending.source, pending.activator, decision_maker)
-            .with_reason(pending.payment_reason)
-            .with_provenance(pending.provenance);
-        cost_ctx.x_value = pending.x_value;
-        for c in &pending.other_costs {
-            crate::special_actions::pay_cost_component_with_choice(game, c, &mut cost_ctx)
+            // Pay the mana cost
+            let paid = game
+                .try_pay_mana_cost_with_reason_and_owned_outputs(
+                    pending.activator,
+                    Some(pending.source),
+                    &pending.mana_cost,
+                    0,
+                    pending.payment_reason,
+                    decision_maker,
+                    Some(pending.provenance),
+                )
+                .map_err(GameLoopError::ExecutionFailed)?;
+            let Some(paid) = paid else {
+                if decision_maker.awaiting_choice() {
+                    return Ok(root_outputs);
+                }
+                return Err(GameLoopError::InvalidState(
+                    "Failed to pay mana cost".to_string(),
+                ));
+            };
+            let paid: Vec<_> = paid
+                .into_iter()
+                .map(crate::effects::PublishedEffectOutputs::retain)
+                .collect();
+            payment_children.extend(paid.iter().cloned());
+            root_outputs.retain_published_references(paid);
+
+            // Pay other costs from TotalCost
+            let mut cost_ctx = CostContext::new(pending.source, pending.activator, decision_maker)
+                .with_reason(pending.payment_reason)
+                .with_provenance(pending.provenance);
+            cost_ctx.x_value = pending.x_value;
+            for c in &pending.other_costs {
+                let paid = crate::special_actions::pay_cost_component_with_choice_with_outputs(
+                    game,
+                    c,
+                    &mut cost_ctx,
+                )
                 .map_err(activation_cost_error)?;
-            if cost_ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+                let paid: Vec<_> = paid
+                    .into_iter()
+                    .map(crate::effects::PublishedEffectOutputs::retain)
+                    .collect();
+                payment_children.extend(paid.iter().cloned());
+                root_outputs.retain_published_references(paid);
+                if cost_ctx.decision_maker.awaiting_choice() {
+                    return Ok(root_outputs);
+                }
             }
-        }
-        // X is bound by the announced {X} or by a cost that fixes it as it is
-        // paid ("Remove X storage counters"); the effect reads that value.
-        let x_value_from_costs = cost_ctx.x_value;
-        let cost_tagged_objects = cost_ctx.tagged_objects.clone();
-        let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
-        drop(cost_ctx);
-        game.finish_library_top_announcement(
-            crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance),
-        );
-        try_drain_pending_trigger_events(game, trigger_queue)?;
+            // X is bound by the announced {X} or by a cost that fixes it as it is
+            // paid ("Remove X storage counters"); the effect reads that value.
+            let x_value_from_costs = cost_ctx.x_value;
+            let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+            let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
+            drop(cost_ctx);
+            game.finish_library_top_announcement(
+                crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance),
+            );
+            try_drain_pending_trigger_events(game, trigger_queue)?;
 
-        game.record_ability_activation_with_origin(
-            pending.source,
-            pending.ability_index,
-            pending.activation_origin.clone(),
-            pending.effects.activation_definition,
-        );
-        let mut mana_ctx =
-            ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
-                .with_activation_origin(pending.activation_origin.clone())
-                .with_activation_definition(pending.effects.activation_definition)
-                .with_ability_index(pending.ability_index)
-                .with_linked_exile_owner(pending.linked_exile_owner.clone())
-                .with_source_number_owner(pending.source_number_owner.clone())
-                .with_provenance(pending.provenance)
-                .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
-                .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
-                .with_mana_production_provenance(pending.mana_production_provenance)
-                .with_tagged_objects(cost_tagged_objects.clone())
-                .with_effect_outcomes(cost_effect_outcomes.clone());
-        if let Some(snapshot) = source_snapshot.clone() {
-            mana_ctx = mana_ctx.with_source_snapshot(snapshot);
-        }
-        if let Some(x) = x_value_from_costs {
-            mana_ctx = mana_ctx.with_x(x);
-        }
-        let outcome = crate::effects::EffectExecutor::execute(
-            &crate::effects::AddManaEffect::new(
-                pending.mana_to_add.clone(),
-                crate::target::PlayerFilter::Specific(pending.activator),
-            ),
-            game,
-            &mut mana_ctx,
-        )?;
-        if mana_ctx.decision_maker.awaiting_choice() {
-            return Ok(());
-        }
-        drop(mana_ctx);
-        queue_triggers_for_events(game, trigger_queue, outcome.events)?;
-
-        // Execute additional effects (for complex mana abilities)
-        if !pending.effects.is_empty() {
-            let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
-                .with_activation_origin(pending.activation_origin.clone())
-                .with_activation_definition(pending.effects.activation_definition)
-                .with_ability_index(pending.ability_index)
-                .with_linked_exile_owner(pending.linked_exile_owner.clone())
-                .with_source_number_owner(pending.source_number_owner.clone())
-                .with_provenance(pending.provenance)
-                .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
-                .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
-                .with_mana_production_provenance(pending.mana_production_provenance);
+            game.record_ability_activation_with_origin(
+                pending.source,
+                pending.ability_index,
+                pending.activation_origin.clone(),
+                pending.effects.activation_definition,
+            );
+            let mut mana_ctx =
+                ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
+                    .with_activation_origin(pending.activation_origin.clone())
+                    .with_activation_definition(pending.effects.activation_definition)
+                    .with_ability_index(pending.ability_index)
+                    .with_linked_exile_owner(pending.linked_exile_owner.clone())
+                    .with_source_number_owner(pending.source_number_owner.clone())
+                    .with_provenance(pending.provenance)
+                    .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
+                    .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
+                    .with_mana_production_provenance(pending.mana_production_provenance)
+                    .with_tagged_objects(cost_tagged_objects.clone())
+                    .with_effect_outcomes(cost_effect_outcomes.clone());
             if let Some(snapshot) = source_snapshot.clone() {
-                ctx = ctx.with_source_snapshot(snapshot);
+                mana_ctx = mana_ctx.with_source_snapshot(snapshot);
             }
             if let Some(x) = x_value_from_costs {
-                ctx = ctx.with_x(x);
+                mana_ctx = mana_ctx.with_x(x);
             }
-            ctx = ctx
-                .with_tagged_objects(cost_tagged_objects)
-                .with_effect_outcomes(cost_effect_outcomes);
-            let emitted_events = crate::game_loop::execute_resolution_program(
+            let outcome = crate::effects::EffectExecutor::execute_with_outputs(
+                &crate::effects::AddManaEffect::new(
+                    pending.mana_to_add.clone(),
+                    crate::target::PlayerFilter::Specific(pending.activator),
+                ),
                 game,
-                &mut ctx,
-                pending.activator,
-                pending.source,
-                &pending.effects,
-                None,
-                &[],
+                &mut mana_ctx,
             )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(());
+            if mana_ctx.decision_maker.awaiting_choice() {
+                return Ok(root_outputs);
             }
-            queue_triggers_for_events(game, trigger_queue, emitted_events)?;
-            try_drain_pending_trigger_events(game, trigger_queue)?;
-        }
+            drop(mana_ctx);
+            queue_triggers_for_events(game, trigger_queue, outcome.outcome.events.clone())?;
+            root_outputs.retain_published_children([outcome]);
 
-        let activation_cost_has_tap =
-            activated_ability_has_tap_cost(game, pending.source, pending.ability_index);
+            // Execute additional effects (for complex mana abilities)
+            if !pending.effects.is_empty() {
+                let mut ctx =
+                    ExecutionContext::new(pending.source, pending.activator, decision_maker)
+                        .with_activation_origin(pending.activation_origin.clone())
+                        .with_activation_definition(pending.effects.activation_definition)
+                        .with_ability_index(pending.ability_index)
+                        .with_linked_exile_owner(pending.linked_exile_owner.clone())
+                        .with_source_number_owner(pending.source_number_owner.clone())
+                        .with_provenance(pending.provenance)
+                        .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
+                        .with_mana_source_chosen_creature_type(
+                            pending.mana_source_chosen_creature_type,
+                        )
+                        .with_mana_production_provenance(pending.mana_production_provenance);
+                if let Some(snapshot) = source_snapshot.clone() {
+                    ctx = ctx.with_source_snapshot(snapshot);
+                }
+                if let Some(x) = x_value_from_costs {
+                    ctx = ctx.with_x(x);
+                }
+                ctx = ctx
+                    .with_tagged_objects(cost_tagged_objects)
+                    .with_effect_outcomes(cost_effect_outcomes);
+                let execution = crate::game_loop::execute_resolution_program_with_outputs_typed(
+                    game,
+                    &mut ctx,
+                    pending.activator,
+                    pending.source,
+                    &pending.effects,
+                    None,
+                    &[],
+                )
+                .map_err(GameLoopError::ExecutionFailed)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(root_outputs);
+                }
+                queue_triggers_for_events(game, trigger_queue, execution.events)?;
+                root_outputs.retain_published_children(execution.outputs);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
+            }
 
-        queue_ability_activated_event(
-            game,
-            trigger_queue,
-            &mut *decision_maker,
-            pending.source,
-            pending.activator,
-            true,
-            None,
-            activation_cost_has_tap,
-        )?;
+            let mut prepared = declaration
+                .with_published_payment(
+                    x_value_from_costs,
+                    pending.payment_reason,
+                    &payment_children,
+                )
+                .map_err(GameLoopError::ExecutionFailed)?;
+            if observe_source_at_notification {
+                prepared = prepared.with_snapshot(activation_source_observation(
+                    game,
+                    pending.source,
+                    None,
+                ));
+            }
+            let notification = queue_prepared_activation_notification_with_outputs(
+                game,
+                trigger_queue,
+                &mut *decision_maker,
+                prepared,
+            )?;
 
-        Ok(())
-    })();
+            root_outputs.retain_published_children(notification);
+            Ok(root_outputs)
+        },
+    );
     if result.is_err() || decision_maker.awaiting_choice() {
-        *game = checkpoint.0;
-        *trigger_queue = checkpoint.1;
+        *trigger_queue = checkpoint;
     }
     result
 }
@@ -2631,7 +2856,7 @@ pub(super) fn apply_sacrifice_target_response(
                 pending.next_sacrifice_cost_tag_index += 1;
                 crate::tag::TagKey::from(tag)
             });
-            pay_selected_cost(
+            pay_selected_cost_with_outputs(
                 game,
                 &cost,
                 pending.source,
@@ -2642,6 +2867,7 @@ pub(super) fn apply_sacrifice_target_response(
                 Some(&choice_tag),
                 &mut pending.tagged_objects,
                 &mut pending.effect_outcomes,
+                &mut pending.completed_outputs,
                 decision_maker,
             )?;
             if decision_maker.awaiting_choice() {
@@ -2678,7 +2904,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2689,6 +2915,7 @@ pub(super) fn apply_sacrifice_target_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2713,7 +2940,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2724,6 +2951,7 @@ pub(super) fn apply_sacrifice_target_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2744,7 +2972,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2755,6 +2983,7 @@ pub(super) fn apply_sacrifice_target_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2786,7 +3015,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2797,6 +3026,7 @@ pub(super) fn apply_sacrifice_target_response(
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2825,7 +3055,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2836,6 +3066,7 @@ pub(super) fn apply_sacrifice_target_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2862,7 +3093,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2873,6 +3104,7 @@ pub(super) fn apply_sacrifice_target_response(
                         choice_tag.as_ref(),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2903,7 +3135,7 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.source,
@@ -2914,6 +3146,7 @@ pub(super) fn apply_sacrifice_target_response(
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2991,7 +3224,7 @@ pub(super) fn apply_card_cost_choice_response(
                 pending.next_sacrifice_cost_tag_index += 1;
                 crate::tag::TagKey::from(tag)
             });
-            let completed_sacrifice = pay_selected_cost(
+            let completed_sacrifice = pay_selected_cost_with_outputs(
                 game,
                 &cost,
                 pending.spell_id,
@@ -3002,6 +3235,7 @@ pub(super) fn apply_card_cost_choice_response(
                 Some(&choice_tag),
                 &mut pending.tagged_objects,
                 &mut pending.effect_outcomes,
+                &mut pending.completed_outputs,
                 decision_maker,
             )?;
             if decision_maker.awaiting_choice() {
@@ -3066,7 +3300,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3077,6 +3311,7 @@ pub(super) fn apply_card_cost_choice_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3102,7 +3337,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3113,6 +3348,7 @@ pub(super) fn apply_card_cost_choice_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3142,7 +3378,7 @@ pub(super) fn apply_card_cost_choice_response(
                     let delve = selected_delve_reduction > 0;
                     let opened_batch =
                         delve && game.open_simultaneous_action_with_batch(pending.provenance);
-                    let paid = pay_selected_cost(
+                    let paid = pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3153,6 +3389,7 @@ pub(super) fn apply_card_cost_choice_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     );
                     game.close_simultaneous_action(opened_batch);
@@ -3188,7 +3425,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3199,6 +3436,7 @@ pub(super) fn apply_card_cost_choice_response(
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3227,7 +3465,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3238,6 +3476,7 @@ pub(super) fn apply_card_cost_choice_response(
                         None,
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3264,7 +3503,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3275,6 +3514,7 @@ pub(super) fn apply_card_cost_choice_response(
                         choice_tag.as_ref(),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3306,7 +3546,7 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    pay_selected_cost(
+                    pay_selected_cost_with_outputs(
                         game,
                         &cost,
                         pending.spell_id,
@@ -3317,6 +3557,7 @@ pub(super) fn apply_card_cost_choice_response(
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
                         &mut pending.effect_outcomes,
+                        &mut pending.completed_outputs,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::static_abilities::CompiledStaticAbility;
 
 #[test]
 fn krrik_keeps_black_spell_costs_as_black_pips() {
@@ -12,9 +13,9 @@ fn krrik_keeps_black_spell_costs_as_black_pips() {
     game.object_mut(source_id)
         .expect("helper permanent should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::krrik_black_mana_may_be_paid_with_life(),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::krrik_black_mana_may_be_paid_with_life(),
+        )));
 
     let spell = CardBuilder::new(CardId::from_raw(7001), "Black Cost Probe")
         .card_types(vec![CardType::Sorcery])
@@ -47,9 +48,9 @@ fn trinisphere_raises_single_black_spell_to_three_total_mana() {
     game.object_mut(source_id)
         .expect("helper permanent should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::minimum_spell_total_mana(3),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::minimum_spell_total_mana(3),
+        )));
 
     let spell = CardBuilder::new(CardId::from_raw(7003), "Cheap Black Spell")
         .card_types(vec![CardType::Sorcery])
@@ -79,9 +80,9 @@ fn trinisphere_counts_krrik_life_paid_black_pips_toward_floor() {
     game.object_mut(krrik_id)
         .expect("krrik helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::krrik_black_mana_may_be_paid_with_life(),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::krrik_black_mana_may_be_paid_with_life(),
+        )));
 
     let trini = CardBuilder::new(CardId::from_raw(7005), "Trinisphere Helper")
         .card_types(vec![CardType::Artifact])
@@ -90,9 +91,9 @@ fn trinisphere_counts_krrik_life_paid_black_pips_toward_floor() {
     game.object_mut(trini_id)
         .expect("trinisphere helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::minimum_spell_total_mana(3),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::minimum_spell_total_mana(3),
+        )));
 
     let spell = CardBuilder::new(CardId::from_raw(7006), "Necro Probe")
         .card_types(vec![CardType::Enchantment])
@@ -140,9 +141,9 @@ fn yasharn_blocks_krrik_life_payment_without_rewriting_spell_costs() {
     game.object_mut(krrik_id)
         .expect("krrik helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::krrik_black_mana_may_be_paid_with_life(),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::krrik_black_mana_may_be_paid_with_life(),
+        )));
 
     let yasharn = CardBuilder::new(CardId::from_raw(7008), "Yasharn Cost Helper")
         .card_types(vec![CardType::Creature])
@@ -151,9 +152,9 @@ fn yasharn_blocks_krrik_life_payment_without_rewriting_spell_costs() {
     game.object_mut(yasharn_id)
         .expect("yasharn helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
+        )));
 
     let spell = CardBuilder::new(CardId::from_raw(7009), "Yasharn Probe")
         .card_types(vec![CardType::Sorcery])
@@ -268,9 +269,9 @@ fn yasharn_blocks_force_of_will_alternative_cost() {
     game.object_mut(yasharn_id)
         .expect("yasharn helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate(),
+        )));
 
     let fow_id = game.create_object_from_definition(&force_of_will(), alice, Zone::Hand);
     game.create_object_from_definition(&counterspell(), alice, Zone::Hand);
@@ -305,9 +306,9 @@ fn trinisphere_requires_three_mana_for_force_of_will_alternative_cost() {
     game.object_mut(trini_id)
         .expect("trinisphere helper should exist")
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::minimum_spell_total_mana(3),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::minimum_spell_total_mana(3),
+        )));
 
     let fow_id = game.create_object_from_definition(&force_of_will(), alice, Zone::Hand);
     game.create_object_from_definition(&counterspell(), alice, Zone::Hand);
@@ -3030,9 +3031,9 @@ fn delve_pays_the_total_after_trinisphere_without_reducing_it() {
     game.object_mut(minimum)
         .unwrap()
         .abilities_mut()
-        .push(Ability::static_ability(
-            StaticAbility::minimum_spell_total_mana(3),
-        ));
+        .push(Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::minimum_spell_total_mana(3),
+        )));
     let spell = game.create_object_from_card(&card, alice, Zone::Stack);
     game.object_mut(spell)
         .unwrap()

@@ -3,11 +3,10 @@
 use crate::ability::RestrictedManaUnit;
 use crate::effect::EffectOutcome;
 use crate::effects::{
-    ExecutionContext, ExecutionError, SimultaneousEffectCommit, SimultaneousEffectCompletion,
-    SimultaneousEffectProposal,
+    ExecutionContext, ExecutionError, SimultaneousEffectCommit, SimultaneousEffectProposal,
 };
 use crate::events::mana::POOL_SYMBOLS;
-use crate::events::processing::{PreparedReplacementProgram, TraitEventResult};
+use crate::events::processing::TraitEventResult;
 use crate::events::{Event, ManaLostEvent};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
@@ -180,7 +179,8 @@ impl ManaLossProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         result: TraitEventResult,
-    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
         let (original, programs) = result.into_expansion();
         let outcome = match original {
             TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
@@ -293,14 +293,20 @@ impl ManaLossProposal {
                 ));
             }
         };
-        Ok(SimultaneousEffectCommit {
-            outcome,
-            completion: if programs.is_empty() {
-                None
-            } else {
-                Some(Box::new(ManaLossCompletion { programs }))
-            },
-        })
+        Ok(
+            crate::effects::replacement::defer_replacement_programs_with_outputs(
+                SimultaneousEffectCommit::finished(
+                    crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+                ),
+                programs,
+                |_| {
+                    Ok(crate::effects::replacement::ReplacementProgramBindings {
+                        targets: None,
+                        object_tags: Vec::new(),
+                    })
+                },
+            ),
+        )
     }
 }
 impl SimultaneousEffectProposal for ManaLossProposal {
@@ -338,79 +344,53 @@ impl SimultaneousEffectProposal for ManaLossProposal {
         }
         Ok(())
     }
-    fn commit_original(
+    fn commit_original_with_outputs(
         mut self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
         if self.prepared.is_none() {
             self.prepare_original(game, ctx)?;
         }
         let prepared = self.prepared.take().expect("prepared mana loss");
         (*self).commit_resolved(game, ctx, prepared)
     }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(SimultaneousEffectCommit::into_aggregate)
+    }
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let receipt = self.commit_original(game, ctx)?;
-        complete_loss(game, ctx, receipt)
-    }
-}
-struct ManaLossCompletion {
-    programs: Vec<PreparedReplacementProgram>,
-}
-impl SimultaneousEffectCompletion for ManaLossCompletion {
-    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
-        crate::effects::OriginalPhaseStatus::Complete
-    }
-
-    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> {
-        Ok(())
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.complete_with_outputs(game, ctx, original)
+        let receipt = self.commit_original_with_outputs(game, ctx)?;
+        complete_loss_with_outputs(game, ctx, receipt)
             .map(crate::effects::CompletedEffectOutputs::into_outcome)
     }
-    fn complete_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let outputs = crate::effects::CompletedEffectOutputs::aggregate_only(original);
-        crate::effects::replacement::complete_replacement_programs_with_original_outputs(
-            game,
-            ctx,
-            outputs,
-            |game, ctx, original| {
-                crate::effects::replacement::complete_deferred_replacement_programs(
-                    game,
-                    ctx,
-                    original,
-                    self.programs,
-                )
-            },
-        )
-    }
 }
-fn complete_loss(
+fn complete_loss_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    receipt: SimultaneousEffectCommit,
-) -> Result<EffectOutcome, ExecutionError> {
+    receipt: SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let mut outcomes =
-        crate::effects::composition::execute_simultaneous_originals(game, ctx, false, |_, _| {
-            Ok(vec![receipt])
-        })?;
+        crate::effects::composition::execute_simultaneous_originals_with_default_outputs(
+            game,
+            ctx,
+            false,
+            |_, _| Ok(vec![receipt]),
+        )?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
     outcomes
         .pop()
@@ -420,58 +400,86 @@ fn complete_loss(
 pub(crate) fn execute_mana_losses(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    mut players: Vec<PlayerId>,
+    players: Vec<PlayerId>,
     boundary: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        game.refresh_continuous_state()
-            .map_err(ExecutionError::ContinuousDiscovery)?;
-        let order = game.team_apnap_player_order();
-        players.sort_by_key(|player| {
-            order
-                .iter()
-                .position(|id| id == player)
-                .unwrap_or(usize::MAX)
-        });
-        players.dedup();
-        let mut proposals = players
-            .into_iter()
-            .map(|player| ManaLossProposal::new(game, player, boundary))
-            .collect::<Result<Vec<_>, _>>()?;
-        for proposal in &mut proposals {
-            proposal.prepare_original(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        let outcomes = crate::effects::composition::execute_simultaneous_originals(
-            game,
-            ctx,
-            true,
-            |game, ctx| {
-                let mut receipts = Vec::with_capacity(proposals.len());
-                for proposal in proposals {
-                    receipts.push(Box::new(proposal).commit_original(game, ctx)?);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(Vec::new());
-                    }
+    execute_mana_losses_with_outputs(game, ctx, players, boundary)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn execute_mana_losses_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut players: Vec<PlayerId>,
+    boundary: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::tokens::execute_resource_transaction_with_pending_value(
+        game,
+        ctx,
+        || {
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                Vec::new(),
+            ))
+        },
+        |game, ctx| {
+            game.refresh_continuous_state()
+                .map_err(ExecutionError::ContinuousDiscovery)?;
+            let order = game.team_apnap_player_order();
+            players.sort_by_key(|player| {
+                order
+                    .iter()
+                    .position(|id| id == player)
+                    .unwrap_or(usize::MAX)
+            });
+            players.dedup();
+            let mut proposals = players
+                .into_iter()
+                .map(|player| ManaLossProposal::new(game, player, boundary))
+                .collect::<Result<Vec<_>, _>>()?;
+            for proposal in &mut proposals {
+                proposal.prepare_original(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
-                Ok(receipts)
-            },
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        crate::events::damage::checked_damage_count(
-            outcomes
-                .iter()
-                .filter_map(|outcome| outcome.instruction_result().as_count())
-                .map(|count| count.max(0) as u128)
-                .sum(),
-            "simultaneous lost mana receipt",
-        )?;
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
-    })
+            }
+            let outcomes =
+                crate::effects::composition::execute_simultaneous_originals_with_default_outputs(
+                    game,
+                    ctx,
+                    true,
+                    |game, ctx| {
+                        let mut receipts = Vec::with_capacity(proposals.len());
+                        for proposal in proposals {
+                            receipts
+                                .push(Box::new(proposal).commit_original_with_outputs(game, ctx)?);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(Vec::new());
+                            }
+                        }
+                        Ok(receipts)
+                    },
+                )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            crate::events::damage::checked_damage_count(
+                outcomes
+                    .iter()
+                    .filter_map(|outcome| outcome.outcome.instruction_result().as_count())
+                    .map(|count| count.max(0) as u128)
+                    .sum(),
+                "simultaneous lost mana receipt",
+            )?;
+            Ok(crate::effects::CompletedEffectOutputs::from_children(
+                outcomes,
+                EffectOutcome::aggregate_summing_counts,
+            ))
+        },
+    )
 }
 
 #[cfg(test)]

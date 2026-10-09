@@ -14,6 +14,199 @@ enum ProgramFailurePolicy {
     Stop,
 }
 
+/// An ordered program retains its selected instruction and acknowledged child
+/// packets. Its scope belongs to the caller; it never rebases targets or groups
+/// unrelated programs merely because their instruction positions match.
+pub(crate) struct OrderedProgramCursor<'effects> {
+    effects: std::borrow::Cow<'effects, [Effect]>,
+    next: usize,
+    selected: Option<usize>,
+    children: Vec<crate::effects::CompletedEffectOutputs>,
+    failure_policy: ProgramFailurePolicy,
+    skip_pending_entry: bool,
+    stopped: bool,
+    observe_replacements: bool,
+}
+
+impl std::fmt::Debug for OrderedProgramCursor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OrderedProgramCursor")
+            .field("next", &self.next)
+            .field("selected", &self.selected)
+            .field("stopped", &self.stopped)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'effects> OrderedProgramCursor<'effects> {
+    fn new(
+        effects: std::borrow::Cow<'effects, [Effect]>,
+        failure_policy: ProgramFailurePolicy,
+        skip_pending_entry: bool,
+    ) -> Self {
+        Self {
+            effects,
+            next: 0,
+            selected: None,
+            children: Vec::new(),
+            failure_policy,
+            skip_pending_entry,
+            stopped: false,
+            observe_replacements: false,
+        }
+    }
+
+    pub(crate) fn replacement(effects: std::borrow::Cow<'effects, [Effect]>) -> Self {
+        let mut cursor = Self::new(effects, ProgramFailurePolicy::Continue, false);
+        cursor.observe_replacements = true;
+        cursor
+    }
+
+    fn select_effect(&mut self, ctx: &ExecutionContext) -> Result<Option<&Effect>, ExecutionError> {
+        if self.selected.is_some() {
+            return Err(ExecutionError::InternalError(
+                "ordered program selected another instruction before acknowledgement".into(),
+            ));
+        }
+        if self.stopped
+            || ctx.resolution_stopped()
+            || (self.skip_pending_entry && ctx.decision_maker.awaiting_choice())
+        {
+            return Ok(None);
+        }
+        let Some(effect) = self.effects.get(self.next) else {
+            return Ok(None);
+        };
+        self.selected = Some(self.next);
+        self.next += 1;
+        Ok(Some(effect))
+    }
+
+    fn into_children(self) -> Vec<crate::effects::CompletedEffectOutputs> {
+        self.children
+    }
+
+    fn completed(self, pending: bool) -> crate::effects::CompletedEffectOutputs {
+        let mut outputs = if self.observe_replacements {
+            let children = self.children;
+            let aggregate =
+                EffectOutcome::aggregate(children.iter().map(|outputs| outputs.outcome.clone()));
+            let mut outputs =
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
+            for child in children {
+                outputs.retain_owned_child(child);
+            }
+            outputs.project_aggregate(aggregate)
+        } else {
+            crate::effects::CompletedEffectOutputs::from_children(
+                self.children,
+                EffectOutcome::aggregate,
+            )
+        };
+        if pending {
+            outputs.projections_complete = false;
+        }
+        outputs
+    }
+}
+
+impl crate::effects::ActionProgramCursor for OrderedProgramCursor<'_> {
+    fn next_action(
+        &mut self,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
+        // Only the owned declaration crosses a staged boundary. Synchronous
+        // execution below borrows the actual definition instead of cloning it.
+        // Empty identity explicitly provides no shared-action grouping proof.
+        Ok(self
+            .select_effect(ctx)?
+            .cloned()
+            .map(crate::effects::ProgramAction::new))
+    }
+
+    fn select_execution_instruction(
+        &mut self,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramInstructionSelection<'_>, ExecutionError> {
+        let dispatch_while_pending = !self.skip_pending_entry;
+        let instruction = self.select_effect(ctx)?;
+        Ok(crate::effects::ProgramInstructionSelection::borrowed(
+            instruction,
+            dispatch_while_pending,
+        ))
+    }
+    fn accept_action(
+        &mut self,
+        outputs: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.selected.take().ok_or_else(|| {
+            ExecutionError::InternalError(
+                "ordered program acknowledged an instruction it did not select".into(),
+            )
+        })?;
+        let failed = outputs.outcome.status.is_failure();
+        self.children.push(outputs);
+        if failed && matches!(self.failure_policy, ProgramFailurePolicy::Stop) {
+            self.stopped = true;
+        }
+        Ok(())
+    }
+    fn accept_action_with_context(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outputs: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.accept_action(outputs)?;
+        // Qualification still peeks at the next authored definition after a
+        // failed child. Pending input skips it; future operands stay unevaluated.
+        if self.observe_replacements && !ctx.decision_maker.awaiting_choice() {
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game,
+                ctx,
+                self.effects.get(self.next),
+                self.children
+                    .iter_mut()
+                    .flat_map(|outputs| outputs.outcome.events.iter_mut()),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn ends_action_unit(&self) -> bool {
+        true
+    }
+
+    fn finish(self: Box<Self>) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        if self.selected.is_some() || (!self.stopped && self.next < self.effects.len()) {
+            return Err(ExecutionError::InternalError(
+                "ordered program finished before its selected instructions completed".into(),
+            ));
+        }
+        Ok(crate::effects::ProgramCompletion::new(
+            (*self).completed(false),
+        ))
+    }
+
+    fn finish_pending(
+        self: Box<Self>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        Ok((*self).completed(true))
+    }
+
+    fn finish_stopped(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        Ok(crate::effects::ProgramCompletion::new(
+            (*self).completed(false),
+        ))
+    }
+}
+
 /// Own the ordered child execution once. Callers retain their target/context,
 /// aggregate and transaction contracts; each child keeps its action identity.
 fn execute_program_children_with_outputs(
@@ -23,73 +216,39 @@ fn execute_program_children_with_outputs(
     failure_policy: ProgramFailurePolicy,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-    execute_program_children_with_observer(
+    execute_ordered_program_cursor_with_outputs(
         game,
         ctx,
-        effects,
-        failure_policy,
+        OrderedProgramCursor::new(std::borrow::Cow::Borrowed(effects), failure_policy, true),
         purpose,
-        true,
-        |_, _, _, _| Ok(()),
     )
 }
 
 /// Replacement programs retain their existing pending-entry dispatch contract.
 /// Their caller owns per-event observation mode and the final result projection.
-pub(crate) fn execute_observed_replacement_children_with_outputs(
+pub(crate) fn execute_observed_replacement_cursor_with_outputs<'cursor>(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    effects: &[Effect],
-    observe: impl FnMut(
-        &mut GameState,
-        &mut ExecutionContext,
-        Option<&Effect>,
-        &mut [crate::effects::CompletedEffectOutputs],
-    ) -> Result<(), ExecutionError>,
-) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-    execute_program_children_with_observer(
+    cursor: Box<dyn super::ActionProgramCursor + 'cursor>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::action_program::execute_action_program_with_outputs(
+        cursor,
         game,
         ctx,
-        effects,
-        ProgramFailurePolicy::Continue,
         crate::effects::EffectExecutionPurpose::Action,
-        false,
-        observe,
     )
 }
 
-fn execute_program_children_with_observer(
+fn execute_ordered_program_cursor_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    effects: &[Effect],
-    failure_policy: ProgramFailurePolicy,
+    mut cursor: OrderedProgramCursor,
     purpose: crate::effects::EffectExecutionPurpose,
-    skip_pending_entry: bool,
-    mut observe: impl FnMut(
-        &mut GameState,
-        &mut ExecutionContext,
-        Option<&Effect>,
-        &mut [crate::effects::CompletedEffectOutputs],
-    ) -> Result<(), ExecutionError>,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
-    let mut children = Vec::new();
-    for (index, effect) in effects.iter().enumerate() {
-        if (skip_pending_entry && ctx.decision_maker.awaiting_choice()) || ctx.resolution_stopped()
-        {
-            break;
-        }
-        let outputs = purpose.execute(game, effect, ctx)?;
-        let failed = outputs.outcome.status.is_failure();
-        children.push(outputs);
-        if ctx.decision_maker.awaiting_choice() {
-            break;
-        }
-        observe(game, ctx, effects.get(index + 1), &mut children)?;
-        if failed && matches!(failure_policy, ProgramFailurePolicy::Stop) {
-            break;
-        }
-    }
-    Ok(children)
+    // Ordinary Sequence callers own their aggregate and pending-prefix policy.
+    // Take actual acknowledged children without invoking a different finalizer.
+    super::action_program::run_program_cursor(&mut cursor, game, ctx, purpose)?;
+    Ok(cursor.into_children())
 }
 
 /// Execute an ordinary ordered program in its caller-owned scope. Authored

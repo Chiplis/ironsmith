@@ -1,3 +1,6 @@
+import { arenaPermanentKind } from '@/lib/mobile-arena';
+import { compactLandOffsets } from '@/lib/compact-land-layout';
+import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import useUiText from "@/i18n/useUiText";
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
@@ -21,6 +24,7 @@ import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import {
   ALL_PAPER_LANES,
   battlefieldGridSlotAtPoint,
+  battlefieldGridContentBounds,
   battlefieldPlacementForDrag,
   PAPER_BACK_LANES,
   PAPER_FRONT_LANES,
@@ -83,6 +87,12 @@ const BATTLEFIELD_MOVE_CLICK_SUPPRESS_MS = 700;
 const BATTLEFIELD_KEYBOARD_EXIT_DELAY_MS = 80;
 
 function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
+  const rows = buildPaperRowGroupsInPlayerOrder(battlefieldSide, buckets, options);
+  // Both front rows face the center, including dense and refreshed layouts.
+  return battlefieldSide === "top" ? [...rows].reverse() : rows;
+}
+
+function buildPaperRowGroupsInPlayerOrder(battlefieldSide, buckets, options = {}) {
   const singleRow = options.singleRow === true;
   const mobileBattleMode = options.mobileBattleMode || "default";
   const minSlotsPerRow = Math.max(1, Number(options.minSlotsPerRow) || EMPTY_PAPER_SLOT_COLUMNS);
@@ -99,8 +109,8 @@ function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   }
   if (mobileBattleMode === "top-dense") {
     return [
-      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 1, minSlotsPerRow: Math.max(minSlotsPerRow, 7) },
       { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 1, minSlotsPerRow: Math.max(minSlotsPerRow, 5) },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 1, minSlotsPerRow: Math.max(minSlotsPerRow, 7) },
     ];
   }
   if (mobileBattleMode === "bottom-dense") {
@@ -133,8 +143,8 @@ function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
 
   return shouldSplitOpponentRows
     ? [
-      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 2, minSlotsPerRow },
-      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 2, minSlotsPerRow },
+      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: Math.ceil(frontCount / EMPTY_PAPER_SLOT_COLUMNS) || 1, minSlotsPerRow },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: Math.ceil(backCount / EMPTY_PAPER_SLOT_COLUMNS) || 1, minSlotsPerRow },
     ]
     : [
       { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 1, minSlotsPerRow },
@@ -983,6 +993,7 @@ export default function BattlefieldRow({
   const [layoutHolds, setLayoutHolds] = useState([]);
   const [processedLayoutSnapshotId, setProcessedLayoutSnapshotId] = useState(null);
   const [paperColumnCapacity, setPaperColumnCapacity] = useState(EMPTY_PAPER_SLOT_COLUMNS);
+  const [battlefieldAppearance] = useBattlefieldAppearance();
   const isPaperBattlefieldLayout = !compact;
   const isMobileBattleTopLayout = paperLayoutMode === "mobile-battle-top";
   const isMobileBattleBottomLayout = paperLayoutMode === "mobile-battle-bottom";
@@ -1011,7 +1022,7 @@ export default function BattlefieldRow({
     || isMobileBattleBottomLayout
     || isMobileBattleSingleRowLayout
   );
-  const useDesktopPortraitBattlefield = isPaperBattlefieldLayout && !useMobileBattlefieldToken;
+  const useDesktopPortraitBattlefield = isPaperBattlefieldLayout && !useMobileBattlefieldToken && !battlefieldAppearance.compactCards;
   const suppressTooltip = isMobileBattleTopLayout || isMobileBattleBottomLayout || isMobileBattleSingleRowLayout;
   useLayoutEffect(() => {
     const row = rowRef.current;
@@ -1041,9 +1052,10 @@ export default function BattlefieldRow({
       observer?.disconnect();
     };
   }, [useDesktopPortraitBattlefield]);
+  const multiplayerBoard = (state?.players?.length || 0) > 2;
   const paperGridMinSlots = useDesktopPortraitBattlefield
     ? Math.max(Number(paperMinSlotsPerRow) || 0, paperColumnCapacity)
-    : paperMinSlotsPerRow;
+    : paperMinSlotsPerRow ?? (multiplayerBoard && battlefieldSide === "top" ? 4 : null);
   const currentSnapshotId = state?.snapshot_id ?? null;
   const immediateLayoutHolds = useMemo(
     () => (
@@ -1177,6 +1189,18 @@ export default function BattlefieldRow({
     [computedPaperLayout, frozenSourcePaperLayout, layoutCards, shouldFreezePaperLayout]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : layoutCards;
+  const landOffsets = useMemo(() => battlefieldAppearance.compactCards && battlefieldAppearance.compactLands && isPaperBattlefieldLayout && !useMobileBattlefieldToken
+    ? compactLandOffsets(displayCards, paperLayout.gridPositionById) : new Map(),
+  [battlefieldAppearance.compactCards, battlefieldAppearance.compactLands, isPaperBattlefieldLayout, useMobileBattlefieldToken, displayCards, paperLayout.gridPositionById]);
+  const opponentRowTracks = useMemo(() => {
+    if (battlefieldSide !== "top" || !battlefieldAppearance.compactCards || !battlefieldAppearance.compactLands || useMobileBattlefieldToken) return null;
+    return Array.from({ length: paperLayout.rowCount }, (_, index) => {
+      const cards = displayCards.filter(card => paperLayout.gridPositionById.get(String(card.id))?.row === index + 1);
+      return cards.length && cards.every(card => arenaPermanentKind(card) === 'land')
+        ? 'calc(max(28px, min(calc(var(--bf-card-width, 124px) * .8), calc(var(--bf-card-height, 90px) * .76))) + clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px) + 3px)'
+        : multiplayerBoard && index === paperLayout.rowCount - 1 ? 'minmax(var(--bf-card-height, 101px), 1fr)' : 'var(--bf-card-height, 101px)';
+    }).join(' ');
+  }, [battlefieldSide, battlefieldAppearance.compactCards, battlefieldAppearance.compactLands, useMobileBattlefieldToken, paperLayout.rowCount, paperLayout.gridPositionById, displayCards, multiplayerBoard]);
   const occupiedPaperSlots = useMemo(() => {
     const occupied = new Set();
     for (const card of displayCards) {
@@ -1190,6 +1214,13 @@ export default function BattlefieldRow({
     const row = rowRef.current;
     const rect = row.getBoundingClientRect();
     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+    if (landOffsets.size) for (const element of row.querySelectorAll('.battlefield-row-card[data-object-id]')) {
+      const bounds = element.getBoundingClientRect();
+      if (x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+        const occupied = paperLayout.gridPositionById.get(element.dataset.objectId);
+        return options.allowOccupied && occupied ? { row: occupied.row, column: occupied.column } : null;
+      }
+    }
     const styles = window.getComputedStyle(row);
     const cardWidth = Number.parseFloat(styles.getPropertyValue("--bf-card-width")) || 72;
     const cardHeight = Number.parseFloat(styles.getPropertyValue("--bf-card-height")) || 101;
@@ -1201,9 +1232,7 @@ export default function BattlefieldRow({
     const slot = battlefieldGridSlotAtPoint({
       x: x + row.scrollLeft,
       y: y + row.scrollTop,
-      left: rect.left,
-      top: rect.top + Math.max(0, Number(topSafeInset) || 0),
-      width: rect.width,
+      ...battlefieldGridContentBounds(row, styles),
       rows: paperLayout.rowCount,
       columns: paperLayout.maxCols,
       cardWidth,
@@ -1219,9 +1248,10 @@ export default function BattlefieldRow({
   }, [
     isPaperBattlefieldLayout,
     occupiedPaperSlots,
+    landOffsets,
+    paperLayout.gridPositionById,
     paperLayout.maxCols,
     paperLayout.rowCount,
-    topSafeInset,
   ]);
   const placementGridSlot = useMemo(() => {
     if (stagedPlacementSlot) {
@@ -1486,17 +1516,19 @@ export default function BattlefieldRow({
       return;
     }
 
-    const width = row.clientWidth;
+    const rowStyles = window.getComputedStyle(row);
+    const width = row.clientWidth - (parseFloat(rowStyles.paddingLeft) || 0) - (parseFloat(rowStyles.paddingRight) || 0);
     const height = row.clientHeight;
     if (width <= 0 || height <= 0) return;
 
-    const aspect = useDesktopPortraitBattlefield ? DESKTOP_PORTRAIT_CARD_ASPECT : 124 / 96;
-    const gap = BATTLEFIELD_GRID_GAP_PX;
+    const aspect = useDesktopPortraitBattlefield ? DESKTOP_PORTRAIT_CARD_ASPECT : 1.15;
+    const gap = Number.parseFloat(rowStyles.columnGap) || BATTLEFIELD_GRID_GAP_PX;
+    const rowGap = Number.parseFloat(rowStyles.rowGap) || gap;
     const hasCards = displayCards.length > 0;
     const minWidth = compact ? 30 : 44;
     const minHeight = compact ? 42 : 34;
     const rowRect = row.getBoundingClientRect();
-    const rowStyles = window.getComputedStyle(row);
+    row.style.setProperty("--bf-layout-gap", rowStyles.columnGap);
     const rowPaddingTop = Number.parseFloat(rowStyles.paddingTop || "0") || 0;
     const hasMeasuredBottomOcclusion = (
       isPaperBattlefieldLayout
@@ -1506,12 +1538,17 @@ export default function BattlefieldRow({
     const visibleBoundaryFromBottomOcclusion = hasMeasuredBottomOcclusion
       ? Math.max(0, Math.min(height, bottomOcclusionViewportTop - rowRect.top))
       : null;
+    const phaseBounds = multiplayerBoard && !useMobileBattlefieldToken
+      ? [...document.querySelectorAll('.phase-track')].map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0)
+      : [];
+    const phaseTop = phaseBounds.length ? Math.min(...phaseBounds.map(rect => rect.top)) - 12 : Infinity;
     const effectiveHeight = Math.max(
       minHeight,
-      height
-      - Math.max(0, Number(topSafeInset) || 0)
+      Math.min(height, battlefieldSide === "bottom" ? phaseTop - rowRect.top : Infinity)
+      - rowPaddingTop
+      - (battlefieldSide === "top" ? Number.parseFloat(rowStyles.paddingBottom) || 0 : 0)
       - (
-        isPaperBattlefieldLayout && battlefieldSide === "bottom" && !hasMeasuredBottomOcclusion
+        isPaperBattlefieldLayout && battlefieldSide === "bottom" && !hasMeasuredBottomOcclusion && !Number.isFinite(phaseTop)
           ? bottomSafeInset
           : 0
       )
@@ -1522,7 +1559,7 @@ export default function BattlefieldRow({
       const rows = paperLayout.rowCount;
       const cols = paperLayout.maxCols;
       const widthLimit = (width - (cols - 1) * gap) / cols;
-      const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
+      const heightLimit = ((effectiveHeight - (rows - 1) * rowGap) / rows) * aspect;
       const bottomOcclusionWidthLimit = (
         hasMobileBottomBackRowCards
         && visibleBoundaryFromBottomOcclusion != null
@@ -1538,7 +1575,7 @@ export default function BattlefieldRow({
         : Infinity;
       const cardWidth = Math.floor(Math.min(
         widthLimit,
-        usesDensePaperLayout ? Infinity : heightLimit,
+        heightLimit,
         bottomOcclusionWidthLimit
       ));
       const cardHeight = Math.floor(cardWidth / aspect);
@@ -1589,7 +1626,7 @@ export default function BattlefieldRow({
       for (let rows = 1; rows <= maxRows; rows++) {
         const cols = Math.ceil(displayCards.length / rows);
         const widthLimit = (width - (cols - 1) * gap) / cols;
-        const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
+        const heightLimit = ((effectiveHeight - (rows - 1) * rowGap) / rows) * aspect;
         const cardWidth = Math.floor(Math.min(widthLimit, heightLimit));
         const cardHeight = Math.floor(cardWidth / aspect);
         if (!Number.isFinite(cardWidth) || !Number.isFinite(cardHeight)) continue;
@@ -1605,7 +1642,7 @@ export default function BattlefieldRow({
         const cols = Math.max(1, paperLayout.maxCols);
         const rows = Math.max(1, paperLayout.rowCount);
         const widthLimit = (width - (cols - 1) * gap) / cols;
-        const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
+        const heightLimit = ((effectiveHeight - (rows - 1) * rowGap) / rows) * aspect;
         const bottomOcclusionWidthLimit = (
           hasMobileBottomBackRowCards
           && visibleBoundaryFromBottomOcclusion != null
@@ -1637,7 +1674,33 @@ export default function BattlefieldRow({
 
     const mobileBattleWidthRatio = (isMobileBattleTopLayout || isMobileBattleBottomLayout)
       ? 0.086
-      : MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO;
+      : multiplayerBoard && battlefieldSide === "top" ? 0.24 : MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO;
+    // Share a size budget across occupied multiplayer boards. This uses the
+    // available tracks, not the currently rendered card sizes, so fitting one
+    // player cannot recursively shrink the others.
+    let multiplayerCardLimit = Infinity;
+    if (multiplayerBoard && isPaperBattlefieldLayout && !useMobileBattlefieldToken && !useDesktopPortraitBattlefield) {
+      const table = row.closest('[data-multiplayer-board="true"]');
+      const budgets = [...(table?.querySelectorAll('.battlefield-row[data-battlefield-grid-rows]') || [])]
+        .filter(field => field.querySelector('.battlefield-artwork-card'))
+        .map(field => {
+          const styles = getComputedStyle(field);
+          const own = field.dataset.bfSide === 'bottom';
+          const rows = Number(field.dataset.battlefieldGridRows) || 1;
+          const cols = Number(field.dataset.battlefieldGridColumns) || 1;
+          const gapX = parseFloat(styles.columnGap) || gap;
+          const gapY = parseFloat(styles.rowGap) || rowGap;
+          const available = Math.min(field.clientHeight, own ? phaseTop - field.getBoundingClientRect().top : Infinity) - (parseFloat(styles.paddingTop) || 0)
+            - (own ? (Number.isFinite(phaseTop) ? 0 : BOTTOM_BATTLEFIELD_SAFE_INSET) : parseFloat(styles.paddingBottom) || 0);
+          const limit = Math.min(
+            (field.clientWidth - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0) - (cols - 1) * gapX) / cols,
+            ((available - (rows - 1) * gapY) / rows) * aspect
+          );
+          return limit / (own ? 1.12 : 1);
+        });
+      if (budgets.length) multiplayerCardLimit = Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.min(...budgets))
+        * (battlefieldSide === "bottom" ? 1.12 : 1);
+    }
     const maxCardWidth = forceSingleColumn
       ? Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width - 4))
       : useDesktopPortraitBattlefield
@@ -1648,7 +1711,7 @@ export default function BattlefieldRow({
             Math.floor(width * DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO)
           )
         )
-        : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width * mobileBattleWidthRatio));
+        : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.min(isPaperBattlefieldLayout && !useMobileBattlefieldToken ? (multiplayerBoard ? multiplayerCardLimit : 144) : Infinity, Math.floor(width * mobileBattleWidthRatio)));
     const clampedCardWidth = Math.max(
       isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_WIDTH : 22,
       useDesktopPortraitBattlefield ? maxCardWidth : Math.min(best.cardWidth, maxCardWidth)
@@ -1702,7 +1765,6 @@ export default function BattlefieldRow({
     battlefieldSide,
     bottomSafeInset,
     bottomOcclusionViewportTop,
-    topSafeInset,
     compact,
     displayCards.length,
     forceSingleColumn,
@@ -1716,7 +1778,8 @@ export default function BattlefieldRow({
     placementPreviewCard,
     shouldFreezePaperLayout,
     syncOverflowMode,
-    usesDensePaperLayout,
+    multiplayerBoard,
+    useMobileBattlefieldToken,
     useDesktopPortraitBattlefield,
   ]);
 
@@ -2554,6 +2617,7 @@ export default function BattlefieldRow({
       className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} ${usesDensePaperLayout ? "battlefield-row--dense" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
       data-card-navigation-scope="field"
       data-bf-side={battlefieldSide}
+      data-battlefield-style={battlefieldAppearance.compactCards ? "compact" : "full"}
       data-placement-active={pointerInsideBattlefield ? "true" : "false"}
       data-battlefield-drop-grid={canPreviewHeldPlacement ? "true" : undefined}
       data-battlefield-grid-columns={isPaperBattlefieldLayout ? paperLayout.maxCols : undefined}
@@ -2561,6 +2625,7 @@ export default function BattlefieldRow({
       data-battlefield-column-capacity={isPaperBattlefieldLayout ? paperColumnCapacity : undefined}
       onClick={handleRowClickFallback}
       style={{
+        "--bf-small-land-width": "calc(max(28px, min(calc(var(--bf-card-width, 124px) * .8), calc(var(--bf-card-height, 90px) * .76))) * 1.2)",
         "--bf-top-safe-inset": `${Math.max(0, Number(topSafeInset) || 0)}px`,
         "--bf-gap": `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
@@ -2570,7 +2635,7 @@ export default function BattlefieldRow({
         columnGap: `${normalizedLayoutOverride?.gap ?? BATTLEFIELD_GRID_GAP_PX}px`,
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 72px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
-          ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
+          ? opponentRowTracks || `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
           : undefined,
         gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 101px)",
         // The hand is a fixed bottom rail. Give the battlefield its own
@@ -2801,6 +2866,8 @@ export default function BattlefieldRow({
                   gridColumn: String(paperGridPosition.column),
                 }
                 : undefined),
+              left: landOffsets.has(String(card.id))
+                ? `calc(${landOffsets.get(String(card.id)).widthUnits} * (var(--bf-card-width) - var(--bf-small-land-width)) + ${landOffsets.get(String(card.id)).gapUnits} * (var(--bf-layout-gap, var(--bf-gap)) - 6px))` : undefined,
               width: "var(--bf-card-width, 124px)",
               minWidth: "var(--bf-card-width, 124px)",
               height: "var(--bf-card-height, 96px)",

@@ -90,7 +90,8 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     const setSymbolRequest = resolveScryfallSetSymbol(printing);
     let preparedTypography = await typographyRequest;
     let framePrinting = printing;
-    const catalog = (await import('./card-region-catalog.generated.js')).default;
+    const [reviewed, history] = await Promise.all([import('./card-region-catalog.generated.js'), import('./card-region-history.generated.js')]);
+    const catalog = [...reviewed.default, ...history.default];
     const scanUrl = fullCardImageUrl(imageUrl);
     let registration = registrationForImage(catalog, scanUrl);
     // Localized art resolves to the same printing in another language. Its
@@ -103,8 +104,12 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     }
     const invalidRegistration = registration && !registrationGeometryIsUsable(registration);
     if (invalidRegistration) {
-      registration = null;
-      registeredScanUrl = '';
+      // A rejected old registration must not hide a newer usable observation
+      // of the same printing. Keep reviewed data first among valid candidates.
+      const usable = catalog.filter(registrationGeometryIsUsable);
+      registration = registrationForImage(usable, scanUrl)
+        || (printing && registrationForPrinting(usable, printing, scanUrl));
+      registeredScanUrl = registration?.source || '';
     }
     const registeredScan = registeredScanUrl && registeredScanUrl !== scanUrl
       ? decodeImage(registeredScanUrl).then(() => true, () => false) : Promise.resolve(true);

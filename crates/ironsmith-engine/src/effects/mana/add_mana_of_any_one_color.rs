@@ -10,7 +10,7 @@ use crate::mana::ManaSymbol;
 pub use ironsmith_core::AddManaOfAnyOneColorEffect;
 
 use super::choice_helpers::{
-    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outcome,
+    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outputs,
 };
 
 /// Effect that adds mana of any ONE color to a player's mana pool.
@@ -33,7 +33,13 @@ use super::choice_helpers::{
 impl EffectExecutor for AddManaOfAnyOneColorEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::ChooseColors { amount: &self.amount, available: &crate::color::Color::ALL, same_color: true, distinct: false, player: &self.player })
+        Some(ManaProduction::ChooseColors {
+            amount: &self.amount,
+            available: &crate::color::Color::ALL,
+            same_color: true,
+            distinct: false,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -45,11 +51,22 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let color = choose_mana_colors(game, ctx, player_id, 1, true, false, None, Color::Green)?
@@ -57,13 +74,15 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
             .next()
             .unwrap_or(Color::Green);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let symbol = ManaSymbol::from_color(color);
         let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
 
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             mana,

@@ -5372,6 +5372,7 @@ pub struct EquipmentGrant {
 /// Set colors: "All creatures are black."
 #[derive(Debug, Clone)]
 pub struct SetColorsForFilter {
+    pub exclude_from_color_identity: bool,
     pub filter: ObjectFilter,
     pub colors: crate::color::ColorSet,
     pub condition: Option<crate::ConditionExpr>,
@@ -5382,6 +5383,7 @@ impl SetColorsForFilter {
         Self {
             filter,
             colors,
+            exclude_from_color_identity: false,
             condition: None,
         }
     }
@@ -5395,12 +5397,17 @@ impl SetColorsForFilter {
 impl PartialEq for SetColorsForFilter {
     fn eq(&self, other: &Self) -> bool {
         self.filter == other.filter
+            && self.exclude_from_color_identity == other.exclude_from_color_identity
             && self.colors == other.colors
             && self.condition == other.condition
     }
 }
 
 impl StaticAbilityKind for SetColorsForFilter {
+    fn color_identity_contribution(&self) -> Option<crate::color::ColorSet> {
+        if self.exclude_from_color_identity { None } else { self.characteristic_defining_colors() }
+    }
+
     fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
         (self.condition.is_none() && self.filter.is_source_only()).then_some(self.colors)
     }
@@ -5414,6 +5421,12 @@ impl StaticAbilityKind for SetColorsForFilter {
     }
 
     fn display(&self) -> String {
+        if self.exclude_from_color_identity {
+            let mut ordinary = self.clone();
+            ordinary.exclude_from_color_identity = false;
+            return format!("{}. This ability doesn't affect its color identity", ordinary.display());
+        }
+
         // A characteristic-defining color names the card itself ("Ghostfire
         // is colorless"), never a pluralized set.
         let subject = if self.filter.is_source_only() {
@@ -6086,6 +6099,10 @@ impl PartialEq for AddAllSubtypesOfFamilyForFilter {
 }
 
 impl StaticAbilityKind for AddAllSubtypesOfFamilyForFilter {
+    fn is_characteristic_defining_subtype_family(&self) -> bool {
+        self.condition.is_none() && self.filter.is_source_only()
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AddAllSubtypesOfFamily
     }

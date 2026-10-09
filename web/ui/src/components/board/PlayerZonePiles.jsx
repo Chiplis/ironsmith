@@ -22,8 +22,6 @@ import {
 
 // How long a zone takes to grow when it starts holding something to pick.
 const ZONE_TARGET_GROW_MS = 220;
-const LOOK_STACK_GAP = 12;
-const STACK_MIN_VISIBLE_HEIGHT = 72;
 // Desktop HUD: the local Graveyard/Exile column rises toward the opponent
 // piles above it to leave the decision dock more height underneath.
 const LOCAL_PILES_MAX_LIFT = 120;
@@ -71,7 +69,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const measure = () => {
       const anchor = trigger.getBoundingClientRect();
       const field = battlefield.getBoundingClientRect();
-      const cardWidth = anchor.width;
+      // Target scaling animates back to normal as the strip opens. Its
+      // transformed width must not become a permanent negative popover offset.
+      const cardWidth = zone === "look" ? trigger.offsetWidth : anchor.width;
       setStripBounds({ width: Math.max(0, (zone === "look" ? Math.min(field.right, window.innerWidth - 8) - anchor.left : anchor.right - Math.max(field.left, 8)) + 6), cardWidth });
     };
     measure();
@@ -325,7 +325,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       ) : null}
       </div>
       {/* Look expands upward above the stack; follow its animated target scale. */}
-      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align={zone === "look" ? "end" : "start"} sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
+      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align={zone === "look" ? "end" : "start"} sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
         updatePositionStrategy={zone === "look" ? "always" : "optimized"}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
@@ -419,26 +419,16 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const boardBounds = board?.getBoundingClientRect();
       const pilesBounds = board ? piles.getBoundingClientRect() : null;
       const lookHeight = look?.offsetHeight || 0;
-      const lookCard = look?.querySelector(".zone-pile");
-      const lookCardHeight = lookCard?.offsetHeight || 0;
       const containerClientTop = container.clientTop;
       const pileWidth = Math.min(56, cardWidth * 0.7);
       piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const zoneTop = Math.max(0, top - boardBounds.top);
-        // Look starts directly below the player header. Selectable piles grow
-        // upward from their bottom edge, so reserve only that extra height.
-        // Graveyard keeps following the battlefield independently.
-        const lookChromeHeight = lookHeight - lookCardHeight;
-        const canEnlargeLook = boardBounds.height >= (lookChromeHeight + pileWidth * 88 / 63) * 1.5
-          + LOOK_STACK_GAP + STACK_MIN_VISIBLE_HEIGHT;
-        const lookScale = lookCard?.dataset.hasTargets === "true" && canEnlargeLook ? 1.5 : 1;
+        // Targeted Look cards grow upward from their fixed bottom edge.
+        const canEnlargeLook = boardBounds.height >= (lookHeight + pileWidth * 88 / 63);
         look?.style.setProperty("--zone-pile-target-scale", canEnlargeLook ? "1.5" : "1");
-        const lookCardRoom = (boardBounds.height - LOOK_STACK_GAP - STACK_MIN_VISIBLE_HEIGHT) / lookScale
-          - lookChromeHeight;
-        look?.style.setProperty("--zone-pile-width", `${Math.min(pileWidth, Math.max(1, lookCardRoom * 63 / 88))}px`);
-        const lookTop = lookHeight * (lookScale - 1);
+        look?.style.setProperty("--zone-pile-width", `${pileWidth}px`);
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
         const nextPilesTop = bounds.top + containerClientTop + pilesTop;
         piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
@@ -461,12 +451,19 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         }
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
-        // Keep Look in a separate row above the stack, with room for the
-        // expanded strip's padding. The stack reclaims this space when Look
-        // disappears, including after its retained cards finish fading.
-        piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - nextPilesTop}px`);
-        piles.style.setProperty("--look-area-left", `${boardBounds.left + 70 - pilesBounds.left}px`);
-        board.style.setProperty("--stack-area-top", `${lookTop + (lookHeight ? lookHeight + LOOK_STACK_GAP : 0)}px`);
+        // Look grows above a fixed stack anchor, never consuming preview height.
+        const stackTop = 12;
+        const lookTop = boardBounds.top + stackTop - 8 - lookHeight - nextPilesTop;
+        piles.style.setProperty("--look-area-top", `${lookTop}px`);
+        piles.style.setProperty("--look-area-left", "0px");
+        board.style.setProperty("--stack-area-top", `${stackTop}px`);
+        // Overlay the unused left edge without removing a battlefield column.
+        const fieldCards = [...(row?.querySelectorAll('.game-card') || [])]
+          .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
+        const firstColumnLeft = fieldCards.length ? Math.min(...fieldCards.map(rect => rect.left)) : Math.min(360, window.innerWidth * .24);
+        const railWidth = `${Math.max(0, firstColumnLeft - 8)}px`;
+        if (board.style.getPropertyValue('--stack-frame-rail-width') !== railWidth) board.style.setProperty('--stack-frame-rail-width', railWidth);
+        board.style.setProperty('--stack-frame-rail-left', `${-boardBounds.left}px`);
       }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };

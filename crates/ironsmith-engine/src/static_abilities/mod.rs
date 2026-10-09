@@ -1050,8 +1050,14 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
-    /// The unconditional colors this ability defines for its source, when
-    /// printed or copied onto that object (CR 604.3).
+    /// Printed color contribution, honoring an explicit color-identity exception.
+    fn color_identity_contribution(&self) -> Option<crate::color::ColorSet> {
+        self.characteristic_defining_colors()
+    }
+
+    fn is_characteristic_defining_subtype_family(&self) -> bool { false }
+
+    /// The unconditional colors this ability defines for its source (CR 604.3).
     fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
         None
     }
@@ -1576,7 +1582,8 @@ impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAb
             Some(self.id()),
             self.is_source_only_graveyard_replacement()
                 || self.characteristic_defining_colors().is_some()
-                || self.characteristic_defining_subtypes().is_some(),
+                || self.characteristic_defining_subtypes().is_some()
+                || self.is_characteristic_defining_subtype_family(),
             self.grant_spec()
                 .filter(|spec| spec.filter.source)
                 .map(|spec| spec.zone),
@@ -2362,6 +2369,16 @@ impl StaticAbility {
 
     pub fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
         self.0.anthem_payload()
+    }
+
+    pub fn color_identity_contribution(&self) -> Option<crate::color::ColorSet> {
+        self.compiled_model().map_or_else(|| self.0.color_identity_contribution(),
+            |model| model.color_identity_contribution())
+    }
+
+    pub fn is_characteristic_defining_subtype_family(&self) -> bool {
+        self.compiled_model().map_or_else(|| self.0.is_characteristic_defining_subtype_family(),
+            |model| model.is_characteristic_defining_subtype_family())
     }
 
     pub fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {

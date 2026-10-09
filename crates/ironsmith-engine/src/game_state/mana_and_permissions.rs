@@ -2706,11 +2706,55 @@ impl GameState {
         reason: crate::costs::PaymentReason,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_pay_mana_cost_with_reason_and_outputs(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            decision_maker,
+        )
+        .map(|outputs| outputs.is_some())
+    }
+
+    pub(crate) fn try_pay_mana_cost_with_reason_and_outputs(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
+    {
+        self.try_pay_mana_cost_with_reason_and_owned_outputs(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            decision_maker,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_pay_mana_cost_with_reason_and_owned_outputs(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        payment_owner: Option<crate::provenance::ProvNodeId>,
+    ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
+    {
         let checked = self
             .continuous_query_snapshot()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let policy = checked.try_mana_spend_policy_for_reason(payer, source, reason)?;
-        self.try_pay_mana_cost_with_payment_options_and_dm(
+        self.try_pay_mana_cost_with_payment_options_and_owned_outputs(
             payer,
             source,
             cost,
@@ -2721,6 +2765,8 @@ impl GameState {
             true,
             false,
             decision_maker,
+            None,
+            payment_owner,
         )
     }
 
@@ -2841,8 +2887,48 @@ impl GameState {
         execution: Option<&crate::effects::ExecutionContextCheckpoint>,
     ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
     {
+        self.try_pay_mana_cost_with_payment_options_and_owned_outputs(
+            payer,
+            source,
+            cost,
+            x_value,
+            reason,
+            policy,
+            allow_life_payment,
+            allow_black_life,
+            prefer_life_payment,
+            decision_maker,
+            execution,
+            execution.map(crate::effects::ExecutionContextCheckpoint::provenance),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_pay_mana_cost_with_payment_options_and_owned_outputs(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+        policy: &crate::player::ManaSpendPolicy,
+        allow_life_payment: bool,
+        allow_black_life: bool,
+        prefer_life_payment: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+        payment_owner: Option<crate::provenance::ProvNodeId>,
+    ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
+    {
         self.try_mana_spend_policy_for_reason(payer, source, reason)?;
 
+        if let Some(execution) = execution
+            && payment_owner != Some(execution.provenance())
+        {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "mana payment execution belongs to another payment owner".into(),
+            ));
+        }
         let checkpoint = self.clone();
         let result = (|| {
             self.refresh_continuous_state()
@@ -2866,6 +2952,7 @@ impl GameState {
                 &plan,
                 decision_maker,
                 execution,
+                payment_owner,
             )
         })();
         if !matches!(&result, Ok(Some(_))) {
@@ -2913,6 +3000,7 @@ impl GameState {
             plan,
             decision_maker,
             execution,
+            execution.map(crate::effects::ExecutionContextCheckpoint::provenance),
         )
         .map(|paid| paid.is_some())
     }
@@ -2926,6 +3014,7 @@ impl GameState {
         plan: &ManaPaymentPlan,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
         execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+        payment_owner: Option<crate::provenance::ProvNodeId>,
     ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
     {
         let checkpoint = self.clone();
@@ -2940,6 +3029,7 @@ impl GameState {
                 plan,
                 decision_maker,
                 execution,
+                payment_owner,
             )
         })();
         if !matches!(&result, Ok(Some(_))) {
@@ -2960,6 +3050,7 @@ impl GameState {
         plan: &ManaPaymentPlan,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
         execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+        payment_owner: Option<crate::provenance::ProvNodeId>,
     ) -> Result<Option<Vec<crate::effects::CompletedEffectOutputs>>, crate::effects::ExecutionError>
     {
         let Some(player) = self.player(payer) else {
@@ -3047,6 +3138,8 @@ impl GameState {
             );
             if let Some(execution) = execution {
                 execution.restore_ref(&mut ctx);
+            } else if let Some(owner) = payment_owner {
+                ctx.provenance = owner;
             }
             ctx.mana.payment_reason = Some(reason);
             if let Some(paid) =
@@ -3082,7 +3175,7 @@ impl GameState {
             payer,
             source,
             reason,
-            execution.map(crate::effects::ExecutionContextCheckpoint::provenance),
+            payment_owner,
             spent_units,
         ));
         self.record_captured_mana_sources_spent_to_cast(source, reason, spent_source_snapshots);

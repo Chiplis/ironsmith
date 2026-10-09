@@ -2635,6 +2635,10 @@ pub fn parse_all_creatures_are_color_line(
         filter.zone = Some(Zone::Battlefield);
     }
 
+    if fact.exclude_from_color_identity {
+        if !filter.is_source_only() { return Ok(None); }
+        return Ok(Some(StaticAbility::set_colors_without_color_identity(filter, fact.color)));
+    }
     Ok(Some(StaticAbility::set_colors(filter, fact.color)))
 }
 
@@ -8615,7 +8619,7 @@ mod static_color_subject_tests {
     fn nominal_slivers_mean_permanents_and_literal_source_colorless_is_not_devoid() {
         let tokens = crate::lexer::lex_line("All Slivers are colorless.", 0).unwrap();
         let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
-        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors, .. } = ability.payload else {
             panic!("literal color statement must use SetColors");
         };
         assert_eq!(colors, crate::color::ColorSet::COLORLESS);
@@ -8625,7 +8629,7 @@ mod static_color_subject_tests {
         assert!(filter.controller.is_none() && !filter.source && !filter.other);
         let tokens = crate::lexer::lex_line("This spell is colorless.", 0).unwrap();
         let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
-        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors, .. } = ability.payload else {
             panic!("literal colorless is not the Devoid keyword");
         };
         assert!(filter.is_source_only());

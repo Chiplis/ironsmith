@@ -15,7 +15,7 @@ use crate::snapshot::ObjectSnapshot;
 pub(crate) struct ManaCreditReceipt {
     mana: Vec<ManaSymbol>,
     original_committed: bool,
-    outcome: EffectOutcome,
+    outputs: crate::effects::CompletedEffectOutputs,
 }
 
 impl ManaCreditReceipt {
@@ -24,31 +24,33 @@ impl ManaCreditReceipt {
     }
 }
 
-pub(crate) fn mana_added_value_outcome(
+pub(crate) fn mana_added_value_outputs(
     _ctx: &ExecutionContext,
     _player_id: PlayerId,
     mut receipt: ManaCreditReceipt,
-) -> EffectOutcome {
+) -> crate::effects::CompletedEffectOutputs {
     receipt
+        .outputs
         .outcome
         .set_value(OutcomeValue::ManaAdded(receipt.mana));
-    receipt.outcome
+    receipt.outputs
 }
 
-pub(crate) fn mana_added_count_outcome(
+pub(crate) fn mana_added_count_outputs(
     _ctx: &ExecutionContext,
     _player_id: PlayerId,
     mut receipt: ManaCreditReceipt,
     count: i32,
-) -> EffectOutcome {
+) -> crate::effects::CompletedEffectOutputs {
     receipt
+        .outputs
         .outcome
         .set_value(OutcomeValue::Count(if receipt.original_committed {
             i64::from(count)
         } else {
             0
         }));
-    receipt.outcome
+    receipt.outputs
 }
 
 /// Choose one or more mana colors through the decision system with stable
@@ -212,7 +214,9 @@ where
         return Ok(ManaCreditReceipt {
             mana: Vec::new(),
             original_committed: false,
-            outcome: EffectOutcome::count(0),
+            outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                0,
+            )),
         });
     }
     game.clear_pending_decision_controllers();
@@ -223,75 +227,81 @@ where
         return Ok(ManaCreditReceipt {
             mana,
             original_committed: true,
-            outcome: EffectOutcome::count(0),
+            outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                0,
+            )),
         });
     }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(ManaCreditReceipt {
-                mana: Vec::new(),
-                original_committed: false,
-                outcome: EffectOutcome::count(0),
-            });
-        }
-        let snapshot = if let Some(object) = game
-            .object(ctx.source)
-            .filter(|_| !game.is_phased_out(ctx.source))
-        {
-            let effects = game
-                .try_all_continuous_effects_arc()
-                .map_err(ExecutionError::ContinuousDiscovery)?;
-            Some(
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                    object, game, &effects,
-                ),
-            )
-        } else {
-            game.source_last_known_snapshot(ctx.source)
-                .cloned()
-                .or_else(|| ctx.source_snapshot.clone())
-        };
-        let event = crate::events::Event::new_with_provenance(
-            ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
-                .with_production_provenance(ctx.mana.production_provenance)
-                .with_snapshot(snapshot),
-            ctx.provenance,
-        );
-        let result = process_trait_event_with_execution_context(game, event, ctx)?;
-        let mut primary_mana = Vec::new();
-        let mut primary_committed = false;
-        let outcome = crate::effects::replacement::execute_event_expansion(
-            game,
-            ctx,
-            result,
-            |game, ctx, original| {
-                let receipt = commit_mana_result(game, ctx, original)?;
-                primary_mana = receipt.mana;
-                primary_committed = receipt.original_committed;
-                Ok(receipt.outcome)
-            },
-        )?;
-        Ok(ManaCreditReceipt {
-            mana: primary_mana,
-            original_committed: primary_committed,
-            outcome,
-        })
-    })();
-    let pending = ctx.decision_maker.awaiting_choice();
-    if pending || result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
-        context_checkpoint.restore(ctx);
-    }
-    if pending && result.is_ok() {
-        return Ok(ManaCreditReceipt {
+    crate::effects::composition::execute_transaction_from_body(
+        game,
+        ctx,
+        || ManaCreditReceipt {
             mana: Vec::new(),
             original_committed: false,
-            outcome: EffectOutcome::count(0),
-        });
-    }
-    result
+            outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                0,
+            )),
+        },
+        |game, ctx| {
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(ManaCreditReceipt {
+                    mana: Vec::new(),
+                    original_committed: false,
+                    outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ),
+                });
+            }
+            let snapshot = if let Some(object) = game
+                .object(ctx.source)
+                .filter(|_| !game.is_phased_out(ctx.source))
+            {
+                let effects = game
+                    .try_all_continuous_effects_arc()
+                    .map_err(ExecutionError::ContinuousDiscovery)?;
+                Some(
+                    ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                        object, game, &effects,
+                    ),
+                )
+            } else {
+                game.source_last_known_snapshot(ctx.source)
+                    .cloned()
+                    .or_else(|| ctx.source_snapshot.clone())
+            };
+            let event = crate::events::Event::new_with_provenance(
+                ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
+                    .with_production_provenance(ctx.mana.production_provenance)
+                    .with_snapshot(snapshot),
+                ctx.provenance,
+            );
+            let result = process_trait_event_with_execution_context(game, event, ctx)?;
+            let mut primary_mana = Vec::new();
+            let mut primary_committed = false;
+            let outputs = crate::effects::replacement::execute_event_expansion_with_outputs(
+                game,
+                ctx,
+                result,
+                |game, ctx, original| {
+                    let receipt = commit_mana_result(game, ctx, original)?;
+                    primary_mana = receipt.mana;
+                    primary_committed = receipt.original_committed;
+                    Ok(receipt.outputs)
+                },
+                |_, _, _| {
+                    Ok(crate::effects::replacement::ReplacementProgramBindings {
+                        targets: None,
+                        object_tags: Vec::new(),
+                    })
+                },
+            )?;
+            Ok(ManaCreditReceipt {
+                mana: primary_mana,
+                original_committed: primary_committed,
+                outputs,
+            })
+        },
+    )
 }
 
 fn commit_mana_result(
@@ -327,7 +337,7 @@ fn commit_mana_result(
             Ok(ManaCreditReceipt {
                 mana: resolved.mana.clone(),
                 original_committed: true,
-                outcome,
+                outputs: crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
             })
         }
         TraitEventResult::Replaced {
@@ -337,29 +347,43 @@ fn commit_mana_result(
             context,
             ..
         } => {
-            let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                game, ctx, &effects, source, controller, &context, None,
+            let outputs = crate::effects::replacement::execute_replacement_payload_with_outputs(
+                game,
+                ctx,
+                &effects,
+                source,
+                controller,
+                &context,
+                None,
+                None,
+                Vec::new(),
             )?;
             let mut original = EffectOutcome::replaced();
             original.set_value(OutcomeValue::Count(0));
-            let outcome = EffectOutcome::aggregate_replacement_outcomes(original, [outcome]);
+            let outputs = crate::effects::replacement::project_replacement_original_outputs(
+                original, outputs,
+            );
             Ok(ManaCreditReceipt {
                 mana: Vec::new(),
                 original_committed: false,
-                outcome,
+                outputs,
             })
         }
         TraitEventResult::Prevented => Ok(ManaCreditReceipt {
             mana: Vec::new(),
             original_committed: false,
-            outcome: EffectOutcome::prevented(),
+            outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::prevented(),
+            ),
         }),
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
             if ctx.decision_maker.awaiting_choice() {
                 Ok(ManaCreditReceipt {
                     mana: Vec::new(),
                     original_committed: false,
-                    outcome: EffectOutcome::count(0),
+                    outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ),
                 })
             } else {
                 Err(ExecutionError::InternalError(

@@ -2218,7 +2218,7 @@ impl GameState {
             return Some(Vec::new());
         }
         let required = if optional { 0 } else { private.len() };
-        let spec = ChooseObjectsSpec::new(
+        let mut spec = ChooseObjectsSpec::new(
             source,
             description.to_string(),
             private.clone(),
@@ -2227,6 +2227,14 @@ impl GameState {
         )
         .require_explicit_choice()
         .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+        // The set is already fixed by the effect. Keep the explicit synchronized
+        // answer for authenticated openings, but let the owner client submit it.
+        spec.automatic_public_reveal = !optional && payment.is_none()
+            && self.player(owner).is_some_and(|player| {
+                !player.hand.is_empty()
+                    && player.hand.iter().all(|id| cards.contains(id))
+                    && cards.iter().all(|id| player.hand.contains(id))
+            });
         let spec = if let Some(payment) = payment {
             spec.with_cost_payment(payment.source, payment.payer)
         } else { spec };
@@ -2420,5 +2428,84 @@ mod public_prevention_receipt_identity_tests {
         let projected = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
         assert_eq!(receipts(&projected), vec![(0, 4), (1, 0)],
             "unavailable identity and an actual zero-amount receipt stay distinct");
+    }
+}
+
+#[cfg(test)]
+mod automatic_hand_reveal_tests {
+    use super::*;
+    use crate::decisions::context::SelectObjectsContext;
+    #[derive(Default)]
+    struct Capture(Option<SelectObjectsContext>);
+    impl crate::decision::DecisionMaker for Capture {
+        fn decide_objects(
+            &mut self,
+            _: &GameState,
+            context: &SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.0 = Some(context.clone());
+            context.candidates.iter().map(|card| card.id).collect()
+        }
+    }
+    #[test]
+    fn only_forced_whole_hand_disclosure_is_automatic() {
+        for (whole, optional, cost, public, expected) in [
+            (true, false, false, false, true),
+            (true, false, false, true, true),
+            (false, false, false, false, false),
+            (true, true, false, false, false),
+            (true, false, true, false, false),
+        ] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let owner = PlayerId::from_index(0);
+            let card =
+                crate::card::CardBuilder::new(crate::ids::CardId::new(), "Hand card").build();
+            let hand: Vec<_> = (0..7)
+                .map(|slot| {
+                    let id = game.create_object_from_card(&card, owner, Zone::Hand);
+                    game.set_hidden_card_info(
+                        id,
+                        crate::game_state::HiddenCardInfo {
+                            incarnation: Some(0),
+                            owner,
+                            zone: Zone::Hand,
+                            slot,
+                            commitment: format!("slot-{slot}"),
+                            origin_slot: None,
+                            origin_commitment: None,
+                            public_slot: None,
+                            public_commitment: None,
+                        },
+                    );
+                    id
+                })
+                .collect();
+            if public {
+                game.mark_hidden_cards_publicly_revealed(&hand[..1]);
+            }
+            let mut dm = Capture::default();
+            let cards = if whole { &hand[..] } else { &hand[..2] };
+            let payment = cost.then_some(crate::decisions::context::CostPaymentIdentity {
+                source: hand[0],
+                payer: owner,
+            });
+            game.reveal_private_hidden_cards_publicly_with_payment(
+                &mut dm,
+                owner,
+                hand[0],
+                cards,
+                "Reveal hand",
+                optional,
+                payment,
+                false,
+            )
+            .unwrap();
+            let context = dm.0.expect("opening still needs a synchronized answer");
+            assert_eq!(context.automatic_public_reveal, expected);
+            assert_eq!(
+                context.reveal_policy,
+                crate::decisions::context::SelectionRevealPolicy::Public
+            );
+        }
     }
 }

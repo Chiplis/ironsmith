@@ -26,13 +26,24 @@ impl EffectExecutor for ShuffleLibraryAction {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
         if game.player(self.player).is_none() {
             return Err(ExecutionError::PlayerNotFound(self.player));
         }
-        Ok(commit_library_shuffle(
+        Ok(commit_library_shuffle_with_outputs(
             game,
             self.player,
             &self.retained,
@@ -57,6 +68,30 @@ pub(crate) fn commit_library_shuffle(
     cause: crate::events::cause::EventCause,
     provenance: impl FnOnce(&mut GameState) -> crate::provenance::ProvNodeId,
 ) -> EffectOutcome {
+    commit_library_shuffle_with_outputs(
+        game,
+        player,
+        retained,
+        position_from_top,
+        reason,
+        cause,
+        provenance,
+    )
+    .into_outcome()
+}
+
+/// The native randomization owner returns its actual original completion.
+/// Scalar and recorded callers project this packet without replaying RNG.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_library_shuffle_with_outputs(
+    game: &mut GameState,
+    player: crate::ids::PlayerId,
+    retained: &[crate::ids::ObjectId],
+    position_from_top: usize,
+    reason: &str,
+    cause: crate::events::cause::EventCause,
+    provenance: impl FnOnce(&mut GameState) -> crate::provenance::ProvNodeId,
+) -> crate::effects::CompletedEffectOutputs {
     if retained.is_empty() {
         game.shuffle_player_library(player);
     } else {
@@ -68,9 +103,8 @@ pub(crate) fn commit_library_shuffle(
         );
     }
     let provenance = provenance(game);
-    EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-        ShuffleLibraryEvent::new(player, cause),
-        provenance,
+    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved().with_event(
+        TriggerEvent::new_with_provenance(ShuffleLibraryEvent::new(player, cause), provenance),
     ))
 }
 
@@ -152,9 +186,18 @@ impl EffectExecutor for ShuffleLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        shuffle_library(game, ctx, player_id, &[], 1, "library shuffled")
+        shuffle_library_with_outputs(game, ctx, player_id, &[], 1, "library shuffled")
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -178,8 +221,21 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         ShuffleLibraryEffect::new(crate::target::PlayerFilter::Specific(self.player))
-            .execute(game, ctx)
+            .execute_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::finished)
     }
 }
 

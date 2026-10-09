@@ -37,6 +37,26 @@ test('battlefield hover shows a live frame with its art while card images are st
     await page.waitForFunction(() => !document.querySelector('[data-card-hover-preview] [data-loading-frame="true"]'));
     await page.locator('[data-card-hover-preview][data-visible="true"] [data-render-ready="true"]').waitFor();
     assert.equal(await page.locator('.card-frame-art-preview').count(), 0);
+    await page.waitForFunction(() => {
+      const source = document.querySelector('.battlefield-row-card[data-object-id="1"]').getBoundingClientRect();
+      const preview = document.querySelector('[data-card-hover-preview][data-visible="true"]')?.getBoundingClientRect();
+      return preview && Math.abs(preview.left - source.right - 8) < 2;
+    });
+    const glow = page.locator('.battlefield-row-card[data-object-id="1"] .card-inspector-source-glow');
+    assert.equal(await glow.evaluate(el => getComputedStyle(el).borderRadius), '4px');
+    await page.getByRole('button', { name: 'Clear hover' }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    await page.locator('.battlefield-row-card[data-object-id="2"]').evaluate(el => {
+      Object.assign(el.style, { position: 'fixed', right: '20px', top: '140px', marginTop: '0' });
+    });
+    await page.getByAltText('Field card 2').hover();
+    await page.waitForFunction(() => {
+      const source = document.querySelector('.battlefield-row-card[data-object-id="2"]').getBoundingClientRect();
+      const preview = document.querySelector('[data-card-hover-preview][data-visible="true"][data-preview-object-id="2"]')?.getBoundingClientRect();
+      return preview && Math.abs(source.left - preview.right - 8) < 2 && preview.left >= 8;
+    });
+    await page.screenshot({ path: '/tmp/hover-preview-beside-card.png' });
     assert.deepEqual(errors, []);
   } finally { releaseImages(); await browser.close(); await vite.close(); }
 });
@@ -69,12 +89,15 @@ test('hover reuses the displayed object image and follows per-object changes', {
       const shown = node?.querySelector('.original-card-fallback > img, .interactive-card-frame__art img')?.getAttribute('src') || node?.style.getPropertyValue('--source-frame-image');
       return [src, `url("${src}")`].includes(shown);
     });
+    await page.getByRole('button', { name: 'Clear hover' }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
     await page.getByAltText('Field card 2').hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId === '2');
     // A per-object image remains authoritative in every frame mode, including
     // a custom frame that displays it inside the art box.
     const fieldTwoSource = await page.getByAltText('Field card 2').getAttribute('src');
-    await page.locator('[data-card-hover-preview][data-preview-object-id="2"] [data-render-ready="true"]').waitFor();
+    await page.locator('[data-card-hover-preview][data-visible="true"][data-preview-object-id="2"] .interactive-card-frame-stage').waitFor();
     const previewSource = await page.locator('[data-card-hover-preview][data-visible="true"] .interactive-card-frame-stage').evaluate(node =>
       node.querySelector('.original-card-fallback > img, .interactive-card-frame__art img')?.getAttribute('src') || node.style.getPropertyValue('--source-frame-image'));
     assert.ok([fieldTwoSource, `url("${fieldTwoSource}")`].includes(previewSource), previewSource);

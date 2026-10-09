@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   battlefieldGridSlotAtPoint,
+  battlefieldGridContentBounds,
   battlefieldLaneForCard,
   battlefieldPlacementForDrag,
   isPermanentCard,
@@ -65,4 +66,24 @@ test("pointer coordinates resolve to the compact centered battlefield grid", () 
     { row: 2, column: 4 }
   );
   assert.equal(battlefieldGridSlotAtPoint({ ...layout, x: 120, y: 100 }), null);
+});
+
+
+test("drop slots follow the padded content box with a stack rail and scrollbar", () => {
+  const element = {
+    getBoundingClientRect: () => ({left: 10, top: 100, width: 1000}),
+    clientLeft: 2, clientTop: 2, clientWidth: 981,
+  };
+  const bounds = battlefieldGridContentBounds(element, {
+    paddingLeft: "400px", paddingRight: "21px", paddingTop: "22px", justifyContent: "center",
+  });
+  assert.deepEqual(bounds, {left: 412, top: 124, width: 560, alignStart: false});
+  const layout = {...bounds, rows: 2, columns: 4, cardWidth: 100, cardHeight: 90, gap: 20, rowGap: 30};
+  // 460px grid centered in 560px of usable space. Scroll the second row up 40px.
+  for (let column = 1; column <= 4; column++) {
+    assert.deepEqual(battlefieldGridSlotAtPoint({...layout, x: 512 + (column - 1) * 120, y: 249, scrollTop: 40}), {row: 2, column});
+  }
+  assert.equal(battlefieldGridSlotAtPoint({...layout, x: 300, y: 169}), null, "stack rail cannot receive cards");
+  assert.equal(battlefieldGridSlotAtPoint({...layout, x: 512, y: 110}), null, "top padding cannot receive cards");
+  assert.deepEqual(battlefieldGridSlotAtPoint({...layout, alignStart: true, x: 420, y: 169}), {row: 1, column: 1});
 });

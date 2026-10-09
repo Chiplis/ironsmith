@@ -1,0 +1,43 @@
+[data-workspace-shell][data-forge-board="true"] { isolation: isolate; }
+.forge-board {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #101a2d linear-gradient(#02081788, #02081788), url('/theme/forge-arena/terrain.png') center / 100% 100% no-repeat;
+  contain: strict;
+}
+.forge-board canvas { display: block; width: 100%; height: 100%; }
+/* These surfaces previously painted an opaque board over the scenery. Keep
+   menus, card faces, HUD panels, and all existing interaction layers intact. */
+[data-workspace-shell][data-forge-board="true"] .table-shell,
+[data-workspace-shell][data-forge-board="true"] .board-zone-bg,
+[data-workspace-shell][data-forge-board="true"] .battlefield-subpanel,
+[data-workspace-shell][data-forge-board="true"] .battlefield-row,
+[data-workspace-shell][data-forge-board="true"] .battlefield-panel,
+[data-workspace-shell][data-forge-board="true"] .mobile-mtga-scene-layout,
+[data-workspace-shell][data-forge-board="true"] .mobile-battle-scene-layout,
+[data-workspace-shell][data-forge-board="true"] .mobile-mtga-battlefield-band {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+[data-workspace-shell][data-forge-board="true"] .battlefield-row::before,
+[data-workspace-shell][data-forge-board="true"] .battlefield-row::after { display: none !important; }
+
+/* Give small HUD labels contrast against the detailed terrain. */
+[data-workspace-shell][data-forge-board="true"] .battlefield-panel-header,
+[data-workspace-shell][data-forge-board="true"] .toolbar-brand {
+  text-shadow: 0 2px 4px #000, 0 0 12px #000;
+}
+
+/* Keep HUD and inspectors upright; only the physical card layers lie on the table.
+   Layout/hit boxes remain in screen space and the renderer unprojects them. */
+[data-forge-board="true"] .battlefield-arena-card { perspective: 900px; }
+[data-forge-board="true"] .battlefield-arena-card > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
+  transform: rotateX(12deg);
+  transform-origin: center;
+}
+[data-forge-board="true"] .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
+  transform: rotateX(12deg) rotateZ(8deg) scale(.90);
+}

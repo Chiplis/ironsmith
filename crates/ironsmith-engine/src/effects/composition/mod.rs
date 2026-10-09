@@ -17,13 +17,17 @@
 
 mod action_program;
 mod action_units;
+pub(crate) use action_program::projected_program_cursor;
 pub use action_program::{
-    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion, ProgramPreparation,
+    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion,
+    ProgramInstructionSelection, ProgramPreparation,
 };
 mod aura_swap;
 mod behold;
 mod bid_life;
 mod branch_program;
+mod captured_program;
+pub(crate) use captured_program::CapturedProgramFrame;
 mod choose_mode;
 mod choose_mode_runtime;
 pub(crate) mod choose_objects;
@@ -31,6 +35,8 @@ pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
 mod collect_mana_payments;
+mod completion_phase;
+pub(crate) use completion_phase::{CompletionInput, CompletionPhase};
 mod compound;
 mod conditional;
 mod cumulative_upkeep;
@@ -110,9 +116,10 @@ pub(crate) use compound::{
     execute_checkpoint_transaction, execute_compound, execute_decision_transaction,
     execute_error_transaction_if, execute_optional_world_transaction,
     execute_original_view_transaction, execute_result_checkpoint_transaction,
-    execute_result_decision_transaction, execute_result_transaction, execute_transaction,
-    execute_transaction_from_body, execute_world_checkpoint_transaction,
-    execute_world_result_transaction,
+    execute_result_decision_checkpoint_transaction, execute_result_decision_transaction,
+    execute_result_transaction, execute_transaction, execute_transaction_from_body,
+    execute_world_checkpoint_transaction, execute_world_context_checkpoint_transaction,
+    execute_world_error_transaction, execute_world_result_transaction,
 };
 pub use conditional::ConditionalEffect;
 pub use cumulative_upkeep::CumulativeUpkeepEffect;
@@ -157,7 +164,7 @@ pub use repeat_process_prompt::RepeatProcessPromptEffect;
 pub use secret_choice::{SecretChoiceEffect, SecretChoiceResult};
 pub use sequence::SequenceEffect;
 pub(crate) use sequence::execute_checked_program_with_outputs;
-pub(crate) use sequence::execute_observed_replacement_children_with_outputs;
+pub(crate) use sequence::{OrderedProgramCursor, execute_observed_replacement_cursor_with_outputs};
 pub(crate) use simultaneous::{
     OriginalTriggerObservation, complete_prepared_original_with_outputs,
     execute_simultaneous_originals, execute_simultaneous_originals_with_default_outputs,
@@ -217,3 +224,6 @@ mod resolution_stop_tests;
 
 #[cfg(test)]
 mod prepared_port_regressions;
+
+mod held_original;
+pub(crate) use held_original::defer_authored_original_additions_with_outputs;

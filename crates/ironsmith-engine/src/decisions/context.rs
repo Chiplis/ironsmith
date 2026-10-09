@@ -522,6 +522,8 @@ pub struct SelectObjectsContext {
     pub allow_partial_completion: bool,
     /// Whether engine auto-selection of a single required object should be skipped.
     pub require_explicit_choice: bool,
+    /// A forced whole-hand disclosure whose answer can be sent by the owner client.
+    pub automatic_public_reveal: bool,
     /// Default synced identity strategy for candidates in this decision.
     pub selection_identity: SelectionIdentity,
     /// Default hidden-card opening policy for selected candidates in this decision.
@@ -552,6 +554,7 @@ impl SelectObjectsContext {
             relation_filter: None,
             allow_partial_completion: false,
             require_explicit_choice: false,
+            automatic_public_reveal: false,
             selection_identity: SelectionIdentity::StableId,
             reveal_policy: SelectionRevealPolicy::None,
             ui_hints: DecisionUiHints::default(),

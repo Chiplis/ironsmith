@@ -90,17 +90,24 @@ pub(crate) fn execute_replacement_payload_with_outputs(
     captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     object_tags: Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    with_replacement_child(
+    BoundReplacementProgram::acquire(
         game,
         parent,
+        ReplacementProgramSchedule::Ordered(
+            crate::effects::composition::OrderedProgramCursor::replacement(
+                std::borrow::Cow::Borrowed(effects),
+            ),
+        ),
         source,
         controller,
         context,
-        targets,
+        ReplacementProgramBindings {
+            targets,
+            object_tags,
+        },
         captured_source_snapshot,
-        object_tags,
-        |game, child| execute_replacement_program_with_outputs(game, child, effects),
-    )
+    )?
+    .execute_with_outputs(game, parent)
 }
 
 /// Execute one selected replacement original with its authored primary result.
@@ -118,18 +125,18 @@ pub(crate) fn execute_replacement_original_payload_with_outputs(
     captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     original: EffectOutcome,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    let payload = execute_replacement_payload_with_outputs(
+    BoundReplacementOriginalProgram::acquire(
         game,
         parent,
-        effects,
+        std::borrow::Cow::Borrowed(effects),
         source,
         controller,
         context,
-        bindings.targets,
+        bindings,
         captured_source_snapshot,
-        bindings.object_tags,
-    )?;
-    Ok(project_replacement_original_outputs(original, payload))
+        original,
+    )?
+    .execute_with_outputs(game, parent)
 }
 
 /// Project a replaced action over its actual completed subtree. Fresh execution
@@ -141,6 +148,190 @@ pub(crate) fn project_replacement_original_outputs(
     let aggregate =
         EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
     payload.project_aggregate(aggregate)
+}
+
+/// The bound original program owns its actual acquired child context. The
+/// existing atomic and draw-aware schedules consume the same value; future
+/// authored operands remain unevaluated until their instruction executes.
+pub(crate) struct BoundReplacementOriginalProgram<'effects> {
+    program: BoundReplacementProgram<'effects>,
+    original: EffectOutcome,
+}
+
+/// The acquired context and actual cursor have one owner for original and
+/// appended payloads. Acquisition does not execute or pre-evaluate a child.
+struct BoundReplacementProgram<'effects> {
+    frame: crate::effects::composition::CapturedProgramFrame<ReplacementProgramSchedule<'effects>>,
+}
+
+enum ReplacementProgramSchedule<'effects> {
+    Ordered(crate::effects::composition::OrderedProgramCursor<'effects>),
+    DrawContinuation(std::borrow::Cow<'effects, [Effect]>),
+}
+
+impl<'effects> ReplacementProgramSchedule<'effects> {
+    fn into_cursor(self) -> Box<dyn crate::effects::ActionProgramCursor + 'effects> {
+        let cursor = match self {
+            Self::Ordered(cursor) => cursor,
+            Self::DrawContinuation(effects) => {
+                crate::effects::composition::OrderedProgramCursor::replacement(effects)
+            }
+        };
+        Box::new(cursor)
+    }
+
+    fn execute_with_outputs(
+        self,
+        game: &mut GameState,
+        child: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_replacement_cursor_with_outputs(game, child, self.into_cursor())
+    }
+
+    fn commit_original_with_outputs(
+        self,
+        game: &mut GameState,
+        child: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        match self {
+            Self::DrawContinuation(effects) => {
+                super::draw_continuation::prepare_bound_original_program_draw_with_outputs(
+                    game, child, &effects, original,
+                )
+            }
+            ordered => {
+                let cursor = crate::effects::composition::projected_program_cursor(
+                    ordered.into_cursor(),
+                    move |payload| project_replacement_original_outputs(original, payload),
+                );
+                execute_replacement_cursor_with_outputs(game, child, cursor)
+                    .map(crate::effects::SimultaneousEffectCommit::finished)
+            }
+        }
+    }
+}
+
+impl<'effects> BoundReplacementProgram<'effects> {
+    #[allow(clippy::too_many_arguments)]
+    fn acquire(
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+        schedule: ReplacementProgramSchedule<'effects>,
+        source: ObjectId,
+        controller: PlayerId,
+        context: &ReplacementEventContext,
+        bindings: ReplacementProgramBindings,
+        captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) -> Result<Self, ExecutionError> {
+        with_replacement_child(
+            game,
+            parent,
+            source,
+            controller,
+            context,
+            bindings.targets,
+            captured_source_snapshot,
+            bindings.object_tags,
+            |_, child| {
+                Ok(Self {
+                    frame: crate::effects::composition::CapturedProgramFrame::capture(
+                        schedule, child,
+                    ),
+                })
+            },
+        )
+    }
+
+    fn run<T>(
+        self,
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+        run: impl FnOnce(
+            &mut GameState,
+            &mut ExecutionContext,
+            ReplacementProgramSchedule<'effects>,
+        ) -> Result<T, ExecutionError>,
+    ) -> Result<T, ExecutionError> {
+        self.frame.run(game, parent, run)
+    }
+
+    fn execute_with_outputs(
+        self,
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.run(game, parent, |game, child, schedule| {
+            schedule.execute_with_outputs(game, child)
+        })
+    }
+}
+
+impl<'effects> BoundReplacementOriginalProgram<'effects> {
+    #[allow(clippy::too_many_arguments)]
+    fn acquire(
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+        effects: std::borrow::Cow<'effects, [Effect]>,
+        source: ObjectId,
+        controller: PlayerId,
+        context: &ReplacementEventContext,
+        bindings: ReplacementProgramBindings,
+        captured_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        original: EffectOutcome,
+    ) -> Result<Self, ExecutionError> {
+        let schedule =
+            if super::draw_continuation::original_program_uses_draw_continuation(&effects) {
+                ReplacementProgramSchedule::DrawContinuation(effects)
+            } else {
+                ReplacementProgramSchedule::Ordered(
+                    crate::effects::composition::OrderedProgramCursor::replacement(effects),
+                )
+            };
+        let program = BoundReplacementProgram::acquire(
+            game,
+            parent,
+            schedule,
+            source,
+            controller,
+            context,
+            bindings,
+            captured_source_snapshot,
+        )?;
+        Ok(Self { program, original })
+    }
+
+    pub(crate) fn execute_with_outputs(
+        self,
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let frame = self.program.frame.map(|schedule| {
+            crate::effects::composition::projected_program_cursor(
+                schedule.into_cursor(),
+                move |payload| project_replacement_original_outputs(self.original, payload),
+            )
+        });
+        frame.run(game, parent, |game, child, cursor| {
+            execute_replacement_cursor_with_outputs(game, child, cursor)
+        })
+    }
+
+    pub(crate) fn commit_original_with_outputs(
+        self,
+        game: &mut GameState,
+        parent: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.program.run(game, parent, |game, child, schedule| {
+            schedule.commit_original_with_outputs(game, child, self.original)
+        })
+    }
 }
 
 /// Freeze the existing live/LKI/parent precedence before sibling originals.
@@ -212,32 +403,26 @@ pub(super) fn execute_replacement_program_with_outputs(
     child: &mut ExecutionContext,
     effects: &[Effect],
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_replacement_cursor_with_outputs(
+        game,
+        child,
+        Box::new(
+            crate::effects::composition::OrderedProgramCursor::replacement(
+                std::borrow::Cow::Borrowed(effects),
+            ),
+        ),
+    )
+}
+
+fn execute_replacement_cursor_with_outputs<'cursor>(
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    cursor: Box<dyn crate::effects::ActionProgramCursor + 'cursor>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-        let children =
-            crate::effects::composition::execute_observed_replacement_children_with_outputs(
-                game,
-                child,
-                effects,
-                |game, child, next, children| {
-                    crate::effects::runtime::capture_triggers_before_added_program(
-                        game,
-                        child,
-                        next,
-                        children
-                            .iter_mut()
-                            .flat_map(|outputs| outputs.outcome.events.iter_mut()),
-                    )
-                    .map(|_| ())
-                },
-            )?;
-        let aggregate =
-            EffectOutcome::aggregate(children.iter().map(|outputs| outputs.outcome.clone()));
-        let mut outputs =
-            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
-        for child in children {
-            outputs.retain_owned_child(child);
-        }
-        Ok(outputs.project_aggregate(aggregate))
+        crate::effects::composition::execute_observed_replacement_cursor_with_outputs(
+            game, child, cursor,
+        )
     })
 }
 
@@ -260,12 +445,50 @@ pub(crate) struct PreparedReplacementOriginal {
 }
 
 impl PreparedReplacementOriginal {
+    /// Acquire the actual original program without executing a child. This is
+    /// the ownership handoff for original coordinators: source, event history,
+    /// bindings and selected program state travel together to the consumer.
+    /// Acquisition stays at the caller's original boundary; it does not freeze
+    /// future authored operands or change the program's scheduling eligibility.
+    pub(crate) fn acquire_bound_original(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<BoundReplacementOriginalProgram<'static>, ExecutionError> {
+        let inherited = std::mem::replace(&mut ctx.replacement, self.scope);
+        let result = (|| {
+            let mut original = self.original;
+            // Qualify pending observations before the first instruction can
+            // change their sources; simultaneous owners hold this boundary.
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game,
+                ctx,
+                self.program.effects.first(),
+                original.events.iter_mut(),
+            )?;
+            BoundReplacementOriginalProgram::acquire(
+                game,
+                ctx,
+                std::borrow::Cow::Owned(self.program.effects),
+                self.program.source,
+                self.program.controller,
+                &self.program.context,
+                self.bindings,
+                self.program.source_snapshot,
+                original,
+            )
+        })();
+        ctx.replacement = inherited;
+        result
+    }
+
     pub(crate) fn commit_with_outputs(
         self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        self.in_scope(game, ctx, execute_replacement_original_program_with_outputs)
+        self.acquire_bound_original(game, ctx)?
+            .execute_with_outputs(game, ctx)
     }
 
     /// Return the committed prefix and its actual draw/tail continuation.
@@ -278,78 +501,42 @@ impl PreparedReplacementOriginal {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        self.in_scope(game, ctx, |game, ctx, program, bindings, original| {
-            if let Some(receipt) = super::prepare_draw_continuation_with_original_and_outputs(
-                game,
-                ctx,
-                &program.effects,
-                program.source,
-                program.controller,
-                &program.context,
-                program.source_snapshot.clone(),
-                bindings.clone(),
-                original.clone(),
-            )? {
-                return Ok(receipt);
-            }
-            execute_replacement_original_program_with_outputs(
-                game, ctx, program, bindings, original,
-            )
-            .map(crate::effects::SimultaneousEffectCommit::finished)
-        })
-    }
-
-    fn in_scope<'a, T>(
-        self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext<'a>,
-        commit: impl FnOnce(
-            &mut GameState,
-            &mut ExecutionContext<'a>,
-            crate::events::processing::PreparedReplacementProgram,
-            ReplacementProgramBindings,
-            EffectOutcome,
-        ) -> Result<T, ExecutionError>,
-    ) -> Result<T, ExecutionError> {
-        let inherited = std::mem::replace(&mut ctx.replacement, self.scope);
-        let result = (|| {
-            let mut original = self.original;
-            // Qualify pending observations before the first instruction can
-            // change their sources; simultaneous owners hold this boundary.
-            crate::effects::runtime::capture_triggers_before_added_program(
-                game,
-                ctx,
-                self.program.effects.first(),
-                original.events.iter_mut(),
-            )?;
-            commit(game, ctx, self.program, self.bindings, original)
-        })();
-        ctx.replacement = inherited;
-        result
+        self.acquire_bound_original(game, ctx)?
+            .commit_original_with_outputs(game, ctx)
     }
 }
 
-/// Execute an original programme through the shared payload owner. The action
-/// adapter supplies its authored result; child observations stay auxiliary.
-/// The enclosing action checkpoints before selection and owns suspension.
-fn execute_replacement_original_program_with_outputs(
+/// Commit an already selected replacement original in its caller-owned scope.
+/// Event families retain snapshot acquisition and recipient binding policies;
+/// the bound owner selects native continuation versus ordered execution once.
+/// Outer additions and nominal cost acknowledgement remain with their owners.
+pub(crate) fn commit_bound_replacement_program_original_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     program: crate::events::processing::PreparedReplacementProgram,
     bindings: ReplacementProgramBindings,
-    original: EffectOutcome,
-) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    execute_replacement_original_payload_with_outputs(
+) -> Result<
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+    ExecutionError,
+> {
+    BoundReplacementOriginalProgram::acquire(
         game,
         ctx,
-        &program.effects,
+        std::borrow::Cow::Owned(program.effects),
         program.source,
         program.controller,
         &program.context,
         bindings,
         program.source_snapshot,
-        original,
-    )
+        replaced_original_outcome(),
+    )?
+    .commit_original_with_outputs(game, ctx)
+}
+
+fn replaced_original_outcome() -> EffectOutcome {
+    let mut original = EffectOutcome::replaced();
+    original.set_value(crate::effect::OutcomeValue::Count(0));
+    original
 }
 
 /// Commit a retained original replacement program in its captured event scope.
@@ -381,8 +568,7 @@ pub(crate) fn commit_replacement_original_with_outputs(
         )));
     }
     let bindings = bindings(&program.context)?;
-    let mut original = EffectOutcome::replaced();
-    original.set_value(crate::effect::OutcomeValue::Count(0));
+    let original = replaced_original_outcome();
     PreparedReplacementOriginal {
         program,
         scope: ctx.replacement.clone(),

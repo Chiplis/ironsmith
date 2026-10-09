@@ -399,3 +399,60 @@ fn mana_value_x_alternative_cost_bounds_use_eligible_cards_not_the_mana_pool() {
         "two cards of different mana values cannot pay one fixed X"
     );
 }
+
+#[test]
+fn mana_and_tap_activation_releases_paid_tap_reservation() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+    let definition = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Tap cost source")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(crate::ability::Ability::activated(
+            crate::cost::TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(ManaCost::new().add_generic(2)),
+                crate::costs::Cost::tap(),
+            ]),
+            vec![Effect::gain_life(1)],
+        ))
+        .build();
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let mut queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(2);
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source,
+            ability_index: 0,
+        }),
+        &mut dm,
+    )
+    .unwrap();
+    let pending = state
+        .pending_activation
+        .as_ref()
+        .expect("activation awaits payment");
+    let payment = pending.pending_mana_payment.as_ref().unwrap();
+    assert!(payment.request.reserved_tap_sources.contains(&source));
+    assert!(!game.is_tapped(source));
+    let response = crate::mana_payment::ManaPaymentResponse::Confirm {
+        plan_id: payment.plan.id.clone(),
+        request_hash: payment.plan.request_hash.clone(),
+    };
+    super::super::priority_mana::apply_mana_payment_plan_response(
+        &mut game, &mut queue, &mut state, &response, &mut dm,
+    )
+    .expect("paying the tap cost must not invalidate the mana payment");
+    assert!(game.is_tapped(source));
+    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+    assert!(state.pending_activation.is_none());
+    assert_eq!(game.stack.len(), 1);
+    assert_eq!(game.ability_activation_count_this_turn(source, 0), 1);
+}

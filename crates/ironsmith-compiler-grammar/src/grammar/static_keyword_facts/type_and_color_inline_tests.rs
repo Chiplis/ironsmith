@@ -125,3 +125,22 @@ fn source_and_nominal_color_predicates_require_complete_clauses() {
         assert!(parse_subject_color_tokens(&lex(text)).is_none(), "{text}");
     }
 }
+
+#[test]
+fn color_identity_exception_is_a_complete_followup_sentence() {
+    for text in [
+        "This creature is all colors. This ability doesn't affect its color identity.",
+        "This creature is all colors. This ability does not affect its color identity.",
+    ] {
+        let tokens = lex(text);
+        let fact = parse_subject_color_tokens(&tokens).unwrap();
+        assert!(fact.exclude_from_color_identity);
+    }
+    for text in [
+        "This creature is all colors. This ability affects its color identity.",
+        "This creature is all colors. This ability doesn't affect its color identity until end of turn.",
+        "This creature is all colors. This ability doesn't affect its color.",
+    ] {
+        assert!(parse_subject_color_tokens(&lex(text)).is_none(), "{text}");
+    }
+}

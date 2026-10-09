@@ -444,12 +444,14 @@ export default function TableCore({
           </div>
         </div>
         {!focusedHudDesktop ? <PriorityHoldControl /> : null}
+        <div className="local-player-mana-dock">
         <ManaPool
           pool={me.mana_pool}
           alwaysVisible
           compact
           className="player-name-mana battlefield-header-mana"
         />
+        </div>
         {focusedHudDesktop ? (
           // Chat tab sits right after the player's name, between it and the
           // hand; the panel opens upward from there.
@@ -628,10 +630,13 @@ export default function TableCore({
       data-tablet-compact={tabletCompactViewport ? "true" : "false"}
       data-decision-strip-removed={sharedMiddleElement ? "true" : "false"}
       data-focused-hud={focusedHudDesktop ? "true" : "false"}
+      data-multiplayer-board={opponents.length > 1 ? "true" : undefined}
       style={{
+        "--opponent-board-share": opponents.length > 1 ? "1fr" : "0.86fr",
+        "--local-board-share": opponents.length > 1 ? "1fr" : "1.14fr",
         // Keep in sync with the focused HUD split in design-system.css.
         gridTemplateRows: focusedHudDesktop
-          ? "minmax(0,0.86fr) minmax(0,1.14fr)"
+          ? "minmax(0,var(--opponent-board-share)) minmax(0,var(--local-board-share))"
           : mergeActionBarIntoMyZone
           ? (tabletCompactViewport
             ? "minmax(0,0.9fr) minmax(0,1.1fr)"

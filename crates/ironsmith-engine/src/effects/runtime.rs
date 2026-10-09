@@ -401,12 +401,14 @@ pub(crate) fn select_reached_action_program(
     if !prepare_reached_effect_inputs(game, effect, ctx)? {
         return Ok(None);
     }
-    let previous = ctx.executing_effect;
-    ctx.executing_effect =
-        Some(effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize);
-    let result = effect.0.select_prepared_action_program(game, ctx);
-    ctx.executing_effect = previous;
-    result
+    with_instruction_bindings(
+        game,
+        effect,
+        ctx,
+        effect,
+        || None,
+        |effect, game, ctx| effect.0.select_prepared_action_program(game, ctx),
+    )
 }
 
 /// Aggregate adapter for the same instruction owner used by retained callers.
@@ -592,6 +594,25 @@ fn execute_effect_with_outputs_for_purpose(
     purpose: EffectExecutionPurpose,
     origin: &Effect,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_effect_with_outputs_using(game, effect, ctx, purpose, origin, |effect, game, ctx| {
+        execute_owned_instruction(game, effect, ctx, purpose)
+    })
+}
+
+/// Captured native programs use the ordinary identity/resource/recording owner
+/// while dispatching their actual selected cursor instead of selecting again.
+pub(crate) fn execute_effect_with_outputs_using<'a>(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext<'a>,
+    purpose: EffectExecutionPurpose,
+    origin: &Effect,
+    mut execute: impl FnMut(
+        &Effect,
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let (root, meter) = game.begin_token_resource_scope();
     let result = crate::effects::composition::execute_error_transaction_if(
         game,
@@ -599,18 +620,19 @@ fn execute_effect_with_outputs_for_purpose(
         root,
         ExecutionError::is_incomplete_execution,
         |game, ctx| {
-            game.effect_store
-                .instruction_result_records
-                .push(Vec::new());
-            let mut result = match game.token_resource_failure() {
-                Some(error) => Err(error),
-                None => execute_effect_with_resource_scope(game, effect, ctx, purpose, origin),
-            };
-            let recorded = game
-                .effect_store
-                .instruction_result_records
-                .pop()
-                .unwrap_or_default();
+            let (mut result, recorded) =
+                crate::effects::outcome_recording::capture_instruction_records(game, |game| {
+                    match game.token_resource_failure() {
+                        Some(error) => Err(error),
+                        None => execute_effect_with_resource_scope_using(
+                            game,
+                            effect,
+                            ctx,
+                            origin,
+                            &mut execute,
+                        ),
+                    }
+                });
             if let Ok(outputs) = &mut result {
                 let outcome = &mut outputs.outcome;
                 if !ctx.decision_maker.awaiting_choice() {
@@ -644,18 +666,6 @@ fn execute_effect_with_outputs_for_purpose(
     );
     game.end_token_resource_scope(root, &meter);
     result
-}
-
-fn execute_effect_with_resource_scope(
-    game: &mut GameState,
-    effect: &Effect,
-    ctx: &mut ExecutionContext,
-    purpose: EffectExecutionPurpose,
-    origin: &Effect,
-) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    execute_effect_with_resource_scope_using(game, effect, ctx, origin, |effect, game, ctx| {
-        execute_owned_instruction(game, effect, ctx, purpose)
-    })
 }
 
 /// Native deferred originals share ordinary preflight, chooser replay, identity,
@@ -746,34 +756,21 @@ pub(crate) fn prepare_effect_draw_continuation(
         .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
 }
 
-fn execute_effect_with_resource_scope_using<'a>(
+/// Ordinary execution and prepared selection acquire missing player bindings
+/// through the same instruction identity. The callback owns its actual result;
+/// this scope supplies no action, receipt, cursor or replacement schedule.
+pub(crate) fn with_instruction_bindings<'a, T>(
     game: &mut GameState,
     effect: &Effect,
     ctx: &mut ExecutionContext<'a>,
     origin: &Effect,
+    mut pending_value: impl FnMut() -> T,
     mut execute: impl FnMut(
         &Effect,
         &mut GameState,
         &mut ExecutionContext<'a>,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
-) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
-    // executors route child effects through this function, so this guard also
-    // suppresses later instructions inside a sequence, modal branch, loop, or
-    // other nested effect after EndTurnEffect requests the scheduler jump.
-    if ctx.resolution_stopped()
-        || game.turn_store.end_turn_procedure_pending
-        || game.turn_store.end_combat_phase_procedure_pending
-    {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
-        ));
-    }
-    if !prepare_reached_effect_inputs(game, effect, ctx)? {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
+    ) -> Result<T, ExecutionError>,
+) -> Result<T, ExecutionError> {
     let previous_effect = ctx.executing_effect;
     let effect_identity =
         origin.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
@@ -806,9 +803,7 @@ fn execute_effect_with_resource_scope_using<'a>(
             );
             if ctx.decision_maker.awaiting_choice() {
                 ctx.executing_effect = previous_effect;
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
+                return Ok(pending_value());
             }
             if let Some(chosen) = chosen {
                 ctx.set_tagged_players(
@@ -848,9 +843,7 @@ fn execute_effect_with_resource_scope_using<'a>(
             );
             if ctx.decision_maker.awaiting_choice() {
                 ctx.executing_effect = previous_effect;
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
+                return Ok(pending_value());
             }
             if let Some(chosen) = chosen {
                 ctx.combat.chosen_player = Some(chosen);
@@ -859,6 +852,45 @@ fn execute_effect_with_resource_scope_using<'a>(
         }
     }
     ctx.executing_effect = previous_effect;
+    execution
+}
+
+fn execute_effect_with_resource_scope_using<'a>(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext<'a>,
+    origin: &Effect,
+    execute: impl FnMut(
+        &Effect,
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
+    // executors route child effects through this function, so this guard also
+    // suppresses later instructions inside a sequence, modal branch, loop, or
+    // other nested effect after EndTurnEffect requests the scheduler jump.
+    if ctx.resolution_stopped()
+        || game.turn_store.end_turn_procedure_pending
+        || game.turn_store.end_combat_phase_procedure_pending
+    {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
+    }
+    if !prepare_reached_effect_inputs(game, effect, ctx)? {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let execution = with_instruction_bindings(
+        game,
+        effect,
+        ctx,
+        origin,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        execute,
+    );
     let mut outputs = match execution {
         Ok(outcome) => outcome,
         // A "that player" reference whose choice was made with no player

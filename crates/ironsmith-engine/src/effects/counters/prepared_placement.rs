@@ -296,73 +296,56 @@ pub(super) fn commit_counter_original_from_result_with_outputs(
     } else {
         None
     };
-    let deferred = if let TraitEventResult::Replaced {
-        effects,
-        source,
-        controller,
-        context,
-        ..
-    } = &original
-    {
-        crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
-            game,
-            ctx,
-            effects,
-            *source,
-            *controller,
-            context,
-            replacement_source_snapshot.clone(),
-            crate::effects::replacement::ReplacementProgramBindings {
-                targets: target(context)?,
-                object_tags: Vec::new(),
-            },
-        )?
-    } else {
-        None
-    };
-    let (outcome, continuation) = if let Some(receipt) = deferred {
-        (receipt.outcome, receipt.completion)
-    } else {
-        let outcome = if let TraitEventResult::Replaced {
+    let receipt = match original {
+        TraitEventResult::Replaced {
             effects,
             source,
             controller,
             context,
             ..
-        } = &original
-        {
-            execute_counter_replacement_original_with_outputs(
+        } => {
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: target(&context)?,
+                object_tags: Vec::new(),
+            };
+            crate::effects::replacement::commit_bound_replacement_program_original_with_outputs(
                 game,
                 ctx,
-                effects,
-                *source,
-                *controller,
-                context,
-                target(context)?,
-                replacement_source_snapshot,
+                crate::events::processing::PreparedReplacementProgram {
+                    effects,
+                    source,
+                    controller,
+                    context,
+                    source_snapshot: replacement_source_snapshot,
+                },
+                bindings,
             )?
-        } else if original_is_object {
-            super::object_counter_placement::commit_object_counter_placement_with_limit_outputs(
-                game,
-                ctx,
-                original,
-                before.as_ref(),
-                limit,
-            )?
-        } else {
-            super::player_counter_placement::commit_player_counter_placement_with_outputs(
-                game,
-                ctx,
-                original,
-                before.as_ref().ok_or_else(|| {
-                    ExecutionError::InternalError(
-                        "player counter original requires its captured before frame".into(),
-                    )
-                })?,
-            )?
-        };
-        (outcome, None)
+        }
+        original => {
+            let outcome = if original_is_object {
+                super::object_counter_placement::commit_object_counter_placement_with_limit_outputs(
+                    game,
+                    ctx,
+                    original,
+                    before.as_ref(),
+                    limit,
+                )?
+            } else {
+                super::player_counter_placement::commit_player_counter_placement_with_outputs(
+                    game,
+                    ctx,
+                    original,
+                    before.as_ref().ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "player counter original requires its captured before frame".into(),
+                        )
+                    })?,
+                )?
+            };
+            SimultaneousEffectCommit::finished(outcome)
+        }
     };
+    let (outcome, continuation) = (receipt.outcome, receipt.completion);
     Ok(
         crate::effects::replacement::defer_replacement_programs_with_outputs(
             SimultaneousEffectCommit {

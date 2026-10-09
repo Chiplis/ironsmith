@@ -10,7 +10,8 @@ export function hasOutlinedLightText({data,width,height}) {
   let darker=0,opaque=0;
   for(let p=0;p<data.length;p+=4)if(data[p+3]>=128) {
     opaque++;
-    if((data[p]+data[p+1]+data[p+2])/3<190)darker++;
+    const low=Math.min(data[p],data[p+1],data[p+2]),high=Math.max(data[p],data[p+1],data[p+2]);
+    if((data[p]+data[p+1]+data[p+2])/3<150||high-low>90&&low<130&&data[p+2]>=data[p])darker++;
   }
   if(!opaque||darker/opaque<.6)return false;
   const pale=new Uint8Array(width*height),seen=new Uint8Array(width*height),letters=[];
@@ -125,13 +126,13 @@ function sameTextLine(a,b) {
 
 // Validate against the original paper estimate: recomputing it on damaged
 // output could mistake surviving text for the new background.
-export function residualTextQuality(scan, result, components, paperAt, {outlined=false}={}) {
+export function residualTextQuality(scan, result, components, paperAt, {outlined=false,polarity}={}) {
   let ink=0,residual=0;
   for(const c of components) {
     let remaining=0;
     for(const p of c.points) {
       const i=p*4;
-      if(isPanelInk(result.data[i],result.data[i+1],result.data[i+2],paperAt(p%scan.width,Math.floor(p/scan.width)),{outlined}))remaining++;
+      if(isPanelInk(result.data[i],result.data[i+1],result.data[i+2],paperAt(p%scan.width,Math.floor(p/scan.width)),{outlined,polarity}))remaining++;
     }
     ink+=c.points.length;residual+=remaining;
     // A small missed word must not disappear into a whole paragraph's average.
@@ -285,7 +286,12 @@ export function rulesPaperMask(scan, glyphMask, excludedPixels) {
     const light=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
     ink[p]=!protectedPixels[p]&&(glyphMask[p]||Math.abs(light-paperAt(x,y))>24)?1:0;
   }
-  return expandGlyphMask(ink,width,height,protectedPixels,4);
+  const mask=expandGlyphMask(ink,width,height,protectedPixels,4);
+  // The border margin limits the extra contrast cleanup, not glyphs already
+  // accepted by the first pass. Keep those removals without expanding them
+  // into adjacent bevel pixels. Explicit exclusions (such as P/T) still win.
+  for(let p=0;p<mask.length;p++)if(glyphMask[p]&&!excludedPixels?.[p])mask[p]=1;
+  return mask;
 }
 
 // The registered P/T crop already bounds the lettering. Contrast is enough
@@ -360,21 +366,22 @@ export function findFlavorSeparator(scan, flavorTop) {
 // Midtone material (notably gold name bars) can carry white lettering too.
 // Keep both contrast polarities there; shape matching still decides whether
 // a bright component is a glyph rather than a highlight in the frame.
-export function isPanelInk(r,g,b,paper,{outlined=false}={}) {
+export function isPanelInk(r,g,b,paper,{outlined=false,polarity}={}) {
   const low=Math.min(r,g,b),high=Math.max(r,g,b),value=(r+g+b)/3;
   if(outlined)return low>165&&high-low<65;
+  if(polarity==='dark')return value<paper-55;
   const paleInk=low>190&&high-low<65&&value>paper+45;
   return paleInk||(paper<115?value>paper+65:value<paper-55);
 }
 
-function* fontGuidedPanelSteps(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false,excludedPixels,protectBottomBoundary=false}) {
-  outlined ||= hasOutlinedLightText(scan);
+function* fontGuidedPanelSteps(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false,polarity,excludedPixels,protectBottomBoundary=false}) {
+  outlined ||= polarity!=='dark'&&hasOutlinedLightText(scan);
   const {data,width,height}=scan;
   const paperAt=paperField(scan);
   const ink=new Uint8Array(width*height);
   for(let p=0;p<ink.length;p++) {
     const paper=paperAt(p%width,Math.floor(p/width));
-    ink[p]=!excludedPixels?.[p]&&isPanelInk(data[p*4],data[p*4+1],data[p*4+2],paper,{outlined})?1:0;
+    ink[p]=!excludedPixels?.[p]&&isPanelInk(data[p*4],data[p*4+1],data[p*4+2],paper,{outlined,polarity})?1:0;
   }
   const originalInk=ink.slice();
   const bottomProtection=section==='rules'&&protectBottomBoundary?protectBottomOrnaments(ink,width,height):null;
@@ -479,7 +486,7 @@ function* fontGuidedPanelSteps(scan,{family,weight=400,italic=false,allowItalic=
       ? c.w>=2 && (matches.length===0 || matches.some(m=>sameTextLine(c,m)))
       : matches.some(m=>sameTextLine(c,m)&&Math.max(0,c.x0-m.x1,m.x0-c.x1)<=m.h))
   ));
-  const quality=residualTextQuality(scan,result,textComponents,paperAt,{outlined});
+  const quality=residualTextQuality(scan,result,textComponents,paperAt,{outlined,polarity});
   return {...result,quality,matches:matches.length,method:'font-template'};
 }
 

@@ -10,8 +10,8 @@ pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 
 use super::runtime_helpers::{
     EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
-    effect_driven_cast_options_for_card_in_context,
-    effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
+    complete_effect_driven_cast_with_outputs, effect_driven_cast_options_for_card_in_context,
+    effect_driven_cast_options_for_card_with_payment,
 };
 
 fn runtime_payment(
@@ -59,6 +59,15 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let zone_owner_id = resolve_player_filter(game, &self.zone_owner, ctx)?;
         let object_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
@@ -120,10 +129,14 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 spec,
             );
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             let Some(card) = chosen.into_iter().find(|id| candidates.contains(id)) else {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             };
             game.record_hidden_identity_obligations(
                 &[card],
@@ -143,11 +156,15 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 &filter_ctx,
             );
             if options.is_empty() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
         } else {
             if options.is_empty() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
 
             let should_cast = {
@@ -159,10 +176,14 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 ctx.decision_maker.decide_boolean(game, &choice_ctx)
             };
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             if !should_cast {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
         }
 
@@ -181,7 +202,9 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 ctx.source,
                 &choices,
             ) else {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             };
             choice
         };
@@ -189,16 +212,17 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         let Some(result) =
             cast_effect_driven_spell_with_payment(game, ctx, player_id, &option, payment)?
         else {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
         };
 
-        Ok(with_spell_cast_event(
+        complete_effect_driven_cast_with_outputs(
             EffectOutcome::with_objects(vec![result.new_id]),
             game,
-            result.new_id,
+            result,
             player_id,
-            result.from_zone,
             ctx.provenance,
-        )?)
+        )
     }
 }

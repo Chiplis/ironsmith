@@ -543,6 +543,18 @@ impl EffectExecutor for ChooseObjectsEffect {
             .and_then(|count| u32::try_from(count).ok())
     }
 
+    fn supports_prepared_action_program(&self) -> bool {
+        !self.is_search && self.reveal && self.reveal_is_presentation_only == Some(false)
+    }
+
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        super::choose_objects_runtime::prepare_choose_objects_program(self, game, ctx)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -551,13 +563,19 @@ impl EffectExecutor for ChooseObjectsEffect {
         super::choose_objects_runtime::run_choose_objects(self, game, ctx)
     }
 
-    /// Choosing tags objects into the execution context without changing any
-    /// game state another player's simultaneous choice could observe (its rare
-    /// &mut uses — RNG advancement for random selections and hidden-card id
-    /// allocation — are not visible to other players' decisions), so
-    /// each-player compositions may run it choice-by-choice in APNAP order.
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::choose_objects_runtime::run_choose_objects_with_outputs(self, game, ctx)
+    }
+
+    /// Pure selection may run choice-by-choice in APNAP order. An authored
+    /// reveal also commits public visibility and observations through its child
+    /// owner, so it must not advertise the selection-only scheduling shortcut.
     fn is_read_only_simultaneous_player_action(&self) -> bool {
-        true
+        !self.is_search && (!self.reveal || self.reveal_is_presentation_only == Some(true))
     }
 
     fn cost_description(&self) -> Option<String> {

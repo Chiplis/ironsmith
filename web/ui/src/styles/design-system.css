@@ -4038,8 +4038,14 @@ button:disabled,
 .game-card:is(:hover, .hovered, .inspected) > .card-inspector-source-glow {
   opacity: 1;
 }
-.game-card.battlefield-token-card > .card-inspector-source-glow {
+.game-card.battlefield-token-card:not(.battlefield-arena-card) > .card-inspector-source-glow {
   border-radius: 50%;
+}
+
+/* Artwork tiles use the actual rectangular frame, not the older token oval. */
+.game-card.battlefield-arena-card > .card-inspector-source-glow {
+  inset: 2px;
+  border-radius: 4px;
 }
 
 /* The overlay leaves the battlefield clickable outside the stack. */
@@ -4654,9 +4660,8 @@ html[data-hand-pointer-suspended="true"] * {
 /* Desktop battlefield HUD: leave the center lane for cards and game effects. */
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] {
-    /* Opponent rows use fixed-size cards and rarely fill their half, so the
-       local battlefield takes the slack and starts higher. */
-    grid-template-rows: minmax(0, 0.86fr) minmax(0, 1.14fr) !important;
+    /* Multiplayer opponents share the width, so reclaim more vertical space. */
+    grid-template-rows: minmax(0, var(--opponent-board-share, 0.86fr)) minmax(0, var(--local-board-share, 1.14fr)) !important;
     /* Reserve a visible lane between the opponent and local battlefields.
        Raised/scaled cards then stay inside their own side instead of grazing
        the opposing field at the shared seam. */
@@ -7697,4 +7702,75 @@ html[data-hand-pointer-suspended="true"] * {
 .decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
   background: #2483db !important;
   box-shadow: 0 0 0 2px #91ceff;
+}
+
+/* An automatic resolution frame must not intercept target or choice input. */
+.floating-card-preview[data-automatic-stack-preview="true"],
+.floating-card-preview[data-automatic-stack-preview="true"] * {
+  pointer-events: none !important;
+}
+
+@media (min-width: 1024px) {
+  /* Front ranks face each other across the seam instead of leaving unused
+     opponent track space between the two battlefields. */
+  .table-shell[data-multiplayer-board="true"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] {
+    align-content: stretch !important;
+    padding-right: 80px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] {
+    row-gap: calc(10px + var(--bf-row-scale-gap, 0px)) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .table-shell[data-multiplayer-board="true"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] > .battlefield-row-card {
+    align-self: end;
+  }
+}
+
+/* The wide stack inspector overlays the field without reserving card columns. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell {
+    --stack-frame-rail-width: clamp(240px, 24vw, 360px);
+  }
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
+    left: var(--stack-frame-rail-left, 0px);
+    width: var(--stack-frame-rail-width);
+  }
+}
+
+/* Local mana stays visible below the stack frame; identity sits behind it. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    left: 0; bottom: 44px !important;
+    width: 220px !important; max-width: 220px !important;
+  }
+  .table-shell[data-focused-hud="true"] .table-shared-player-header [data-my-zone-header-content] {
+    min-width: 0 !important; width: 100% !important;
+    flex-wrap: wrap !important;
+  }
+}
+
+.local-player-mana-dock { display: contents; }
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] [data-my-zone] .player-zone-piles > .my-zone-mana-rail { display: none; }
+  .table-shell[data-focused-hud="true"] .local-player-mana-dock {
+    display: block; position: fixed; left: 0; bottom: 8px;
+    width: max-content;
+  }
+  .table-shell[data-focused-hud="true"] .local-player-mana-dock .battlefield-header-mana {
+    display: flex !important; flex-direction: row; gap: 6px;
+  }
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
+    width: min(220px, var(--stack-inspector-width, 220px)) !important;
+    max-width: min(220px, var(--stack-inspector-width, 220px)) !important;
+  }
+}
+
+/* Look is on the left edge: target enlargement must grow into the board. */
+.my-zone-board-shell .player-look-pile .zone-pile-slot:has(> .zone-pile[data-has-targets="true"]:not([aria-expanded="true"])) {
+  transform-origin: left bottom;
 }

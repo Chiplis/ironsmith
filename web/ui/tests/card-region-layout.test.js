@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {registeredFieldFontSize, registeredFieldLayouts, registeredLinePitch, registrationGeometryIsUsable, SCAN_ASPECT} from '../src/lib/card-region-layout.js';
+import {registeredColumns, registeredSourceFontSize, registeredFieldFontSize, registeredFieldLayouts, registeredLinePitch, registrationGeometryIsUsable, SCAN_ASPECT} from '../src/lib/card-region-layout.js';
 
 test('unusable OCR geometry preserves the scan instead of replacing text across other fields',()=>{
   const name={kind:'name',bounds:{x:.1,y:.05,width:.5,height:.04}};
@@ -15,6 +15,13 @@ test('unusable OCR geometry preserves the scan instead of replacing text across 
 // content area (ascent plus descent) is 1.2em.
 const measure = text => ({width: text.length * 50, height: 90, content: 120});
 const line = (text, y, height = .03) => ({text, x: .12, y, width: text.length * .5 * 22 / 488, height});
+
+test('signed loyalty costs have space for their advance even when OCR captured only a digit',()=>{
+ const field={kind:'loyalty-cost',text:'−6',bounds:{x:.09,y:.8,width:.025,height:.03},lines:[{text:'−6',x:.09,y:.8,width:.025,height:.03}]};
+ const [layout]=registeredFieldLayouts([field],()=>measure);
+ assert.ok(layout.bounds.width>=layout.size);
+ assert.ok(Math.abs(layout.bounds.x+layout.bounds.width/2-(.09+.025/2))<1e-9);
+});
 
 test('registered type size follows whole-line widths, not per-line box heights', () => {
   const field = {kind: 'rule', lines: [line('Pay 1 life, Sacrifice another creature:', .65, .035), line('Put a counter on up to one target', .68, .029), line('creature and draw a card.', .71, .026)]};
@@ -211,4 +218,63 @@ test('a line the printing centres on its text box is centred over the whole colu
   // A box off to one side (level bands, side panels) is not centred either.
   const aside = {kind: 'rule', bounds: {x: .8, y: .735, width: .1, height: .035}, lines: [line('4/4', .735, .035)]};
   assert.equal(registeredFieldLayouts([type, aside], () => measure)[1].centred, false);
+});
+
+test('a registered narrow paragraph can grow across its measured panel, without crossing the panel edge', () => {
+  const field = {kind:'rule',face:0,text:'Draw a card.',bounds:{x:.51,y:.65,width:.15,height:.03},lines:[line('Draw a card.',.65,.03)],region:{x:.5,y:.64,width:.42,height:.2}};
+  const [layout] = registeredFieldLayouts([field], () => measure);
+  assert.ok(Math.abs(layout.bounds.x + layout.bounds.width - .92) < 1e-9);
+  assert.ok(layout.bounds.y + layout.bounds.height <= .84 + 1e-9);
+});
+
+test('segmented rules do not join a column that could cross a level divider', () => {
+  const fields = [{kind:'rule',face:0,noFlow:true,bounds:{x:.5,y:.2,width:.4,height:.1}}, {kind:'rule',face:0,noFlow:true,bounds:{x:.5,y:.5,width:.4,height:.1}}];
+  const layouts=fields.map(f=>({bounds:f.bounds,size:.04,lineHeight:1.2,span:.1}));
+  const columns=registeredColumns(fields,layouts,['Long changed text','Another changed ability'],new Map(),{unit:420,scale:1});
+  assert.equal(columns.positions.size,0);
+  assert.equal(columns.forced.size,0);
+});
+
+
+test('short plain labels follow their advance width rather than padded OCR height',()=>{
+ const f={kind:'type',lines:[line('Land',.83,.06)]};
+ assert.ok(Math.abs(registeredFieldFontSize(f,measure)*488-22)<1e-9);
+ const level={kind:'rule',fontLines:[line('Level 2',.35,.06)],lines:[line('2G: Level 2',.35,.06)]};
+ assert.ok(Math.abs(registeredFieldFontSize(level,measure)*488-22)<1e-9);
+});
+
+test('activated ability font sizing ignores OCR letters standing in for its mana cost',()=>{
+ const field={kind:'rule',text:'{U}{U}, {T}: Copy target spell.',lines:[{text:'6 0, M: Copy target spell.',width:.5,height:.03},{text:'Choose a new target.',width:.4,height:.025}]};
+ const size=registeredFieldFontSize(field,text=>({width:text.startsWith('6')?500:2000,height:70}));
+ assert.equal(size,.02);
+});
+
+test('an overflowing final paragraph scrolls within its printed region',()=>{
+ const fields=[{kind:'rule',face:0,bounds:{x:.1,y:.7,width:.7,height:.08},region:{x:.1,y:.7,width:.7,height:.15}}];
+ const layouts=[{bounds:{x:.1,y:.7,width:.7,height:.4},span:.4,size:.03,lineHeight:1.2}];
+ const result=registeredColumns(fields,layouts,['Long text'],new Map(),{unit:488,scale:1});
+ assert.ok(result.forced.has(0));
+ assert.equal(result.positions.get(0).limit,.85);
+});
+
+test('centered multiline printed paragraphs retain their shared center axis',()=>{
+ const type={kind:'type',bounds:{x:.1,y:.58,width:.5,height:.03}};
+ const rule={kind:'rule',bounds:{x:.12,y:.64,width:.76,height:.1},lines:[{text:'A longer centered line',x:.12,y:.64,width:.76,height:.025},{text:'Shorter centered line',x:.2,y:.675,width:.6,height:.025},{text:'Final centered line',x:.25,y:.71,width:.5,height:.025}]};
+ assert.equal(registeredFieldLayouts([type,rule],()=>measure)[1].centred,true);
+ const ragged={...rule,lines:rule.lines.map(l=>({...l,x:.12}))};
+ assert.equal(registeredFieldLayouts([type,ragged],()=>measure)[1].centred,false);
+});
+
+test('merged historical paragraphs map each modern ability to the reviewed printed block',()=>{
+ const fields=[{kind:'rule',text:'Old combined paragraph.',sourceTexts:['Cast this only while a land is present.','At the beginning of your upkeep, draw a card.']}];
+ const rulesView={lines:['New first ability.','New second ability.'],sourceLines:[['Cast this only while a land is present.'],['At the beginning of your upkeep, draw a card.']]};
+ return import('../src/lib/card-region-layout.js').then(({registeredRuleAssignments})=>assert.deepEqual([...registeredRuleAssignments(fields,rulesView)],[[0,[0,1]]]));
+});
+
+test('source typography matches the printed line capacity before live text grows',()=>{
+ const field={kind:'rule',text:'Draw a card. Draw another card.',lines:[{text:'Draw a card. Draw',width:.7,height:.02},{text:'another card.',width:.4,height:.02}]};
+ const font=registeredSourceFontSize(field,.08,.6,text=>({width:text.length*50}));
+ assert.ok(font<.08&&font>.052);
+ // Only the printing determines this size. Changed abilities remain free to scroll.
+ assert.equal(registeredSourceFontSize({...field,fontSizeHint:.08},.08,.7,text=>({width:text.length*50})),.08);
 });

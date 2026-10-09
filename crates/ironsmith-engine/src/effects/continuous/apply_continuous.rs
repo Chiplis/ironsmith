@@ -910,6 +910,464 @@ fn materialize_granted_entry_counter_source(
     rewrap(crate::static_abilities::StaticAbility::from_model(model))
 }
 
+/// Selected inputs of one continuous instruction. Ordinary execution resolves
+/// each modification immediately before publishing it; simultaneous preparation
+/// resolves the same modifications before any peer publishes an original.
+#[derive(Debug)]
+struct ContinuousActionInputs {
+    target: EffectTarget,
+    source_type: Option<EffectSourceType>,
+    materialized_until: Until,
+    effect_group: Option<crate::continuous::ContinuousEffectGroupId>,
+    modifications: Vec<Modification>,
+    affected_objects: Vec<ObjectId>,
+}
+
+#[derive(Debug)]
+enum AcquiredContinuousAction {
+    Terminal(EffectOutcome),
+    Register(ContinuousActionInputs),
+}
+
+#[derive(Debug)]
+enum PreparedContinuousAction {
+    Terminal(EffectOutcome),
+    Register {
+        effects: Vec<ContinuousEffect>,
+        affected_objects: Vec<ObjectId>,
+    },
+}
+
+fn acquire_continuous_action(
+    definition: &ApplyContinuousEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<AcquiredContinuousAction, ExecutionError> {
+    game.establish_control_transition_boundary()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
+    // A tagged reference names the objects selected by an earlier action.
+    // An empty selection has no characteristics to change.
+    if let Some(spec) = &definition.target_spec
+        && !spec.is_target()
+        && matches!(spec.base(), ChooseSpec::Tagged(_))
+        && resolve_objects_from_spec(game, spec, ctx)?.is_empty()
+    {
+        return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+    }
+    let (target, spec_locked_targets, target_invalid) = resolve_target(definition, game, ctx)?;
+    if target_invalid {
+        return Ok(AcquiredContinuousAction::Terminal(
+            EffectOutcome::target_invalid(),
+        ));
+    }
+    let mut source_type = definition.source_type.clone();
+    // A resolved single-object instruction is a resolution effect too.
+    // Keep its locked identity explicit, as for multi-object instructions.
+    if source_type.is_none()
+        && let EffectTarget::Specific(object) = &target
+    {
+        source_type = Some(EffectSourceType::Resolution {
+            locked_targets: vec![*object],
+        });
+    }
+
+    let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {
+        // Tagged filters depend on spell-resolution context and cannot be evaluated
+        // dynamically once the one-shot effect has finished.
+        let must_lock_tagged_filter = !filter.tagged_constraints.is_empty();
+        if definition.lock_filter_at_resolution || must_lock_tagged_filter {
+            Some(lock_targets_for_filter(filter, game, ctx))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let locked_targets = filter_locked_targets.or(spec_locked_targets);
+    if let Some(locked_targets) = locked_targets {
+        source_type = Some(EffectSourceType::Resolution { locked_targets });
+    }
+
+    let materialized_until = match &definition.until {
+        Until::UntilControllersNextUntapStep { object } => {
+            let object = materialize_duration_object(object, &target, &source_type, ctx)
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "next-untap beginning duration must identify one object".into(),
+                    )
+                })?;
+            Until::UntilControllersNextUntapStep { object }
+        }
+        Until::ObjectIsCast { object, from_zone } => {
+            let object = materialize_duration_object(object, &target, &source_type, ctx)
+                .ok_or_else(|| match object {
+                    ironsmith_core::ContinuousDurationObject::Tagged(tag) => {
+                        ExecutionError::TagNotFound(tag.as_str().to_string())
+                    }
+                    _ => ExecutionError::UnresolvableValue(
+                        "cast-event duration must identify one object".into(),
+                    ),
+                })?;
+            let ironsmith_core::ContinuousDurationObject::Specific(id) = object else {
+                unreachable!()
+            };
+            if game.object_completed_cast_from(id, *from_zone) {
+                return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+            }
+            Until::ObjectIsCast {
+                object: ironsmith_core::ContinuousDurationObject::Specific(id),
+                from_zone: *from_zone,
+            }
+        }
+        Until::ForAsLongAs(predicate) => {
+            let Some(predicate) =
+                materialize_duration_predicate(predicate, &target, &source_type, game, ctx)
+            else {
+                return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+            };
+            if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
+                return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+            }
+            Until::ForAsLongAs(predicate)
+        }
+        Until::EndOfTurnOrAnyPlayerRolls { result, .. } => {
+            let matching_rolls_observed = game
+                .turn_store
+                .turn_history
+                .die_rolls_this_turn
+                .values()
+                .flatten()
+                .filter(|rolled| **rolled == *result)
+                .count() as u32;
+            Until::EndOfTurnOrAnyPlayerRolls {
+                result: *result,
+                matching_rolls_observed,
+            }
+        }
+        until => until.clone(),
+    };
+
+    // "The player with the lowest (highest) life total gains control":
+    // when two or more players are tied there is no such single player,
+    // so the control change doesn't happen (the card's own tie clause,
+    // e.g. Loxodon Peacekeeper, decides instead).
+    if definition.runtime_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            RuntimeModification::ChangeControllerToPlayer(
+                PlayerFilter::LowestLifeTied | PlayerFilter::MostLifeTied
+            )
+        )
+    }) {
+        let lives = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.life)
+            .collect::<Vec<_>>();
+        let tied = |extreme: Option<i32>| {
+            extreme.is_some_and(|life| lives.iter().filter(|l| **l == life).count() > 1)
+        };
+        let lowest_tied = tied(lives.iter().copied().min());
+        let most_tied = tied(lives.iter().copied().max());
+        if definition
+            .runtime_modifications
+            .iter()
+            .any(|modification| match modification {
+                RuntimeModification::ChangeControllerToPlayer(PlayerFilter::LowestLifeTied) => {
+                    lowest_tied
+                }
+                RuntimeModification::ChangeControllerToPlayer(PlayerFilter::MostLifeTied) => {
+                    most_tied
+                }
+                _ => false,
+            })
+        {
+            return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+        }
+    }
+
+    let mut mods = Vec::with_capacity(
+        definition.additional_modifications.len() + definition.runtime_modifications.len() + 1,
+    );
+    if let Some(modification) = &definition.modification {
+        mods.push(modification.clone());
+    }
+    mods.extend(definition.additional_modifications.iter().cloned());
+    for runtime_modification in &definition.runtime_modifications {
+        mods.push(resolve_runtime_modification(
+            game,
+            ctx,
+            runtime_modification,
+        )?);
+    }
+    let effect_group =
+        (mods.len() > 1).then(|| game.effect_store.continuous_effects.next_effect_group_id());
+
+    if definition.require_creature_target {
+        for id in target_object_ids(&target, &source_type) {
+            // CR 608.2b: a target that left its zone since the spell's
+            // targets were checked (an earlier mode bounced it) is now
+            // illegal, so this instruction does nothing to it.
+            if game.object(id).is_none() {
+                return Ok(AcquiredContinuousAction::Terminal(
+                    EffectOutcome::target_invalid(),
+                ));
+            }
+            if !game.current_is_creature(id) {
+                return Ok(AcquiredContinuousAction::Terminal(
+                    EffectOutcome::target_invalid(),
+                ));
+            }
+        }
+    }
+
+    // Result-tagged compositions need the actual resolution set, even
+    // when this effect has no announced targets (for example a chosen set).
+    let affected_objects = control_change_target_object_ids(&target, &source_type, game, ctx);
+    Ok(AcquiredContinuousAction::Register(ContinuousActionInputs {
+        target,
+        source_type,
+        materialized_until,
+        effect_group,
+        modifications: mods,
+        affected_objects,
+    }))
+}
+
+impl ContinuousActionInputs {
+    fn resolve_modification(
+        &self,
+        definition: &ApplyContinuousEffect,
+        modification: Modification,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<ContinuousEffect>, ExecutionError> {
+        let resolved_modification = freeze_granted_entry_counter_context(
+            materialize_granted_entry_counter_source(
+                resolve_set_pt_modification(definition, game, ctx, &modification)?,
+                ctx.source,
+            ),
+            game,
+            ctx,
+        )
+        .bind_chosen_protection_qualities(game, ctx.source, false);
+        if let Modification::ChangeController(new_controller) = &resolved_modification {
+            // CR 800.4b: an effect cannot give control of an object to a
+            // player who has left the game.
+            if !game
+                .player(*new_controller)
+                .is_some_and(|player| player.is_in_game())
+            {
+                return Ok(None);
+            }
+            // Reconciliation after applying the complete layer result
+            // owns sickness/soulbond changes. A false duration or condition
+            // must not manufacture a controller transition here.
+        }
+        let expires_end_of_turn = match definition.until {
+            Until::EndOfTurn
+            | Until::EndOfTurnOrAnyPlayerRolls { .. }
+            | Until::YourNextTurn
+            | Until::YourNextUpkeep
+            | Until::ControllersNextUntapStep => game.turn.turn_number,
+            Until::YourNextTurnEnd => next_turn_number_for_player(game, ctx.controller),
+            // Created during or after this turn's end step: the next end
+            // step is the next turn's.
+            Until::NextEndStep => {
+                if matches!(game.turn.phase, crate::game_state::Phase::Ending) {
+                    game.turn.turn_number + 1
+                } else {
+                    game.turn.turn_number
+                }
+            }
+            _ => u32::MAX,
+        };
+        let mut effect = ContinuousEffect::new(
+            ctx.source,
+            ctx.controller,
+            self.target.clone(),
+            resolved_modification,
+        )
+        .until(self.materialized_until.clone())
+        .with_expires_end_of_turn(expires_end_of_turn);
+
+        if let Some(source_type) = &self.source_type {
+            effect = effect.with_source_type(source_type.clone());
+        }
+        if let Some(condition) = &definition.condition {
+            effect = effect.with_condition(materialize_runtime_condition(condition, game, ctx)?);
+        }
+        if let Some(group) = self.effect_group {
+            effect = effect.with_group(group);
+        }
+
+        Ok(Some(effect))
+    }
+}
+
+impl AcquiredContinuousAction {
+    fn prepare(
+        self,
+        definition: &ApplyContinuousEffect,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<PreparedContinuousAction, ExecutionError> {
+        let Self::Register(mut inputs) = self else {
+            let Self::Terminal(outcome) = self else {
+                unreachable!()
+            };
+            return Ok(PreparedContinuousAction::Terminal(outcome));
+        };
+        let mut effects = Vec::new();
+        for modification in std::mem::take(&mut inputs.modifications) {
+            if let Some(effect) =
+                inputs.resolve_modification(definition, modification, game, ctx)?
+            {
+                effects.push(effect);
+            }
+        }
+        Ok(PreparedContinuousAction::Register {
+            effects,
+            affected_objects: inputs.affected_objects,
+        })
+    }
+}
+
+/// Registration owns timestamps, created-effect IDs, activity observation,
+/// continuous-state refresh and the instruction's affected-object result.
+fn publish_continuous_action(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    affected_objects: Vec<ObjectId>,
+    mut next: impl FnMut(
+        &mut GameState,
+        &mut ExecutionContext,
+    ) -> Result<Option<ContinuousEffect>, ExecutionError>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut registered_active_modification = false;
+    while let Some(effect) = next(game, ctx)? {
+        registered_active_modification |=
+            crate::continuous::continuous_effect_duration_and_condition_are_active(&effect, game);
+        let id = game.effect_store.continuous_effects.add_effect(effect);
+        ctx.created_continuous_effects.push(id);
+    }
+
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
+
+    Ok(if registered_active_modification {
+        EffectOutcome::resolved().with_affected_objects_from_game(game, affected_objects)
+    } else {
+        EffectOutcome::resolved()
+    })
+}
+
+impl PreparedContinuousAction {
+    fn commit(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        match self {
+            Self::Terminal(outcome) => Ok(outcome),
+            Self::Register {
+                effects,
+                affected_objects,
+            } => {
+                let mut effects = effects.into_iter();
+                publish_continuous_action(game, ctx, affected_objects, |_, _| Ok(effects.next()))
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ContinuousActionProposal {
+    definition: crate::effect::Effect,
+    player: Option<PlayerId>,
+    prepared: Option<PreparedContinuousAction>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for ContinuousActionProposal {
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.prepared.is_some() {
+            return Ok(());
+        }
+        ctx.with_temp_iterated_player(self.player, |ctx| {
+            if !crate::effects::runtime::prepare_reached_effect_inputs(game, &self.definition, ctx)?
+            {
+                return Ok(());
+            }
+            self.prepared = crate::effects::runtime::with_instruction_bindings(
+                game,
+                &self.definition,
+                ctx,
+                &self.definition,
+                || None,
+                |effect, game, ctx| {
+                    let definition =
+                        effect
+                            .downcast_ref::<ApplyContinuousEffect>()
+                            .ok_or_else(|| {
+                                ExecutionError::InternalError(
+                                    "continuous proposal lost its instruction definition".into(),
+                                )
+                            })?;
+                    acquire_continuous_action(definition, game, ctx)?
+                        .prepare(definition, game, ctx)
+                        .map(Some)
+                },
+            )?;
+            Ok(())
+        })
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if self.prepared.is_none() {
+            self.prepare_original(game, ctx)?;
+        }
+        let mut prepared = self.prepared.take();
+        ctx.with_temp_iterated_player(self.player, |ctx| {
+            crate::effects::runtime::prepare_effect_original_with_outputs(
+                game,
+                &self.definition,
+                ctx,
+                |_, game, ctx| {
+                    let outcome = match prepared.take() {
+                        Some(prepared) => prepared.commit(game, ctx)?,
+                        None => EffectOutcome::count(0),
+                    };
+                    Ok(crate::effects::SimultaneousEffectCommit::finished(
+                        crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+                    ))
+                },
+            )
+        })
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
+    }
+}
+
 impl EffectExecutor for ApplyContinuousEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         for modification in self
@@ -937,9 +1395,10 @@ impl EffectExecutor for ApplyContinuousEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
+        Ok(Box::new(ContinuousActionProposal {
+            definition: crate::effect::Effect::new(self.clone()),
+            player: ctx.iteration.iterated_player,
+            prepared: None,
         }))
     }
 
@@ -965,259 +1424,23 @@ impl EffectExecutor for ApplyContinuousEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        game.establish_control_transition_boundary()
-            .map_err(ExecutionError::ContinuousDiscovery)?;
-        // A tagged reference names the objects selected by an earlier action.
-        // An empty selection has no characteristics to change.
-        if let Some(spec) = &self.target_spec
-            && !spec.is_target()
-            && matches!(spec.base(), ChooseSpec::Tagged(_))
-            && resolve_objects_from_spec(game, spec, ctx)?.is_empty()
-        {
-            return Ok(EffectOutcome::resolved());
-        }
-        let (target, spec_locked_targets, target_invalid) = resolve_target(self, game, ctx)?;
-        if target_invalid {
-            return Ok(EffectOutcome::target_invalid());
-        }
-        let mut source_type = self.source_type.clone();
-        // A resolved single-object instruction is a resolution effect too.
-        // Keep its locked identity explicit, as for multi-object instructions.
-        if source_type.is_none()
-            && let EffectTarget::Specific(object) = &target
-        {
-            source_type = Some(EffectSourceType::Resolution {
-                locked_targets: vec![*object],
-            });
-        }
-
-        let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {
-            // Tagged filters depend on spell-resolution context and cannot be evaluated
-            // dynamically once the one-shot effect has finished.
-            let must_lock_tagged_filter = !filter.tagged_constraints.is_empty();
-            if self.lock_filter_at_resolution || must_lock_tagged_filter {
-                Some(lock_targets_for_filter(filter, game, ctx))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let locked_targets = filter_locked_targets.or(spec_locked_targets);
-        if let Some(locked_targets) = locked_targets {
-            source_type = Some(EffectSourceType::Resolution { locked_targets });
-        }
-
-        let materialized_until = match &self.until {
-            Until::UntilControllersNextUntapStep { object } => {
-                let object = materialize_duration_object(object, &target, &source_type, ctx)
-                    .ok_or_else(|| ExecutionError::UnresolvableValue(
-                        "next-untap beginning duration must identify one object".into(),
-                    ))?;
-                Until::UntilControllersNextUntapStep { object }
-            }
-            Until::ObjectIsCast { object, from_zone } => {
-                let object = materialize_duration_object(object, &target, &source_type, ctx)
-                    .ok_or_else(|| match object {
-                        ironsmith_core::ContinuousDurationObject::Tagged(tag) => {
-                            ExecutionError::TagNotFound(tag.as_str().to_string())
+        match acquire_continuous_action(self, game, ctx)? {
+            AcquiredContinuousAction::Terminal(outcome) => Ok(outcome),
+            AcquiredContinuousAction::Register(mut inputs) => {
+                let mut modifications = std::mem::take(&mut inputs.modifications).into_iter();
+                let affected_objects = std::mem::take(&mut inputs.affected_objects);
+                publish_continuous_action(game, ctx, affected_objects, |game, ctx| {
+                    for modification in modifications.by_ref() {
+                        if let Some(effect) =
+                            inputs.resolve_modification(self, modification, game, ctx)?
+                        {
+                            return Ok(Some(effect));
                         }
-                        _ => ExecutionError::UnresolvableValue(
-                            "cast-event duration must identify one object".into(),
-                        ),
-                    })?;
-                let ironsmith_core::ContinuousDurationObject::Specific(id) = object else {
-                    unreachable!()
-                };
-                if game.object_completed_cast_from(id, *from_zone) {
-                    return Ok(EffectOutcome::resolved());
-                }
-                Until::ObjectIsCast {
-                    object: ironsmith_core::ContinuousDurationObject::Specific(id),
-                    from_zone: *from_zone,
-                }
-            }
-            Until::ForAsLongAs(predicate) => {
-                let Some(predicate) =
-                    materialize_duration_predicate(predicate, &target, &source_type, game, ctx)
-                else {
-                    return Ok(EffectOutcome::resolved());
-                };
-                if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
-                    return Ok(EffectOutcome::resolved());
-                }
-                Until::ForAsLongAs(predicate)
-            }
-            Until::EndOfTurnOrAnyPlayerRolls { result, .. } => {
-                let matching_rolls_observed = game
-                    .turn_store
-                    .turn_history
-                    .die_rolls_this_turn
-                    .values()
-                    .flatten()
-                    .filter(|rolled| **rolled == *result)
-                    .count() as u32;
-                Until::EndOfTurnOrAnyPlayerRolls {
-                    result: *result,
-                    matching_rolls_observed,
-                }
-            }
-            until => until.clone(),
-        };
-
-        // "The player with the lowest (highest) life total gains control":
-        // when two or more players are tied there is no such single player,
-        // so the control change doesn't happen (the card's own tie clause,
-        // e.g. Loxodon Peacekeeper, decides instead).
-        if self.runtime_modifications.iter().any(|modification| {
-            matches!(
-                modification,
-                RuntimeModification::ChangeControllerToPlayer(
-                    PlayerFilter::LowestLifeTied | PlayerFilter::MostLifeTied
-                )
-            )
-        }) {
-            let lives = game
-                .players
-                .iter()
-                .filter(|player| player.is_in_game())
-                .map(|player| player.life)
-                .collect::<Vec<_>>();
-            let tied = |extreme: Option<i32>| {
-                extreme.is_some_and(|life| lives.iter().filter(|l| **l == life).count() > 1)
-            };
-            let lowest_tied = tied(lives.iter().copied().min());
-            let most_tied = tied(lives.iter().copied().max());
-            if self
-                .runtime_modifications
-                .iter()
-                .any(|modification| match modification {
-                    RuntimeModification::ChangeControllerToPlayer(PlayerFilter::LowestLifeTied) => {
-                        lowest_tied
                     }
-                    RuntimeModification::ChangeControllerToPlayer(PlayerFilter::MostLifeTied) => {
-                        most_tied
-                    }
-                    _ => false,
+                    Ok(None)
                 })
-            {
-                return Ok(EffectOutcome::resolved());
             }
         }
-
-        let mut mods = Vec::with_capacity(
-            self.additional_modifications.len() + self.runtime_modifications.len() + 1,
-        );
-        if let Some(modification) = &self.modification {
-            mods.push(modification.clone());
-        }
-        mods.extend(self.additional_modifications.iter().cloned());
-        for runtime_modification in &self.runtime_modifications {
-            mods.push(resolve_runtime_modification(
-                game,
-                ctx,
-                runtime_modification,
-            )?);
-        }
-        let effect_group =
-            (mods.len() > 1).then(|| game.effect_store.continuous_effects.next_effect_group_id());
-
-        if self.require_creature_target {
-            for id in target_object_ids(&target, &source_type) {
-                // CR 608.2b: a target that left its zone since the spell's
-                // targets were checked (an earlier mode bounced it) is now
-                // illegal, so this instruction does nothing to it.
-                if game.object(id).is_none() {
-                    return Ok(EffectOutcome::target_invalid());
-                }
-                if !game.current_is_creature(id) {
-                    return Ok(EffectOutcome::target_invalid());
-                }
-            }
-        }
-
-        // Result-tagged compositions need the actual resolution set, even
-        // when this effect has no announced targets (for example a chosen set).
-        let affected_objects = control_change_target_object_ids(&target, &source_type, game, ctx);
-        let mut registered_active_modification = false;
-        for modification in mods {
-            let resolved_modification = freeze_granted_entry_counter_context(
-                materialize_granted_entry_counter_source(
-                    resolve_set_pt_modification(self, game, ctx, &modification)?,
-                    ctx.source,
-                ),
-                game,
-                ctx,
-            )
-            .bind_chosen_protection_qualities(game, ctx.source, false);
-            if let Modification::ChangeController(new_controller) = &resolved_modification {
-                // CR 800.4b: an effect cannot give control of an object to a
-                // player who has left the game.
-                if !game
-                    .player(*new_controller)
-                    .is_some_and(|player| player.is_in_game())
-                {
-                    continue;
-                }
-                // Reconciliation after applying the complete layer result
-                // owns sickness/soulbond changes. A false duration or condition
-                // must not manufacture a controller transition here.
-            }
-            let expires_end_of_turn = match self.until {
-                Until::EndOfTurn
-                | Until::EndOfTurnOrAnyPlayerRolls { .. }
-                | Until::YourNextTurn
-                | Until::YourNextUpkeep
-                | Until::ControllersNextUntapStep => game.turn.turn_number,
-                Until::YourNextTurnEnd => next_turn_number_for_player(game, ctx.controller),
-                // Created during or after this turn's end step: the next end
-                // step is the next turn's.
-                Until::NextEndStep => {
-                    if matches!(game.turn.phase, crate::game_state::Phase::Ending) {
-                        game.turn.turn_number + 1
-                    } else {
-                        game.turn.turn_number
-                    }
-                }
-                _ => u32::MAX,
-            };
-            let mut effect = ContinuousEffect::new(
-                ctx.source,
-                ctx.controller,
-                target.clone(),
-                resolved_modification,
-            )
-            .until(materialized_until.clone())
-            .with_expires_end_of_turn(expires_end_of_turn);
-
-            if let Some(source_type) = &source_type {
-                effect = effect.with_source_type(source_type.clone());
-            }
-            if let Some(condition) = &self.condition {
-                effect =
-                    effect.with_condition(materialize_runtime_condition(condition, game, ctx)?);
-            }
-            if let Some(group) = effect_group {
-                effect = effect.with_group(group);
-            }
-
-            registered_active_modification |=
-                crate::continuous::continuous_effect_duration_and_condition_are_active(
-                    &effect, game,
-                );
-            let id = game.effect_store.continuous_effects.add_effect(effect);
-            ctx.created_continuous_effects.push(id);
-        }
-
-        game.refresh_continuous_state()
-            .map_err(ExecutionError::ContinuousDiscovery)?;
-
-        Ok(if registered_active_modification {
-            EffectOutcome::resolved().with_affected_objects_from_game(game, affected_objects)
-        } else {
-            EffectOutcome::resolved()
-        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

@@ -2,6 +2,7 @@ import { useDragState } from "@/context/DragContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import {
   battlefieldGridSlotAtPoint,
+  battlefieldGridContentBounds,
   battlefieldPlacementForDrag,
 } from "@/lib/battlefield-layout";
 import { rectBoundaryPointToward } from "@/lib/hand-drag-intent";
@@ -39,20 +40,19 @@ function placementTargetAtPoint(x, y) {
   const styles = window.getComputedStyle(grid);
   const cardWidth = Number.parseFloat(styles.getPropertyValue("--bf-card-width")) || 72;
   const cardHeight = Number.parseFloat(styles.getPropertyValue("--bf-card-height")) || 101;
-  const gap = Number.parseFloat(styles.getPropertyValue("--bf-gap")) || 4;
+  const gap = Number.parseFloat(styles.columnGap) || 0;
+  const rowGap = Number.parseFloat(styles.rowGap) || 0;
   const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
-  const topSafeInset = Number.parseFloat(styles.getPropertyValue("--bf-top-safe-inset")) || 0;
   const slot = battlefieldGridSlotAtPoint({
     x: x + grid.scrollLeft,
     y: y + grid.scrollTop,
-    left: gridRect.left,
-    top: gridRect.top + Math.max(0, topSafeInset),
-    width: gridRect.width,
+    ...battlefieldGridContentBounds(grid, styles),
     rows: Number(grid.dataset.battlefieldGridRows),
     columns: Number(grid.dataset.battlefieldGridColumns),
     cardWidth,
     cardHeight,
     gap,
+    rowGap,
     overlap,
   });
   const slotElement = slot

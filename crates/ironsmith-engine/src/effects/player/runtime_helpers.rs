@@ -25,16 +25,24 @@ pub(super) fn register_effect_driven_spell_cast(
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
 ) -> Result<TriggerEvent, ExecutionError> {
-    // `cast_spell_from_resolving_effect` completes the same CR 601 cast
-    // transaction as a priority cast and records command-zone commander casts
-    // when that transaction is committed. This publication boundary captures
-    // observers and the ordinary cast-history occurrence without recording
-    // command-zone commander casts a second time.
-    let (event, mut captured) = crate::game_loop::capture_completed_spell_cast(
+    register_effect_driven_spell_cast_with_outputs(game, new_id, caster, from_zone, provenance)
+        .map(|outputs| outputs.outcome.events[0].clone())
+}
+
+pub(super) fn register_effect_driven_spell_cast_with_outputs(
+    game: &mut GameState,
+    new_id: ObjectId,
+    caster: PlayerId,
+    from_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    // Publication remains after the effect-driven CR 601 transaction. Its
+    // capture owner records cast history without duplicating commander casts.
+    let (outputs, mut captured) = crate::game_loop::capture_completed_spell_cast_with_outputs(
         game, new_id, caster, from_zone, provenance,
     )?;
     game.defer_trigger_entries(captured.take_all());
-    Ok(event)
+    Ok(outputs)
 }
 
 pub(super) fn with_spell_cast_event(
@@ -45,8 +53,26 @@ pub(super) fn with_spell_cast_event(
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let event = register_effect_driven_spell_cast(game, new_id, caster, from_zone, provenance)?;
-    Ok(outcome.with_event(event))
+    with_spell_cast_event_with_outputs(outcome, game, new_id, caster, from_zone, provenance)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(super) fn with_spell_cast_event_with_outputs(
+    outcome: EffectOutcome,
+    game: &mut GameState,
+    new_id: ObjectId,
+    caster: PlayerId,
+    from_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let capture = register_effect_driven_spell_cast_with_outputs(
+        game, new_id, caster, from_zone, provenance,
+    )?;
+    let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+        outcome.with_events(capture.outcome.events.clone()),
+    );
+    outputs.retain_owned_child(capture);
+    Ok(outputs)
 }
 
 #[derive(Debug, Clone)]
@@ -63,10 +89,54 @@ pub(super) enum EffectDrivenCastPayment {
     AlternativeCost(AlternativeCastKind),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) struct EffectDrivenCastResult {
     pub new_id: ObjectId,
     pub from_zone: Zone,
+    pub outputs: crate::effects::PublishedEffectOutputs,
+}
+
+/// Complete parent publication at its existing boundary and retain the native
+/// cast owner. Neither funding nor the completed cast is reconstructed here.
+pub(super) fn complete_effect_driven_cast_with_outputs(
+    outcome: EffectOutcome,
+    game: &mut GameState,
+    cast: EffectDrivenCastResult,
+    caster: PlayerId,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let mut outputs = with_spell_cast_event_with_outputs(
+        outcome,
+        game,
+        cast.new_id,
+        caster,
+        cast.from_zone,
+        provenance,
+    )?;
+    outputs.retain_published_references([cast.outputs]);
+    Ok(outputs)
+}
+
+/// Publish a native cast completion without flattening its action output.
+pub(super) fn complete_native_cast_with_outputs(
+    outcome: EffectOutcome,
+    game: &mut GameState,
+    cast: crate::game_loop::EffectDrivenCastOutputs,
+    caster: PlayerId,
+    from_zone: Zone,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    complete_effect_driven_cast_with_outputs(
+        outcome,
+        game,
+        EffectDrivenCastResult {
+            new_id: cast.new_id,
+            from_zone,
+            outputs: cast.outputs,
+        },
+        caster,
+        provenance,
+    )
 }
 
 fn cast_filter_matches(
@@ -292,7 +362,7 @@ pub(super) fn cast_effect_driven_spell_with_payment(
     option: &EffectDrivenCastOption,
     payment: EffectDrivenCastPayment,
 ) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
-    let result = crate::game_loop::cast_spell_from_resolving_effect(
+    let result = crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
         game,
         option.object_id,
         option.from_zone,
@@ -304,8 +374,9 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         &mut ctx.decision_maker,
     )
     .map_err(effect_driven_cast_error)?;
-    Ok(result.map(|new_id| EffectDrivenCastResult {
-        new_id,
+    Ok(result.map(|cast| EffectDrivenCastResult {
+        new_id: cast.new_id,
         from_zone: option.from_zone,
+        outputs: cast.outputs,
     }))
 }

@@ -699,6 +699,52 @@ chunks: compiled definitions, source text, aliases, and metadata. Add Card,
 deck loading, and card lookups read those chunks locally, decompressing only
 the chunks they need. Card images still load from their image URLs.
 
+### Shared Rust build cache
+
+Install `sccache` (`brew install sccache` on macOS). Normal Cargo builds use
+`scripts/rustc-cache.sh`, sharing a compressed cache at the main checkout's
+`target/sccache` across Git worktrees. The cache defaults to **2 GB**; incremental
+compilation is disabled to prevent large per-worktree incremental directories.
+Without `sccache`, the wrapper runs rustc directly.
+
+For existing sibling worktrees on older branches, run from the main checkout
+(Python 3.11+):
+
+```sh
+python3 scripts/setup-worktree-cache.py          # preview
+python3 scripts/setup-worktree-cache.py --apply  # configure main and sibling worktrees
+./scripts/rustc-cache.sh --show-stats
+```
+
+The setup preserves other Cargo settings and backs up changed files under
+`target/cache-setup-backups`. New worktrees made from a commit containing this
+configuration pick it up automatically; rerun setup for older branches.
+Only registered, existing sibling worktrees named `ironsmith-*` are updated.
+
+Each worktree retains its own `target` outputs so concurrent builds do not
+share Cargo's output lock or overwrite executables another worktree uses.
+Compatible dependency compilations can reuse sccache entries; workspace paths,
+features, compiler versions, and flags can cause misses. Linking is not cached,
+and the 2 GB limit applies to sccache, not to all build outputs.
+
+To reclaim **existing** incremental data, stop all Rust builds and keep them
+stopped while running:
+
+```sh
+python3 scripts/setup-worktree-cache.py --apply --clean-incremental
+```
+
+Cleanup refuses to run if it detects Cargo, rustc, or rustdoc processes. It removes
+only `incremental` directories below these worktrees' `target` directories.
+Regular setup never deletes build artifacts.
+
+`SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, and `SCCACHE_SERVER_PORT` override the defaults.
+The wrapper uses port 42317 to isolate its daemon from other projects. Stop it
+with `./scripts/rustc-cache.sh --stop-server` before changing its cache settings.
+Use `RUSTC_WRAPPER= CARGO_INCREMENTAL=1 cargo ...` to temporarily return to
+uncached incremental builds. For an uncached cold benchmark, explicitly set
+`RUSTC_WRAPPER=`; unsetting it allows the Cargo configuration to enable it again.
+
 ### Local multiplayer relay
 
 Peer-to-peer lobbies work out of the box. WebSocket lobbies and tournaments

@@ -43,6 +43,105 @@ pub struct AbilityActivatedEvent {
     pub mana_spend_evidence: Option<crate::events::mana::ManaSpendEvidence>,
 }
 
+/// Immutable acquisition for one announced activation. Native payment frames
+/// clone this exact declaration through refinement and checkpoint rollback.
+#[derive(Debug, Clone)]
+pub(crate) struct ActivationDeclaration(std::sync::Arc<ActivationDeclarationInputs>);
+
+#[derive(Debug)]
+struct ActivationDeclarationInputs {
+    payment_owner: crate::provenance::ProvNodeId,
+    activation: AbilityActivatedEvent,
+}
+
+impl PartialEq for ActivationDeclaration {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for ActivationDeclaration {}
+
+impl ActivationDeclaration {
+    pub(crate) fn new(
+        payment_owner: crate::provenance::ProvNodeId,
+        activation: AbilityActivatedEvent,
+    ) -> Self {
+        Self(std::sync::Arc::new(ActivationDeclarationInputs {
+            payment_owner,
+            activation,
+        }))
+    }
+
+    pub(crate) fn validate(
+        &self,
+        source: ObjectId,
+        activator: PlayerId,
+        payment_owner: crate::provenance::ProvNodeId,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        if (source, activator, payment_owner)
+            != (
+                self.0.activation.source,
+                self.0.activation.activator,
+                self.0.payment_owner,
+            )
+        {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "activation declaration belongs to another action".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn finish_payment(
+        &self,
+        paid_x: Option<u32>,
+        evidence: crate::events::mana::ManaSpendEvidence,
+    ) -> Result<AbilityActivatedEvent, crate::effects::ExecutionError> {
+        if evidence.payment_owner != self.0.payment_owner {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "activation payment belongs to another declaration".into(),
+            ));
+        }
+        self.0
+            .activation
+            .clone()
+            .with_x_value(paid_x)
+            .with_mana_spend_evidence(evidence)
+    }
+
+    pub(crate) fn with_completed_payment(
+        &self,
+        paid_x: Option<u32>,
+        reason: crate::costs::PaymentReason,
+        outputs: &[crate::effects::CompletedEffectOutputs],
+    ) -> Result<AbilityActivatedEvent, crate::effects::ExecutionError> {
+        let evidence = crate::events::mana::ManaSpendEvidence::from_completed_outputs(
+            outputs,
+            self.0.payment_owner,
+            self.0.activation.activator,
+            Some(self.0.activation.source),
+            reason.mana_payment_purpose(),
+        )?;
+        self.finish_payment(paid_x, evidence)
+    }
+
+    pub(crate) fn with_published_payment(
+        &self,
+        paid_x: Option<u32>,
+        reason: crate::costs::PaymentReason,
+        outputs: &[crate::effects::PublishedEffectOutputs],
+    ) -> Result<AbilityActivatedEvent, crate::effects::ExecutionError> {
+        let evidence = crate::events::mana::ManaSpendEvidence::from_published_outputs(
+            outputs,
+            self.0.payment_owner,
+            self.0.activation.activator,
+            Some(self.0.activation.source),
+            reason.mana_payment_purpose(),
+        )?;
+        self.finish_payment(paid_x, evidence)
+    }
+}
+
 impl AbilityActivatedEvent {
     /// Create a new ability-activated event.
     pub fn new(source: ObjectId, activator: PlayerId, is_mana_ability: bool) -> Self {
@@ -87,6 +186,29 @@ impl AbilityActivatedEvent {
             .with_activation_cost_has_tap(has_tap)
             .with_activated_ability(ability)
             .with_snapshot(snapshot)
+    }
+
+    /// Bind one completed payment to the exact activation declaration. The
+    /// publisher receives this payload without querying later stack/game state.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_completed_payment(
+        source: ObjectId,
+        activator: PlayerId,
+        is_mana_ability: bool,
+        ability: Option<Ability>,
+        snapshot: Option<ObjectSnapshot>,
+        announced_x: Option<u32>,
+        paid_x: Option<u32>,
+        payment_owner: crate::provenance::ProvNodeId,
+        reason: crate::costs::PaymentReason,
+        outputs: &[crate::effects::CompletedEffectOutputs],
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        ActivationDeclaration::new(
+            payment_owner,
+            Self::from_effective_ability(source, activator, is_mana_ability, ability, snapshot)
+                .with_activation_cost_has_x(announced_x.is_some()),
+        )
+        .with_completed_payment(paid_x, reason, outputs)
     }
 
     /// Mark whether the activated ability was a loyalty ability.

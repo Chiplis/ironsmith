@@ -209,7 +209,10 @@ impl SimultaneousEffectProposal for CapturedCounterPayment {
             // removal from nominal X. Energy's existing result means paid
             // energy and keeps its nominal count, including chosen-number use.
             super::placement::prepare_counter_removal_cost(
-                game, ctx, self.events.clone(), self.record_zero_quantity,
+                game,
+                ctx,
+                self.events.clone(),
+                self.record_zero_quantity,
             )
         })?;
         if !ctx.decision_maker.awaiting_choice() {
@@ -269,6 +272,33 @@ struct PaymentCompletion {
     cause: EventCause,
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
+impl PaymentCompletion {
+    fn advance(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        phase: crate::effects::composition::CompletionPhase,
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        let Self { cause, inner } = *self;
+        let mut receipt = with_payment_cause(ctx, &cause, |ctx| phase.dispatch(inner, game, ctx))?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::composition::CompletionInput,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Self { cause, inner } = *self;
+        with_payment_cause(ctx, &cause, |ctx| original.dispatch(inner, game, ctx))
+    }
+}
+
 impl SimultaneousEffectCompletion for PaymentCompletion {
     fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
         self.inner.original_phase_status()
@@ -279,15 +309,13 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        let Self { cause, inner } = *self;
-        let mut receipt = with_payment_cause(ctx, &cause, |ctx| {
-            inner.complete_original_phase_with_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
+        )
     }
 
     fn complete_original_phase_from_outputs(
@@ -295,15 +323,13 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        let Self { cause, inner } = *self;
-        let mut receipt = with_payment_cause(ctx, &cause, |ctx| {
-            inner.complete_original_phase_from_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
+        )
     }
 
     fn prepare_draw_boundary_with_outputs(
@@ -311,15 +337,13 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        let Self { cause, inner } = *self;
-        let mut receipt = with_payment_cause(ctx, &cause, |ctx| {
-            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutcome(original),
+        )
     }
 
     fn prepare_draw_boundary_from_outputs(
@@ -327,15 +351,13 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        let Self { cause, inner } = *self;
-        let mut receipt = with_payment_cause(ctx, &cause, |ctx| {
-            inner.prepare_draw_boundary_from_outputs(game, ctx, original)
-        })?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutputs(original),
+        )
     }
 
     fn observe_original(
@@ -365,11 +387,12 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let Self { cause, inner } = *self;
-        with_payment_cause(ctx, &cause, |ctx| {
-            inner.complete_with_outputs(game, ctx, original)
-        })
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outcome(original),
+        )
     }
 
     fn complete_from_original_outputs(
@@ -377,11 +400,12 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let Self { cause, inner } = *self;
-        with_payment_cause(ctx, &cause, |ctx| {
-            inner.complete_from_original_outputs(game, ctx, original)
-        })
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outputs(original),
+        )
     }
 }
 

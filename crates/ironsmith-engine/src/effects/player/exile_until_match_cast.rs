@@ -1,11 +1,12 @@
 //! Exile cards from the top of a library until one matches a filter, then offer
 //! that card to be cast and put the rest on the bottom in random order.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome};
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule,
+    execute_library_consult_with_outputs,
 };
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -14,7 +15,7 @@ use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
 
-use super::runtime_helpers::{EffectDrivenCastOption, with_spell_cast_event};
+use super::runtime_helpers::{EffectDrivenCastOption, complete_native_cast_with_outputs};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileUntilMatchCastEffect {
@@ -120,24 +121,26 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                             },
                             label: format!("Cast {candidate_name}"),
                         };
-                        let result = crate::game_loop::cast_spell_from_resolving_effect(
-                            game,
-                            option.object_id,
-                            option.from_zone,
-                            caster_id,
-                            &option.casting_method,
-                            self.without_paying_mana_cost,
-                            None,
-                            ctx.provenance,
-                            &mut ctx.decision_maker,
-                        )
-                        .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-                        if let Some(new_id) = result {
+                        let result =
+                            crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
+                                game,
+                                option.object_id,
+                                option.from_zone,
+                                caster_id,
+                                &option.casting_method,
+                                self.without_paying_mana_cost,
+                                None,
+                                ctx.provenance,
+                                &mut ctx.decision_maker,
+                            )
+                            .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                        if let Some(cast) = result {
+                            let new_id = cast.new_id;
                             casted_card = Some((candidate_id, new_id, from_zone));
-                            cast_outcome = Some(with_spell_cast_event(
+                            cast_outcome = Some(complete_native_cast_with_outputs(
                                 EffectOutcome::with_objects(vec![new_id]),
                                 game,
-                                new_id,
+                                cast,
                                 caster_id,
                                 from_zone,
                                 ctx.provenance,
@@ -168,11 +171,11 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
                 }
                 let primary = cast_outcome
                     .as_ref()
-                    .map(|outcome| outcome.value.clone())
+                    .map(|outputs| outputs.outcome.value.clone())
                     .unwrap_or(crate::effect::OutcomeValue::Count(0));
                 let mut phases = Vec::new();
                 if let Some(outcome) = cast_outcome {
-                    phases.push(CompletedEffectOutputs::aggregate_only(outcome));
+                    phases.push(outcome);
                 }
                 phases.push(cleanup);
                 let mut outcome =

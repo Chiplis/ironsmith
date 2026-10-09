@@ -34,7 +34,9 @@ impl EffectExecutor for EmptyManaPoolEffect {
         if game.player(player).is_none() {
             return Err(ExecutionError::InvalidTarget);
         }
-        Ok(Box::new(super::mana_loss::ManaLossProposal::new(game, player, false)?))
+        Ok(Box::new(super::mana_loss::ManaLossProposal::new(
+            game, player, false,
+        )?))
     }
 
     fn execute(
@@ -42,8 +44,17 @@ impl EffectExecutor for EmptyManaPoolEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player = resolve_player_filter(game, &self.player, ctx)?;
-        super::mana_loss::execute_mana_losses(game, ctx, vec![player], false)
+        super::mana_loss::execute_mana_losses_with_outputs(game, ctx, vec![player], false)
     }
 }
 

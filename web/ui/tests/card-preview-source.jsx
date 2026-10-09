@@ -26,11 +26,14 @@ export default function Fixture() {
   return <GameContext.Provider value={{ game, state: { perspective: 0, players: [{ id: 0, battlefield: cards }] } }}>
     <button onClick={() => setFirstUrl(custom)}>Change field image</button>
     <button onClick={clearHover}>Clear hover</button>
-    {cards.map(card => <div key={card.id} className="game-card battlefield-row-card"
+    <div className="battlefield-row" data-bf-side="bottom" style={{display: "flex", gap: 100, marginLeft: 40}}>
+    {cards.map(card => <div key={card.id} className="game-card battlefield-row-card battlefield-token-card battlefield-arena-card inspected"
       data-object-id={card.id} data-card-image-url={card.id === 1 ? firstUrl : custom}
       onMouseEnter={() => hoverCard(card.id)} style={{ width: 80, height: 112, marginTop: 40 }}>
+      <span className="card-inspector-source-glow" />
       <img alt={`Field card ${card.id}`} src={card.id === 1 ? firstUrl : custom} style={{ width: '100%', height: '100%' }} referrerPolicy="no-referrer" />
     </div>)}
+    </div>
     <FloatingCardPreview />
   </GameContext.Provider>;
 }

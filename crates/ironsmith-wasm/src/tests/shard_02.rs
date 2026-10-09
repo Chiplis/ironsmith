@@ -928,13 +928,13 @@ pub(super) fn krrik_casting_black_spell_surfaces_pay_two_life_option_in_wasm_flo
     );
 
     match wasm.pending_decision.as_ref() {
-        Some(DecisionContext::SelectOptions(ctx)) => {
-            assert!(
-                ctx.options
-                    .iter()
-                    .any(|option| option.description == "Pay 2 life"),
-                "expected K'rrik to surface a pay-2-life payment option in the WASM decision"
+        Some(DecisionContext::ManaPayment(ctx)) => {
+            assert_eq!(
+                ironsmith::mana_payment::mana_payment_life_options(&wasm.game, &ctx.request),
+                vec![(ironsmith::mana_payment::ManaPipId(0), 2)],
+                "K'rrik must expose life payment for the black pip in the current payment editor"
             );
+            assert_eq!(wasm.game.player(alice).unwrap().life, 20);
         }
         other => panic!("expected mana payment choice after starting the cast, got {other:?}"),
     }

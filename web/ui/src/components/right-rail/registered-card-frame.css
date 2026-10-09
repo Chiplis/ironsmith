@@ -23,22 +23,24 @@
 .registered-card-frame__corner-fill--br { clip-path:polygon(100% 100%, calc(100% - 10px) 100%, 100% calc(100% - 10px)); }
 .registered-card-frame__patch { position:absolute; pointer-events:none; z-index:1; }
 .registered-card-frame__field { position:absolute; z-index:2; min-width:0; }
+.registered-card-frame__inline-loyalty { display:inline-block; width:1.1em; height:.72em; vertical-align:-.05em; overflow:visible; }
 .registered-card-frame__field[data-replaced="true"] { display:flex; }
 .registered-card-frame__field .interactive-card-frame__rules { padding:0!important; border:0; box-shadow:none; background:none; overflow:hidden; line-height:var(--registered-field-line-height,1.2); }
 .registered-card-frame__field .interactive-card-frame__rule-line { font-weight:400; text-shadow:var(--registered-field-shadow,none); line-height:var(--registered-field-line-height,1.2); color:var(--registered-field-ink,var(--card-frame-ink)); }
 /* Registered fields already sit on the printed baseline grid: the preview-wide
    clamp for assembled frames would shrink or enlarge them away from the scan. */
 .registered-card-frame__field .interactive-card-frame__rules[data-fit-text="true"] { font-size:var(--card-fitted-rules-font-size,var(--registered-field-font-size,3.575cqw)); }
-.registered-card-frame__field[data-field-kind="name"] .interactive-card-frame__rule-line,
-.registered-card-frame__field[data-field-kind="name"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-title-font)!important; font-weight:var(--card-title-weight,400); }
+.registered-card-frame__field:is([data-field-kind="name"],[data-field-kind="subtitle"]) .interactive-card-frame__rule-line,
+.registered-card-frame__field:is([data-field-kind="name"],[data-field-kind="subtitle"]) .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-title-font)!important; font-weight:var(--card-title-weight,400); }
 .registered-card-frame__field[data-field-kind="type"] .interactive-card-frame__rule-line,
 .registered-card-frame__field[data-field-kind="type"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-type-font)!important; font-weight:var(--card-type-weight,400); }
-.registered-card-frame__field[data-field-kind="stats"] .interactive-card-frame__rule-line,
-.registered-card-frame__field[data-field-kind="stats"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-stats-font)!important; font-weight:var(--card-stats-weight,400); }
+.registered-card-frame__field:is([data-field-kind="stats"],[data-field-kind="tier-stats"],[data-field-kind="loyalty-cost"]) .interactive-card-frame__rule-line,
+.registered-card-frame__field:is([data-field-kind="stats"],[data-field-kind="tier-stats"],[data-field-kind="loyalty-cost"]) .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-stats-font)!important; font-weight:var(--card-stats-weight,400); }
 .registered-card-frame__field[data-field-kind="flavor"] .interactive-card-frame__rule-line { font-style:italic; }
+.registered-card-frame__field[data-field-kind="subtitle"] .interactive-card-frame__rule-line { font-style:italic; }
 .registered-card-frame__field[data-unprinted="true"] { color:white; text-shadow:0 1px 2px black,0 0 4px black; }
 .registered-card-frame__field[data-unprinted="true"] .interactive-card-frame__rule-line { color:inherit; text-shadow:inherit; }
-.registered-card-frame__field[data-outlined="true"] .interactive-card-frame__rule-line { color:white; -webkit-text-stroke:.12em black; paint-order:stroke fill; }
+.registered-card-frame__field[data-outlined="true"] .interactive-card-frame__rule-line { color:white; -webkit-text-stroke:.055em black; paint-order:stroke fill; }
 .registered-card-frame__hotspot, .registered-card-frame__mana-hotspots, .registered-card-frame__mana-hotspots button { position:absolute; inset:0; width:100%; height:100%; background:transparent; border:0; padding:0; }
 .registered-card-frame__mana-hotspots button { right:auto; }
 .registered-card-frame__hotspot:not(:disabled), .registered-card-frame__mana-hotspots button:not(:disabled) { cursor:pointer; }
@@ -57,3 +59,28 @@
 /* Preserve the scan coordinate system inside one bounded scrolling column. */
 .registered-card-frame__column { position:absolute; left:0; width:100%; overflow-x:hidden; overflow-y:auto; z-index:2; }
 .registered-card-frame__column-content { position:relative; width:100%; height:0; }
+
+/* Segmented boxes keep their own rail and scroll changed rules within it. */
+.registered-card-frame__field:is([data-field-kind="rule"], [data-field-kind="flavor"]) .interactive-card-frame__rules[data-text-overflow="true"] { overflow-y:auto; }
+
+/* Class costs and level labels occupy opposite ends of their printed rail. */
+.registered-card-frame__label-parts { display:flex; justify-content:space-between; align-items:baseline; width:100%; gap:.4em; }
+
+/* The line box must use the same face as its glyphs; a UI-font strut shifts
+   baselines and can make fixed stat rails reject even a tiny replacement. */
+.registered-card-frame__field .interactive-card-frame__rules { font-family:var(--card-rules-font); font-weight:400; }
+/* A fitted glyph may use the font's ascent above its line box. Scroll extents
+   include that strut; clipping it would cut serifs despite a successful fit. */
+.registered-card-frame__field .interactive-card-frame__rules[data-text-overflow="false"] { overflow:visible; }
+.registered-card-frame__field:is([data-field-kind="name"],[data-field-kind="subtitle"]) .interactive-card-frame__rules { font-family:var(--card-title-font); font-weight:var(--card-title-weight); }
+.registered-card-frame__field[data-field-kind="type"] .interactive-card-frame__rules { font-family:var(--card-type-font); font-weight:var(--card-type-weight); }
+.registered-card-frame__field:is([data-field-kind="stats"],[data-field-kind="tier-stats"],[data-field-kind="loyalty-cost"]) .interactive-card-frame__rules { font-family:var(--card-stats-font); font-weight:var(--card-stats-weight); }
+
+.registered-card-frame__field .registered-card-frame__stacked-stats { display:flex; flex-direction:column; justify-content:space-between; height:100%; text-align:center; }
+.registered-card-frame__field:has(.registered-card-frame__stacked-stats) .interactive-card-frame__rules { width:100%; height:100%; }
+
+/* Fixed badge rails contain one line. Center its line box within the extra
+   ascent/descent space allocated around the printed ink. */
+.registered-card-frame__field:is([data-field-kind="stats"],[data-field-kind="tier-stats"],[data-field-kind="loyalty-cost"]) .interactive-card-frame__rules { justify-content:center; }
+
+.registered-card-frame__label-parts > .interactive-card-frame__rule-line { white-space:nowrap; }

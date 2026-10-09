@@ -401,7 +401,8 @@ fn source_abilities(
         // subtype definitions use the host's ordinary zone (CR 113.6), not a CDA's all-zone default.
         // Other grant families keep their existing policy.
         let is_characteristic_definition = ability.characteristic_defining_colors().is_some()
-            || ability.characteristic_defining_subtypes().is_some();
+            || ability.characteristic_defining_subtypes().is_some()
+            || ability.is_characteristic_defining_subtype_family();
         let ability = crate::ability::Ability::static_ability(ability);
         let ability = if is_characteristic_definition {
             let zone = if object.has_card_type(crate::types::CardType::Instant)

@@ -123,6 +123,8 @@ pub struct ChooseObjectsSpec {
     pub allow_partial_completion: bool,
     /// Whether the decision must be offered even when one required candidate exists.
     pub require_explicit_choice: bool,
+    /// Send a mandatory whole-hand reveal through the normal owner proof protocol.
+    pub automatic_public_reveal: bool,
     /// Whether hidden candidate identities should be opened while the decision is active.
     pub hidden_card_visibility: DecisionHiddenCardVisibility,
     /// How the *chosen* candidates are revealed, independent of
@@ -153,6 +155,7 @@ impl ChooseObjectsSpec {
             relation_filter: None,
             allow_partial_completion: false,
             require_explicit_choice: false,
+            automatic_public_reveal: false,
             hidden_card_visibility: DecisionHiddenCardVisibility::None,
             selection_reveal_policy: None,
         }
@@ -273,6 +276,8 @@ impl DecisionSpec for ChooseObjectsSpec {
             self.description.clone(),
         );
 
+        let mut ctx = ctx;
+        ctx.automatic_public_reveal = self.automatic_public_reveal;
         DecisionContext::SelectObjects(ctx)
     }
 }

@@ -1,3 +1,6 @@
+import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
+import { arenaPermanentKind } from '@/lib/mobile-arena';
+import './battlefield-appearance.css';
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
@@ -691,7 +694,10 @@ export default function GameCard({
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
   const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
-  const usePortraitBattlefield = variant === "battlefield" && battlefieldVisualMode === "portrait";
+  const [battlefieldAppearance] = useBattlefieldAppearance();
+  const smallLand = variant === "battlefield" && battlefieldAppearance.compactCards && battlefieldAppearance.compactLands && arenaPermanentKind(card) === "land";
+  const compactArtwork = variant === "battlefield" && (battlefieldAppearance.compactCards || smallLand);
+  const usePortraitBattlefield = variant === "battlefield" && !compactArtwork;
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
   const artUrl = sourceImageUrl || resolvedArtUrl;
@@ -712,8 +718,8 @@ export default function GameCard({
     : artUrl;
   const showHandLoadingFrame = variant === "hand" && (isHovered || isCastTargetHovered || isInspected)
     && (!artUrl || repairedHandArt?.source !== artUrl);
-  const useArenaBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-arena";
-  const useTokenBattlefield = variant === "battlefield" && (battlefieldVisualMode === "mobile-token" || useArenaBattlefield);
+  const useArenaBattlefield = compactArtwork;
+  const useTokenBattlefield = useArenaBattlefield;
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
@@ -812,11 +818,11 @@ export default function GameCard({
       ...card,
       mana_cost: card.mana_cost ?? activeFetchedBattlefieldMeta?.mana_cost ?? null,
       oracle_text: String(card?.oracle_text || activeFetchedBattlefieldMeta?.oracle_text || ""),
-      produced_mana: Array.isArray(card?.produced_mana) && card.produced_mana.length > 0
+      produced_mana: Array.isArray(card?.produced_mana)
         ? card.produced_mana
         : (Array.isArray(activeFetchedBattlefieldMeta?.produced_mana)
           ? activeFetchedBattlefieldMeta.produced_mana
-          : []),
+          : undefined),
     }
     : card;
   const manaBattlefieldDisplays = variant === "battlefield"
@@ -1285,6 +1291,7 @@ export default function GameCard({
   return (
     <div
       ref={rootRef}
+      data-battlefield-layout={variant === "battlefield" ? battlefieldVisualMode : undefined}
       className={cn(
         "game-card grid content-start",
         showActionBorder && "card-action-available",
@@ -1294,7 +1301,8 @@ export default function GameCard({
         variant === "battlefield" && "field-card",
         usePortraitBattlefield && "battlefield-portrait-card",
         useTokenBattlefield && "battlefield-token-card",
-        useArenaBattlefield && "battlefield-arena-card",
+        useArenaBattlefield && "battlefield-arena-card battlefield-artwork-card",
+        smallLand && "battlefield-small-land",
         variant === "hand" && "hand-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
@@ -1520,7 +1528,7 @@ export default function GameCard({
         )}
         {useArenaBattlefield ? (
           <MobileArenaCardFace card={resolvedBattlefieldCard} name={displayName} artUrl={artUrl}
-            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} secondary={numericSecondaryBattlefieldInfo} />
+            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} secondary={groupSize > 1 ? numericSecondaryBattlefieldInfo : null} />
         ) : useTokenBattlefield ? (
           <div className="battlefield-token-shell">
             <svg
@@ -1726,7 +1734,7 @@ export default function GameCard({
         )}
 
       </div>
-      {variant === "battlefield" && !useTokenBattlefield && powerToughnessCounterBadges.length > 0 && (
+      {variant === "battlefield" && (!useTokenBattlefield || useArenaBattlefield) && powerToughnessCounterBadges.length > 0 && (
         <div
           className="battlefield-counter-rail battlefield-counter-rail--power-toughness"
           aria-label="Power and toughness counters"
@@ -1739,7 +1747,7 @@ export default function GameCard({
           ))}
         </div>
       )}
-      {variant === "battlefield" && !useTokenBattlefield && standardCounterBadges.length > 0 && (
+      {variant === "battlefield" && (!useTokenBattlefield || useArenaBattlefield) && standardCounterBadges.length > 0 && (
         <div className="battlefield-counter-rail">
           {standardCounterBadges.map((badge, index) => (
             <BattlefieldCounterBadge

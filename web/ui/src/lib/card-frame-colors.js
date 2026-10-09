@@ -540,7 +540,7 @@ export function detectPanelBounds({data, width, height}, section, {typePanel = n
     const a = (y1 * width + x1) * 4, b = (y2 * width + x2) * 4;
     return Math.hypot(...[0,1,2].map(c => data[a+c] - data[b+c]));
   };
-  const horizontal = range => {
+  const horizontal = (range, requireFullWidth = false) => {
     let best = null;
     for (let y = Math.floor(range[0] * height); y <= range[1] * height; y++) {
       const changes = Array.from({length:32}, (_,i) => {
@@ -549,6 +549,11 @@ export function detectPanelBounds({data, width, height}, section, {typePanel = n
       });
       const support = changes.filter(v => v > 24).length / changes.length;
       const score = changes.reduce((n,v) => n + Math.min(v,120),0) / changes.length;
+      // A short, dark flavor attribution can outscore a pale lower bevel.
+      // A panel boundary must also continue through every quarter of the
+      // paper, including the blank space beside the last line of text.
+      if (requireFullWidth && [0,8,16,24].some(start =>
+        changes.slice(start,start+8).filter(v => v > 24).length < 4)) continue;
       if (support >= .65 && (!best || score > best.score)) best = {position:y, score};
     }
     return best;
@@ -585,7 +590,7 @@ export function detectPanelBounds({data, width, height}, section, {typePanel = n
     const inner = strong.find(c => c.score === peak);
     return {position:inner.position, score:inner.score};
   };
-  const top=horizontal(ranges.top), bottom=horizontal(ranges.bottom), left=vertical(false), right=vertical(true, left);
+  const top=horizontal(ranges.top), bottom=horizontal(ranges.bottom,section==='rules'), left=vertical(false), right=vertical(true, left);
   if (!top || !bottom || !left || !right) return null;
   // A transition locates the beginning of a dark lower rail, not its far
   // edge. Follow its sustained stroke so the crop cannot cut the rim off.
@@ -1112,11 +1117,20 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
   style['--title-panel-kind'] = titlePanel.kind;
   style['--type-panel-kind'] = typePanel.kind;
   const measuredBoxes = JSON.parse(style['--printed-layout']);
+  // A conventional type-band search can lock onto the first rules line of
+  // a showcase frame. The independently matched art must end near the type
+  // rail; otherwise publishing the mask leaves the real type printed twice.
+  const artBottom=measuredBoxes.art.y+measuredBoxes.art.height;
+  if(measuredBoxes.type.y-artBottom>fullScan.height*.05)return fallback('type-art-registration');
   const statsBox = printing.power != null && printing.toughness != null ? detectPrintedStats(fullScan) : null;
   let setSymbol=null;
   if(style['--printed-layout']) {
     const type=JSON.parse(style['--printed-layout']).type;
     if(symbolScan)setSymbol=locateSetSymbol(fullScan,type,symbolScan);
+    // On modern reverse faces a separated final subtype can resemble the
+    // set silhouette. A weak match in the text area is not a symbol anchor.
+    if(printing.frame==='2015'&&printing.color_indicator?.length&&setSymbol
+      &&setSymbol.x<fullScan.width*.85&&setSymbol.confidence<.6)setSymbol=null;
     const stop=setSymbol?setSymbol.x-5:fullScan.width*.855-5;
     style['--printed-type-text-width']=`${Math.max(40,stop-type.x-7)/fullScan.width*100}cqw`;
     if(setSymbol)style['--printed-set-symbol-bounds']=JSON.stringify(setSymbol);
@@ -1190,6 +1204,10 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
           : section === 'type' ? printing.printed_type_line || printing.type_line
           : printing.power != null && printing.toughness != null ? `${printing.power}/${printing.toughness}` : '';
         if (!content || section === 'stats' && !stats) continue;
+        ctx.font = `${section === 'stats' ? typography.style['--card-stats-weight'] : typography.titleWeight} 100px ${typography[section]}`;
+        const metrics = ctx.measureText(content);
+        const inkWidth = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
+        const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
         let bounds = stats;
         if (section !== 'stats') {
           const box = boxes[section], stop = section === 'title' ? (future ? box.x+box.width : manaMatch?.symbols[0]?.x) : setSymbol?.x;
@@ -1199,24 +1217,46 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
           // Include the conventional text margin as well as space outside the
           // detected rail: clipped connected components are rejected, leaving
           // their original initial behind even when the rest of the mask passes.
-          const x = Math.max(0, Math.floor(Math.min(box.x - (enclosed ? 6 : 0), fullScan.width * .075))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
+          // The curved Future Sight rails have an explicit interior origin.
+          // Extending them to the ordinary 7.5% margin admits the curved rim
+          // as a letter and shifts the measured type line onto that rim.
+          const faceIndicator = section === 'title' && ['2003','2015'].includes(printing.frame)
+            && printing.border_color !== 'borderless' && !printing.full_art
+            && ['transform','modal_dfc','meld'].includes(printing.layout);
+          const colorIndicator = section === 'type' && printing.frame === '2015' && printing.color_indicator?.length;
+          const x = Math.max(colorIndicator ? Math.floor(fullScan.width*.125) : 0, Math.floor(future ? box.x - 6 : Math.min(box.x - (enclosed ? 6 : 0), fullScan.width * .075))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
           const sampleHeight=Math.ceil(box.height+(enclosed&&section==='title'?6:-insetY*2));
           // Keep complete terminal glyphs when a long localized label reaches
           // the registered symbol. Cropping four pixels early can cut its last
           // letter, which connected-component measurement then rejects.
-          const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? fullScan.width * (section === 'title' ? .78 : .855)) - 1));
+          const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? (colorIndicator ? box.x+box.width : fullScan.width * (section === 'title' ? .78 : .855))) - 1));
           // Short known labels cannot supply four same-height letters. Require
           // a pair for those labels, while keeping the stronger default for
           // unconstrained region analysis and longer strings.
           const minimumGlyphs=content.replace(/[^\p{L}\p{N}]/gu,'').length<=5?2:4;
           const measured = printedTextBounds(ctx.getImageData(x, y, right - x, sampleHeight),{minimumGlyphs});
-          if (!measured) { if(future)return fallback('text-registration'); continue; }
+          if (!measured) {
+            // A geometrically plausible rail can actually be the first rules
+            // line on a showcase frame. Do not publish a "masked" scan while
+            // the original type line remains elsewhere in the image.
+            if(future||section==='type')return fallback('text-registration');
+            continue;
+          }
           bounds = {x:x+measured.x, y:y+measured.y, width:measured.right-measured.x, height:measured.bottom-measured.y};
+          if (faceIndicator) {
+            // Some reverse faces omit the indicator. Compare both candidates
+            // with the printed name's proportions instead of imposing the
+            // front-face indentation on every reverse.
+            const start=Math.floor(fullScan.width*.145);
+            const candidate=printedTextBounds(ctx.getImageData(start,y,right-start,sampleHeight),{minimumGlyphs});
+            if(candidate){
+              const narrowed={x:start+candidate.x,y:y+candidate.y,width:candidate.right-candidate.x,height:candidate.bottom-candidate.y};
+              const error=b=>Math.abs(Math.log((b.width/b.height)/(inkWidth/inkHeight)));
+              if(error(narrowed)+.025<error(bounds))bounds=narrowed;
+            }
+          }
+          if(colorIndicator&&!setSymbol)style['--printed-type-text-width']=`${(right-bounds.x)/fullScan.width*100}cqw`;
         }
-        ctx.font = `${section === 'stats' ? typography.style['--card-stats-weight'] : typography.titleWeight} 100px ${typography[section]}`;
-        const metrics = ctx.measureText(content);
-        const inkWidth = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
-        const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
         // Width is the sharper measure, but only of the words the printing
         // actually shows. Oracle updates rewrite type lines (Bola Warrior
         // prints "Creature — Spellshaper", its Oracle line adds Human and
@@ -1292,13 +1332,19 @@ export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icon
       }
     }
     let unsafeMask=null;
+    // Future Sight's rules coordinates already bound the paper inside its
+    // curved frame. An additional panel inset clips the initial letters.
     const masked=await maskSourceFrameAsync(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanelAsync(patch,{
       family:typography[options.section==='footer'?'rules':options.section]||typography.rules,
       weight:['title','type'].includes(options.section)?typography.titleWeight:options.section==='stats'?typography.style['--card-stats-weight']:400,
       section:options.section,excludedPixels:options.excludedPixels,protectBottomBoundary:options.protectBottomBoundary,
+      // Inventions print black labels on copper rails whose RGB average is
+      // darker than the automatic light-ink threshold. Keep that known ink
+      // polarity through both glyph recognition and residual validation.
+      polarity:printing.set==='mps'&&['title','type'].includes(options.section)?'dark':undefined,
       allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
       text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Ilus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
-    },inpaint):reconstructPanel,{hasFlavor:!!printing?.flavor_text,flavorTop:JSON.parse(style['--printed-flavor-first-line']||'null')?.y,onUnsafeMask:failure=>{unsafeMask=failure;},title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))},inpaint);
+    },inpaint):reconstructPanel,{hasFlavor:!!printing?.flavor_text,flavorTop:JSON.parse(style['--printed-flavor-first-line']||'null')?.y,onUnsafeMask:failure=>{unsafeMask=failure;},title:titlePanel?.kind,type:typePanel?.kind,rules:future?'integrated':undefined,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))},inpaint);
     if(unsafeMask)return fallback(`residual-text-${unsafeMask.section}`);
     if(masked) {
       const original=frameCanvas(masked.width,masked.height);

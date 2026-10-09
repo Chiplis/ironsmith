@@ -12,7 +12,9 @@ use crate::ability::AbilityKind;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
-use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{
+    CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
 use crate::game_state::GameState;
@@ -347,12 +349,30 @@ pub(crate) fn complete_crew_ability_resolution(
     ctx: &mut ExecutionContext,
     entry: &crate::game_state::StackEntry,
 ) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
-        let Some(event) = build_crew_ability_resolved_event(game, entry) else {
-            return Ok(EffectOutcome::resolved());
-        };
-        crate::effects::composition::publish_keyword_action_completion(game, ctx, event)
-    })
+    complete_crew_ability_resolution_with_outputs(game, ctx, entry)
+        .map(CompletedEffectOutputs::into_outcome)
+}
+
+/// Retain the actual keyword publisher's packet through the same native crew
+/// bookkeeping transaction. No payment or crew selection is executed again.
+pub(crate) fn complete_crew_ability_resolution_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    entry: &crate::game_state::StackEntry,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(event) = build_crew_ability_resolved_event(game, entry) else {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved(),
+                ));
+            };
+            crate::effects::composition::publish_keyword_action_completion_receipt(game, ctx, event)
+        },
+    )
 }
 
 fn contributor_value(effect: &CrewCostEffect, game: &GameState, id: ObjectId) -> i32 {

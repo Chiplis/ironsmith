@@ -16,7 +16,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::zone::Zone;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::complete_native_cast_with_outputs;
 
 /// Resolves a madness trigger whose source is the exiled card.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -32,14 +32,14 @@ fn put_madness_card_into_graveyard(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card_id: crate::ids::ObjectId,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     // Use the full zone-changing instruction owner: it consumes deferred
     // replacement programs and rolls the entire movement back on suspension
     // or failure before this linked madness marker is cleared.
     let outcome = crate::effects::MoveToZoneEffect::to_graveyard(
         crate::target::ChooseSpec::SpecificObject(card_id),
     )
-    .execute_child(game, ctx)?;
+    .execute_child_with_outputs(game, ctx)?;
     if !ctx.decision_maker.awaiting_choice() {
         game.clear_madness_exiled(card_id);
     }
@@ -52,13 +52,26 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let card_id = ctx.source;
         // The card must still be the object the madness replacement exiled.
         let Some(card) = game.object(card_id) else {
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         };
         if card.zone != Zone::Exile || !game.is_madness_exiled(card_id) {
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
         }
         let owner = card.owner;
         let Some((madness_index, madness_cost)) = card
@@ -83,7 +96,9 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             crate::decisions::specs::MadnessSpec::new(card_id, madness_cost),
         );
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         if !wants_to_cast {
             return put_madness_card_into_graveyard(game, ctx, card_id);
@@ -91,7 +106,7 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
 
         let casting_method = CastingMethod::Alternative(madness_index);
         game.authorize_madness_cast(card_id);
-        let result = crate::game_loop::cast_spell_from_resolving_effect(
+        let result = crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
             game,
             card_id,
             Zone::Exile,
@@ -104,18 +119,20 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
         );
         game.revoke_madness_cast(card_id);
         let result = result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
-        if let Some(new_id) = result {
-            return Ok(with_spell_cast_event(
-                EffectOutcome::with_objects(vec![new_id]),
+        if let Some(cast) = result {
+            return complete_native_cast_with_outputs(
+                EffectOutcome::with_objects(vec![cast.new_id]),
                 game,
-                new_id,
+                cast,
                 owner,
                 Zone::Exile,
                 ctx.provenance,
-            )?);
+            );
         }
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         // The cast didn't happen (for example, no legal targets or the cost
         // couldn't be paid), so the card goes to its owner's graveyard.
@@ -125,7 +142,9 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
         {
             return put_madness_card_into_graveyard(game, ctx, card_id);
         }
-        Ok(EffectOutcome::resolved())
+        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ))
     }
 }
 

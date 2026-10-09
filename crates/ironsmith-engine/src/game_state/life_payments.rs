@@ -21,6 +21,32 @@ struct PaymentOriginalCompletion {
     inner: Box<dyn crate::effects::SimultaneousEffectCompletion>,
     context: crate::effects::ExecutionContextCheckpoint,
 }
+impl PaymentOriginalCompletion {
+    /// Forward one actual phase through the retained scope and continuation.
+    fn advance(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        phase: crate::effects::composition::CompletionPhase,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self { inner, context } = *self;
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = phase.dispatch(inner, game, ctx);
+        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        parent.restore(ctx);
+        let mut receipt = result?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(PaymentOriginalCompletion { inner, context })
+                as Box<dyn crate::effects::SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+}
+
 impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion {
     fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
         self.inner.original_phase_status()
@@ -35,18 +61,11 @@ impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion 
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        let Self { inner, context } = *self;
-        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = inner.complete_original_phase_with_outputs(game, ctx, original);
-        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        parent.restore(ctx);
-        let mut receipt = result?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentOriginalCompletion { inner, context })
-                as Box<dyn crate::effects::SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
+        )
     }
 
     fn complete_original_phase_from_outputs(
@@ -58,18 +77,11 @@ impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion 
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        let Self { inner, context } = *self;
-        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = inner.complete_original_phase_from_outputs(game, ctx, original);
-        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        parent.restore(ctx);
-        let mut receipt = result?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentOriginalCompletion { inner, context })
-                as Box<dyn crate::effects::SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
+        )
     }
 
     fn prepare_draw_boundary_with_outputs(
@@ -81,18 +93,11 @@ impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion 
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        let Self { inner, context } = *self;
-        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = inner.prepare_draw_boundary_with_outputs(game, ctx, original);
-        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        parent.restore(ctx);
-        let mut receipt = result?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentOriginalCompletion { inner, context })
-                as Box<dyn crate::effects::SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutcome(original),
+        )
     }
 
     fn prepare_draw_boundary_from_outputs(
@@ -104,18 +109,11 @@ impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion 
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        let Self { inner, context } = *self;
-        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        context.restore_ref(ctx);
-        let result = inner.prepare_draw_boundary_from_outputs(game, ctx, original);
-        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        parent.restore(ctx);
-        let mut receipt = result?;
-        receipt.completion = receipt.completion.map(|inner| {
-            Box::new(PaymentOriginalCompletion { inner, context })
-                as Box<dyn crate::effects::SimultaneousEffectCompletion>
-        });
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutputs(original),
+        )
     }
 
     fn observe_original(

@@ -5,12 +5,18 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::player::{ManaPool, ManaSpendPolicy};
 
 /// Stable, transaction-local identity for an expanded mana pip.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ManaPipId(pub u32);
 
 /// Whether declining a payment is itself a legal choice.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaymentObligation {
     #[default]
@@ -23,7 +29,10 @@ pub enum PaymentObligation {
 /// ability and mana-output branch was chosen for a multi-ability source. The
 /// containing vector is a multiset: repeated entries require repeated legal
 /// activations of the same ability.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequiredManaActivation {
     pub source: ObjectId,
@@ -32,7 +41,10 @@ pub struct RequiredManaActivation {
 }
 
 /// One exact keyword-payment resource selected during incremental planning.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequiredAlternativePayment {
     pub source: ObjectId,
@@ -41,7 +53,10 @@ pub struct RequiredAlternativePayment {
 
 /// User choices that constrain replanning.  These are deliberately expressed
 /// as constraints rather than client-authored executable steps.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManaPaymentPreferences {
     pub required_sources: Vec<ObjectId>,
@@ -54,7 +69,10 @@ pub struct ManaPaymentPreferences {
     pub required_life_pips: Vec<ManaPipId>,
     /// Actual W/U/B/R/G mana to allocate to X. This is a constraint on a
     /// server-proved assignment, not a client-authored payment receipt.
-    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serialization",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub x_allocation: Option<ironsmith_core::mana::XManaAllocation>,
 }
 
@@ -112,7 +130,10 @@ fn color_restriction_sort_key(colors: &[Color]) -> u8 {
 }
 
 /// Everything needed to plan one payment transaction.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManaPaymentRequest {
     pub payer: PlayerId,
@@ -134,7 +155,10 @@ pub struct ManaPaymentRequest {
     pub preferences: ManaPaymentPreferences,
     /// Assist's actual payment must leave this independently priced caster
     /// obligation payable. A continuation cannot itself contain Assist.
-    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serialization",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub assist_completion: Option<Box<ManaPaymentRequest>>,
     /// Ancestor mana activations cannot fund themselves. This does not
     /// forbid tapping their permanents for a distinct Waterbend obligation.
@@ -160,7 +184,11 @@ impl ManaPaymentRequest {
             obligation: PaymentObligation::Required,
             preferences: ManaPaymentPreferences::default(),
             assist_completion: None,
-            activation_excluded_sources: if reason.is_mana_ability() { vec![source] } else { Vec::new() },
+            activation_excluded_sources: if reason.is_mana_ability() {
+                vec![source]
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -168,13 +196,19 @@ impl ManaPaymentRequest {
         let mut request = self.clone();
         for allocation in allocations {
             match allocation.payment {
-                PlannedPipPayment::Convoke(id) | PlannedPipPayment::Improvise(id) | PlannedPipPayment::Waterbend(id) => {
-                    if !request.reserved_tap_sources.contains(&id) { request.reserved_tap_sources.push(id); }
-                },
+                PlannedPipPayment::Convoke(id)
+                | PlannedPipPayment::Improvise(id)
+                | PlannedPipPayment::Waterbend(id) => {
+                    if !request.reserved_tap_sources.contains(&id) {
+                        request.reserved_tap_sources.push(id);
+                    }
+                }
                 PlannedPipPayment::Delve(id) => {
-                    if !request.reserved_graveyard_sources.contains(&id) { request.reserved_graveyard_sources.push(id); }
-                },
-                _ => {},
+                    if !request.reserved_graveyard_sources.contains(&id) {
+                        request.reserved_graveyard_sources.push(id);
+                    }
+                }
+                _ => {}
             }
         }
         request
@@ -212,7 +246,10 @@ pub struct PlannedManaActivation {
     pub undo_safe: bool,
 }
 
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ManaPaymentSourceKind {
     ManaAbility,
@@ -331,7 +368,9 @@ impl ManaPaymentFailure {
     pub(crate) fn from_execution(error: crate::game_loop::GameLoopError) -> Self {
         match error {
             crate::game_loop::GameLoopError::ExecutionFailed(error)
-            | crate::game_loop::GameLoopError::ActionError(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => Self::EffectExecutionFailed(error),
+            | crate::game_loop::GameLoopError::ActionError(
+                crate::special_actions::ActionError::ExecutionFailure { error, .. },
+            ) => Self::EffectExecutionFailed(error),
             _ => Self::ExecutionFailed,
         }
     }
@@ -371,17 +410,35 @@ pub struct PendingManaPayment {
     pub request: ManaPaymentRequest,
     pub plan: ManaPaymentPlan,
     pub next_activation: usize,
+    /// Actual completed activation prefix; native checkpoint clones retain
+    /// the same producer identities through prompts and plan refinement.
+    pub(crate) completed_outputs: crate::effects::CompletedActionPrefix,
+    /// Exact activation acquisition retained only by this pending payment.
+    pub(crate) activation_declaration: Option<crate::events::spells::ActivationDeclaration>,
     /// False while the UI is showing the first legal plan and a better
     /// bounded-search result is still being computed.
     pub planning_complete: bool,
 }
 
 impl PendingManaPayment {
+    /// Refine a native proposal without losing actions already completed while
+    /// funding its predecessor. Only producer handles transfer; the newly
+    /// constructed request, plan, cursor and planning policy remain authoritative.
+    pub(crate) fn with_completed_prefix_from(mut self, previous: Option<&Self>) -> Self {
+        if let Some(previous) = previous {
+            self.completed_outputs = previous.completed_outputs.clone();
+            self.activation_declaration = previous.activation_declaration.clone();
+        }
+        self
+    }
+
     pub fn new(request: ManaPaymentRequest, plan: ManaPaymentPlan) -> Self {
         Self {
             request,
             plan,
             next_activation: 0,
+            completed_outputs: Default::default(),
+            activation_declaration: None,
             planning_complete: true,
         }
     }
@@ -393,6 +450,8 @@ impl PendingManaPayment {
             request,
             plan,
             next_activation: 0,
+            completed_outputs: Default::default(),
+            activation_declaration: None,
             planning_complete,
         }
     }
@@ -404,19 +463,33 @@ mod consumer_constraint_wire_tests {
     #[test]
     fn serialized_requests_retain_cost_owned_spending_constraints_and_root_identity() {
         use ironsmith_core::mana::{ManaProducerFilter, ManaSpendingRestriction};
-        let request = ManaPaymentRequest::new(PlayerId(0), ObjectId::from_raw(19), PaymentReason::CastSpell,
-            ManaCost::new().add_generic(2).with_spending_restriction(ManaSpendingRestriction::ProducedBy(
-                ManaProducerFilter::Subtype(crate::types::Subtype::Treasure))));
+        let request = ManaPaymentRequest::new(
+            PlayerId(0),
+            ObjectId::from_raw(19),
+            PaymentReason::CastSpell,
+            ManaCost::new().add_generic(2).with_spending_restriction(
+                ManaSpendingRestriction::ProducedBy(ManaProducerFilter::Subtype(
+                    crate::types::Subtype::Treasure,
+                )),
+            ),
+        );
         let json = serde_json::to_value(&request).unwrap();
         let restored: ManaPaymentRequest = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(restored, request);
-        assert_eq!(crate::mana_payment::mana_payment_transaction_id(&restored),
-            crate::mana_payment::mana_payment_transaction_id(&request));
+        assert_eq!(
+            crate::mana_payment::mana_payment_transaction_id(&restored),
+            crate::mana_payment::mana_payment_transaction_id(&request)
+        );
         let mut legacy = json;
-        legacy["cost"].as_object_mut().unwrap().remove("spending_restrictions");
+        legacy["cost"]
+            .as_object_mut()
+            .unwrap()
+            .remove("spending_restrictions");
         let plain: ManaPaymentRequest = serde_json::from_value(legacy).unwrap();
         assert!(plain.cost.spending_restrictions().is_empty());
-        assert_ne!(crate::mana_payment::mana_payment_transaction_id(&plain),
-            crate::mana_payment::mana_payment_transaction_id(&request));
+        assert_ne!(
+            crate::mana_payment::mana_payment_transaction_id(&plain),
+            crate::mana_payment::mana_payment_transaction_id(&request)
+        );
     }
 }

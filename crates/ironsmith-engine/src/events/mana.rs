@@ -477,11 +477,45 @@ impl ManaSpendEvidence {
         payment_source: Option<ObjectId>,
         purpose: crate::ability::ManaPaymentPurpose,
     ) -> Result<Self, crate::effects::ExecutionError> {
+        Self::from_events(
+            outputs.iter().flat_map(|outputs| &outputs.outcome.events),
+            payment_owner,
+            payer,
+            payment_source,
+            purpose,
+        )
+    }
+
+    pub(crate) fn from_published_outputs(
+        outputs: &[crate::effects::PublishedEffectOutputs],
+        payment_owner: crate::provenance::ProvNodeId,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        purpose: crate::ability::ManaPaymentPurpose,
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        Self::from_events(
+            outputs
+                .iter()
+                .flat_map(|outputs| &outputs.instruction_outcome().events),
+            payment_owner,
+            payer,
+            payment_source,
+            purpose,
+        )
+    }
+
+    fn from_events<'a>(
+        events: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
+        payment_owner: crate::provenance::ProvNodeId,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        purpose: crate::ability::ManaPaymentPurpose,
+    ) -> Result<Self, crate::effects::ExecutionError> {
         let mut seen = std::collections::HashSet::new();
         let mut units = Vec::new();
         // Participant/shared outcomes are alternative views of this aggregate;
         // traversing them too would count the same physical spending again.
-        for event in outputs.iter().flat_map(|outputs| &outputs.outcome.events) {
+        for event in events {
             let Some(spent) = event.downcast::<ManaUnitSpentEvent>() else {
                 continue;
             };

@@ -9,11 +9,18 @@ pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 
 impl EffectExecutor for RepeatEffectsEffect {
     fn supports_replacement_draw_continuation(&self) -> bool {
-        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+        self.effects
+            .iter()
+            .all(crate::effects::replacement::replacement_effect_supported)
     }
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         let cursor = self.select_prepared_action_program(game, ctx)?;
         super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
     }
@@ -43,10 +50,11 @@ impl EffectExecutor for RepeatEffectsEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(super::prepared_branch::prepare_selected_ordered_program(
+            crate::effect::Effect::new(self.clone()),
+            ctx,
+            super::prepared_branch::SelectedProgramTransaction::Resources,
+        ))
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -254,11 +262,16 @@ impl std::fmt::Debug for RepetitionCursor {
     }
 }
 impl crate::effects::ActionProgramCursor for RepetitionCursor {
-    fn finish_stopped(mut self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+    fn finish_stopped(
+        mut self: Box<Self>,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
         self.child_pending = false;
         self.completed = None;
-        if let Some(operations) = self.previous_operations.take() { operations.leave(ctx); }
+        if let Some(operations) = self.previous_operations.take() {
+            operations.leave(ctx);
+        }
         self.finish()
     }
     fn next_action(

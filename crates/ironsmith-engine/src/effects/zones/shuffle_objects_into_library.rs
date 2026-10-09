@@ -217,7 +217,7 @@ impl ShuffleObjectsIntoLibraryProposal {
         mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
         let zones = self.zones.ok_or_else(|| {
             ExecutionError::InternalError("shuffle original was not prepared".into())
         })?;
@@ -229,7 +229,9 @@ impl ShuffleObjectsIntoLibraryProposal {
             self.draws
                 .commit_pending_replacement(game, object_id, &mut *ctx.decision_maker)?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+                return Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
             }
             let mut ranges = Vec::new();
             if !draws.is_empty() {
@@ -263,7 +265,9 @@ impl ShuffleObjectsIntoLibraryProposal {
                 committed.receipt
             };
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+                return Ok(SimultaneousEffectCommit::finished(
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
             }
             if let EventOutcome::Proceed(result) = &receipt.original {
                 if !result.new_object_ids.is_empty() {
@@ -296,8 +300,9 @@ impl ShuffleObjectsIntoLibraryProposal {
         };
         // Randomization is part of this original instruction. All participants
         // complete it before any appended zone-replacement program executes.
+        let mut shuffle_outputs = Vec::new();
         for player in self.prepared.players_to_shuffle {
-            let shuffle = crate::effects::cards::commit_library_shuffle(
+            let shuffle = crate::effects::cards::commit_library_shuffle_with_outputs(
                 game,
                 player,
                 &[],
@@ -311,14 +316,22 @@ impl ShuffleObjectsIntoLibraryProposal {
                     )
                 },
             );
-            original.events.extend(shuffle.events);
+            original
+                .events
+                .extend(shuffle.outcome.events.iter().cloned());
+            shuffle_outputs.push(shuffle);
         }
-        Ok(super::prepare_zone_instruction_completion(
+        let mut committed = super::prepare_zone_instruction_completion(
             original,
             receipts,
             self.draws,
             ctx.iteration.iterated_player,
-        ))
+        )
+        .into_retained();
+        for shuffle in shuffle_outputs {
+            committed.outcome.retain_owned_child(shuffle);
+        }
+        Ok(committed)
     }
 }
 
@@ -336,7 +349,9 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryPro
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<SimultaneousEffectCommit, ExecutionError> {
-        (*self).commit_zones(game, ctx)
+        (*self)
+            .commit_zones(game, ctx)
+            .map(SimultaneousEffectCommit::into_aggregate)
     }
 
     fn commit_original_with_outputs(
@@ -344,8 +359,7 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryPro
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
-        self.commit_original(game, ctx)
-            .map(SimultaneousEffectCommit::into_retained)
+        (*self).commit_zones(game, ctx)
     }
     fn commit(
         self: Box<Self>,

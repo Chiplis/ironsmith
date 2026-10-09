@@ -49,7 +49,7 @@ impl PreparedReplacementChild {
     }
 }
 impl PreparedReplacementChild {
-    fn finished_with_outputs(prefix: CompletedEffectOutputs) -> Self {
+    pub(crate) fn finished_with_outputs(prefix: CompletedEffectOutputs) -> Self {
         Self {
             prefix,
             resume: None,
@@ -316,7 +316,7 @@ pub(crate) fn prepare_native_proposal_draw_continuation_with_outputs<'a>(
     )
 }
 
-fn retain_draw_boundary(
+pub(crate) fn retain_draw_boundary(
     committed: SimultaneousEffectCommit<CompletedEffectOutputs>,
     ctx: &ExecutionContext,
 ) -> Result<PreparedReplacementChild, ExecutionError> {
@@ -1314,29 +1314,6 @@ impl SimultaneousEffectCompletion for DrawContinuation {
     }
 }
 
-pub(crate) fn prepare_draw_continuation_with_outputs(
-    game: &mut GameState,
-    parent: &mut ExecutionContext,
-    effects: &[Effect],
-    source: ObjectId,
-    controller: PlayerId,
-    context: &ReplacementEventContext,
-) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
-    prepare_draw_continuation_with_bindings_and_outputs(
-        game,
-        parent,
-        effects,
-        source,
-        controller,
-        context,
-        None,
-        super::ReplacementProgramBindings {
-            targets: None,
-            object_tags: Vec::new(),
-        },
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_draw_continuation_with_bindings_and_outputs(
     game: &mut GameState,
@@ -1364,7 +1341,7 @@ pub(crate) fn prepare_draw_continuation_with_bindings_and_outputs(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prepare_draw_continuation_with_original_and_outputs(
+fn prepare_draw_continuation_with_original_and_outputs(
     game: &mut GameState,
     parent: &mut ExecutionContext,
     effects: &[Effect],
@@ -1375,7 +1352,7 @@ pub(crate) fn prepare_draw_continuation_with_original_and_outputs(
     bindings: super::ReplacementProgramBindings,
     original: EffectOutcome,
 ) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
-    if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
+    if !original_program_uses_draw_continuation(effects) {
         return Ok(None);
     }
     super::execute_payload::with_replacement_child(
@@ -1388,14 +1365,31 @@ pub(crate) fn prepare_draw_continuation_with_original_and_outputs(
         captured_source_snapshot,
         bindings.object_tags,
         |game, child| {
-            prepare_bound_program_draw_with_outputs(
-                game,
-                child,
-                effects,
-                DrawProgramRole::SelectedOriginal(original),
-            )
-            .map(Some)
+            prepare_bound_original_program_draw_with_outputs(game, child, effects, original)
+                .map(Some)
         },
+    )
+}
+
+/// Eligibility is a property of the authored program, not a grouping proof.
+/// Preserve the established native draw schedule and atomic fallback contract.
+pub(super) fn original_program_uses_draw_continuation(effects: &[Effect]) -> bool {
+    effects.iter().any(contains_draw) && effects.iter().all(replacement_effect_supported)
+}
+
+/// Execute the selected original in its already acquired replacement scope.
+/// This entry does not reacquire source, targets, tags or interrupted outcomes.
+pub(super) fn prepare_bound_original_program_draw_with_outputs(
+    game: &mut GameState,
+    child: &mut ExecutionContext,
+    effects: &[Effect],
+    original: EffectOutcome,
+) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+    prepare_bound_program_draw_with_outputs(
+        game,
+        child,
+        effects,
+        DrawProgramRole::SelectedOriginal(original),
     )
 }
 
@@ -1453,18 +1447,12 @@ pub(crate) fn prepare_scoped_draw_continuation_with_outputs(
     child: &mut ExecutionContext,
     effects: &[Effect],
 ) -> Result<Option<SimultaneousEffectCommit<CompletedEffectOutputs>>, ExecutionError> {
-    if !effects.iter().any(contains_draw) || !effects.iter().all(replacement_effect_supported) {
+    if !original_program_uses_draw_continuation(effects) {
         return Ok(None);
     }
     let mut original = EffectOutcome::replaced();
     original.set_value(OutcomeValue::Count(0));
-    prepare_bound_program_draw_with_outputs(
-        game,
-        child,
-        effects,
-        DrawProgramRole::SelectedOriginal(original),
-    )
-    .map(Some)
+    prepare_bound_original_program_draw_with_outputs(game, child, effects, original).map(Some)
 }
 
 pub(crate) fn prepare_scoped_draw_continuation(

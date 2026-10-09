@@ -281,7 +281,7 @@ pub(crate) fn rewrite_static_model_words(
             *player = rewrite_player_filter_words(player, change)?;
             *source_filter = rewrite_filter_words(source_filter, change)?;
         }
-        P::SetColors { filter, colors } | P::AddColors { filter, colors } => {
+        P::SetColors { filter, colors, .. } | P::AddColors { filter, colors } => {
             // ALL also represents the phrase "all colors", without five
             // authored words. The payload has no spelling provenance.
             if colors.count() == 5 { return Err(hold(model)); }
@@ -871,7 +871,7 @@ mod tests {
 
     #[test]
     fn changed_static_model_materializes_changed_native_layer_effects() {
-        let original = model(P::SetColors { filter: black(), colors: ColorSet::BLACK });
+        let original = model(P::SetColors { filter: black(), colors: ColorSet::BLACK, exclude_from_color_identity: false });
         let changed = rewrite_static_model_words(&original, change()).unwrap();
         let source = crate::ids::ObjectId::from_raw(301);
         let controller = crate::ids::PlayerId::from_index(0);
@@ -1000,7 +1000,7 @@ mod tests {
         assert!(matches!(&children[0].payload, P::Protection(ironsmith_core::ProtectionFrom::Color(colors)) if *colors == ColorSet::BLACK));
         let all_colors: ColorSet = Color::ALL.into_iter().collect();
         let lossy = [
-            model(P::SetColors { filter: black(), colors: all_colors }),
+            model(P::SetColors { filter: black(), colors: all_colors, exclude_from_color_identity: false }),
             model(P::ExileWouldDieInstead {
                 filter: black(), damaged_by: None, damager_filter: Some(black()), damager_filter_surface: None,
                 exile_with_counters: vec![], follow_up_effects: vec![word_effect()],

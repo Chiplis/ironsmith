@@ -20,17 +20,46 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
-            if self.while_on_top_of_library { return Err(ExecutionError::IncompleteEvidence(
-                "source-lifetime casting permission cannot also track a library top".into())); }
-            let mut grant = crate::effects::GrantPlayTaggedEffect::new(self.tag.clone(), self.player.clone(),
-                self.duration, false, false).with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
-            if let Some(zone) = self.zone { let mut filter = crate::filter::ObjectFilter::default(); filter.zone = Some(zone); grant = grant.with_filter(filter); }
-            return grant.execute(game, ctx);
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
+        {
+            if self.while_on_top_of_library {
+                return Err(ExecutionError::IncompleteEvidence(
+                    "source-lifetime casting permission cannot also track a library top".into(),
+                ));
+            }
+            let mut grant = crate::effects::GrantPlayTaggedEffect::new(
+                self.tag.clone(),
+                self.player.clone(),
+                self.duration,
+                false,
+                false,
+            )
+            .with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
+            if let Some(zone) = self.zone {
+                let mut filter = crate::filter::ObjectFilter::default();
+                filter.zone = Some(zone);
+                grant = grant.with_filter(filter);
+            }
+            return crate::effects::execute_effect_with_outputs(
+                game,
+                &crate::effect::Effect::new(grant),
+                ctx,
+            );
         }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let Some(snapshots) = ctx.get_tagged_all(self.tag.as_str()).cloned() else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
 
         let expires_end_of_turn = match self.duration {
@@ -155,7 +184,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             granted += 1;
         }
 
-        Ok(EffectOutcome::count(granted as i32))
+        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(granted as i32),
+        ))
     }
 }
 

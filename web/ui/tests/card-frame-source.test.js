@@ -67,6 +67,32 @@ test('a registered symbol lets label masking examine suffixes beyond measured bo
   assert.equal(result.data[(135*width+90)*4],210);
 });
 
+test('mana below the title does not truncate its cleanup region',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([210,210,210,255],p*4);
+  data.set([10,10,10,255],(25*width+70)*4);
+  const boxes={title:{x:40,y:10,width:110,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  const clean=scan=>{const mask=new Uint8Array(scan.width*scan.height),out=scan.data.slice();for(let p=0;p<mask.length;p++)if(out[p*4]<50){mask[p]=1;out.set([210,210,210,255],p*4);}return {...scan,data:out,mask};};
+  for(const x of [20,90]){
+    const result=maskSourceFrame({width,height,data},boxes,null,null,clean,{
+      fontGuided:true,textBounds:{title:{x:50,y:20,width:70,height:15}},
+      manaMatch:{symbols:[{x,y:60,width:16,height:16}]},
+      icons:[{width:1,height:1,data:new Uint8ClampedArray(4)}],
+    });
+    assert.equal(result.data[(25*width+70)*4],210,'title ink is removed despite an off-title cost');
+  }
+});
+
+test('integrated rules retain enough paper margin to remove initial letters',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([230,230,230,255],p*4);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  for(let y=170;y<178;y++)for(let x=16;x<19;x++)data.set([10,10,10,255],(y*width+x)*4);
+  const result=maskSourceFrame({width,height,data},boxes,null,null,reconstructPanel,{rules:'integrated'});
+  for(let y=170;y<178;y++)for(let x=16;x<19;x++)assert.ok(result.data[(y*width+x)*4]>180,'leftmost text is removed');
+  assert.equal(result.mask[170*width+9],0,'outside frame stays untouched');
+});
+
 test('the rules mask receives the protected stats region before quality validation',()=>{
   const width=160,height=220,data=new Uint8ClampedArray(width*height*4).fill(220);
   const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
@@ -91,14 +117,38 @@ test('rules reflect cleaned upper paper over lower flavor ink and separators, pr
       return {...scan,mask:new Uint8Array(scan.width*scan.height)};
     };
     const result=maskSourceFrame({data,width,height},boxes,null,panel,clean);
-    assert.equal(inspectedHeight,Math.ceil((boxHeight-10)/2));
-    const top=163,bottom=158+boxHeight-6;
+    assert.equal(inspectedHeight,Math.ceil((boxHeight-5)/2));
+    const top=158,bottom=158+boxHeight-6;
     for(let y=top+inspectedHeight;y<=bottom;y++) {
       const sourceY=top+Math.max(8,bottom-y);
       assert.deepEqual(result.data.subarray((y*width+40)*4,(y*width+41)*4),data.subarray((sourceY*width+40)*4,(sourceY*width+41)*4));
     }
     assert.equal(result.mask[190*width+120],0,'stats panel is preserved');
     assert.equal(result.mask[190*width+12],0,'frame edge is preserved');
+  }
+});
+
+test('rules cleanup retains accepted first-line glyph removals inside the protected top margin',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([35,35,35,255],p*4);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  // The rules crop begins at y=158. Both this bevel and the top of the
+  // lettering fall inside the eight rows reserved by the paper cleanup.
+  for(let x=16;x<144;x++)data.set([80,100,120,255],(158*width+x)*4);
+  for(let y=160;y<172;y++)for(let x=30;x<80;x+=10)data.set([255,255,255,255],(y*width+x)*4);
+  const clean=scan=>{
+    const pixels=scan.data.slice(),mask=new Uint8Array(scan.width*scan.height);
+    for(let p=0;p<mask.length;p++)if(pixels[p*4]===255){mask[p]=1;pixels.set([35,35,35,255],p*4);}
+    return {...scan,data:pixels,mask,quality:{safe:true}};
+  };
+  const result=maskSourceFrame({data,width,height},boxes,null,null,clean,{fontGuided:true});
+  for(let y=160;y<172;y++)for(let x=30;x<80;x+=10){
+    assert.equal(result.mask[y*width+x],1,'accepted glyph remains masked');
+    assert.ok(result.data[(y*width+x)*4]<100,'printed white ink does not return');
+  }
+  for(let x=16;x<144;x++){
+    assert.equal(result.mask[158*width+x],0,'adjacent bevel remains protected');
+    assert.deepEqual(result.data.subarray((158*width+x)*4,(158*width+x+1)*4),data.subarray((158*width+x)*4,(158*width+x+1)*4));
   }
 });
 
@@ -122,6 +172,6 @@ test('a separator above the midpoint shortens the donor strip before reflection'
   let donorHeight;
   const clean=(scan,{section})=>{if(section==='rules')donorHeight=scan.height;return {...scan,mask:new Uint8Array(scan.width*scan.height)};};
   const result=maskSourceFrame({data,width,height},boxes,null,null,clean,{hasFlavor:true,flavorTop:205});
-  assert.equal(donorHeight,26,'donors end four pixels above the separator');
+  assert.equal(donorHeight,31,'donors end four pixels above the separator');
   for(let y=193;y<233;y++)assert.ok(result.data[(y*width+60)*4]>210,'the lower box contains paper without repeated separator ink');
 });

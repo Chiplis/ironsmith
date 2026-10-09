@@ -130,12 +130,14 @@ pub(crate) use prepared_placement::{
 };
 
 mod placement;
-pub(crate) use placement::execute_counter_removal_cost_batch;
 pub(crate) use placement::{
     execute_counter_batch_with_outputs, execute_counter_placement_with_outputs,
     execute_counter_removal_cost, execute_counter_removal_cost_with_outputs,
     execute_counter_removal_with_outputs, execute_player_counter_removal_with_outputs,
     prepare_counter_removal_cost,
+};
+pub(crate) use placement::{
+    execute_counter_removal_cost_batch, execute_counter_removal_cost_batch_with_outputs,
 };
 
 /// Commit one transfer budget. Live transfers have independently replaceable

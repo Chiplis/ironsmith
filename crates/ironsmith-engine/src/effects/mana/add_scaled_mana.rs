@@ -3,7 +3,7 @@
 //! Adds a fixed mana pattern repeated by a resolved numeric value.
 //! Example: "Add {B} for each creature card in your graveyard."
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outputs};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -14,7 +14,11 @@ pub type AddScaledManaEffect = ironsmith_core::AddScaledManaEffect;
 impl EffectExecutor for AddScaledManaEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::Repeated { symbols: &self.mana, amount: &self.amount, player: &self.player })
+        Some(ManaProduction::Repeated {
+            symbols: &self.mana,
+            amount: &self.amount,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -26,10 +30,21 @@ impl EffectExecutor for AddScaledManaEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let (player_id, symbols) = self.mana_production().expect("mana production descriptor")
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let (player_id, symbols) = self
+            .mana_production()
+            .expect("mana production descriptor")
             .resolve_exact(game, ctx)?;
         let mana = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-        Ok(mana_added_value_outcome(ctx, player_id, mana))
+        Ok(mana_added_value_outputs(ctx, player_id, mana))
     }
 
     fn producible_mana_symbols(

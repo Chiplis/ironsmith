@@ -1377,8 +1377,10 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ControlAttachedPermanent(display) => {
                 StaticAbility::control_attached_permanent(display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } => {
-                StaticAbility::set_colors(filter.clone(), *colors)
+            ironsmith_core::StaticAbilityPayload::SetColors { filter, colors, exclude_from_color_identity } => {
+                let mut ability = super::continuous::SetColorsForFilter::new(filter.clone(), *colors);
+                ability.exclude_from_color_identity = *exclude_from_color_identity;
+                StaticAbility::new(ability)
             }
             ironsmith_core::StaticAbilityPayload::AddColors { filter, colors } => {
                 StaticAbility::add_colors(filter.clone(), *colors)
@@ -2373,6 +2375,94 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         Some(&self.model)
+    }
+
+    fn black_mana_may_be_paid_with_life(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(StaticAbility::black_mana_may_be_paid_with_life)
+    }
+
+    fn cant_be_countered(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(StaticAbility::cant_be_countered)
+    }
+
+    fn bands_with_other_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        self.leaf_static_ability()?.bands_with_other_filter()
+    }
+
+    fn can_attack_with_attacking_group(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+    ) -> Option<bool> {
+        self.leaf_static_ability()?.can_attack_with_attacking_group(
+            game,
+            source,
+            controller,
+            attacking_creatures,
+        )
+    }
+
+    fn can_block_with_blocking_group(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        blocking_creatures: &[ObjectId],
+    ) -> Option<bool> {
+        self.leaf_static_ability()?
+            .can_block_with_blocking_group(game, source, blocking_creatures)
+    }
+
+    fn can_pay_attack_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<bool> {
+        self.leaf_static_ability()?
+            .can_pay_attack_cost(game, source, controller)
+    }
+
+    fn generic_attack_mana_cost_for_source(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<u32> {
+        self.leaf_static_ability()?
+            .generic_attack_mana_cost_for_source(game, source, controller)
+    }
+
+    fn required_defending_player_card_type_for_unblockable(
+        &self,
+    ) -> Option<crate::types::CardType> {
+        self.leaf_static_ability()?
+            .required_defending_player_card_type_for_unblockable()
+    }
+
+    fn required_defending_player_card_types_for_unblockable(
+        &self,
+    ) -> Option<Vec<crate::types::CardType>> {
+        self.leaf_static_ability()?
+            .required_defending_player_card_types_for_unblockable()
+    }
+
+    fn max_creatures_can_attack_each_combat(&self) -> Option<usize> {
+        self.leaf_static_ability()?
+            .max_creatures_can_attack_each_combat()
+    }
+
+    fn max_creatures_can_attack_you_each_combat(&self) -> Option<usize> {
+        self.leaf_static_ability()?
+            .max_creatures_can_attack_you_each_combat()
+    }
+
+    fn max_creatures_can_block_each_combat(&self) -> Option<usize> {
+        self.leaf_static_ability()?
+            .max_creatures_can_block_each_combat()
     }
 
     fn intrinsic_starting_counter_rule(&self) -> Option<ironsmith_core::IntrinsicStartingCounter> {
@@ -3652,3 +3742,7 @@ mod tests {
         assert_eq!(mandatory.optional_additional_votes_while_voting(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "model_interpreter_integration_tests.rs"]
+mod integration_tests;

@@ -10,7 +10,7 @@ fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
         if choose.reveal {
             continue;
         }
-        *effect = Effect::new(choose.clone().reveal());
+        *effect = Effect::new(choose.clone().present_revealed_choices());
     }
     effects
 }
@@ -277,13 +277,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             // "you choose one of them. That player ...": "you" never becomes
             // the antecedent of a later "that player".
             if !(is_you_player_filter(&followup_player)
-                && ctx
-                    .last_player_filter
-                    .as_ref()
-                    .is_some_and(|existing| {
-                        !is_you_player_filter(existing)
-                            && *existing != PlayerFilter::IteratedPlayer
-                    }))
+                && ctx.last_player_filter.as_ref().is_some_and(|existing| {
+                    !is_you_player_filter(existing) && *existing != PlayerFilter::IteratedPlayer
+                }))
             {
                 ctx.last_player_filter = Some(followup_player);
             }

@@ -754,6 +754,18 @@ pub fn perform(
     player: PlayerId,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
+    perform_with_mana_activation_outputs(action, game, player, decision_maker).map(|_| ())
+}
+
+/// Retain the actual mana completion through the existing special-action
+/// admission and checkpoint policy. Other special actions remain terminal
+/// scalar paths and do not fabricate a mana completion.
+pub(crate) fn perform_with_mana_activation_outputs(
+    action: SpecialAction,
+    game: &mut GameState,
+    player: PlayerId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<Option<CompletedManaActivation>, ActionError> {
     can_perform(&action, game, player, &mut *decision_maker)?;
     let checkpoint = game.clone();
     let restore_on_pending = matches!(
@@ -797,7 +809,7 @@ pub fn perform(
                 chosen.min(max_x)
             };
             if decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(None);
             }
             if chosen < min_x || chosen > max_x {
                 return Err(ActionError::InvalidTarget);
@@ -816,7 +828,7 @@ pub fn perform(
                 *game = checkpoint;
             }
             if restore_on_pending && decision_maker.awaiting_choice() {
-                return Ok(());
+                return Ok(None);
             }
             return Err(error);
         }
@@ -824,7 +836,7 @@ pub fn perform(
             if restore_on_pending {
                 *game = checkpoint;
             }
-            return Ok(());
+            return Ok(None);
         }
     }
     if let SpecialAction::TurnFaceUp { permanent_id, .. } = &action
@@ -833,25 +845,31 @@ pub fn perform(
         // The X paid to turn it face up, or 0 when no X was paid (CR 107.3m).
         object.x_value = Some(announced_x.unwrap_or(0));
     }
-    let result = finish_special_action(action, game, player, announced_x, decision_maker);
+    let result = finish_special_action_with_mana_activation_outputs(
+        action,
+        game,
+        player,
+        announced_x,
+        decision_maker,
+    );
     if (result.is_err() && !decision_maker.awaiting_choice())
         || (restore_on_pending && decision_maker.awaiting_choice())
     {
         *game = checkpoint;
     }
     if restore_on_pending && decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(None);
     }
     result
 }
 
-fn finish_special_action(
+fn finish_special_action_with_mana_activation_outputs(
     action: SpecialAction,
     game: &mut GameState,
     player: PlayerId,
     announced_x: Option<u32>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
-) -> Result<(), ActionError> {
+) -> Result<Option<CompletedManaActivation>, ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => {
             perform_play_land(game, player, card_id, false, decision_maker)
@@ -871,13 +889,17 @@ fn finish_special_action(
         SpecialAction::ActivateManaAbility {
             permanent_id,
             ability_index,
-        } => perform_activate_mana_ability(
-            game,
-            player,
-            permanent_id,
-            ability_index,
-            &mut *decision_maker,
-        ),
+        } => {
+            return perform_activate_mana_ability_restricted_colors_with_outputs(
+                game,
+                player,
+                permanent_id,
+                ability_index,
+                None,
+                &mut *decision_maker,
+            )
+            .map(Some);
+        }
         SpecialAction::UnlockRoomDoor { room_id, door } => {
             perform_unlock_room_door(game, player, room_id, door, &mut *decision_maker)
         }
@@ -907,6 +929,7 @@ fn finish_special_action(
             perform_repeatable_mana_payment_action(game, player, action_index, decision_maker)
         }
     }
+    .map(|_| None)
 }
 
 fn repeatable_mana_payment_action(
@@ -2820,21 +2843,43 @@ pub fn perform_activate_mana_ability_restricted_colors(
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    let events = perform_activate_mana_ability_restricted_colors_with_events(
+    perform_activate_mana_ability_restricted_colors_with_outputs(
         game,
         player,
         permanent_id,
         ability_index,
         mana_color_restriction,
         decision_maker,
+    )
+    .map(|_| ())
+}
+
+/// Queue the original native event projection once and preserve the actual
+/// prepared notification and payment/production children for its caller.
+pub(crate) fn perform_activate_mana_ability_restricted_colors_with_outputs(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> Result<CompletedManaActivation, ActionError> {
+    let mut completed = perform_mana_ability_with_payment_outputs(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_color_restriction,
+        None,
+        Vec::new(),
+        decision_maker,
     )?;
-    // Callers of this variant have no way to see the mana-added event, so queue
-    // it here: dropping it silently skips triggers like "whenever you tap a
-    // creature for mana".
-    for event in events {
+    // This is the same projection queued by the scalar facade. Cost-owned
+    // events remain in their actual packets and are not emitted again.
+    for event in completed.events.drain(..) {
         game.queue_trigger_event(event.provenance(), event);
     }
-    Ok(())
+    Ok(completed)
 }
 
 pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
@@ -3099,29 +3144,19 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                     return Ok(CompletedManaActivation::default());
                 }
 
-                let spend_evidence =
-                    crate::events::mana::ManaSpendEvidence::from_completed_outputs(
-                        &paid_cost.outputs,
-                        visibility_provenance,
-                        player,
-                        Some(permanent_id),
-                        payment_reason.mana_payment_purpose(),
-                    )
-                    .map_err(|error| ActionError::ExecutionFailure {
-                        source: permanent_id,
-                        error,
-                    })?;
                 completion.activation_notification = Some(
-                    crate::events::AbilityActivatedEvent::from_effective_ability(
+                    crate::events::AbilityActivatedEvent::from_completed_payment(
                         permanent_id,
                         player,
                         true,
                         Some(ability.clone()),
                         Some(source_snapshot.clone()),
+                        announced_x,
+                        x_value_from_costs,
+                        visibility_provenance,
+                        payment_reason,
+                        &paid_cost.outputs,
                     )
-                    .with_activation_cost_has_x(announced_x.is_some())
-                    .with_x_value(x_value_from_costs)
-                    .with_mana_spend_evidence(spend_evidence)
                     .map_err(|error| ActionError::ExecutionFailure {
                         source: permanent_id,
                         error,
@@ -4639,22 +4674,34 @@ pub(crate) fn resolve_dynamic_mana_cost(
     } else if dynamic_mana.source_mana_cost {
         // A current missing mana cost is not an older printed cost. Only
         // an unavailable (departed/phased) source uses exact retained LKI.
-        let current = game.try_current_characteristics(execution_ctx.source)
-            .map_err(|error| CostPaymentError::ExecutionFailed(
-                crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
-        let cost = if let Some(characteristics) = current {
-            characteristics.mana_cost
-        } else {
-            let snapshot = execution_ctx.source_snapshot.as_ref()
-                .filter(|snapshot| snapshot.object_id == execution_ctx.source)
-                .ok_or_else(|| CostPaymentError::ExecutionFailed(
+        let current = game
+            .try_current_characteristics(execution_ctx.source)
+            .map_err(|error| {
+                CostPaymentError::ExecutionFailed(
+                    crate::effects::ExecutionError::ContinuousDiscovery(error),
+                )
+            })?;
+        let cost =
+            if let Some(characteristics) = current {
+                characteristics.mana_cost
+            } else {
+                let snapshot =
+                    execution_ctx
+                        .source_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == execution_ctx.source)
+                        .ok_or_else(|| {
+                            CostPaymentError::ExecutionFailed(
                     crate::effects::ExecutionError::IncompleteEvidence(
-                        "source mana-cost payment requires exact retained source identity".into())))?;
-            snapshot.mana_cost.clone()
-        };
-        cost.ok_or_else(|| CostPaymentError::Other(
-            "ability source has no mana cost to use as a dynamic cost".to_string(),
-        ))?
+                        "source mana-cost payment requires exact retained source identity".into()))
+                        })?;
+                snapshot.mana_cost.clone()
+            };
+        cost.ok_or_else(|| {
+            CostPaymentError::Other(
+                "ability source has no mana cost to use as a dynamic cost".to_string(),
+            )
+        })?
     } else {
         dynamic_mana.base.clone()
     };
@@ -4664,8 +4711,15 @@ pub(crate) fn resolve_dynamic_mana_cost(
     } else if let Some(value) = dynamic_mana.x_value.as_ref() {
         resolve_dynamic_u32(game, value, execution_ctx)?
     } else if dynamic_mana.source_mana_cost
-        && game.object(execution_ctx.source).map(|object| object.zone)
-            .or_else(|| execution_ctx.source_snapshot.as_ref().map(|snapshot| snapshot.zone))
+        && game
+            .object(execution_ctx.source)
+            .map(|object| object.zone)
+            .or_else(|| {
+                execution_ctx
+                    .source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.zone)
+            })
             != Some(Zone::Stack)
     {
         // X in a permanent's mana cost is zero, not a new trigger choice.

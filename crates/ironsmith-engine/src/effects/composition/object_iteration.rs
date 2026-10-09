@@ -49,49 +49,19 @@ pub(super) fn prepare_iteration_continuation(
     IterationContinuation {
         cursor,
         history: Vec::new(),
+        retained_outputs: Vec::new(),
         pending: None,
         context: ExecutionContextCheckpoint::capture(ctx),
     }
     .run(game, ctx, true)
 }
 
-/// Bind the authored iteration only after its one physical damage owner
-/// completes. The view changes the primary result without duplicating history.
-struct IterationDamageBinding(Box<dyn crate::effects::SimultaneousEffectProposal>);
-impl super::OriginalOutcomeAdapter for IterationDamageBinding {
-    fn finish(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        result: Result<EffectOutcome, ExecutionError>,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        self.finish_with_outputs(
-            game,
-            ctx,
-            result.map(CompletedEffectOutputs::aggregate_only),
-        )
-        .map(CompletedEffectOutputs::into_outcome)
-    }
-    fn finish_with_outputs(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        result: Result<CompletedEffectOutputs, ExecutionError>,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let mut outputs = result?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(outputs);
-        }
-        let binding = self.0.bind_damage_action(game, ctx, &outputs)?;
-        let primary = binding.transfer_owned_outputs(&mut outputs);
-        let observations = outputs.outcome.clone();
-        Ok(outputs.project_aggregate(primary.with_authoritative_observations(observations)))
-    }
-}
-
 struct IterationContinuation {
     cursor: Box<dyn ActionProgramCursor>,
     history: Vec<EffectOutcome>,
+    // Alternative views of actual acknowledged children. The cursor owns their
+    // execution and final projection; these views add no chronological history.
+    retained_outputs: Vec<CompletedEffectOutputs>,
     pending: Option<(ProgramActionScope, Box<dyn ReplacementResume>)>,
     context: ExecutionContextCheckpoint,
 }
@@ -114,7 +84,8 @@ impl IterationContinuation {
                 ));
             }
             self.history.push(outputs.outcome.clone());
-            self.cursor.accept_action(outputs)?;
+            self.retained_outputs.push(outputs.clone_projection());
+            self.cursor.accept_action_with_context(game, ctx, outputs)?;
         }
         loop {
             if ctx.resolution_stopped() {
@@ -162,78 +133,13 @@ impl IterationContinuation {
                     .iter_mut()
                     .flat_map(|outcome| outcome.events.iter_mut()),
             )?;
-            let native = action.native.take();
-            let purpose = action
-                .scope
-                .execution_purpose(crate::effects::EffectExecutionPurpose::Action);
-            let prepared = action.scope.run(game, ctx, |game, ctx| match native {
-                Some(super::action_program::NativeProgramAction::SharedDamage(mut proposal)) => {
-                    if !defer_draws {
-                        return crate::effects::damage::complete_prepared_damage_action(
-                            game, ctx, proposal,
-                        )
-                        .map(|prefix| {
-                            crate::effects::replacement::PreparedReplacementChild {
-                                prefix,
-                                resume: None,
-                            }
-                        });
-                    }
-                    proposal.prepare_selection(game, ctx)?;
-                    proposal.prepare_original(game, ctx)?;
-                    let inputs = proposal.damage_action_inputs().ok_or_else(|| {
-                        ExecutionError::InternalError(
-                            "prepared iteration damage lost its shared inputs".into(),
-                        )
-                    })?;
-                    let opened = game.open_simultaneous_action();
-                    let receipt = (|| {
-                        let owner = inputs.seal(game, ctx)?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(SimultaneousEffectCommit::finished(
-                                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-                            ));
-                        }
-                        owner.commit_original_with_outputs(game, ctx)
-                    })();
-                    game.close_simultaneous_action(opened);
-                    let receipt = super::adapt_original_outcome_with_outputs(
-                        receipt?,
-                        Box::new(IterationDamageBinding(proposal)),
-                        game,
-                        ctx,
-                    )?;
-                    crate::effects::replacement::prepare_committed_draw_boundary(game, ctx, receipt)
-                }
-                Some(super::action_program::NativeProgramAction::TotalCost {
-                    cost,
-                    payer,
-                    reason,
-                }) => {
-                    crate::costs::execute_total_cost_program_action(&cost, game, ctx, payer, reason)
-                        .map(
-                            |prefix| crate::effects::replacement::PreparedReplacementChild {
-                                prefix,
-                                resume: None,
-                            },
-                        )
-                }
-                None if defer_draws
-                    && matches!(purpose, crate::effects::EffectExecutionPurpose::Action) =>
-                {
-                    crate::effects::replacement::prepare_replacement_child(
-                        game,
-                        ctx,
-                        &action.effect,
-                    )
-                }
-                None => purpose.execute(game, &action.effect, ctx).map(|prefix| {
-                    crate::effects::replacement::PreparedReplacementChild {
-                        prefix,
-                        resume: None,
-                    }
-                }),
-            })?;
+            let prepared = if defer_draws {
+                action.prepare_draw_boundary(game, ctx)
+            } else {
+                action
+                    .execute_with_outputs(game, ctx, crate::effects::EffectExecutionPurpose::Action)
+                    .map(crate::effects::replacement::PreparedReplacementChild::finished_with_outputs)
+            }?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(SimultaneousEffectCommit::finished(
                     CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -248,13 +154,25 @@ impl IterationContinuation {
                 );
                 self.pending = Some((action.scope, pending));
                 self.context = ExecutionContextCheckpoint::capture(ctx);
+                let mut outputs = prepared.prefix.project_aggregate(prefix);
+                outputs.retain_batch_children(
+                    self.retained_outputs
+                        .iter()
+                        .map(CompletedEffectOutputs::clone_projection),
+                );
+                // This is an unfinished parent, even when every exposed child
+                // has a complete packet. Its native cursor remains authoritative.
+                outputs.projections_complete = false;
                 return Ok(SimultaneousEffectCommit {
-                    outcome: prepared.prefix.project_aggregate(prefix),
+                    outcome: outputs,
                     completion: Some(Box::new(self)),
                 });
             }
             self.history.push(prepared.prefix.outcome.clone());
-            self.cursor.accept_action(prepared.prefix)?;
+            self.retained_outputs
+                .push(prepared.prefix.clone_projection());
+            self.cursor
+                .accept_action_with_context(game, ctx, prepared.prefix)?;
         }
     }
 }
@@ -293,6 +211,10 @@ impl SimultaneousEffectCompletion for IterationContinuation {
                 .iter_mut()
                 .flat_map(|outcome| outcome.events.iter_mut()),
         )?;
+        for outputs in &mut self.retained_outputs {
+            game.freeze_completed_entry_events(outputs.outcome.events.iter_mut())?;
+            outputs.synchronize_observations();
+        }
         if let Some((_, pending)) = &mut self.pending {
             pending.freeze(game)?;
         }
@@ -326,6 +248,10 @@ impl SimultaneousEffectCompletion for IterationContinuation {
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         for outcome in &mut self.history {
             super::inherit_original_observations(outcome, &original.events);
+        }
+        for outputs in &mut self.retained_outputs {
+            super::inherit_original_observations(&mut outputs.outcome, &original.events);
+            outputs.synchronize_observations();
         }
         if let Some((_, pending)) = &mut self.pending {
             pending.observe_prefix(&original.events);

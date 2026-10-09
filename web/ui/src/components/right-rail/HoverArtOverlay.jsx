@@ -2457,9 +2457,6 @@ export default function HoverArtOverlay({
           <div className="interactive-card-frame__inner">
             <header className="interactive-card-frame__title-row">
               <div className="interactive-card-frame__title-wrap">
-              {!isMiniatureFrame && groupedCardCount > 1 && (
-                  <span className="interactive-card-frame__count">×{groupedCardCount}</span>
-                )}
                 <CardFrameSingleLine as="h2" className="interactive-card-frame__title">
                   {displayObjectName || t("status.cardDetailsUnavailable")}
                 </CardFrameSingleLine>

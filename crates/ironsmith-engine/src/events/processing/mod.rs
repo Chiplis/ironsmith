@@ -3935,10 +3935,19 @@ pub(crate) fn process_untap_with_execution_context_and_outputs(
 /// Preparation captures replacement choices but performs no untap or payload.
 #[derive(Debug)]
 pub(crate) struct PreparedUntap {
-    original: TraitEventResult,
-    before_snapshot: Option<crate::snapshot::ObjectSnapshot>,
-    replacement_original: Option<crate::effects::replacement::PreparedReplacementOriginal>,
+    original: PreparedUntapOriginal,
     programs: Vec<PreparedReplacementProgram>,
+}
+
+/// One selected untap declaration owns either native operands or the actual
+/// replacement programme. The discarded event result is not a second owner.
+#[derive(Debug)]
+enum PreparedUntapOriginal {
+    Native {
+        event: TraitEventResult,
+        before_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    },
+    Replacement(crate::effects::replacement::PreparedReplacementOriginal),
 }
 
 pub(crate) fn prepare_untap_with_execution_context(
@@ -3978,57 +3987,61 @@ pub(crate) fn prepare_untap_with_execution_context(
                 );
         }
     }
-    let before_snapshot = match &original {
-        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-            let untap = crate::events::downcast_event::<crate::events::UntapEvent>(event.inner())
-                .ok_or_else(|| {
-                crate::effects::ExecutionError::InternalError(
-                    "untap preparation returned an incompatible event".into(),
-                )
-            })?;
-            game.object(untap.permanent).map(|object|
-                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
-            ).transpose()?
+    let original = match original {
+        TraitEventResult::Replaced {
+            effects,
+            source,
+            controller,
+            context,
+            ..
+        } => {
+            let targets = untap_program_targets(&context)?;
+            let mut result = EffectOutcome::replaced();
+            result.set_value(crate::effect::OutcomeValue::Count(0));
+            PreparedUntapOriginal::Replacement(
+                crate::effects::replacement::PreparedReplacementOriginal {
+                    program: PreparedReplacementProgram {
+                        context,
+                        source,
+                        controller,
+                        source_snapshot:
+                            crate::effects::replacement::capture_replacement_source_snapshot(
+                                game, ctx, source,
+                            ),
+                        effects,
+                    },
+                    scope: ctx.replacement.clone(),
+                    original: result,
+                    bindings: crate::effects::replacement::ReplacementProgramBindings {
+                        targets,
+                        object_tags: Vec::new(),
+                    },
+                },
+            )
         }
-        _ => None,
+        event => {
+            let before_snapshot = match &event {
+                TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+                    let untap =
+                        crate::events::downcast_event::<crate::events::UntapEvent>(event.inner())
+                            .ok_or_else(|| {
+                            crate::effects::ExecutionError::InternalError(
+                                "untap preparation returned an incompatible event".into(),
+                            )
+                        })?;
+                    game.object(untap.permanent).map(|object|
+                        crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+                    ).transpose()?
+                }
+                _ => None,
+            };
+            PreparedUntapOriginal::Native {
+                event,
+                before_snapshot,
+            }
+        }
     };
-    let replacement_original = if let TraitEventResult::Replaced {
-        effects,
-        source,
-        controller,
-        context,
-        ..
-    } = &original
-    {
-        let targets = untap_program_targets(context)?;
-        let mut result = EffectOutcome::replaced();
-        result.set_value(crate::effect::OutcomeValue::Count(0));
-        Some(crate::effects::replacement::PreparedReplacementOriginal {
-            program: PreparedReplacementProgram {
-                context: context.clone(),
-                source: *source,
-                controller: *controller,
-                source_snapshot: crate::effects::replacement::capture_replacement_source_snapshot(
-                    game, ctx, *source,
-                ),
-                effects: effects.clone(),
-            },
-            scope: ctx.replacement.clone(),
-            original: result,
-            bindings: crate::effects::replacement::ReplacementProgramBindings {
-                targets,
-                object_tags: Vec::new(),
-            },
-        })
-    } else {
-        None
-    };
-    Ok(Some(PreparedUntap {
-        original,
-        before_snapshot,
-        replacement_original,
-        programs,
-    }))
+    Ok(Some(PreparedUntap { original, programs }))
 }
 
 fn untap_program_targets(
@@ -4059,13 +4072,18 @@ pub(crate) fn commit_prepared_untap_with_outputs(
             CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)),
         ));
     };
-    let original = match prepared.replacement_original {
-        Some(original) => original.commit_original_with_outputs(game, ctx)?,
-        None => SimultaneousEffectCommit::finished(commit_resolved_untap_event_with_outputs(
+    let original = match prepared.original {
+        PreparedUntapOriginal::Replacement(original) => {
+            original.commit_original_with_outputs(game, ctx)?
+        }
+        PreparedUntapOriginal::Native {
+            event,
+            before_snapshot,
+        } => SimultaneousEffectCommit::finished(commit_resolved_untap_event_with_outputs(
             game,
             ctx,
-            prepared.original,
-            prepared.before_snapshot,
+            event,
+            before_snapshot,
         )?),
     };
     Ok(
@@ -8038,14 +8056,24 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
         // CR 608.2h/609.7b: the live incarnation is authoritative, even when
         // it no longer has a quality retained by the ability's older snapshot.
         // Phasing is absence for this query, as in DamageFromSourceMatcher.
-        let live_source = ctx.game.object(damage.source)
+        let live_source = ctx
+            .game
+            .object(damage.source)
             .filter(|_| !ctx.game.is_phased_out(damage.source));
         let source_lki = if live_source.is_none() {
-            ctx.game.turn_store.turn_history.source_last_known_snapshot(damage.source)
+            ctx.game
+                .turn_store
+                .turn_history
+                .source_last_known_snapshot(damage.source)
                 .filter(|snapshot| snapshot.object_id == damage.source)
-                .or_else(|| self.source_snapshot.as_ref()
-                    .filter(|snapshot| snapshot.object_id == damage.source))
-        } else { None };
+                .or_else(|| {
+                    self.source_snapshot
+                        .as_ref()
+                        .filter(|snapshot| snapshot.object_id == damage.source)
+                })
+        } else {
+            None
+        };
 
         // CR 801.13b keys range to whichever side the prevention effect
         // specifies: source, recipient, or both when neither is specified.
@@ -8153,24 +8181,23 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
             }
         }
 
-        let (source_colors, source_card_types) =
-            if live_source.is_some() {
-                // PreparedEventContext already checked continuous discovery.
-                // A missing current view must never revive a stale snapshot.
-                let Some(characteristics) = ctx.game.calculated_characteristics(damage.source) else {
-                    return false;
-                };
-                (characteristics.colors, characteristics.card_types.to_vec())
-            } else if let Some(snapshot) = source_lki {
-                (snapshot.colors, snapshot.card_types.clone())
-            } else {
-                if shield.damage_filter.from_colors.is_some()
-                    || shield.damage_filter.from_card_types.is_some()
-                {
-                    return false;
-                }
-                (crate::color::ColorSet::COLORLESS, Vec::new())
+        let (source_colors, source_card_types) = if live_source.is_some() {
+            // PreparedEventContext already checked continuous discovery.
+            // A missing current view must never revive a stale snapshot.
+            let Some(characteristics) = ctx.game.calculated_characteristics(damage.source) else {
+                return false;
             };
+            (characteristics.colors, characteristics.card_types.to_vec())
+        } else if let Some(snapshot) = source_lki {
+            (snapshot.colors, snapshot.card_types.clone())
+        } else {
+            if shield.damage_filter.from_colors.is_some()
+                || shield.damage_filter.from_card_types.is_some()
+            {
+                return false;
+            }
+            (crate::color::ColorSet::COLORLESS, Vec::new())
+        };
         shield.damage_filter.matches(
             damage.is_combat,
             damage.source,

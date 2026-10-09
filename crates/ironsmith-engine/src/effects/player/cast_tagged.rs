@@ -12,7 +12,7 @@ use crate::game_state::GameState;
 use crate::zone::Zone;
 pub type CastTaggedEffect = ironsmith_core::CastTaggedEffect<crate::costs::Cost>;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::with_spell_cast_event_with_outputs;
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
@@ -44,7 +44,7 @@ impl EffectExecutor for CastTaggedEffect {
                 EffectOutcome::count(0),
             ));
         }
-        let mut retained_land = Vec::new();
+        let mut retained_children = Vec::new();
         let instruction = crate::effects::tokens::execute_resource_transaction_atomically(
             game,
             ctx,
@@ -186,7 +186,7 @@ impl EffectExecutor for CastTaggedEffect {
                             game, ctx, copy_id, caster, from_zone, true,
                         ).map(|outputs| {
                             let outcome = outputs.outcome.clone();
-                            retained_land.push(outputs);
+                            retained_children.push(outputs);
                             outcome
                         });
                     }
@@ -203,23 +203,24 @@ impl EffectExecutor for CastTaggedEffect {
                         }
                     };
                     let cast_tags = ctx.tagged_objects.clone();
-                    let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
-                        game,
-                        copy_id,
-                        from_zone,
-                        caster,
-                        &casting_method,
-                        without_paying_mana_cost,
-                        alternative_cost,
-                        self.cost_reduction.as_ref(),
-                        self.additional_mana_cost.as_ref(),
-                        self.mana_spend_mode,
-                        cast_tags,
-                        ctx.provenance,
-                        &mut ctx.decision_maker,
-                    )
-                    .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-                    let Some(new_id) = result else {
+                    let result =
+                        crate::game_loop::cast_spell_from_resolving_effect_with_price_and_outputs(
+                            game,
+                            copy_id,
+                            from_zone,
+                            caster,
+                            &casting_method,
+                            without_paying_mana_cost,
+                            alternative_cost,
+                            self.cost_reduction.as_ref(),
+                            self.additional_mana_cost.as_ref(),
+                            self.mana_spend_mode,
+                            cast_tags,
+                            ctx.provenance,
+                            &mut ctx.decision_maker,
+                        )
+                        .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                    let Some(cast) = result else {
                         game.remove_object(copy_id);
                         return if ctx.decision_maker.awaiting_choice() {
                             Ok(EffectOutcome::count(0))
@@ -227,7 +228,8 @@ impl EffectExecutor for CastTaggedEffect {
                             Ok(EffectOutcome::impossible())
                         };
                     };
-                    let outcome = with_spell_cast_event(
+                    let new_id = cast.new_id;
+                    let mut outputs = with_spell_cast_event_with_outputs(
                         EffectOutcome::with_objects(vec![new_id]),
                         game,
                         new_id,
@@ -235,6 +237,9 @@ impl EffectExecutor for CastTaggedEffect {
                         from_zone,
                         ctx.provenance,
                     )?;
+                    outputs.retain_published_references([cast.outputs]);
+                    let outcome = outputs.outcome.clone();
+                    retained_children.push(outputs);
                     return Ok(outcome);
                 }
 
@@ -248,7 +253,7 @@ impl EffectExecutor for CastTaggedEffect {
                     )
                     .map(|outputs| {
                         let outcome = outputs.outcome.clone();
-                        retained_land.push(outputs);
+                        retained_children.push(outputs);
                         outcome
                     });
                 }
@@ -264,30 +269,32 @@ impl EffectExecutor for CastTaggedEffect {
                 };
 
                 let cast_tags = ctx.tagged_objects.clone();
-                let result = crate::game_loop::cast_spell_from_resolving_effect_with_price(
-                    game,
-                    object_id,
-                    from_zone,
-                    caster,
-                    &casting_method,
-                    without_paying_mana_cost,
-                    alternative_cost,
-                    self.cost_reduction.as_ref(),
-                    self.additional_mana_cost.as_ref(),
-                    self.mana_spend_mode,
-                    cast_tags,
-                    ctx.provenance,
-                    &mut ctx.decision_maker,
-                )
-                .map_err(super::runtime_helpers::effect_driven_cast_error)?;
-                let Some(new_id) = result else {
+                let result =
+                    crate::game_loop::cast_spell_from_resolving_effect_with_price_and_outputs(
+                        game,
+                        object_id,
+                        from_zone,
+                        caster,
+                        &casting_method,
+                        without_paying_mana_cost,
+                        alternative_cost,
+                        self.cost_reduction.as_ref(),
+                        self.additional_mana_cost.as_ref(),
+                        self.mana_spend_mode,
+                        cast_tags,
+                        ctx.provenance,
+                        &mut ctx.decision_maker,
+                    )
+                    .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                let Some(cast) = result else {
                     return if ctx.decision_maker.awaiting_choice() {
                         Ok(EffectOutcome::count(0))
                     } else {
                         Ok(EffectOutcome::impossible())
                     };
                 };
-                let outcome = with_spell_cast_event(
+                let new_id = cast.new_id;
+                let mut outputs = with_spell_cast_event_with_outputs(
                     EffectOutcome::with_objects(vec![new_id]),
                     game,
                     new_id,
@@ -295,6 +302,9 @@ impl EffectExecutor for CastTaggedEffect {
                     from_zone,
                     ctx.provenance,
                 )?;
+                outputs.retain_published_references([cast.outputs]);
+                let outcome = outputs.outcome.clone();
+                retained_children.push(outputs);
                 Ok(outcome)
             },
         );
@@ -304,7 +314,9 @@ impl EffectExecutor for CastTaggedEffect {
             })
         } else {
             instruction.map(|outcome| {
-                crate::effects::CompletedEffectOutputs::from_children(retained_land, |_| outcome)
+                crate::effects::CompletedEffectOutputs::from_children(retained_children, |_| {
+                    outcome
+                })
             })
         }
     }

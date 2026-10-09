@@ -1,7 +1,7 @@
 //! Add mana of the chosen color effect implementation.
 
 use super::choice_helpers::{
-    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outcome,
+    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outputs,
 };
 use crate::color::Color;
 use crate::effect::EffectOutcome;
@@ -15,7 +15,11 @@ pub type AddManaOfChosenColorEffect = ironsmith_core::AddManaOfChosenColorEffect
 impl EffectExecutor for AddManaOfChosenColorEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
-        Some(ManaProduction::ChosenColor { amount: &self.amount, fixed_option: self.fixed_option, player: &self.player })
+        Some(ManaProduction::ChosenColor {
+            amount: &self.amount,
+            fixed_option: self.fixed_option,
+            player: &self.player,
+        })
     }
 
     fn directly_produces_mana(&self) -> bool {
@@ -27,11 +31,22 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let chosen = game.chosen_color(ctx.source).unwrap_or(Color::Green);
@@ -50,13 +65,15 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
             chosen
         };
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let symbol = ManaSymbol::from_color(selected);
         let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx)?;
 
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             mana,

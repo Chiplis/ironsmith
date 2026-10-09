@@ -1,7 +1,7 @@
 //! Add mana of any color/type that lands matching a filter could produce.
 
 use super::choice_helpers::{
-    choose_mana_symbols, credit_mana_symbols_from_context, mana_added_count_outcome,
+    choose_mana_symbols, credit_mana_symbols_from_context, mana_added_count_outputs,
 };
 use crate::ability::{AbilityKind, ActivatedAbility, ActivatedAbilityRuntimeExt as _};
 use crate::effect::{EffectOutcome, Value};
@@ -95,10 +95,21 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         if amount == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let available = match self.mana_type_source {
@@ -114,7 +125,9 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             .filter(|symbol| is_allowed_symbol(*symbol, self.allow_colorless))
             .collect::<Vec<_>>();
         if available.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let chosen_symbols = choose_mana_symbols(
@@ -127,13 +140,15 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             available[0],
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let chosen_symbols =
             credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx)?;
 
-        Ok(mana_added_count_outcome(
+        Ok(mana_added_count_outputs(
             ctx,
             player_id,
             chosen_symbols,
@@ -152,29 +167,41 @@ pub(super) fn collect_triggering_event_mana_symbols(
         .as_ref()
         .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
     else {
-        return Err(ExecutionError::IncompleteEvidence("produced mana types require the exact triggering production event".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "produced mana types require the exact triggering production event".into(),
+        ));
     };
 
     // This is an event-time comparison. A later live object cannot fill a
     // missing production receipt, even if it still has the same identity.
-    let snapshot = event.snapshot.as_ref().ok_or_else(|| ExecutionError::IncompleteEvidence(
-        "produced mana types require the event-time source snapshot".into(),
-    ))?;
+    let snapshot = event.snapshot.as_ref().ok_or_else(|| {
+        ExecutionError::IncompleteEvidence(
+            "produced mana types require the event-time source snapshot".into(),
+        )
+    })?;
     if snapshot.object_id != event.source {
-        return Err(ExecutionError::IncompleteEvidence("mana production source snapshot belongs to a different object".into()));
+        return Err(ExecutionError::IncompleteEvidence(
+            "mana production source snapshot belongs to a different object".into(),
+        ));
     }
     let filter_ctx = ctx.filter_context(game);
     if !source_filter.matches_snapshot(snapshot, &filter_ctx, game) {
         return Ok(Vec::new());
     }
-    if event.mana.iter().any(|symbol| !matches!(symbol,
-                ManaSymbol::White
-                    | ManaSymbol::Blue
-                    | ManaSymbol::Black
-                    | ManaSymbol::Red
-                    | ManaSymbol::Green
-                    | ManaSymbol::Colorless)) {
-        return Err(ExecutionError::IncompleteEvidence("mana production receipt contains an unresolved mana symbol".into()));
+    if event.mana.iter().any(|symbol| {
+        !matches!(
+            symbol,
+            ManaSymbol::White
+                | ManaSymbol::Blue
+                | ManaSymbol::Black
+                | ManaSymbol::Red
+                | ManaSymbol::Green
+                | ManaSymbol::Colorless
+        )
+    }) {
+        return Err(ExecutionError::IncompleteEvidence(
+            "mana production receipt contains an unresolved mana symbol".into(),
+        ));
     }
     let mut symbols = event.mana.clone();
     symbols.sort_by_key(|symbol| canonical_symbol_order(*symbol));

@@ -12,10 +12,12 @@ use sha2::{Digest, Sha256};
 // Version 17 admits the atomic typed counter rider and Lesson normalization.
 // Nested WireEffect and canonical text also change the public digest vocabulary.
 // Historical v16 bytes remain historical; no relabeling or payload fallback.
-// See architecture/cardrepair-exact-permission-compatibility.md.
+// The current schema additionally carries color-identity exclusions and fixes
+// source-only subtype-family zone defaults; older artifacts require recompilation.
+// See architecture/cda-color-identity-schema.descriptor.
 pub const FORMAT_VERSION: u32 = 17;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "a4bb7964a2b6b477e4d128c655ca747453c74a9d5d1cf119ac7daf399fb840c0";
+    "de5523f9dec503a759c7b7307e37f9019339d0b6f7954ebdb396a97e296d17fa";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -472,7 +474,7 @@ mod tests {
 
     #[test]
     fn current_descriptor_matches_the_declared_schema_fingerprint() {
-        let descriptor = include_bytes!("../../../architecture/oct8-exact-permission-schema.descriptor");
+        let descriptor = include_bytes!("../../../architecture/cda-color-identity-schema.descriptor");
         assert!(!descriptor.ends_with(b"\n"));
         assert_eq!(sha256_hex(descriptor), ENGINE_SCHEMA_HASH);
     }

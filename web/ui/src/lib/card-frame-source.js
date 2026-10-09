@@ -12,7 +12,12 @@ function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
     if(text) {
       // Recognition may miss a suffix. Keep its measured vertical band, but
       // inspect the complete label up to the independently registered symbol.
-      const stop=name==='title'?panels.manaMatch?.symbols[0]?.x:panels.setSymbol?.x;
+      // Future Sight costs sit below and left of the title. Only symbols
+      // alongside the text can serve as its right boundary.
+      const symbols=name==='title'?panels.manaMatch?.symbols||[]:panels.setSymbol?[panels.setSymbol]:[];
+      const stops=symbols.filter(symbol=>symbol.x>text.x
+        &&symbol.y<text.y+text.height&&symbol.y+symbol.height>text.y).map(symbol=>symbol.x);
+      const stop=stops.length?Math.min(...stops):null;
       // Without a registered symbol, extending across unknown pixels can
       // capture a boxed set logo as lettering. Use the complete measured line
       // in that case; only an independent symbol anchor permits expansion.
@@ -25,9 +30,14 @@ function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
     }
     const integrated=panels[name]==='integrated';
     const inset=integrated?0:name==='rules'?6:7;
-    const vertical=integrated?(name==='title'?-2:0):5;
+    // The detected rules box already starts at its upper paper edge. Some
+    // printings put the first ascenders within five pixels of that edge;
+    // cropping them out here leaves a strip of the original line forever
+    // outside both cleanup passes. Glyph validation still protects the rim.
+    const vertical=integrated?(name==='title'?-2:0):name==='rules'?0:5;
+    const bottomInset=integrated?vertical:5;
     regions.push({name,x:Math.ceil(b.x+inset),y:Math.ceil(b.y+vertical),
-      width:Math.floor((name==='type'?Math.min(b.width,(panels.setSymbol?.x??width*.855)-4-b.x):name==='title'&&integrated?Math.max(b.width,width*.93-b.x):b.width)-inset*2),height:Math.floor(b.height-vertical*2)});
+      width:Math.floor((name==='type'?Math.min(b.width,(panels.setSymbol?.x??width*.855)-4-b.x):name==='title'&&integrated?Math.max(b.width,width*.93-b.x):b.width)-inset*2),height:Math.floor(b.height-vertical-bottomInset)});
   }
   if(stats)regions.push({name:'stats',x:stats.x-3,y:stats.y-3,width:stats.width+6,height:stats.height+6});
   const inStats=(x,y)=>statsPanel&&x>=statsPanel.x&&x<statsPanel.x+statsPanel.width&&y>=statsPanel.y&&y<statsPanel.y+statsPanel.height;

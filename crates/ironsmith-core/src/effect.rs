@@ -477,7 +477,10 @@ pub struct GrantPlayTaggedSurface {
     /// `GrantPlayTaggedDuration::ForAsLongAsYouControlSource`.
     pub control_source: Option<SourceReferenceSurface>,
     /// Authored source noun; the corresponding duration carries the semantics.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub battlefield_source: Option<SourceReferenceSurface>,
     /// Authored source noun in "until you exile another card with this ...".
     /// The event-bounded lifetime itself is carried by
@@ -706,7 +709,9 @@ pub enum DelayedTriggerSpec {
         during_turn: Option<PlayerFilter>,
     },
     ControlChanged(crate::trigger_model::ControlChangeTrigger),
-    PermanentBecomesUntapped { filter: ObjectFilter },
+    PermanentBecomesUntapped {
+        filter: ObjectFilter,
+    },
     PlayerDiscardsCard {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
@@ -1478,7 +1483,10 @@ impl TapEffect {
     }
 
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target, actor: None }
+        Self {
+            target,
+            actor: None,
+        }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
@@ -1527,7 +1535,10 @@ impl UntapEffect {
     }
 
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target, actor: None }
+        Self {
+            target,
+            actor: None,
+        }
     }
 
     pub fn target(target: ChooseSpec) -> Self {
@@ -1556,7 +1567,10 @@ impl UntapEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCountersEffect {
     /// Only this placement is capped; other abilities may exceed the total.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub maximum_total: Option<u32>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub completion_action: Option<crate::event_model::KeywordActionKind>,
@@ -2375,12 +2389,17 @@ pub struct LookAtObjectsEffect {
     pub viewer: PlayerFilter,
     pub subject: PlayerFilter,
     /// Create a durable private entitlement without requiring an immediate look.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "immediate_object_inspection"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "immediate_object_inspection")
+    )]
     pub permit_while_exiled: bool,
 }
 
 #[cfg(feature = "serde")]
-fn immediate_object_inspection(permit: &bool) -> bool { !*permit }
+fn immediate_object_inspection(permit: &bool) -> bool {
+    !*permit
+}
 
 impl LookAtObjectsEffect {
     pub fn new(filter: ObjectFilter, viewer: PlayerFilter, subject: PlayerFilter) -> Self {
@@ -2392,7 +2411,10 @@ impl LookAtObjectsEffect {
         }
     }
 
-    pub fn permit_while_exiled(mut self) -> Self { self.permit_while_exiled = true; self }
+    pub fn permit_while_exiled(mut self) -> Self {
+        self.permit_while_exiled = true;
+        self
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3166,7 +3188,10 @@ pub struct MoveToZoneEffect {
     pub transfer_exiled_with_source_links: bool,
     /// One authored move can send disjoint captured groups to different zones.
     /// Membership is bound before the native batch prepares any replacement.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub tagged_destinations: Vec<(crate::tag::TagKey, crate::zone::Zone)>,
 }
 
@@ -3399,7 +3424,10 @@ impl<E> ExecuteWithSourceEffect<E> {
 pub struct RetainManaUntilEndOfTurnEffect {
     pub player: PlayerFilter,
     /// "you don't lose unspent red mana": only mana of this color is kept.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub color: Option<crate::color::Color>,
 }
 
@@ -3596,6 +3624,12 @@ pub struct ChooseObjectsEffect {
     pub description: String,
     pub is_search: bool,
     pub reveal: bool,
+    /// Present a choice from a previously revealed pool without performing
+    /// another rules reveal. Authored reveal clauses compose the Reveal owner.
+    /// None occurs only in legacy serialized selections. It is unambiguous
+    /// when reveal is false; public disclosure requires an explicit policy.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reveal_is_presentation_only: Option<bool>,
     pub search_mode: SearchSelectionMode,
     /// Authored reference used by the reveal clause for the searched set.
     /// This is separate from `search_result_reference_surface` because Oracle
@@ -3635,6 +3669,7 @@ impl ChooseObjectsEffect {
             description: "Choose".to_string(),
             is_search: false,
             reveal: false,
+            reveal_is_presentation_only: Some(false),
             search_mode: SearchSelectionMode::Exact,
             search_reveal_reference_surface: None,
             search_result_reference_surface: None,
@@ -3730,6 +3765,15 @@ impl ChooseObjectsEffect {
 
     pub fn reveal(mut self) -> Self {
         self.reveal = true;
+        self.reveal_is_presentation_only = Some(false);
+        self
+    }
+
+    /// Keep an already revealed pool public during selection. This does not
+    /// create a second Reveal action or its observations.
+    pub fn present_revealed_choices(mut self) -> Self {
+        self.reveal = true;
+        self.reveal_is_presentation_only = Some(true);
         self
     }
 
@@ -3858,8 +3902,14 @@ impl BecomeBasicLandTypeChoiceEffect {
         }
     }
 
-    pub fn with_options(mut self, allowed_subtypes: Vec<crate::types::Subtype>, preserve_other_types: bool) -> Self {
-        self.allowed_subtypes = allowed_subtypes; self.preserve_other_types = preserve_other_types; self
+    pub fn with_options(
+        mut self,
+        allowed_subtypes: Vec<crate::types::Subtype>,
+        preserve_other_types: bool,
+    ) -> Self {
+        self.allowed_subtypes = allowed_subtypes;
+        self.preserve_other_types = preserve_other_types;
+        self
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
@@ -3975,7 +4025,9 @@ pub struct EmpowerJaceEffect {
 
 impl EmpowerJaceEffect {
     pub fn new(amount: impl Into<Value>) -> Self {
-        Self { amount: amount.into() }
+        Self {
+            amount: amount.into(),
+        }
     }
 }
 
@@ -3985,7 +4037,11 @@ pub struct CollectEvidenceEffect {
     pub amount: Value,
 }
 impl CollectEvidenceEffect {
-    pub fn new(amount: impl Into<Value>) -> Self { Self { amount: amount.into() } }
+    pub fn new(amount: impl Into<Value>) -> Self {
+        Self {
+            amount: amount.into(),
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -4872,7 +4928,10 @@ pub struct CreateTokenEffect<D> {
     pub token: D,
     /// Authored word roles retained by the creating instruction. Historical
     /// absence is unknown evidence, not an implicit all-authored declaration.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub text_roles: Option<crate::TokenTextRoles>,
     pub count: Value,
     pub controller: PlayerFilter,
@@ -4917,25 +4976,43 @@ impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
         debug.field("token", &self.token);
         // Unstamped native trigger identities still hash effect Debug. Keep
         // absent historical evidence byte-identical to the old field order.
-        if self.text_roles.is_some() { debug.field("text_roles", &self.text_roles); }
-        debug.field("count", &self.count)
+        if self.text_roles.is_some() {
+            debug.field("text_roles", &self.text_roles);
+        }
+        debug
+            .field("count", &self.count)
             .field("controller", &self.controller)
             .field("controller_target", &self.controller_target)
             .field("use_source_chosen_color", &self.use_source_chosen_color)
-            .field("use_source_chosen_creature_type", &self.use_source_chosen_creature_type)
+            .field(
+                "use_source_chosen_creature_type",
+                &self.use_source_chosen_creature_type,
+            )
             .field("actor_surface_explicit", &self.actor_surface_explicit)
-            .field("suppress_aura_attachment_choice", &self.suppress_aura_attachment_choice)
+            .field(
+                "suppress_aura_attachment_choice",
+                &self.suppress_aura_attachment_choice,
+            )
             .field("ability_presentation", &self.ability_presentation)
             .field("enters_tapped", &self.enters_tapped)
             .field("enters_attacking", &self.enters_attacking)
             .field("attack_target_mode", &self.attack_target_mode)
             .field("enters_blocking", &self.enters_blocking)
             .field("exile_at_end_of_combat", &self.exile_at_end_of_combat)
-            .field("sacrifice_at_end_of_combat", &self.sacrifice_at_end_of_combat)
-            .field("sacrifice_at_next_end_step", &self.sacrifice_at_next_end_step)
+            .field(
+                "sacrifice_at_end_of_combat",
+                &self.sacrifice_at_end_of_combat,
+            )
+            .field(
+                "sacrifice_at_next_end_step",
+                &self.sacrifice_at_next_end_step,
+            )
             .field("exile_at_next_end_step", &self.exile_at_next_end_step)
             .field("next_end_step_player", &self.next_end_step_player)
-            .field("link_source_exiled_this_resolution", &self.link_source_exiled_this_resolution)
+            .field(
+                "link_source_exiled_this_resolution",
+                &self.link_source_exiled_this_resolution,
+            )
             .finish()
     }
 }
@@ -5460,7 +5537,12 @@ pub struct GrantNextSpellAbilityEffect<A> {
 
 impl<A> GrantNextSpellAbilityEffect<A> {
     pub fn new(player: PlayerFilter, filter: ObjectFilter, ability: A) -> Self {
-        Self { player, filter, ability, mode: NextSpellGrantMode::Ability }
+        Self {
+            player,
+            filter,
+            ability,
+            mode: NextSpellGrantMode::Ability,
+        }
     }
 
     pub fn with_mode(mut self, mode: NextSpellGrantMode) -> Self {
@@ -5532,7 +5614,10 @@ pub struct ExileEffect {
     /// Looking at an object in its earlier zone does not by itself authorize
     /// inspecting this face-down exile incarnation. New paired hand-exile
     /// producers use explicit static entitlements rather than chooser memory.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "exile_keeps_prior_zone_viewers"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "exile_keeps_prior_zone_viewers")
+    )]
     pub exclude_prior_zone_viewers: bool,
     /// The exiled card grants the source permanent's current controller
     /// permission to look at it (for example, CR 702.75a Hideaway).
@@ -5545,7 +5630,9 @@ pub struct ExileEffect {
 }
 
 #[cfg(feature = "serde")]
-fn exile_keeps_prior_zone_viewers(exclude: &bool) -> bool { !*exclude }
+fn exile_keeps_prior_zone_viewers(exclude: &bool) -> bool {
+    !*exclude
+}
 
 impl ExileEffect {
     pub fn with_spec(spec: ChooseSpec) -> Self {
@@ -6384,17 +6471,41 @@ pub struct ChooseNumberEffect {
     pub max: Option<u32>,
     /// Source-owned entry/reselection choices survive this resolution. Local
     /// numeric producers remain bound by their exact execution effect id.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "number_choice_is_local"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "number_choice_is_local")
+    )]
     pub source_owned: bool,
 }
-fn number_choice_is_local(source_owned: &bool) -> bool { !*source_owned }
+fn number_choice_is_local(source_owned: &bool) -> bool {
+    !*source_owned
+}
 impl ChooseNumberEffect {
-    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max), source_owned: false } }
-    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None, source_owned: false } }
-    pub fn with_source_retention(mut self) -> Self { self.source_owned = true; self }
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self {
+        Self {
+            chooser,
+            min,
+            max: Some(max),
+            source_owned: false,
+        }
+    }
+    pub fn unbounded(chooser: PlayerFilter) -> Self {
+        Self {
+            chooser,
+            min: 0,
+            max: None,
+            source_owned: false,
+        }
+    }
+    pub fn with_source_retention(mut self) -> Self {
+        self.source_owned = true;
+        self
+    }
 }
 
 /// One CR702.60 reveal/cast/remainder resolution transaction.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct RippleEffect { pub amount: u32 }
+pub struct RippleEffect {
+    pub amount: u32,
+}

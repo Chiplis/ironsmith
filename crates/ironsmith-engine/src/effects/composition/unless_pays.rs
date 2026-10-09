@@ -367,6 +367,38 @@ impl UnlessPaysProgram {
         })
     }
 
+    fn accept_instruction(
+        &mut self,
+        outputs: crate::effects::CompletedEffectOutputs,
+        accept_consequence: impl FnOnce(
+            &mut dyn crate::effects::ActionProgramCursor,
+            crate::effects::CompletedEffectOutputs,
+        ) -> Result<(), ExecutionError>,
+    ) -> Result<(), ExecutionError> {
+        match self.pending.take().ok_or_else(|| {
+            ExecutionError::InternalError(
+                "unless-payment acknowledged without a selected instruction".into(),
+            )
+        })? {
+            PendingUnlessInstruction::Declaration => self.declarations.push(outputs),
+            PendingUnlessInstruction::Payment => {
+                // This status is the actual total-cost owner's acknowledgement,
+                // independent of the component packets' physical outcomes.
+                if outputs.outcome.status == crate::effect::OutcomeStatus::Succeeded {
+                    self.payment = Some(outputs);
+                }
+            }
+            PendingUnlessInstruction::Consequence => accept_consequence(
+                self.consequence
+                    .as_mut()
+                    .expect("active consequence")
+                    .as_mut(),
+                outputs,
+            )?,
+        }
+        Ok(())
+    }
+
     fn complete_selected(
         self: Box<Self>,
         prefix: Option<crate::effects::ProgramCompletion>,
@@ -519,26 +551,17 @@ impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
         &mut self,
         outputs: crate::effects::CompletedEffectOutputs,
     ) -> Result<(), ExecutionError> {
-        match self.pending.take().ok_or_else(|| {
-            ExecutionError::InternalError(
-                "unless-payment acknowledged without a selected instruction".into(),
-            )
-        })? {
-            PendingUnlessInstruction::Declaration => self.declarations.push(outputs),
-            PendingUnlessInstruction::Payment => {
-                // This status is the actual total-cost owner's acknowledgement,
-                // independent of the component packets' physical outcomes.
-                if outputs.outcome.status == crate::effect::OutcomeStatus::Succeeded {
-                    self.payment = Some(outputs);
-                }
-            }
-            PendingUnlessInstruction::Consequence => self
-                .consequence
-                .as_mut()
-                .expect("active consequence")
-                .accept_action(outputs)?,
-        }
-        Ok(())
+        self.accept_instruction(outputs, |cursor, outputs| cursor.accept_action(outputs))
+    }
+    fn accept_action_with_context(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outputs: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.accept_instruction(outputs, |cursor, outputs| {
+            cursor.accept_action_with_context(game, ctx, outputs)
+        })
     }
     fn ends_action_unit(&self) -> bool {
         self.ends_unit

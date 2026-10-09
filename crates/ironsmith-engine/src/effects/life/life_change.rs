@@ -340,30 +340,33 @@ pub(crate) fn commit_prepared_life_original_with_outputs(
     ExecutionError,
 > {
     let (original, programs) = prepared.into_expansion();
-    let deferred = if let TraitEventResult::Replaced {
-        effects,
-        source,
-        controller,
-        context,
-        ..
-    } = &original
-    {
-        crate::effects::replacement::prepare_draw_continuation_with_outputs(
+    let receipt = match original {
+        TraitEventResult::Replaced {
+            effects,
+            source,
+            controller,
+            context,
+            ..
+        } => crate::effects::replacement::commit_bound_replacement_program_original_with_outputs(
             game,
             ctx,
-            effects,
-            *source,
-            *controller,
-            context,
-        )?
-    } else {
-        None
+            crate::events::processing::PreparedReplacementProgram {
+                effects,
+                source,
+                controller,
+                context,
+                source_snapshot: None,
+            },
+            crate::effects::replacement::ReplacementProgramBindings {
+                targets: None,
+                object_tags: Vec::new(),
+            },
+        )?,
+        original => crate::effects::SimultaneousEffectCommit::finished(
+            commit_life_change_with_outputs(game, ctx, original)?,
+        ),
     };
-    let (outcome, original_continuation) = if let Some(receipt) = deferred {
-        (receipt.outcome, receipt.completion)
-    } else {
-        (commit_life_change_with_outputs(game, ctx, original)?, None)
-    };
+    let (outcome, original_continuation) = (receipt.outcome, receipt.completion);
     Ok(
         crate::effects::replacement::defer_replacement_programs_with_outputs(
             crate::effects::SimultaneousEffectCommit {

@@ -4,11 +4,12 @@
 //! mana value is exiled, lets you cast it without paying its mana cost, then
 //! puts all other exiled cards on the bottom of your library in random order.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome};
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule,
+    execute_library_consult_with_outputs,
 };
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
@@ -21,8 +22,8 @@ use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 use super::runtime_helpers::{
-    cast_effect_driven_spell_without_paying, effect_driven_cast_options_for_card,
-    with_spell_cast_event,
+    cast_effect_driven_spell_without_paying, complete_effect_driven_cast_with_outputs,
+    effect_driven_cast_options_for_card,
 };
 
 /// Effect that resolves a single cascade trigger.
@@ -308,12 +309,11 @@ impl EffectExecutor for CascadeEffect {
                         {
                             casted_card = Some((candidate_id, result.new_id, result.from_zone));
                             // Capture cast observations before remainder movement can change the stack object.
-                            cast_outcome = Some(with_spell_cast_event(
+                            cast_outcome = Some(complete_effect_driven_cast_with_outputs(
                                 EffectOutcome::with_objects(vec![result.new_id]),
                                 game,
-                                result.new_id,
+                                result,
                                 ctx.controller,
-                                result.from_zone,
                                 ctx.provenance,
                             )?);
                         }
@@ -343,9 +343,9 @@ impl EffectExecutor for CascadeEffect {
                 }
                 let primary = if let Some(outcome) = cast_outcome {
                     let primary = EffectOutcome::with_objects(
-                        outcome.explicit_objects().unwrap_or(&[]).to_vec(),
+                        outcome.outcome.explicit_objects().unwrap_or(&[]).to_vec(),
                     );
-                    observations.push(CompletedEffectOutputs::aggregate_only(outcome));
+                    observations.push(outcome);
                     primary
                 } else if !cascade_land_ids.is_empty() {
                     EffectOutcome::with_objects(cascade_land_ids)

@@ -194,16 +194,29 @@ pub(crate) fn observe_lifecycle_completions(
     game: &mut GameState,
     events: &mut Vec<TriggerEvent>,
 ) -> Result<(), ExecutionError> {
+    let outputs = observe_lifecycle_completions_with_outputs(game, events.clone())?;
+    *events = outputs.outcome.events;
+    Ok(())
+}
+
+/// The lifecycle producer retains its actual frozen occurrences as one rich
+/// completion packet. Compatibility callers project only after successful
+/// observation, preserving their original input list on errors.
+pub(crate) fn observe_lifecycle_completions_with_outputs(
+    game: &mut GameState,
+    events: Vec<TriggerEvent>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let completions = events
-        .iter()
-        .cloned()
+        .into_iter()
         .map(|event| {
             let parent = event.provenance();
             (event, Some(parent))
         })
         .collect();
-    *events = observe_action_completions(game, completions)?;
-    Ok(())
+    let events = observe_action_completions(game, completions)?;
+    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+        crate::effect::EffectOutcome::resolved().with_events(events),
+    ))
 }
 
 /// Observe child receipts without changing their trigger publication or result

@@ -214,6 +214,67 @@ struct BranchCompletion {
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
 
+impl BranchCompletion {
+    /// Forward one actual phase through the retained scope and continuation.
+    fn advance(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        phase: crate::effects::composition::CompletionPhase,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let before = ChoiceState::capture(ctx);
+        let mut receipt = scope.run(ctx, |ctx| {
+            bindings.apply(ctx);
+            phase.dispatch(inner, game, ctx)
+        })?;
+        let bindings = bindings.completion_bindings(&before, ctx);
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self {
+                scope,
+                bindings,
+                inner,
+            }));
+        } else if !ctx.decision_maker.awaiting_choice() {
+            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
+            receipt.outcome.synchronize_observations();
+        }
+        Ok(receipt)
+    }
+
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effects::composition::CompletionInput,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let Self {
+            scope,
+            bindings,
+            inner,
+        } = *self;
+        let mut outputs = scope.clone().run(ctx, |ctx| {
+            bindings.apply(ctx);
+            original.dispatch(inner, game, ctx)
+        })?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        outputs.outcome = scope.clone().project(outputs.outcome, ctx);
+        outputs.synchronize_observations();
+        Ok(outputs)
+    }
+}
+
 impl SimultaneousEffectCompletion for BranchCompletion {
     fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
         self.inner.original_phase_status()
@@ -228,28 +289,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let before = ChoiceState::capture(ctx);
-        let mut receipt = scope.run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.complete_original_phase_with_outputs(game, ctx, original)
-        })?;
-        let bindings = bindings.completion_bindings(&before, ctx);
-        if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self {
-                scope,
-                bindings,
-                inner,
-            }));
-        } else if !ctx.decision_maker.awaiting_choice() {
-            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
-            receipt.outcome.synchronize_observations();
-        }
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutcome(original),
+        )
     }
 
     fn complete_original_phase_from_outputs(
@@ -261,28 +305,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let before = ChoiceState::capture(ctx);
-        let mut receipt = scope.run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.complete_original_phase_from_outputs(game, ctx, original)
-        })?;
-        let bindings = bindings.completion_bindings(&before, ctx);
-        if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self {
-                scope,
-                bindings,
-                inner,
-            }));
-        } else if !ctx.decision_maker.awaiting_choice() {
-            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
-            receipt.outcome.synchronize_observations();
-        }
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::OriginalOutputs(original),
+        )
     }
 
     fn prepare_draw_boundary_with_outputs(
@@ -294,28 +321,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let before = ChoiceState::capture(ctx);
-        let mut receipt = scope.run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
-        })?;
-        let bindings = bindings.completion_bindings(&before, ctx);
-        if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self {
-                scope,
-                bindings,
-                inner,
-            }));
-        } else if !ctx.decision_maker.awaiting_choice() {
-            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
-            receipt.outcome.synchronize_observations();
-        }
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutcome(original),
+        )
     }
 
     fn prepare_draw_boundary_from_outputs(
@@ -327,28 +337,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         crate::effects::ExecutionError,
     > {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let before = ChoiceState::capture(ctx);
-        let mut receipt = scope.run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.prepare_draw_boundary_from_outputs(game, ctx, original)
-        })?;
-        let bindings = bindings.completion_bindings(&before, ctx);
-        if let Some(inner) = receipt.completion.take() {
-            receipt.completion = Some(Box::new(Self {
-                scope,
-                bindings,
-                inner,
-            }));
-        } else if !ctx.decision_maker.awaiting_choice() {
-            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
-            receipt.outcome.synchronize_observations();
-        }
-        Ok(receipt)
+        self.advance(
+            game,
+            ctx,
+            crate::effects::composition::CompletionPhase::DrawOutputs(original),
+        )
     }
 
     fn observe_original(
@@ -385,23 +378,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let mut outputs = scope.clone().run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.complete_with_outputs(game, ctx, original)
-        })?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        outputs.outcome = scope.clone().project(outputs.outcome, ctx);
-        outputs.synchronize_observations();
-        Ok(outputs)
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outcome(original),
+        )
     }
 
     fn complete_from_original_outputs(
@@ -410,23 +391,11 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         ctx: &mut ExecutionContext,
         original: crate::effects::CompletedEffectOutputs,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let Self {
-            scope,
-            bindings,
-            inner,
-        } = *self;
-        let mut outputs = scope.clone().run(ctx, |ctx| {
-            bindings.apply(ctx);
-            inner.complete_from_original_outputs(game, ctx, original)
-        })?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        outputs.outcome = scope.clone().project(outputs.outcome, ctx);
-        outputs.synchronize_observations();
-        Ok(outputs)
+        self.finish(
+            game,
+            ctx,
+            crate::effects::composition::CompletionInput::Outputs(original),
+        )
     }
 }
 
@@ -758,6 +727,152 @@ pub(super) fn prepare_action_for_purpose(
             }
             Ok(prepared)
         }
+    }
+}
+
+/// Fallback scheduling preserves authored order without claiming that arbitrary
+/// children can join a shared cohort. Selection still retains the actual native
+/// cursor before another participant commits an original.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum SelectedProgramTransaction {
+    Compound,
+    Resources,
+}
+
+impl SelectedProgramTransaction {
+    fn execute(
+        self,
+        cursor: Box<dyn crate::effects::ActionProgramCursor>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let pending =
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+        let body = |game: &mut GameState, ctx: &mut ExecutionContext| {
+            super::action_program::execute_action_program_with_outputs(
+                cursor,
+                game,
+                ctx,
+                crate::effects::EffectExecutionPurpose::Action,
+            )
+        };
+        match self {
+            Self::Compound => super::execute_transaction(game, ctx, pending, body),
+            Self::Resources => {
+                crate::effects::tokens::execute_resource_transaction_with_pending_value(
+                    game, ctx, pending, body,
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SelectedOrderedProgram {
+    cursor: Box<dyn crate::effects::ActionProgramCursor>,
+    bindings: ChoiceState,
+}
+
+#[derive(Debug)]
+struct SelectedOrderedProgramProposal {
+    definition: Effect,
+    player: Option<PlayerId>,
+    transaction: SelectedProgramTransaction,
+    selected: Option<SelectedOrderedProgram>,
+}
+
+pub(super) fn prepare_selected_ordered_program(
+    definition: Effect,
+    ctx: &ExecutionContext,
+    transaction: SelectedProgramTransaction,
+) -> Box<dyn SimultaneousEffectProposal> {
+    Box::new(SelectedOrderedProgramProposal {
+        definition,
+        player: ctx.iteration.iterated_player,
+        transaction,
+        selected: None,
+    })
+}
+
+impl SimultaneousEffectProposal for SelectedOrderedProgramProposal {
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.selected.is_some() {
+            return Ok(());
+        }
+        let before = ChoiceState::capture(ctx);
+        let result = ctx.with_temp_iterated_player(self.player, |ctx| {
+            let cursor =
+                crate::effects::select_reached_action_program(game, &self.definition, ctx)?;
+            if let Some(cursor) = cursor {
+                if !ctx.decision_maker.awaiting_choice() {
+                    self.selected = Some(SelectedOrderedProgram {
+                        cursor,
+                        bindings: ChoiceState::capture(ctx),
+                    });
+                }
+            }
+            Ok(())
+        });
+        before.restore(ctx);
+        result
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.prepare_selection(game, ctx)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
+    {
+        if self.selected.is_none() {
+            self.prepare_selection(game, ctx)?;
+        }
+        let mut selected = self.selected.take();
+        let had_selected = selected.is_some();
+        let outputs = ctx.with_temp_iterated_player(self.player, |ctx| {
+            crate::effects::runtime::execute_effect_with_outputs_using(
+                game,
+                &self.definition,
+                ctx,
+                crate::effects::EffectExecutionPurpose::Action,
+                &self.definition,
+                |_, game, ctx| {
+                    let Some(selected) = selected.take() else {
+                        if had_selected {
+                            return Err(ExecutionError::InternalError(
+                                "selected ordered program was dispatched more than once".into(),
+                            ));
+                        }
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    };
+                    selected.bindings.restore(ctx);
+                    self.transaction.execute(selected.cursor, game, ctx)
+                },
+            )
+        })?;
+        Ok(SimultaneousEffectCommit::finished(outputs))
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(|receipt| receipt.outcome.into_outcome())
     }
 }
 

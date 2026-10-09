@@ -1681,20 +1681,21 @@ pub(super) fn compile_subject_verb_late(
                 // A pre-move target tag cannot represent that exile object.
                 ctx.last_object_tag = None;
                 ctx.last_player_filter = None;
-                return Ok((
+                Ok((
                     vec![Effect::new(
                         ironsmith_core::CounterEffect::new(spec)
                             .with_exile_permission(permission.clone()),
                     )],
                     choices,
-                ));
+                ))
+            } else {
+                let effect =
+                    tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
+                if let Some(tag) = ctx.last_object_tag.clone() {
+                    ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+                }
+                Ok((vec![effect], choices))
             }
-            let effect =
-                tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
-            if let Some(tag) = ctx.last_object_tag.clone() {
-                ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
-            }
-            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, cost }) => {
             let cost =
