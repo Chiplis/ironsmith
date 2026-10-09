@@ -898,6 +898,15 @@ pub enum ActivatedAbilityCostCondition {
     LoyaltyAbility,
     /// The activator, relative to the modifier's controller; not source ownership.
     Activator(PlayerFilter),
+    /// The priced activation is the first ability with this keyword its
+    /// activator activates this turn ("the first equip ability you activate
+    /// each turn", "the first card you cycle each turn"); with
+    /// `during_your_turn`, only during the activator's own turns ("during
+    /// each of your turns"). Appended for artifact compatibility.
+    FirstKeywordAbilityThisTurn {
+        keyword: crate::ActivatedAbilityKeyword,
+        during_your_turn: bool,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

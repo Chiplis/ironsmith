@@ -68,6 +68,50 @@ fn execute_unpaid_failure(
     Ok(outcome)
 }
 
+/// The cheapest alternative echo price a battlefield "You may pay {0} rather
+/// than pay the echo cost for permanents you control" (Thick-Skinned Goblin)
+/// offers for `echo_source` (CR 118.9, 702.30a).
+fn echo_cost_alternative(
+    game: &GameState,
+    echo_source: crate::ids::ObjectId,
+) -> Option<crate::mana::ManaCost> {
+    use crate::filter::ObjectFilterExt as _;
+    let echo_object = game.object(echo_source)?;
+    let mut best: Option<crate::mana::ManaCost> = None;
+    for &permanent in game.battlefield.iter() {
+        let Some(holder) = game.object(permanent) else {
+            continue;
+        };
+        let Some(characteristics) = game.current_characteristics(permanent) else {
+            continue;
+        };
+        for static_ability in characteristics.static_abilities.iter() {
+            let Some(ironsmith_core::StaticAbilityPayload::EchoCostAlternative {
+                filter,
+                replacement_mana_cost,
+                ..
+            }) = static_ability.compiled_model().map(|model| &model.payload)
+            else {
+                continue;
+            };
+            if !static_ability.is_active(game, permanent) {
+                continue;
+            }
+            let filter_ctx = game.filter_context_for(game.controller_of(holder), Some(permanent));
+            if !filter.matches(echo_object, &filter_ctx, game) {
+                continue;
+            }
+            if best
+                .as_ref()
+                .is_none_or(|current| replacement_mana_cost.mana_value() < current.mana_value())
+            {
+                best = Some(replacement_mana_cost.clone());
+            }
+        }
+    }
+    best
+}
+
 fn payment_can_complete(
     effects: &[Effect],
     count: usize,
@@ -197,8 +241,58 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                 } else {
                     crate::costs::PaymentReason::Effect
                 };
+                // CR 118.9: an echo-cost alternative ("you may pay {0} rather
+                // than pay the echo cost", Thick-Skinned Goblin) replaces the
+                // echo payment. A free alternative is always at least as
+                // good; a priced one is offered as a choice when both work.
+                let alternative = if self.kind == UpkeepPaymentKind::Echo {
+                    echo_cost_alternative(game, ctx.source)
+                } else {
+                    None
+                };
+                let alternative_payment = alternative.map(|mana| {
+                    if mana.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![Effect::new(crate::effects::PayManaEffect::new(
+                            mana,
+                            crate::target::ChooseSpec::SourceController,
+                        ))]
+                    }
+                });
+                let payment: std::borrow::Cow<'_, [Effect]> = match alternative_payment {
+                    Some(alternative)
+                        if alternative.is_empty()
+                            || !payment_can_complete(&self.payment, count, reason, game, ctx)? =>
+                    {
+                        std::borrow::Cow::Owned(alternative)
+                    }
+                    Some(alternative) => {
+                        let use_alternative =
+                            payment_can_complete(&alternative, count, reason, game, ctx)?
+                                && make_boolean_decision(
+                                    game,
+                                    &mut ctx.decision_maker,
+                                    player,
+                                    ctx.source,
+                                    "Pay the alternative cost rather than the echo cost?",
+                                    FallbackStrategy::Accept,
+                                );
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        if use_alternative {
+                            std::borrow::Cow::Owned(alternative)
+                        } else {
+                            std::borrow::Cow::Borrowed(self.payment.as_slice())
+                        }
+                    }
+                    None => std::borrow::Cow::Borrowed(self.payment.as_slice()),
+                };
                 // A cost of zero still offers a choice (CR 118.5, 702.24a).
-                let can_attempt = payment_can_complete(&self.payment, count, reason, game, ctx)?;
+                let can_attempt = payment_can_complete(&payment, count, reason, game, ctx)?;
                 let wants_to_pay = can_attempt
                     && make_boolean_decision(
                         game,
@@ -235,7 +329,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                     crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                         .or_else(|| ctx.source_snapshot.clone());
                 let Some(mut outcome) =
-                    execute_payment_atomically(game, ctx, &self.payment, count, reason)?
+                    execute_payment_atomically(game, ctx, &payment, count, reason)?
                 else {
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(CompletedEffectOutputs::aggregate_only(
@@ -392,6 +486,51 @@ mod tests {
             .expect("source exists")
             .add_counters(CounterType::Age, count);
         source
+    }
+
+    /// Thick-Skinned Goblin: "You may pay {0} rather than pay the echo cost
+    /// for permanents you control" replaces the echo payment (CR 118.9,
+    /// 702.30a), so the permanent stays without its echo cost being paid.
+    #[test]
+    fn echo_cost_alternative_replaces_the_echo_payment() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = source_with_age_counters(&mut game, alice, 0);
+        let goblin_card = CardBuilder::new(CardId::new(), "Echo Alternative Holder")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let goblin = game.create_object_from_card(&goblin_card, alice, Zone::Battlefield);
+        game.object_mut(goblin)
+            .expect("holder exists")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::from_model(
+                    crate::static_abilities::CompiledStaticAbility::echo_cost_alternative(
+                        crate::target::ObjectFilter::permanent().you_control(),
+                        crate::mana::ManaCost::new(),
+                        "You may pay {0} rather than pay the echo cost for permanents you control",
+                    ),
+                ),
+            ));
+        game.refresh_continuous_state().expect("continuous state");
+        assert_eq!(
+            echo_cost_alternative(&game, source).map(|mana| mana.is_empty()),
+            Some(true)
+        );
+
+        let mut dm = BooleanDecisionMaker { response: true };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = CumulativeUpkeepEffect::echo(
+            PlayerFilter::You,
+            vec![Effect::lose_life_player(3, PlayerFilter::You)],
+            vec![Effect::sacrifice_source()],
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("echo resolves");
+
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert!(game.battlefield.contains(&source));
     }
 
     #[test]

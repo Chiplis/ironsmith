@@ -1180,6 +1180,22 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
             display: Some(display),
             ..
         } => format!("As long as {display}"),
+        // Eminence (The Ur-Dragon): "As long as <this> is in the command zone
+        // or on the battlefield" (the eminence ability word, CR 207.2c).
+        crate::ConditionExpr::Or(left, right)
+            if matches!(
+                (left.as_ref(), right.as_ref()),
+                (
+                    crate::ConditionExpr::SourceIsInZone(Zone::Command),
+                    crate::ConditionExpr::SourceIsInZone(Zone::Battlefield)
+                ) | (
+                    crate::ConditionExpr::SourceIsInZone(Zone::Battlefield),
+                    crate::ConditionExpr::SourceIsInZone(Zone::Command)
+                )
+            ) =>
+        {
+            "As long as this source is in the command zone or on the battlefield".to_string()
+        }
         _ => "As long as the stated condition is true".to_string(),
     }
 }
@@ -1991,6 +2007,13 @@ pub enum ActivatedAbilityCostCondition {
     LoyaltyAbility,
     /// The activator, relative to the modifier's controller; not source ownership.
     Activator(PlayerFilter),
+    /// The activator has activated no other ability with this keyword this
+    /// turn ("the first equip ability you activate each turn"); with
+    /// `during_your_turn`, only on the activator's own turn.
+    FirstKeywordAbilityThisTurn {
+        keyword: ironsmith_core::ActivatedAbilityKeyword,
+        during_your_turn: bool,
+    },
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -2039,6 +2062,22 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
         }
         ActivatedAbilityCostCondition::NonManaAbility => "unless it's a mana ability".into(),
         ActivatedAbilityCostCondition::LoyaltyAbility => "if it's a loyalty ability".into(),
+        ActivatedAbilityCostCondition::FirstKeywordAbilityThisTurn {
+            keyword,
+            during_your_turn,
+        } => {
+            let turn = if *during_your_turn { "during your turn" } else { "this turn" };
+            let keyword = match keyword {
+                ironsmith_core::ActivatedAbilityKeyword::Equip => "equip",
+                ironsmith_core::ActivatedAbilityKeyword::PowerUp => "power-up",
+                ironsmith_core::ActivatedAbilityKeyword::ClassLevel(_) => "level",
+                ironsmith_core::ActivatedAbilityKeyword::Cycling => "cycling",
+                ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
+                ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
+                ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+            };
+            format!("if it's the first {keyword} ability activated {turn}")
+        }
         ActivatedAbilityCostCondition::Activator(player) => {
             format!("if {} activates it", player.description())
         }
@@ -2064,6 +2103,29 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
             .map(describe_activated_ability_cost_condition).filter(|text| !text.is_empty())
             .collect::<Vec<_>>().join(" and "),
     }
+}
+
+/// How many abilities with `keyword` `activator` has activated this turn,
+/// counted from the turn's activation events (a cycled card has left its
+/// zone by then, so the events' ability snapshots carry the keyword).
+pub(crate) fn keyword_abilities_activated_this_turn(
+    game: &crate::game_state::GameState,
+    activator: crate::ids::PlayerId,
+    keyword: ironsmith_core::ActivatedAbilityKeyword,
+) -> usize {
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .filter_map(|record| record.event.downcast::<crate::events::AbilityActivatedEvent>())
+        .filter(|event| event.activator == activator)
+        .filter(|event| {
+            matches!(
+                event.activated_ability.as_ref().map(|ability| &ability.kind),
+                Some(crate::ability::AbilityKind::Activated(activated))
+                    if activated.keyword == Some(keyword)
+            )
+        })
+        .count()
 }
 
 /// Whether `condition` holds for activating an ability of `source`.
@@ -2094,6 +2156,23 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
         }
         ActivatedAbilityCostCondition::LoyaltyAbility => {
             ability.is_some_and(|ability| ability.loyalty_ability)
+        }
+        ActivatedAbilityCostCondition::FirstKeywordAbilityThisTurn {
+            keyword,
+            during_your_turn,
+        } => {
+            // "The first equip ability you activate each turn": the
+            // activator's earlier activations this turn are recorded as
+            // AbilityActivatedEvents once their costs are paid, so the
+            // activation being priced is never among them (CR 602.2).
+            let Some(activator) = ability.and_then(|ability| ability.activator) else {
+                return false;
+            };
+            if *during_your_turn && game.turn.active_player != activator {
+                return false;
+            }
+            ability.is_some_and(|ability| ability.keyword == Some(*keyword))
+                && keyword_abilities_activated_this_turn(game, activator, *keyword) == 0
         }
         ActivatedAbilityCostCondition::Activator(player) => {
             let Some(activator) = ability.and_then(|ability| ability.activator) else {
@@ -3670,6 +3749,64 @@ mod tests {
     use crate::effect::Value;
     use crate::static_abilities::ThisSpellCostCondition::Always;
     use crate::target::PlayerFilter;
+
+    /// "the first <keyword> ability you activate each turn" (Bruenor, Gavi):
+    /// the activator's earlier activation of that keyword this turn ends the
+    /// alternative; other players' activations don't (CR 118.9, 602.2b).
+    #[test]
+    fn first_keyword_ability_this_turn_reads_the_activators_history() {
+        use crate::ids::{CardId, PlayerId};
+        use crate::types::CardType;
+        let definition =
+            crate::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Ninjutsu Source")
+                .card_types(vec![CardType::Creature])
+                .ninjutsu(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Blue,
+                ]]))
+                .build();
+        let ability = definition
+            .abilities
+            .iter()
+            .find(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
+            .cloned()
+            .expect("ninjutsu builder adds an activated ability");
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let keyword = ironsmith_core::ActivatedAbilityKeyword::Ninjutsu;
+        let condition = ActivatedAbilityCostCondition::FirstKeywordAbilityThisTurn {
+            keyword,
+            during_your_turn: false,
+        };
+        let facts = |activator| crate::decision::ActivationCostAbility {
+            keyword: Some(keyword),
+            activator: Some(activator),
+            ..Default::default()
+        };
+        let active = |game: &crate::game_state::GameState, activator| {
+            activated_ability_cost_condition_is_active_for_activation(
+                game,
+                source,
+                source,
+                &condition,
+                &[],
+                Some(facts(activator)),
+            )
+        };
+        assert!(active(&game, alice));
+        game.record_turn_history_event(&crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::AbilityActivatedEvent::new(source, alice, false)
+                .with_activated_ability(Some(ability)),
+            crate::provenance::ProvNodeId::default(),
+        ));
+        assert!(!active(&game, alice), "alice already activated one this turn");
+        assert!(active(&game, bob), "bob's first activation is unaffected");
+        // Without the activation's facts the alternative never applies.
+        assert!(!activated_ability_cost_condition_is_active_for_activation(
+            &game, source, source, &condition, &[], None,
+        ));
+    }
 
     #[test]
     fn test_affinity() {

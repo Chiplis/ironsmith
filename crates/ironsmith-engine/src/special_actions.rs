@@ -4000,6 +4000,42 @@ fn pay_activation_cost_step_without_execution_context(
     }
 }
 
+/// Physical identities of the hand cards an exile-from-hand cost is about
+/// to exile (each becomes a new exiled object, CR 400.7).
+fn cost_exiled_from_hand_identities(
+    game: &GameState,
+    cards: &[ObjectId],
+) -> Vec<crate::ids::StableId> {
+    cards
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.stable_id))
+        .collect()
+}
+
+/// "Exile a card from your hand: ... the card exiled this way" (Holistic
+/// Wisdom): publish the exiled incarnations to the ability being activated
+/// under the cost-exile tag (CR 602.2, 608.2h last-known characteristics).
+fn publish_cost_exiled_from_hand(
+    game: &GameState,
+    ctx: &mut CostContext<'_>,
+    stable_ids: &[crate::ids::StableId],
+) {
+    let snapshots: Vec<ObjectSnapshot> = stable_ids
+        .iter()
+        .filter_map(|stable_id| game.find_object_by_stable_id(*stable_id))
+        .filter_map(|id| game.object(id))
+        .filter(|object| object.zone == crate::zone::Zone::Exile)
+        .map(|object| ObjectSnapshot::from_object(object, game))
+        .collect();
+    if snapshots.is_empty() {
+        return;
+    }
+    ctx.tagged_objects
+        .entry(crate::tag::TagKey::from(ironsmith_core::tag::COST_EXILED_FROM_HAND_TAG))
+        .or_default()
+        .extend(snapshots);
+}
+
 fn pay_activation_card_choice_without_execution_context(
     game: &mut GameState,
     choice: &crate::game_loop::ActivationCardCostChoice,
@@ -4040,7 +4076,11 @@ fn pay_activation_card_choice_without_execution_context(
             ) else {
                 return Err(CostPaymentError::InsufficientCardsToExile);
             };
-            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+            let stable_ids = cost_exiled_from_hand_identities(game, &[target_id]);
+            let outputs =
+                pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)?;
+            publish_cost_exiled_from_hand(game, cost_ctx, &stable_ids);
+            Ok(outputs)
         }
         crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard {
             cost,
@@ -5084,10 +5124,14 @@ fn resolve_cost_choice_with_outputs(
                 return Err(CostPaymentError::InsufficientCardsToExile);
             }
 
+            let stable_ids = cost_exiled_from_hand_identities(game, &to_exile);
             ctx.pre_chosen_cards.extend(to_exile);
             let receipt = cost.pay_with_outputs(game, ctx)?;
             match receipt.result {
-                CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
+                CostPaymentResult::Paid => {
+                    publish_cost_exiled_from_hand(game, ctx, &stable_ids);
+                    Ok(receipt.outputs.into_iter().collect())
+                }
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
                     "Exile-from-hand cost still needs choice after preselection".to_string(),
                 )),

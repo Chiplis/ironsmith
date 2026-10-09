@@ -12,6 +12,54 @@ pub(super) fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) 
     })
 }
 
+/// "You may pay {0} rather than pay the equip cost of the first equip ability
+/// you activate each turn" (and its cycling / power-up siblings): the
+/// replacement mana price applies only to the first activation of that
+/// keyword ability kind by the controller each turn (CR 118.9, 602.2b), and
+/// only during the controller's turns for "during each of your turns".
+fn first_keyword_cost_alternative_ability(
+    tokens: &[OwnedLexToken],
+    display: String,
+) -> Result<StaticAbility, CardTextError> {
+    use crate::static_abilities::ActivatedAbilityCostCondition;
+    let shape = semantic_grammar::parse_first_keyword_cost_alternative_tokens(tokens)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported first-activation cost alternative (clause: '{}')",
+                render_token_slice(tokens).trim()
+            ))
+        })?;
+    let replacement = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(
+        shape.replacement_cost_tokens,
+    )?;
+    if replacement.has_non_mana_costs() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported non-mana first-activation cost alternative (clause: '{}')",
+            render_token_slice(tokens).trim()
+        )));
+    }
+    let mana = replacement
+        .mana_cost()
+        .cloned()
+        .unwrap_or_else(crate::mana::ManaCost::new);
+    let ability = StaticAbility::replace_activated_ability_mana_cost(
+        crate::target::ObjectFilter::default(),
+        mana,
+        display,
+    )
+    .with_activated_ability_cost_condition(ActivatedAbilityCostCondition::Keyword(shape.keyword))
+    .with_activated_ability_cost_condition(ActivatedAbilityCostCondition::Activator(
+        crate::target::PlayerFilter::You,
+    ))
+    .with_activated_ability_cost_condition(
+        ActivatedAbilityCostCondition::FirstKeywordAbilityThisTurn {
+            keyword: shape.keyword,
+            during_your_turn: shape.your_turns_only,
+        },
+    );
+    Ok(ability)
+}
+
 pub fn parse_static_line(
     info: LineInfo,
     parse_tokens: &[OwnedLexToken],
@@ -231,11 +279,13 @@ pub(super) fn parse_static_line_impl(
             let condition =
                 crate::keyword_static::parse_static_condition_clause(prefix.condition_tokens)?;
             let display = capitalize_first_equip_cost_alternative_display(prefix.remainder_tokens);
+            let ability =
+                first_keyword_cost_alternative_ability(prefix.remainder_tokens, display)?;
             return wrap_chosen_option_static_chunk(
                 LineAst::StaticAbilities(vec![
                     crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
                         ability: Box::new(crate::cards::builders::StaticAbilityAst::Static(
-                            StaticAbility::first_equip_cost_alternative(display),
+                            ability,
                         )),
                         condition,
                     },
@@ -244,8 +294,9 @@ pub(super) fn parse_static_line_impl(
             );
         }
         let display = capitalize_first_equip_cost_alternative_display(parse_tokens);
+        let ability = first_keyword_cost_alternative_ability(parse_tokens, display)?;
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(StaticAbility::first_equip_cost_alternative(display).into()),
+            LineAst::StaticAbility(ability.into()),
             chosen_option,
         );
     }

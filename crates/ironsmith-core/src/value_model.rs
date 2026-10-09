@@ -224,6 +224,11 @@ pub enum ValueSurfaceHint {
     /// resolves." The effect using the value remains responsible for
     /// actually freezing it at resolution.
     AsThisAbilityResolves,
+    /// Preserve an authored activation-time sampling clause ("where X is the
+    /// number of Bobbleheads you control as you activate this ability"). The
+    /// value is used while the ability is being activated (target count or
+    /// division, CR 601.2c/601.2d via 602.2b), so it is fixed then.
+    AsYouActivateThisAbility,
     /// Preserve an authored numeric reference to "the result" of the prior
     /// effect. Unlike an ambient trigger event amount, this value must bind to
     /// the immediately exported effect result (for example, a die roll).

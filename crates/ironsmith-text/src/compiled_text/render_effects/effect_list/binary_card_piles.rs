@@ -28,8 +28,49 @@ fn partition_move_is(effect: &Effect, chosen: &crate::tag::TagKey, other: &crate
         && captured_in(&filter.any_of[1], other, source)
 }
 
+/// "Separate all creature cards in your graveyard into two piles. Exile the
+/// pile of an opponent's choice and return the other to the battlefield."
+fn describe_graveyard_partition(effects: &[&Effect]) -> Option<String> {
+    let [pool, split, complement, opponent, pick] = effects else { return None; };
+    let pool = unwrap_tag_wrappers(pool).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let split = unwrap_tag_wrappers(split).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let complement =
+        unwrap_tag_wrappers(complement).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let opponent = unwrap_tag_wrappers(opponent).downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let pick = unwrap_tag_wrappers(pick).downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let [card_type] = pool.filter.card_types.as_slice() else { return None; };
+    if pool.filter.zone != Some(Zone::Graveyard)
+        || split.chooser != PlayerFilter::You
+        || !split.count.is_any_number()
+        || !captured_in(&split.filter, &pool.tag, Zone::Graveyard)
+        || !captured_in(&complement.filter, &pool.tag, Zone::Graveyard)
+        || opponent.filter != PlayerFilter::Opponent
+        || pick.modes.len() != 2
+    {
+        return None;
+    }
+    let destinations_match = pick.modes.iter().all(|mode| {
+        let moves: Vec<_> = mode
+            .effects
+            .iter()
+            .filter_map(|effect| downcast_move_to_zone(effect))
+            .map(|moved| moved.zone)
+            .collect();
+        moves == [Zone::Exile, Zone::Battlefield]
+    });
+    if !destinations_match {
+        return None;
+    }
+    Some(format!(
+        "Separate all {} cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield",
+        describe_card_type_word_local(*card_type)
+    ))
+}
+
 pub(super) fn describe(effects: &[&Effect]) -> Option<String> {
+    if let Some(text) = describe_graveyard_partition(effects) { return Some(text); }
     if let Some(text) = describe_exile(effects) { return Some(text); }
+    if let Some(text) = describe_face_down_then_face_up_exile(effects) { return Some(text); }
     let effects = if effects.first().is_some_and(|effect|
         effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>().is_some())
     { &effects[1..] } else { effects };
@@ -117,6 +158,55 @@ pub(super) fn describe(effects: &[&Effect]) -> Option<String> {
         } else { " Put one pile into your hand and the other into your graveyard." });
     }
     for effect in remaining {
+        text.push(' ');
+        text.push_str(describe_effect(effect).trim_end_matches('.'));
+        text.push('.');
+    }
+    Some(text)
+}
+
+/// "Exile the top four cards of your library in a face-down pile, then exile
+/// the top four cards of your library in a face-up pile. An opponent chooses
+/// one of those piles. Put that pile into your graveyard. Look at the cards in
+/// the other pile. You may cast a spell from among them without paying its
+/// mana cost. Put the rest into your hand."
+fn describe_face_down_then_face_up_exile(effects: &[&Effect]) -> Option<String> {
+    let [first, second, capture_first, capture_second, opponent, pick, rest @ ..] = effects else { return None; };
+    let first = unwrap_tag_wrappers(first).downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let second = unwrap_tag_wrappers(second).downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let first_tag = first.moved_tags.first()?;
+    let second_tag = second.moved_tags.first()?;
+    if !first.face_down || second.face_down { return None; }
+    for (producer, capture, tag) in [(first, capture_first, first_tag), (second, capture_second, second_tag)] {
+        let capture = unwrap_tag_wrappers(capture).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        if producer.player != PlayerFilter::You || producer.moved_tags.len() != 1
+            || !producer.accumulated_tags.is_empty()
+            || capture.tag != *tag || !captured_in(&capture.filter, tag, Zone::Exile)
+        { return None; }
+    }
+    let opponent = unwrap_tag_wrappers(opponent).downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let pick = unwrap_tag_wrappers(pick).downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if opponent.chooser != PlayerFilter::You || opponent.filter != PlayerFilter::Opponent
+        || opponent.random || pick.chooser != Some(PlayerFilter::TaggedPlayer(opponent.tag.clone()))
+        || pick.modes.len() != 2 { return None; }
+    for (mode, (chosen, other)) in pick.modes.iter().zip([(first_tag, second_tag), (second_tag, first_tag)]) {
+        let [to_graveyard, _look, _choose, cast, to_hand] = mode.effects.as_slice() else { return None; };
+        let to_graveyard = downcast_move_to_zone(to_graveyard)?;
+        let to_hand = downcast_move_to_zone(to_hand)?;
+        let (ChooseSpec::All(chosen_filter), ChooseSpec::All(other_filter)) =
+            (to_graveyard.target.base(), to_hand.target.base()) else { return None; };
+        if to_graveyard.zone != Zone::Graveyard || to_hand.zone != Zone::Hand
+            || !captured_in(chosen_filter, chosen, Zone::Exile)
+            || !captured_in(other_filter, other, Zone::Exile)
+            || unwrap_tag_wrappers(cast).downcast_ref::<crate::effects::CastTaggedEffect>().is_none()
+        { return None; }
+    }
+    let Value::Fixed(first) = first.count else { return None; };
+    let Value::Fixed(second) = second.count else { return None; };
+    let first = number_word(first).unwrap_or_else(|| first.to_string());
+    let second = number_word(second).unwrap_or_else(|| second.to_string());
+    let mut text = format!("Exile the top {first} cards of your library in a face-down pile, then exile the top {second} cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand.");
+    for effect in rest {
         text.push(' ');
         text.push_str(describe_effect(effect).trim_end_matches('.'));
         text.push('.');

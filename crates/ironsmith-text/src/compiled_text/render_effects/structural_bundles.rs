@@ -4318,6 +4318,7 @@ fn describe_search_two_split_battlefield_hand_sequence(
             player,
             filter,
             fewer: false,
+            ..
         } = &comparison.filter
         else {
             return None;

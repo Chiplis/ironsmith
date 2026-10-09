@@ -144,6 +144,49 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
             }));
             (Zone::Exile, produced)
         }
+        BinaryPileProducer::FaceDownThenFaceUpExile { first: first_count, second: second_count } => {
+            let mut produced = Vec::new();
+            for (count, tag, face_down) in [(first_count, &first, true), (second_count, &second, false)] {
+                produced.push(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                        count: Value::Fixed(count), surface: None, tags: vec![tag.clone()],
+                        accumulated_tags: vec![], face_down,
+                    }),
+                ));
+            }
+            for tag in [&first, &second] {
+                produced.push(EffectAst::subject_verb_tag_matching_objects(
+                    capture_filter(tag, Zone::Exile), vec![Zone::Exile], tag.clone(),
+                ));
+            }
+            (Zone::Exile, produced)
+        }
+        BinaryPileProducer::GraveyardCards(card_type) => {
+            let pool_filter = ObjectFilter::default()
+                .with_type(card_type)
+                .owned_by(PlayerFilter::You)
+                .in_zone(Zone::Graveyard);
+            let produced = vec![
+                EffectAst::subject_verb_tag_matching_objects(
+                    pool_filter,
+                    vec![Zone::Graveyard],
+                    pool.clone(),
+                ),
+                // You separate the pool: the first pile is any subset of it.
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    filter: capture_filter(&pool, Zone::Graveyard),
+                    count: ChoiceCount::any_number(), count_value: None,
+                    player: PlayerAst::You,
+                    tag: first.clone(), zones: vec![Zone::Graveyard], search_mode: None,
+                }),
+                EffectAst::subject_verb_tag_matching_objects(
+                    capture_filter(&pool, Zone::Graveyard).not_tagged(first.clone()),
+                    vec![Zone::Graveyard], second.clone(),
+                ),
+            ];
+            (Zone::Graveyard, produced)
+        }
     };
     let chooser = match program.partitioner {
         BinaryPilePartitioner::TargetOpponent => PlayerFilter::You,
@@ -165,6 +208,32 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
                         ReturnControllerAst::Preserve, false, None,
                     ).with_tagged_destinations(vec![(chosen.clone(), Zone::Hand), (other.clone(), Zone::Graveyard)])]
                 }
+                BinaryPileDestination::ChosenToGraveyardCastFromOtherRestToHand => vec![
+                    move_capture(chosen, source_zone, Zone::Graveyard),
+                    EffectAst::subject_verb_look_at_objects(
+                        PlayerAst::You, capture_filter(other, source_zone),
+                    ),
+                    // "You may cast a spell from among them without paying
+                    // its mana cost": an optional single cast during
+                    // resolution (CR 608.2g, 118.9).
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                        filter: capture_filter(other, source_zone).without_type(crate::types::CardType::Land),
+                        count: ChoiceCount::up_to(1),
+                        player: PlayerAst::You,
+                        tag: selected.clone(),
+                        zone: source_zone,
+                    }),
+                    EffectAst::subject_verb_cast_tagged(
+                        selected.clone(), PlayerAst::You, false, false, true, None,
+                    ),
+                    // The cast spell has left exile; the rest are the pile's
+                    // remaining exiled incarnations.
+                    move_capture(other, source_zone, Zone::Hand),
+                ],
+                BinaryPileDestination::ChosenExiledOtherToBattlefield => vec![
+                    move_capture(chosen, source_zone, Zone::Exile),
+                    move_capture(other, source_zone, Zone::Battlefield),
+                ],
                 BinaryPileDestination::OneToHandAndPoolToBottom => vec![
                     EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                         filter: capture_filter(chosen, source_zone), count: ChoiceCount::exactly(1),
@@ -184,7 +253,12 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
                 ],
             };
             crate::cards::builders::ChooseOneModeAst {
-                description: if program.reveal_pool || source_zone == Zone::Exile {
+                description: if matches!(
+                    program.producer,
+                    BinaryPileProducer::FaceDownThenFaceUpExile { .. }
+                ) {
+                    if index == 0 { "Choose the face-down pile".to_string() } else { "Choose the face-up pile".to_string() }
+                } else if program.reveal_pool || source_zone == Zone::Exile {
                     format!("Choose pile {}", index + 1)
                 } else if index == 0 {
                     "Choose the face-down pile".to_string()

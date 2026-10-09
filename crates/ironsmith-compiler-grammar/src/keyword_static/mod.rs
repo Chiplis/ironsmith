@@ -15,6 +15,8 @@ mod dynamic_characteristic_statics;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod alternative_prices;
 mod enters_tapped_untap_conjunction;
+mod echo_cost_alternative;
+mod commander_tax_life;
 mod costs_replacements_and_permissions;
 pub use alternative_prices::parse_independent_alternative_price_line;
 mod damage_prevention;

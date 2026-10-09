@@ -675,7 +675,50 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
         player: Box::new(PlayerFilter::You),
         filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
         fewer: false,
+        as_you_activate: false,
     })
+}
+
+fn controlled_count_card_type_lexed(input: &mut LexStream<'_>) -> WResult<CardType> {
+    alt((
+        primitives::kw("lands").value(CardType::Land),
+        primitives::kw("creatures").value(CardType::Creature),
+        primitives::kw("artifacts").value(CardType::Artifact),
+        primitives::kw("enchantments").value(CardType::Enchantment),
+        primitives::kw("planeswalkers").value(CardType::Planeswalker),
+        primitives::kw("battles").value(CardType::Battle),
+    ))
+    .parse_next(input)
+}
+
+fn target_opponent_with_more_controlled_as_you_activate_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<PlayerFilter> {
+    primitives::phrase(&["target", "opponent", "who", "controls", "more"]).parse_next(input)?;
+    let card_type = controlled_count_card_type_lexed.parse_next(input)?;
+    primitives::phrase(&["than", "you"]).parse_next(input)?;
+    opt(primitives::kw("do")).parse_next(input)?;
+    primitives::phrase(&["as", "you", "activate", "this", "ability"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PlayerFilter::Target(Box::new(
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: Box::new(PlayerFilter::You),
+            filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
+            fewer: false,
+            as_you_activate: true,
+        },
+    )))
+}
+
+/// "target opponent who controls more creatures than you do as you activate
+/// this ability" (Keeper of the Beasts): a target player whose comparison is
+/// checked only when the target is chosen (CR 601.2c via 602.2b).
+pub fn parse_target_opponent_with_more_controlled_as_you_activate_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
+    target_opponent_with_more_controlled_as_you_activate_lexed
+        .parse(LexStream::new(tokens))
+        .ok()
 }
 
 fn parse_choice_player_filter_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {

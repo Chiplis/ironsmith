@@ -6,6 +6,10 @@ use crate::lexer::{TokenWordView, render_token_slice};
 pub fn parse_independent_alternative_price_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The commander tax life substitution (Liesa) has its own owner.
+    if super::commander_tax_life::parse_commander_tax_life_line(tokens).is_some() {
+        return Ok(None);
+    }
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     if tokens.iter().any(OwnedLexToken::is_quote) {
         return Ok(None);

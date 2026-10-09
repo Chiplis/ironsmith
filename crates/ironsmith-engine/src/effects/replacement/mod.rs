@@ -11,6 +11,8 @@ mod register_mana_rewrite;
 mod register_mana_spend_permission;
 mod register_next_batch_enter_with_counters;
 mod register_zone_replacement;
+mod move_replaced_object_to_library;
+pub use move_replaced_object_to_library::MoveReplacedObjectToLibraryEffect;
 
 pub use apply_replacement::{ApplyReplacementEffect, ReplacementApplyMode};
 pub use register_counter_placement_replacement::RegisterCounterPlacementReplacementEffect;

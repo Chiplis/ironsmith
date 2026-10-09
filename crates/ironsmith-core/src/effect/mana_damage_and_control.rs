@@ -1150,6 +1150,12 @@ pub enum LinkedExileFollowUp {
     /// Return that exact exiled object to its owner's hand at the beginning of
     /// the next end step.
     ReturnToHandAtNextEndStep,
+    /// That exact exiled card becomes plotted (CR 702.170c), e.g. Lilah,
+    /// Undefeated Slickshot.
+    BecomePlotted,
+    /// If that exact exiled card doesn't have suspend, it gains suspend
+    /// (CR 702.62a), e.g. Gandalf of the Secret Fire.
+    GainSuspendIfMissing,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

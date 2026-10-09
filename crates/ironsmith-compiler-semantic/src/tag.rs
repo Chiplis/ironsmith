@@ -362,6 +362,8 @@ pub enum CompilerReferenceTag {
     DrawnRevealedCard,
     DelayedOwnedExiledChoice,
     CostExiledTop,
+    /// The card exiled from hand to pay an activation cost.
+    CostExiledFromHand,
     CopiedStackObject,
     ChosenHandSpellToCast,
     ChosenCastFromGraveyard,
@@ -520,6 +522,7 @@ impl CompilerReferenceTag {
             Self::DrawnRevealedCard => "__drawn_revealed_card__",
             Self::DelayedOwnedExiledChoice => "__delayed_owned_exiled_choice",
             Self::CostExiledTop => "__cost_exiled_top__",
+            Self::CostExiledFromHand => ironsmith_core::tag::COST_EXILED_FROM_HAND_TAG,
             Self::CopiedStackObject => "__copied_stack_object__",
             Self::ChosenHandSpellToCast => "__chosen_hand_spell_to_cast",
             Self::ChosenCastFromGraveyard => "__chosen_cast_from_graveyard",
@@ -630,6 +633,7 @@ impl CompilerReferenceTag {
             | Self::JunkExiledCard
             | Self::IterativeLibraryExiled
             | Self::CostExiledTop
+            | Self::CostExiledFromHand
             | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
             Self::LivingWeaponCreated | Self::ForMirrodinCreated | Self::JobSelectCreated => {
                 (R::Created, D::Object)

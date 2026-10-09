@@ -31,7 +31,6 @@ pub enum UnsupportedRewriteLineKind {
     AdditionalLandPermission,
     TargetOnlyRestriction,
     GenericLine,
-    ChooseLeadingSpell,
     TemporaryLosesAbilitiesBecomes,
     StaticLosesAbilitiesBecomes,
     ForAsLongAsPermission,
@@ -69,7 +68,6 @@ impl UnsupportedRewriteLineKind {
             Self::AdditionalLandPermission => "unsupported additional-land-play permission clause",
             Self::TargetOnlyRestriction => "unsupported target-only restriction clause",
             Self::GenericLine => "unsupported line",
-            Self::ChooseLeadingSpell => "unsupported choose-leading spell clause",
             Self::TemporaryLosesAbilitiesBecomes => {
                 "unsupported loses-all-abilities with becomes clause"
             }
@@ -225,7 +223,6 @@ pub fn parse_unsupported_rewrite_line_kind(
     crate::grammar::primitives::take_leaf(
         &mut input,
         alt((
-            parse_choose_leading_spell,
             |input: &mut WordSliceInput<'_>| {
                 if loss_template_supported {
                     Err(primitives::backtrack_err(
@@ -344,17 +341,6 @@ fn parse_word_phrase(
             .parse_next(input)?;
     }
     Ok(())
-}
-
-fn parse_choose_leading_spell(
-    input: &mut WordSliceInput<'_>,
-) -> WResult<UnsupportedRewriteLineKind> {
-    word_sequence(&["choose", "target", "land"]).parse_next(input)?;
-    locate_word_sequence(&[
-        "create", "three", "tokens", "that", "are", "copies", "of", "it",
-    ])
-    .parse_next(input)?;
-    Ok(UnsupportedRewriteLineKind::ChooseLeadingSpell)
 }
 
 fn parse_loses_abilities_becomes(

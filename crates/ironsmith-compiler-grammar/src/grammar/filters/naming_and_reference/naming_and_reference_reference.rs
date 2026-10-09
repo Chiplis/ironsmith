@@ -424,9 +424,19 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     if references_additional_cost_object {
         filter.set_additional_cost_object_surface(additional_cost_surface);
     }
+    // "a card that shares a card type with that permanent" (Reality
+    // Scramble, Wild Magic Surge): the demonstrative is the permanent the
+    // earlier instruction acted on, an ordinary back-reference ("it") whose
+    // last-known characteristics are compared after it left (CR 608.2h).
+    let shares_card_type_with_that_permanent = find_any_phrase_start(
+        all_words,
+        &[&["with", "that", "permanent"]],
+    )
+    .is_some();
     let has_share_card_type = find_any_phrase_start(all_words, SHARED_CARD_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
         && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
+            || shares_card_type_with_that_permanent
             || references_additional_cost_object);
     let has_share_color = (words_contain_any_word(all_words, SHARE_WORDS)
         && words_contain_any_word(all_words, COLOR_OR_COLORS_WORDS)

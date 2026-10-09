@@ -3217,10 +3217,12 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             player: compared,
             filter,
             fewer,
+            as_you_activate,
         } => PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: Box::new(specialize_iterated_player_filter(compared, player)),
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
             fewer: *fewer,
+            as_you_activate: *as_you_activate,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
@@ -4634,6 +4636,17 @@ fn player_filter_for_resolution_target_validation(
         | PlayerFilter::HasMoreLifeThanYou { base } => {
             player_filter_for_resolution_target_validation(base)
         }
+        // "target opponent who controls more creatures than you do as you
+        // activate this ability" (Keeper of the Beasts): the comparison was a
+        // restriction on choosing the target; on resolution the player must
+        // still be an opponent (CR 608.2b).
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player,
+            as_you_activate: true,
+            ..
+        } => PlayerFilter::OpponentOf(Box::new(
+            player_filter_for_resolution_target_validation(player),
+        )),
         PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
             player_filter_for_resolution_target_validation(inner),
         )),

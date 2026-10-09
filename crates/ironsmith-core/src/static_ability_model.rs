@@ -1552,6 +1552,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         replacement_effects: Vec<E>,
         display: String,
     },
+    /// "You may pay {0} rather than pay the echo cost for permanents you
+    /// control." (Thick-Skinned Goblin): an alternative price for the echo
+    /// upkeep payment of a matching permanent (CR 118.9, 702.30a).
+    /// Appended to preserve published payload variant ordinals.
+    EchoCostAlternative {
+        filter: ObjectFilter,
+        replacement_mana_cost: ManaCost,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2320,6 +2329,15 @@ where
             StaticAbilityPayload::FirstEquipCostAlternative(display) => {
                 StaticAbilityPayload::FirstEquipCostAlternative(display)
             }
+            StaticAbilityPayload::EchoCostAlternative {
+                filter,
+                replacement_mana_cost,
+                display,
+            } => StaticAbilityPayload::EchoCostAlternative {
+                filter,
+                replacement_mana_cost,
+                display,
+            },
             StaticAbilityPayload::ControlAttachedPermanent(display) => {
                 StaticAbilityPayload::ControlAttachedPermanent(display)
             }
@@ -7016,6 +7034,24 @@ impl<
                 damager_filter_surface: None,
                 exile_with_counters,
                 follow_up_effects,
+            },
+        }
+    }
+    /// "You may pay <mana> rather than pay the echo cost for <permanents>."
+    /// (CR 118.9, 702.30a)
+    pub fn echo_cost_alternative(
+        filter: ObjectFilter,
+        replacement_mana_cost: ManaCost,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EchoCostAlternative),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EchoCostAlternative {
+                filter,
+                replacement_mana_cost,
+                display,
             },
         }
     }

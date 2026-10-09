@@ -244,6 +244,9 @@ const THAT_CREATURE_WOULD_DIE_THIS_TURN_PHRASE: &[&str] =
 const WOULD_BE_PUT_INTO_PHRASE: &[&str] = &["would", "be", "put", "into"];
 const THAT_SPELL_WOULD_PHRASE: &[&str] = &["that", "spell", "would"];
 const INSTEAD_PHRASE: &[&str] = &["instead"];
+const PUT_IT_ON_THE_BOTTOM_OF_ITS_OWNERS_LIBRARY_INSTEAD_PHRASE: &[&str] = &[
+    "put", "it", "on", "the", "bottom", "of", "its", "owner's", "library", "instead",
+];
 const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
 const YOUR_GRAVEYARD_PHRASE: &[&str] = &["your", "graveyard"];
 const EXILE_THAT_CARD_INSTEAD_PHRASE: &[&str] = &["exile", "that", "card", "instead"];
@@ -999,6 +1002,22 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         return None;
     }
     let target = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+    // "exile that card with a dream counter on it instead of putting it into
+    // your graveyard as it resolves" (Goliath Daydreamer): the triggering
+    // spell's resolution destination is replaced (CR 608.2n, 614.1a); the
+    // spell is not exiled while it is still on the stack.
+    if effect_grammar::is_resolving_spell_exile_instead_shape(tokens) {
+        return Some(
+            EffectAst::subject_verb_register_zone_replacement_with_counters(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                future_zone_replacement_counters(tokens),
+            ),
+        );
+    }
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
@@ -1135,6 +1154,30 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
             // its lifetime to the source spell's one-shot effects.
             ZoneReplacementDurationAst::UntilEndOfTurn,
         ));
+    }
+
+    // "If that spell would be put into a graveyard, put it on the bottom of
+    // its owner's library instead." (Quintorius, Kylox's Voltstrider): the
+    // engine lets the replacement follow the card onto the stack.
+    if sentence_contains(tokens, THAT_SPELL_WOULD_PHRASE)
+        && sentence_contains(tokens, WOULD_BE_PUT_INTO_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(
+            tokens,
+            PUT_IT_ON_THE_BOTTOM_OF_ITS_OWNERS_LIBRARY_INSTEAD_PHRASE,
+        )
+        && !sentence_contains(tokens, EXILE_PHRASE)
+    {
+        return Some(
+            EffectAst::subject_verb_register_zone_replacement_with_library_placement(
+                target(),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Library,
+                ironsmith_core::ZoneReplacementLibraryPlacement::Bottom,
+                ZoneReplacementDurationAst::OneShot,
+            ),
+        );
     }
 
     if sentence_contains(tokens, THAT_SPELL_WOULD_PHRASE)

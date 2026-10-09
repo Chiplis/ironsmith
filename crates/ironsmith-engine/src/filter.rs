@@ -3197,6 +3197,7 @@ pub(crate) fn player_filter_matches_game(
             player: reference_filter,
             filter: object_filter,
             fewer,
+            ..
         } => {
             if ctx
                 .players_in_range

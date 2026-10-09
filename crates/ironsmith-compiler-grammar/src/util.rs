@@ -779,6 +779,13 @@ fn compiler_activation_cost_component_reference(
                 (crate::tag::CompilerReferenceTag::CostExiledTop.bind()).into(),
             ))
         }
+        // "Exile a card from your hand: ... the card exiled this way"
+        // (Holistic Wisdom): cost payment publishes the exiled card.
+        CompilerCost::ExileFromHand { .. } => {
+            Some(CompilerActivationCostObjectReference::Tagged(
+                (crate::tag::CompilerReferenceTag::CostExiledFromHand.bind()).into(),
+            ))
+        }
         CompilerCost::ReturnChosenToHand { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;
@@ -2234,6 +2241,24 @@ fn restore_distinct_combat_damage_controller_target(
 }
 
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    if let Some(filter) =
+        crate::grammar::choices::parse_target_opponent_with_more_controlled_as_you_activate_tokens(
+            tokens,
+        )
+    {
+        return Ok(TargetAst::Player(filter, span_from_tokens(tokens)));
+    }
+    // "any target chosen at random" / "target opponent chosen at random"
+    // (Goblin Test Pilot, Witch Hunt): the target is still announced as the
+    // ability is put on the stack, but the game picks it at random among the
+    // legal choices (CR 115.7 contrasted with player choice; CR 601.2c).
+    if let Some(head_end) = chosen_at_random_target_suffix(tokens) {
+        let inner = parse_target_phrase(&trim_edge_punctuation_tokens(tokens)[..head_end])?;
+        return Ok(match inner {
+            TargetAst::WithCount(inner, count) => TargetAst::WithCount(inner, count.at_random()),
+            other => TargetAst::WithCount(Box::new(other), ChoiceCount::exactly(1).at_random()),
+        });
+    }
     // A plural historical graveyard target has an embedded `put` verb that
     // belongs to the object filter, not to the surrounding action chain.
     // Preserve this exact target envelope before the generic target-head
@@ -3492,4 +3517,19 @@ pub(crate) fn restore_authored_damage_source_surface(
             restore_authored_damage_source_surface(nested, surface);
         });
     }
+}
+
+/// Token index where a trailing "chosen at random" begins on a target phrase.
+fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let suffix_start = words.len().checked_sub(3)?;
+    if words.get(suffix_start..) != Some(&["chosen", "at", "random"][..])
+        || suffix_start == 0
+        || !matches!(words.first(), Some(&("target" | "any")))
+    {
+        return None;
+    }
+    view.token_start_indices().get(suffix_start).copied()
 }

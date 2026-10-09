@@ -3661,6 +3661,33 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_register_zone_replacement_with_counters_and_linked_exile_follow_up(
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+        counters: Vec<(CounterType, u32)>,
+        follow_up: ironsmith_core::LinkedExileFollowUp,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                library_placement: None,
+                duration,
+                optional: false,
+                choice_description: None,
+                counters,
+                linked_exile_follow_up: Some(follow_up),
+            }),
+        )
+    }
+
     pub fn subject_verb_register_future_zone_replacement(
         filter: ObjectFilter,
         from_zone: Option<Zone>,

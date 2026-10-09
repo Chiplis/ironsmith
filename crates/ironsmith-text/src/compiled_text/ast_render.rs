@@ -209,6 +209,7 @@ enum DelegatedPartitionSet {
 enum DelegatedPartitionMove {
     Hand(DelegatedPartitionSet),
     Library(DelegatedPartitionSet),
+    Battlefield(DelegatedPartitionSet),
 }
 
 fn delegated_partition_set(spec: &ChooseSpec) -> Option<DelegatedPartitionSet> {
@@ -247,14 +248,14 @@ fn delegated_partition_move(effect: &Effect) -> Option<DelegatedPartitionMove> {
     let effect = structural_unwrap_render_wrappers(effect);
     if let Some(movement) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let set = delegated_partition_set(&movement.target)?;
-        if movement.zone != Zone::Hand
-            || movement.to_top
-            || movement.library_order.is_some()
-            || movement.enters_tapped
-        {
+        if movement.to_top || movement.library_order.is_some() || movement.enters_tapped {
             return None;
         }
-        return Some(DelegatedPartitionMove::Hand(set));
+        return match movement.zone {
+            Zone::Hand => Some(DelegatedPartitionMove::Hand(set)),
+            Zone::Battlefield => Some(DelegatedPartitionMove::Battlefield(set)),
+            _ => None,
+        };
     }
     let shuffle = effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     let set = delegated_partition_set(&shuffle.target)?;
@@ -282,6 +283,7 @@ fn describe_cross_segment_delegated_search_partition_program(
         choose_effect,
         first_move,
         second_move,
+        trailing @ ..
     ] = effects.as_slice()
     else {
         return None;
@@ -329,6 +331,14 @@ fn describe_cross_segment_delegated_search_partition_program(
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(second)),
         ) if first == chosen && second.as_str() == "rest" => (Zone::Hand, Zone::Library),
+        // "Shuffle the chosen cards into your library and put the rest onto
+        // the battlefield." (Ecological Appreciation)
+        (
+            DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
+            DelegatedPartitionMove::Battlefield(DelegatedPartitionSet::Difference { pool, excluded }),
+        ) if first == chosen && pool == search.tag && excluded == chosen => {
+            (Zone::Library, Zone::Battlefield)
+        }
         (
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(second)),
@@ -353,7 +363,11 @@ fn describe_cross_segment_delegated_search_partition_program(
             selection.push_str(" you own");
         }
     }
-    let origin = describe_search_origin_zones(search)?;
+    // A searched set an opponent then partitions is printed "your library
+    // and graveyard" (Ecological Appreciation), not the optional-zone
+    // "and/or" of a single-card multi-zone search.
+    let origin = describe_search_origin_zones(search)?
+        .replace("library and/or graveyard", "library and graveyard");
     let search_line = match first_sequence.surface {
         ironsmith_core::SequenceSurface::CommaThen => {
             format!("Search {origin} for {selection}, then reveal those cards")
@@ -375,11 +389,23 @@ fn describe_cross_segment_delegated_search_partition_program(
         (Zone::Library, Zone::Hand) => {
             "Shuffle the chosen cards into your library and put the rest into your hand"
         }
+        (Zone::Library, Zone::Battlefield) => {
+            "Shuffle the chosen cards into your library and put the rest onto the battlefield"
+        }
         _ => return None,
     };
-    Some(format!(
-        "{search_line}. An opponent chooses two of {choice_object}. {movement}"
-    ))
+    let mut rendered =
+        format!("{search_line}. An opponent chooses two of {choice_object}. {movement}");
+    for effect in trailing {
+        let text = describe_effect(effect);
+        let text = text.trim().trim_end_matches('.');
+        if text.is_empty() {
+            return None;
+        }
+        rendered.push_str(". ");
+        rendered.push_str(&capitalize_first(text));
+    }
+    Some(rendered)
 }
 
 fn exact_guided_library_category_choice(
@@ -927,7 +953,8 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
 pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &str) -> String {
     if !line.starts_with("Eminence — ")
         || !(line.contains("if this source is in the command zone or on the battlefield")
-            || line.contains("if this creature is in the command zone or on the battlefield"))
+            || line.contains("if this creature is in the command zone or on the battlefield")
+            || line.contains("As long as this source is in the command zone or on the battlefield"))
     {
         return line.to_string();
     }
@@ -942,6 +969,10 @@ pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &
     .replace(
         "if this creature is in the command zone or on the battlefield",
         &format!("if {source} is in the command zone or on the battlefield"),
+    )
+    .replace(
+        "As long as this source is in the command zone or on the battlefield",
+        &format!("As long as {source} is in the command zone or on the battlefield"),
     )
     .replace("target cat", "target Cat")
     .replace("another spell Vampire", "another Vampire spell")
@@ -15861,6 +15892,7 @@ mod relative_player_target_consult_program_tests {
                     player: Box::new(PlayerFilter::Active),
                     filter: Box::new(ObjectFilter::creature()),
                     fewer: false,
+                    as_you_activate: false,
                 },
             )))
             .with_chooser(PlayerFilter::Active),

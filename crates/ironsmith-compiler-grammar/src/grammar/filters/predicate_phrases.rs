@@ -4677,6 +4677,10 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
     if surface::exact_any(descriptor, &[
         &["shares", "a", "card", "type", "with", "the", "exiled", "card"],
         &["shares", "card", "type", "with", "the", "exiled", "card"],
+        // "the card exiled this way" after an exile-from-hand activation cost
+        // (Holistic Wisdom); the reference resolves to that cost's card.
+        &["shares", "a", "card", "type", "with", "the", "card", "exiled", "this", "way"],
+        &["shares", "card", "type", "with", "card", "exiled", "this", "way"],
     ]) {
         return Some(PredicateAst::ItMatches(ObjectFilter::default().shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())));
     }

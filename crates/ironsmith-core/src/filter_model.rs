@@ -1611,6 +1611,12 @@ pub enum PlayerFilter {
         /// the matching cards they own in that zone.
         #[cfg_attr(feature = "serde", serde(default))]
         fewer: bool,
+        /// "... as you activate this ability" (Keeper of the Beasts): the
+        /// comparison is a targeting restriction checked only as the target
+        /// is chosen; on resolution only the opponent relation is rechecked
+        /// (CR 601.2c via 602.2b, 608.2b).
+        #[cfg_attr(feature = "serde", serde(default))]
+        as_you_activate: bool,
     },
     /// The unique in-game player who controls more objects matching `filter`
     /// than every other in-game player. No player matches when the lead is
@@ -1880,6 +1886,7 @@ impl PlayerFilter {
                 player,
                 filter,
                 fewer: true,
+                ..
             } => {
                 let mut counted = filter.as_ref().clone();
                 let zone = counted.zone.take();
@@ -1915,6 +1922,15 @@ impl PlayerFilter {
                     ),
                 }
             }
+            Self::OpponentWithMoreControlledObjectsThan {
+                player,
+                filter,
+                as_you_activate: true,
+                ..
+            } if matches!(player.as_ref(), Self::You) => format!(
+                "an opponent who controls more {} than you do as you activate this ability",
+                pluralize_count_terminal_word(&filter.description())
+            ),
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
                 "an opponent of {} who controls more {} than they do",
                 player.description(),

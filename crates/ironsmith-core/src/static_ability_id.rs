@@ -400,6 +400,9 @@ pub enum StaticAbilityId {
     LookAtSourceExiledCards,
     /// Generic "<event> instead" replacement; appended for wire compatibility.
     EventReplacementWithEffects,
+    /// "You may pay <mana> rather than pay the echo cost for permanents you
+    /// control"; appended for wire compatibility.
+    EchoCostAlternative,
 }
 
 impl StaticAbilityId {
@@ -720,6 +723,7 @@ impl StaticAbilityId {
             | RedirectDrawReplacement
             | DrawReplacementWithEffects
             | EventReplacementWithEffects
+            | EchoCostAlternative
             | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

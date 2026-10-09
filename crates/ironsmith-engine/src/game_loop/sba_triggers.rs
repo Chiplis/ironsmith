@@ -1875,6 +1875,11 @@ fn choose_trigger_targets_with_one_chooser(
     {
         return None;
     }
+    // "target opponent chosen at random" (Witch Hunt): the game picks among
+    // the in-range legal targets before the announcement is recorded.
+    for (requirement, context) in requirements.iter().zip(requirement_contexts.iter_mut()) {
+        crate::targeting::narrow_context_to_random_targets(game, &requirement.spec, context);
+    }
     let ctx = crate::decisions::context::TargetsContext::new(
         chooser,
         trigger.source,
@@ -2032,6 +2037,9 @@ fn choose_trigger_targets(
                 .retain(|set| set.iter().all(|target| !already_selected.contains(target)));
         }
 
+        if let Some(context) = requirement_ctx.first_mut() {
+            crate::targeting::narrow_context_to_random_targets(game, &requirement.spec, context);
+        }
         let ctx = crate::decisions::context::TargetsContext::new(
             chooser,
             trigger.source,

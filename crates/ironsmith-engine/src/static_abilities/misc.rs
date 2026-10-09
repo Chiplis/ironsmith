@@ -1092,6 +1092,33 @@ impl StaticAbilityKind for FirstEquipCostAlternative {
     }
 }
 
+/// "You may pay {0} rather than pay the echo cost for permanents you
+/// control." (Thick-Skinned Goblin). The payment itself reads the compiled
+/// model's filter and price when an echo trigger resolves (CR 118.9,
+/// 702.30a); this leaf carries the identity and display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EchoCostAlternative {
+    pub display_text: String,
+}
+
+impl EchoCostAlternative {
+    pub fn new(display_text: impl Into<String>) -> Self {
+        Self {
+            display_text: display_text.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for EchoCostAlternative {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EchoCostAlternative
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+}
+
 /// "You may activate equip abilities any time you could cast an instant."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EquipAbilitiesAnyTime;
