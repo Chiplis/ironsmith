@@ -137,9 +137,23 @@ pub(crate) fn read(
         )],
     });
     let mut effects: Vec<EffectAst> = choice.into_iter().collect();
-    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag,
-        effects: vec![one_cast; times as usize],
-    }));
+    let casts = vec![one_cast; times as usize];
+    if tag.as_str() == CompilerReferenceTag::SourceExiled.as_str() {
+        // "each card exiled with this enchantment" is the whole linked set
+        // (CR 607.2a). Within this resolution the source-exiled TAG names
+        // only what this resolution exiled; a filter over the link set reads
+        // every card ever exiled with the source.
+        let mut linked = crate::target::ObjectFilter::default().in_zone(crate::zone::Zone::Exile);
+        linked.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: tag.key.clone(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+            filter: linked,
+            effects: casts,
+        }));
+    } else {
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects: casts }));
+    }
     Ok(Some(effects))
 }
