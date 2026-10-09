@@ -2278,6 +2278,9 @@ pub struct ObjectFilter {
     pub excluded_colors: ColorSet,
     pub colorless: bool,
     pub multicolored: bool,
+    /// "double-faced card" (CR 712.1): the object has a second face.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub double_faced: bool,
     pub monocolored: bool,
     pub all_colors: Option<bool>,
     pub exactly_two_colors: Option<bool>,
@@ -5260,6 +5263,9 @@ impl ObjectFilter {
         }
         if self.multicolored {
             parts.push("multicolored".to_string());
+        }
+        if self.double_faced {
+            parts.push("double-faced".to_string());
         }
         if self.monocolored {
             parts.push("monocolored".to_string());

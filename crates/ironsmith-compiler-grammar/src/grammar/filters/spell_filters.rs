@@ -175,6 +175,27 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
         return Ok(filter);
     }
+    // "double-faced card" (CR 712.1): a leading adjective qualifies the whole
+    // remaining noun phrase ("a land or double-faced card" reaches here once
+    // per union arm).
+    {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        let skip = match words.as_slice() {
+            ["double-faced" | "doublefaced", ..] => Some(1),
+            ["double", "faced", ..] => Some(2),
+            _ => None,
+        };
+        if let Some(skip) = skip
+            && let Some(token_end) =
+                TokenWordView::new(tokens).map_word_or_end_to_token_boundary(skip)
+            && token_end < tokens.len()
+        {
+            let mut filter =
+                parse_object_filter_with_grammar_entrypoint(&tokens[token_end..], other)?;
+            filter.double_faced = true;
+            return Ok(filter);
+        }
+    }
     // "<noun> with the most votes or tied for most votes" (CR 701.38, will of
     // the council / secret votes): the vote-result suffix selects the vote
     // winners recorded by the preceding vote. The head is an ordinary filter.

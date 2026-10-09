@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Invasion of Pyrulea",
+  "oracle_id": "323437f5-cc6c-4579-b591-499476dffb3c",
+  "oracle_text": "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.)\nWhen this Siege enters, scry 3, then reveal the top card of your library. If it's a land or double-faced card, draw a card.",
+  "text": "Mana cost: {G}{U}\nType: Battle — Siege\nDefense: 4\n(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.)\nWhen this Siege enters, scry 3, then reveal the top card of your library. If it's a land or double-faced card, draw a card."
+ }
+]

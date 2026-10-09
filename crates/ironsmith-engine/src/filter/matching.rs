@@ -793,6 +793,25 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // "double-faced card" (CR 712.1): a second face that isn't a split or
+    // flip half printed on the same face.
+    if filter.double_faced {
+        let (other_face, layout) = match subject {
+            ObjectSubject::Live(object) => (object.other_face, object.linked_face_layout),
+            ObjectSubject::Snapshot(snapshot) => {
+                (snapshot.other_face, snapshot.linked_face_layout)
+            }
+        };
+        if other_face.is_none()
+            || matches!(
+                layout,
+                crate::card::LinkedFaceLayout::Split | crate::card::LinkedFaceLayout::Flip
+            )
+        {
+            return false;
+        }
+    }
+
     // Monocolored check
     if filter.monocolored && object_colors.count() != 1 {
         return false;
