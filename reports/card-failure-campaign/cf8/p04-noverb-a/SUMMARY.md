@@ -2,7 +2,7 @@
 
 Package: 151 cards failing with "could not find verb in effect clause". Branch cf8/p04-noverb-a, based on origin/main 84ea8b41c. Nothing was built or run (campaign policy). The prebuilt hint binary vanished mid-run; the fallback `.agents/target-score/release` binary is from June, so its results are weak evidence.
 
-Status (after round 4): 61 source-proposed, 90 blocked, 0 untriaged.
+Status (after round 5): 81 blocked, 4 covered-by-other-package, 66 source-proposed, 0 untriaged.
 
 ## Fixed clusters (source-proposed)
 - **elided-damage-recipients** (Tropical Storm, Hail Storm, Neonate's Rush, The Fall of Kroog, Wildfire Howl)
@@ -158,3 +158,20 @@ Everything below is source-only (no build, no tests run).
 - **Risks:**
   - The `exiled this way` union changes the alias for any card with consecutive exile producers before a "this way" reference. The change is intended for one instruction, but it also applies across adjacent sentences.
   - Freezing restriction comparisons affects every resolving restriction whose power/toughness/mana-value comparison uses a game-wide count. This is rules-correct (CR 608.2h) but newly enforced.
+
+## Round 5
+- **"Exiled this way" union narrowed to one instruction.** A single-sentence chain with one exile verb that lowered into several exile actions (Crabomination's comma list) is grouped as one `EffectAst::Coordinated` clause. The resolver unions the alias only among a Coordinated clause's members. Separate sentences keep binding to the most recent exile (negative test).
+- **Chaos Moon** (now source-proposed).
+  - Reader for "until end of turn, <change> and (whenever a player taps <land> for mana, ... | if a player taps <land> for mana, that <land> produces ... instead)". The trigger half is a DelayedTriggerThisTurn; the rewrite half is a RegisterManaRewrite until end of turn. `mana_rewrite_filtered_source` accepts "that <noun> produces".
+  - **Engine fix (CR 605.1b):** a manually activated mana ability queued its ManaAdded events without delayed triggers (`priority_mana.rs` → `queue_triggers_for_events`). Temporary "whenever a player taps ... for mana" triggers therefore never fired outside the auto-payment planner, which drains pending events with delayed triggers. Those events are now queued including delayed triggers. Test: a Bubbling-Muck-style trigger adds the extra {B} immediately, without the stack.
+- **Stromgald Spy** left blocked; the requirement write-up stands.
+- **Blocked re-check, biggest shared gaps first:**
+  - **copy-card-then-cast** (Mnemonic Deluge, Arcane Bombardment, Chandra, Pyromaster): new pair reader "copy <cards> [N times] / choose <card> exiled this way and copy it N times" + "you may cast [any number of] the copies [free]" → per card, N optional copy casts (CR 707.12). The other 7 copy cards are refined in the ledger (each needs a distinct extra piece).
+  - **would-x-instead-on-cast** (Sorcerous Squall): the existing graveyard-cast/exile-replacement procedure now reads a leading "<action>, then" clause. Kylox needs a library-bottom destination in RegisterFutureZoneReplacement; Gale, Mavinda and Bösium Strip are refined.
+  - **covered-by-other-package** (new status; regression tests only, no package code):
+    - divided prevention via p03: Angel of Salvation, Serra's Hymn;
+    - main's exact counter/exile permission: Thranduil's Decree, Kheru Spellsnatcher.
+  - Repeat loops (p11's RepeatProcess exists) and attack-toward-player (p05's MustAttackPlayer): the remaining cards need more than the shared piece; the ledger says what.
+- **Risks:**
+  - Grouping one exile verb's actions into a Coordinated clause changes AST shape for those sentences. It applies only when at least two of the produced effects are exiles, so bundle readers matching flat "exile + other" lists are unaffected.
+  - Delayed triggers now observe manual mana activations; any existing delayed trigger keyed on ManaAdded will fire there too, as the rules require.
