@@ -1455,6 +1455,18 @@ pub fn parse_object_filter(
                 "right",
                 "controls" | "control",
             ] => Some(PlayerFilter::PlayerToYourRight),
+            // "the player to their left": relative to the player the
+            // enclosing per-player process is for (Grenzo's Rebuttal).
+            [
+                "player",
+                "to",
+                "their",
+                "left",
+                "controls" | "control",
+            ]
+            | ["controlled", "by", "the", "player", "to", "their", "left"] => Some(
+                PlayerFilter::PlayerToLeftOf(Box::new(PlayerFilter::IteratedPlayer)),
+            ),
             _ => None,
         };
         if let Some(player) = player {

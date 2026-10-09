@@ -485,5 +485,45 @@
     "mana_cost": "{2}{B}",
     "type_line": "Enchantment",
     "oracle_text": "At the beginning of your upkeep, repeat the following process for each opponent in turn order. Reveal the top card of your library. That player may pay life equal to that card's mana value. If they do, exile that card. Otherwise, put it into your hand."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Horus Heresy",
+    "oracle_id": "fc315174-d063-41dd-9379-11d95c5fd4ed",
+    "mana_cost": "{3}{U}{B}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — For each opponent, gain control of up to one target nonlegendary creature that player controls for as long as this Saga remains on the battlefield.\nII — Draw a card for each creature you control but don't own.\nIII — Starting with you, each player chooses a creature. Destroy each creature chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Legend of Yangchen // Avatar Yangchen",
+    "oracle_id": "521a63cf-5e83-4649-9800-c62b2fc474d6",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Starting with you, each player chooses up to one permanent with mana value 3 or greater from among permanents your opponents control. Exile those permanents.\nII — You may have target opponent draw three cards. If you do, draw three cards.\nIII — Exile this Saga, then return it to the battlefield transformed under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Grenzo's Rebuttal",
+    "oracle_id": "afcfcb74-ee64-4528-8498-2e8109ad5142",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 4/4 red Ogre creature token. Starting with you, each player chooses an artifact, a creature, and a land from among the permanents controlled by the player to their left. Destroy each permanent chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Rejoin the Fight",
+    "oracle_id": "d22ea32b-2128-4dcc-8b1c-c4c52f0b2f45",
+    "mana_cost": "{5}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Mill three cards. Then starting with the next opponent in turn order, each opponent chooses a creature card in your graveyard that hasn't been chosen. Return each card chosen this way to the battlefield under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Manifold Insights",
+    "oracle_id": "9c793037-6ba8-400a-b24d-6032141e8dae",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Reveal the top ten cards of your library. Starting with the next opponent in turn order, each opponent chooses a different nonland card from among them. Put the chosen cards into your hand and the rest on the bottom of your library in a random order."
   }
 ]

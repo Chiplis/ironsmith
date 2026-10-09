@@ -1243,7 +1243,9 @@ where
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     "That player may".to_string()
                 }
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),

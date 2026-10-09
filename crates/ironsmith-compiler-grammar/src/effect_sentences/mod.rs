@@ -117,6 +117,7 @@ pub(crate) mod flashback_grants;
 mod optional_companion_fanout;
 mod pair_procedure;
 mod repeat_process_variants;
+mod ordered_group_choice;
 mod local_self_replacement;
 mod toughness_assignment;
 pub(crate) fn recognizes_scalar_self_replacement_sentence(

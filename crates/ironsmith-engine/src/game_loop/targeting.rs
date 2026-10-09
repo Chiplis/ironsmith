@@ -4295,6 +4295,12 @@ pub fn player_matches_filter_with_combat(
                 && game.are_opponents(other.id, player_id)
                 && player_matches_filter_with_combat(other.id, base, game, controller, combat)
         }),
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_matches_filter_with_combat(other.id, base, game, controller, combat)
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player_id)
+        }),
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
         PlayerFilter::IteratedPlayer => {
@@ -4773,6 +4779,7 @@ fn specialize_target_player_relation(
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             specialize_target_player_relation(inner, player, relation);
         }

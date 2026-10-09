@@ -49,7 +49,7 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::OpponentOf(base) | PlayerFilter::Target(base)
+        | PlayerFilter::OpponentOf(base) | PlayerFilter::PlayerToLeftOf(base) | PlayerFilter::Target(base)
         | PlayerFilter::AliasedTarget(base) => **base = rewrite_player_filter_words(base, change)?,
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {

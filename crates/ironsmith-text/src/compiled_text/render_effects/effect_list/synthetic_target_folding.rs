@@ -39,6 +39,7 @@ fn player_filter_references_identity(
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             player_filter_references_identity(inner, identity)
         }

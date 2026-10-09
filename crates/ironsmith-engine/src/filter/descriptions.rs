@@ -338,7 +338,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+        PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
+        | PlayerFilter::MaxSpeed { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
@@ -447,6 +449,10 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
+        PlayerFilter::PlayerToLeftOf(base) => match base.as_ref() {
+            PlayerFilter::IteratedPlayer => "the player to their left".to_string(),
+            base => format!("the player to the left of {}", describe_player_filter(base)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

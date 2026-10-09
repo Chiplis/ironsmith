@@ -185,8 +185,9 @@ pub(super) fn read_repeat_with_new_values(
     Ok(Some(effects))
 }
 
-/// "Repeat the following process for each opponent [in turn order]."
-fn is_following_process_for_each_opponent(tokens: &[OwnedLexToken]) -> bool {
+/// "Repeat the following process for each opponent [in turn order]": true
+/// when the turn order is stated.
+fn following_process_for_each_opponent(tokens: &[OwnedLexToken]) -> Option<bool> {
     primitives::probe_all(
         strip_sentence_edges(tokens),
         (
@@ -197,7 +198,7 @@ fn is_following_process_for_each_opponent(tokens: &[OwnedLexToken]) -> bool {
         ),
         "repeat-following-process-for-each-opponent",
     )
-    .is_some()
+    .map(|((), in_turn_order)| in_turn_order.is_some())
 }
 
 /// The following process runs to the end of the ability: `consumed` counts
@@ -210,18 +211,27 @@ pub(super) fn read_following_process_for_each_opponent(
     if sentences.len() != sentence_idx + consumed || consumed < 2 {
         return Ok(None);
     }
-    if !is_following_process_for_each_opponent(sentences[sentence_idx].lowered()) {
+    let Some(in_turn_order) = following_process_for_each_opponent(sentences[sentence_idx].lowered())
+    else {
         return Ok(None);
-    }
+    };
     let body = sentences[sentence_idx + 1..]
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence.lexed()))
         .collect::<Vec<_>>();
-    // CR 101.4-style turn order: the opponents act one at a time, starting
-    // with the next in turn order; within the body "that player" and
-    // "they" are the opponent the process is for.
+    // Within the body "that player" and "they" are the opponent the process
+    // is for; the opponents go one at a time.
     let effects = super::dispatch_entry::parse_effect_sentences_from_sentence_inputs(body)?;
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-        effects,
-    })]))
+    let process = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects });
+    Ok(Some(vec![if in_turn_order {
+        // "in turn order": starting with the next opponent after the
+        // controller (CR 101.4 sequencing).
+        EffectAst::SourceSentence {
+            effects: vec![process],
+            leading_then: false,
+            starting_with_controller: true,
+        }
+    } else {
+        process
+    }]))
 }

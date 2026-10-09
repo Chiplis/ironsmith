@@ -3808,6 +3808,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(

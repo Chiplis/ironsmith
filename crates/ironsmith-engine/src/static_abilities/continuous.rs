@@ -2802,6 +2802,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::OpponentOf(_)
+            | crate::target::PlayerFilter::PlayerToLeftOf(_)
             | crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
