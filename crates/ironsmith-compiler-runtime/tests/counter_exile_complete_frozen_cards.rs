@@ -375,22 +375,26 @@ fn full_frozen_free_permission_cannot_combine_morph_or_another_printed_alternati
 }
 
 fn mutate_counter(artifact: &mut CompiledCardArtifact, mut change: impl FnMut(&mut Value)) {
-    fn walk(value: &mut Value, change: &mut impl FnMut(&mut Value), count: &mut usize) {
+    fn walk(value: &mut Value, change: &mut impl FnMut(&mut Value), originals: &mut Vec<Value>) {
         if value.get("kind").and_then(Value::as_str) == Some("CounterEffect") {
-            *count += 1;
+            originals.push(value.get("payload").expect("wire counter payload").clone());
             change(value.get_mut("payload").expect("wire counter payload"));
             return;
         }
         match value {
-            Value::Object(fields) => for value in fields.values_mut() { walk(value, change, count); },
-            Value::Array(values) => for value in values { walk(value, change, count); },
+            Value::Object(fields) => for value in fields.values_mut() { walk(value, change, originals); },
+            Value::Array(values) => for value in values { walk(value, change, originals); },
             _ => {}
         }
     }
     let mut value = serde_json::to_value(&artifact.payload.definition).unwrap();
-    let mut count = 0;
-    walk(&mut value, &mut change, &mut count);
-    assert_eq!(count, 1, "mutate the complete card's unique counter, including Kheru's nested trigger");
+    let mut originals = Vec::new();
+    walk(&mut value, &mut change, &mut originals);
+    assert!(!originals.is_empty(), "counter payload must be present");
+    // Native-model retention can serialize the same instruction twice. Mutate
+    // every copy and prove they describe one identical counter contract.
+    assert!(originals.iter().all(|payload| payload == &originals[0]),
+        "the complete card must contain one unique counter contract");
     artifact.payload.definition = serde_json::from_value(value).unwrap();
 }
 

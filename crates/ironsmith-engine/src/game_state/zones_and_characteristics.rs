@@ -1943,6 +1943,7 @@ impl GameState {
             None,
             initial_enters_tapped,
             None,
+            None,
         )
     }
 
@@ -1966,6 +1967,7 @@ impl GameState {
             None,
             enters_tapped,
             None,
+            None,
         )
     }
 
@@ -1978,6 +1980,7 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         initial_enters_tapped: bool,
         choose_aura_attachment: bool,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
@@ -1989,6 +1992,7 @@ impl GameState {
             entering_controller,
             initial_enters_tapped,
             None,
+            authored_entry_definition,
         )
     }
 
@@ -2010,6 +2014,7 @@ impl GameState {
             None,
             false,
             None,
+            None,
         )
     }
 
@@ -2029,6 +2034,7 @@ impl GameState {
             initial_enters_with_counters,
             None,
             false,
+            None,
             None,
         )
     }
@@ -2051,6 +2057,7 @@ impl GameState {
             entering_controller,
             false,
             None,
+            None,
         )
     }
 
@@ -2069,6 +2076,7 @@ impl GameState {
             Vec::new(),
             None,
             false,
+            None,
             None,
         )
     }
@@ -2926,6 +2934,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2948,6 +2957,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2971,6 +2981,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2997,6 +3008,7 @@ impl GameState {
             false,
             Some(prepared_entry),
             true,
+            None,
         )
     }
 
@@ -3011,6 +3023,7 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
             let mut published_outputs = Vec::new();
@@ -3047,6 +3060,7 @@ impl GameState {
                 initial_enters_tapped,
                 prepared_entry,
                 false,
+                authored_entry_definition,
             );
             if outcome.is_err() {
                 return outcome;
@@ -3075,6 +3089,7 @@ impl GameState {
             initial_enters_tapped,
             prepared_entry,
             false,
+            authored_entry_definition,
         )
     }
 
@@ -3090,6 +3105,7 @@ impl GameState {
         initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
         entry_prevalidated: bool,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         use crate::events::processing::EventOutcome;
         let checkpoint = self.clone();
@@ -3110,6 +3126,7 @@ impl GameState {
             &mut programs,
             &mut original_verdict,
             &mut published_outputs,
+            authored_entry_definition,
         );
         if result.is_err() || decision_maker.awaiting_choice() {
             *self = checkpoint;
@@ -3149,6 +3166,7 @@ impl GameState {
         programs: &mut Vec<crate::events::processing::PreparedReplacementProgram>,
         original_verdict: &mut crate::events::processing::EventOutcome<()>,
         published_outputs: &mut Vec<crate::effects::PublishedEffectOutputs>,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<Option<EntersResult>, crate::effects::ExecutionError> {
         use crate::events::processing::EventOutcome;
         if let Some(entry) = &mut prepared_entry {
@@ -3227,6 +3245,12 @@ impl GameState {
                 None => return Ok(None),
             }
         };
+        let mut prepared_entry = prepared_entry;
+        if let Some(definition) = authored_entry_definition {
+            // Keep the face selected by the authoring action through the
+            // physical zone move; ordinary returns still use the default face.
+            prepared_entry.entry_definition = Some(definition);
+        }
         let PreparedEtbEntry {
             result,
             choices,
@@ -6734,6 +6758,7 @@ mod replacement_direct_entry_zone_cause_contract_tests {
                 Some(alice),
                 false,
                 true,
+                None,
             );
         assert!(result.is_ok());
         let arrival = game

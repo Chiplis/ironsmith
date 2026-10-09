@@ -201,9 +201,9 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
             if root {
                 game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
             }
-            if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
-                crate::special_actions::apply_land_play_face(game, card, *back_face);
-            }
+            let selected_entry_definition = if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
+                crate::special_actions::apply_land_play_face(game, card, *back_face)
+            } else { None };
             let checked = game
                 .continuous_query_snapshot()
                 .map_err(ExecutionError::ContinuousDiscovery)?;
@@ -256,6 +256,7 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                         Some(player),
                         permission.enters_tapped,
                         true,
+                        selected_entry_definition,
                     )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(

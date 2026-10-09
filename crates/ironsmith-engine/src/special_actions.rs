@@ -1590,7 +1590,7 @@ pub(crate) fn choose_land_play_permission(
 
 /// Turn a card about to be played as a land to the face chosen for the land
 /// play (CR 712.12), before it moves so the face's entry replacements apply.
-pub(crate) fn apply_land_play_face(game: &mut GameState, card_id: ObjectId, back_face: bool) {
+pub(crate) fn apply_land_play_face(game: &mut GameState, card_id: ObjectId, back_face: bool) -> Option<crate::cards::CardDefinition> {
     if let Some(Ok(Some(land_def))) = game
         .object(card_id)
         .map(|object| crate::decision::land_play_face_definition(game, object, back_face))
@@ -1600,7 +1600,9 @@ pub(crate) fn apply_land_play_face(game: &mut GameState, card_id: ObjectId, back
         // CR 712.8f: a modal DFC played as its land back face has only that
         // face's characteristics, so no front-face mana value carries over.
         object.linked_face_mana_cost = None;
+        return Some(land_def);
     }
+    None
 }
 
 pub(crate) use crate::effects::zones::{LandPlayObservationKind, LandPlayObservationTiming};
