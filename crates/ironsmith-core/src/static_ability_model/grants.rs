@@ -435,12 +435,12 @@ pub struct CostReductionCharacteristicIntersection {
     /// The comparison set is the source's chosen colors instead of
     /// `comparison` ("for each of the chosen colors it is", Seal of the
     /// Guildpact).
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub against_source_chosen_colors: bool,
     /// Count the comparison objects that share the characteristic with the
     /// spell instead of the distinct shared values ("for each card with the
     /// same name as that spell in your graveyard", Locket of Yesterdays).
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub count_matching_objects: bool,
 }
 

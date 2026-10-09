@@ -1571,7 +1571,7 @@ pub enum PlayerFilter {
         base: Box<PlayerFilter>,
         /// Only damage dealt this turn ("target player dealt damage by this
         /// creature this turn", Wicked Akuba). Older payloads mean this game.
-        #[cfg_attr(feature = "serde", serde(default))]
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
         this_turn: bool,
     },
     /// A player matching `base` who was dealt positive combat damage this
@@ -2279,7 +2279,7 @@ pub struct ObjectFilter {
     pub colorless: bool,
     pub multicolored: bool,
     /// "double-faced card" (CR 712.1): the object has a second face.
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub double_faced: bool,
     pub monocolored: bool,
     pub all_colors: Option<bool>,
