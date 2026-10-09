@@ -40,6 +40,8 @@ mod granted_hand_warp;
 pub use granted_hand_warp::parse_granted_hand_warp_line;
 mod leading_condition_wrapper;
 pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
+mod compound_self_predicates;
+pub use compound_self_predicates::parse_compound_self_predicate_line;
 mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
@@ -482,6 +484,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
         "parse_characteristic_defining_pt_line"
+        | "parse_compound_self_predicate_line"
         | "parse_combat_requirement_static_line"
         | "parse_source_owned_flying_block_limit_line" => Vec::new(),
         // The complete assignment suffix proves its grammar; its source,
@@ -1858,6 +1861,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_base_toughness_only_line),
         multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
+        multi_static_ability_ast_passthrough_rule!(parse_compound_self_predicate_line),
     ];
     RULES
 }
