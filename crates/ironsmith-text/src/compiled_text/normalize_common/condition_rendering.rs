@@ -2380,6 +2380,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
         Condition::SourceControllersCombatPhase => "it's your combat phase".to_string(),
         Condition::SourceControllersEndStep => "during your end step".to_string(),
+        Condition::OpponentsEndStep => "during each opponent's end step".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());

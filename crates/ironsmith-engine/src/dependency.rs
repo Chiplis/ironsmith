@@ -2186,6 +2186,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceControllersMainPhase
         | C::SourceControllersCombatPhase
         | C::SourceControllersEndStep
+        | C::OpponentsEndStep
         | C::SourceIsTapped
         | C::SourceIsSaddled
         | C::SourceDevouredCreaturesOrMore(_)

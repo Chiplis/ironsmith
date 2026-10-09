@@ -2309,6 +2309,10 @@ pub enum Condition {
     /// Combat participant identities come from the triggering declaration;
     /// current combat roles, life and poison are checked again on resolution.
     CombatParticipant(CombatParticipantCondition),
+    /// "During each opponent's end step": an opponent of this condition's
+    /// controller is the active player and the game is in the end step.
+    /// Appended to preserve serialized condition discriminants.
+    OpponentsEndStep,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

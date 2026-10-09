@@ -35,6 +35,8 @@ impl Drop for WrappingGuard {
 
 enum LeadingCondition<'a> {
     YourTurn,
+    /// "During each opponent's end step, ..." (Final-Word Phantom).
+    EachOpponentsEndStep,
     AsLongAs(&'a [OwnedLexToken]),
 }
 
@@ -48,6 +50,20 @@ fn split_leading_condition(
         let remainder = trim_lexed_commas(rest);
         if remainder.len() < rest.len() && !remainder.is_empty() {
             return Some((LeadingCondition::YourTurn, remainder));
+        }
+        return None;
+    }
+    if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::any_phrase(&[
+            &["during", "each", "opponent's", "end", "step"],
+            &["during", "each", "opponents", "end", "step"],
+            &["during", "each", "opponent", "s", "end", "step"],
+        ]),
+    ) {
+        let remainder = trim_lexed_commas(rest);
+        if remainder.len() < rest.len() && !remainder.is_empty() {
+            return Some((LeadingCondition::EachOpponentsEndStep, remainder));
         }
         return None;
     }
@@ -78,7 +94,7 @@ pub fn parse_leading_condition_wrapped_static_line(
         .first()
         .is_some_and(|token| token.is_any_word(&["it", "its", "it's", "they", "their"]));
     let condition_is_about_this_object = match &condition {
-        LeadingCondition::YourTurn => false,
+        LeadingCondition::YourTurn | LeadingCondition::EachOpponentsEndStep => false,
         LeadingCondition::AsLongAs(condition_tokens) => condition_tokens
             .first()
             .is_some_and(|token| token.is_word("this")),
@@ -118,6 +134,9 @@ pub fn parse_leading_condition_wrapped_static_line(
     };
     let condition = match condition {
         LeadingCondition::YourTurn => PredicateAst::YourTurn,
+        LeadingCondition::EachOpponentsEndStep => {
+            PredicateAst::Bound(Box::new(crate::ConditionExpr::OpponentsEndStep))
+        }
         LeadingCondition::AsLongAs(condition_tokens) => {
             parse_static_condition_clause(condition_tokens)?
         }
