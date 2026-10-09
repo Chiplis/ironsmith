@@ -4,7 +4,7 @@ Branch `cf8/p01-lossy-semantic-markers` (worktree `ironsmith-cf8-p01`), off orig
 Source-only: nothing was built or run. The prebuilt `compile_oracle_text` was used for
 diagnostics until it disappeared mid-session (main rebuild); later work is reviewed by reading.
 
-Status (round 4): 90 already-on-main, 51 source-proposed, 29 blocked, 6 semantic-fix-collateral (170 package cards + 6 collateral).
+Status (round 5): 90 already-on-main, 58 source-proposed, 22 blocked, 6 semantic-fix-collateral (170 package cards + 6 collateral).
 Ledger: `ledger.jsonl`. Fixture with full typed bodies: `fixtures/p01_lossy_semantic_markers.json.fixture`.
 
 ## Clusters, root causes and fixes
@@ -194,6 +194,43 @@ Round-4 risk notes:
   ambiguity against whichever reader produced its lossy text; whether Keeper's activated line reaches
   `parse_target_phrase` with the trailing clause intact; whether CastTagged can cast a face-down exiled
   card (Abstract Performance's face-down pile).
+
+## Round 5
+
+- **Followed stack replacements, scoped (CR 400.7)**: a stack-origin zone replacement registered for a card
+  that is not yet a spell is now a "followed" one-shot in `ReplacementEffectManager::followed_objects`. The
+  central move path (`move_object_with_snapshot_and_pre_event_lookback_internal`) calls
+  `rebind_followed_object`: moving that card onto the stack rebinds the matcher to the new spell object;
+  any other move (or the spell leaving the stack unreplaced) ends it. At cleanup an uncast card's
+  replacement ends with the other one-shots ("cast that card this turn"); a spell already on the stack keeps
+  it until it applies once. The round-4 stable-id follow is removed. Engine tests: never cast (ends at
+  cleanup), moved elsewhere then cast (no replacement), cast (applies once, survives cleanup).
+- **Shared-card-type antecedents**: "a card that shares a card type with that permanent" now produces the
+  SharesCardType constraint against the It back-reference (the earlier target, by LKI) instead of silently
+  dropping it (Reality Scramble, Wild Magic Surge). Exile-from-hand activation costs publish the exiled
+  card(s) to the ability under `COST_EXILED_FROM_HAND_TAG` (both payment paths in special_actions.rs), the
+  compiler seeds `CompilerReferenceTag::CostExiledFromHand` as that cost's object reference, and "shares a
+  card type with the card exiled this way" reads against it (Holistic Wisdom). Locket of Yesterdays was
+  built by p09 (bb46a6ed2); Creeping Dread stays blocked (needs a verified per-player discard result).
+- **Ecological Appreciation** renders "library and graveyard" as printed.
+- **Blocked queue**:
+  - Rebuild the City: p12 built the copy-exception keywords, so the ChooseLeadingSpell fail-loud rule
+    is retired.
+  - Liesa: the engine's CommanderTaxLifeSubstitution had no reader and functioned only on the
+    battlefield. It now has an early static reading and functions in the command zone (CR 903.8).
+  - The Ur-Dragon: the eminence cost-reduction condition renders instead of "the stated condition".
+  - Singe-Mind Ogre: a new sentence primitive binds the life loss to the randomly revealed card's mana
+    value.
+  - Crackling/Harmonious Emergence and Orim's Touch: covered by p06's round-4 work, pending merge.
+  - Gideon's Triumph, Epicenter, Archmage's Newt: p06 hands them back as resolution-time "instead"
+    text. The loss sits in the line-level self-replacement assembly; not located without a trace.
+
+Round-5 risk notes:
+- `followed_objects` is not part of the replacement manager's checkpoint snapshots; after a restore a
+  followed replacement keeps its pre-cast matcher (inert) until cleanup.
+- Every exile-from-hand activation now exports the exiled card as the ability's last cost object, which
+  pronouns may resolve to (as ExileChosen costs already do).
+- The eminence static's command-zone functional zone is assumed, not verified.
 
 ## Blocked, grouped by missing mechanic
 - Owned by other packages: generalized "instead" replacements (p06): Epicenter, Orim's Touch,
