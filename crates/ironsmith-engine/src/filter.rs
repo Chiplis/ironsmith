@@ -2968,6 +2968,7 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::LowestLifeTied => false,
             PlayerFilter::MostCardsInHand => false,
             PlayerFilter::CastCardTypeThisTurn(_) => false,
+            PlayerFilter::TurnHistory(_) => false,
             // Source-relative turn history requires access to GameState and
             // is evaluated by `player_filter_matches_game` below.
             PlayerFilter::AttackedBySourceThisTurn => false,
@@ -3049,6 +3050,28 @@ impl PlayerFilterExt for PlayerFilter {
     }
 }
 
+/// Whether `player` did the given action this turn (CR 500.1 turn history).
+pub(crate) fn player_turn_history_matches(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    history: ironsmith_core::PlayerTurnHistoryFilter,
+) -> bool {
+    match history {
+        ironsmith_core::PlayerTurnHistoryFilter::CastSpell => game
+            .turn_store
+            .turn_history
+            .spell_cast_snapshot_history()
+            .iter()
+            .any(|snapshot| snapshot.controller == player),
+        ironsmith_core::PlayerTurnHistoryFilter::AttackedWithCreature => game
+            .turn_store
+            .turn_history
+            .creatures_attacked_by_player_this_turn
+            .get(&player)
+            .is_some_and(|creatures| !creatures.is_empty()),
+    }
+}
+
 pub(crate) fn player_filter_matches_game(
     filter: &PlayerFilter,
     player: PlayerId,
@@ -3056,6 +3079,7 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::TurnHistory(history) => player_turn_history_matches(game, player, *history),
         PlayerFilter::Defending if ctx.defending_player_reference.is_some() => {
             match game.defending_player_candidates(ctx.defending_player_reference.unwrap()) {
                 Ok(players) => {
@@ -4473,6 +4497,9 @@ impl ObjectFilterExt for ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::TurnHistory(history) => {
+                    parts.push(format!("a player {}'s", history.relative_clause()))
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4644,6 +4671,9 @@ impl ObjectFilterExt for ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("a player {} owns", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     format!("{} owns", describe_player_filter(owner))
                 }

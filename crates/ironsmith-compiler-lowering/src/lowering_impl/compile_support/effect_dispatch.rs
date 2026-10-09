@@ -2580,6 +2580,8 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         battlefield_tapped: false,
         battlefield_attacking: false,
         battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+        battlefield_attack_player_only: false,
+        battlefield_blocking: None,
         battlefield_face_down: false,
         battlefield_transformed: false,
         attached_to: None,

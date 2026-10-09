@@ -26,6 +26,9 @@ pub struct AttackCost {
     covers_planeswalkers: bool,
     cost: crate::cost::TotalCost,
     display_text: String,
+    /// Only attacks on the controller's planeswalkers are taxed (Onakke
+    /// Oathkeeper); attacks on the player are free (CR 508.1g-h).
+    planeswalkers_only: bool,
 }
 
 impl AttackCost {
@@ -40,7 +43,19 @@ impl AttackCost {
             covers_planeswalkers,
             cost,
             display_text: display.into(),
+            planeswalkers_only: false,
         }
+    }
+    /// Limit the tax to attacks on the controller's planeswalkers.
+    pub fn with_planeswalkers_only(mut self, planeswalkers_only: bool) -> Self {
+        self.planeswalkers_only = planeswalkers_only;
+        if planeswalkers_only {
+            self.covers_planeswalkers = true;
+        }
+        self
+    }
+    pub fn planeswalkers_only(&self) -> bool {
+        self.planeswalkers_only
     }
     pub fn attackers(&self) -> &ObjectFilter {
         &self.attackers
@@ -71,9 +86,12 @@ impl StaticAbilityKind for AttackCost {
         attacker: ObjectId,
         target: AttackTaxTargetKind,
     ) -> Option<crate::cost::TotalCost> {
-        if !matches!(target, AttackTaxTargetKind::Player)
-            && !(self.covers_planeswalkers && matches!(target, AttackTaxTargetKind::Planeswalker))
-        {
+        let taxed = match target {
+            AttackTaxTargetKind::Player => !self.planeswalkers_only,
+            AttackTaxTargetKind::Planeswalker => self.covers_planeswalkers,
+            _ => false,
+        };
+        if !taxed {
             return None;
         }
         let object = game.object(attacker)?;
@@ -100,12 +118,15 @@ impl StaticAbilityKind for AttackCost {
             .map_err(|error| {
                 crate::effects::ExecutionError::UnresolvableValue(error.to_string())
             })?;
-        Ok(Some(super::StaticAbility::new(Self::new(
-            self.attackers.clone(),
-            self.covers_planeswalkers,
-            cost,
-            self.display_text.clone(),
-        ))))
+        Ok(Some(super::StaticAbility::new(
+            Self::new(
+                self.attackers.clone(),
+                self.covers_planeswalkers,
+                cost,
+                self.display_text.clone(),
+            )
+            .with_planeswalkers_only(self.planeswalkers_only),
+        )))
     }
 }
 
@@ -220,6 +241,84 @@ pub(crate) fn imposed_attack_costs_for_target(
                 });
             }
         }
+    }
+    costs.extend(resolved_effect_attack_taxes(game, attacker, payer, defender, target));
+    costs
+}
+
+/// CR 508.1g-h, 611.2a: attack taxes created by resolving spells and
+/// abilities (War Tax, Sivitri) last for their stated duration whether or not
+/// their source is still on the battlefield, so they live in the restriction
+/// store rather than on a permanent.
+fn resolved_effect_attack_taxes(
+    game: &GameState,
+    attacker: &crate::object::Object,
+    payer: PlayerId,
+    defender: PlayerId,
+    target: &crate::combat_state::AttackTarget,
+) -> Vec<ImposedAttackCost> {
+    let target_is_player = matches!(target, crate::combat_state::AttackTarget::Player(_));
+    let target_is_planeswalker =
+        matches!(target, crate::combat_state::AttackTarget::Planeswalker(_));
+    let mut costs = Vec::new();
+    for restriction in &game.effect_store.restriction_effects {
+        let Restriction::AttackTax(rule) = &restriction.restriction else {
+            continue;
+        };
+        if !restriction.is_active(game, game.turn.turn_number)
+            || !rule.taxes_attack(
+                restriction.controller,
+                defender,
+                target_is_player,
+                target_is_planeswalker,
+            )
+        {
+            continue;
+        }
+        let filter_ctx = game.filter_context_for(restriction.controller, Some(restriction.source));
+        if !rule.attackers.matches(attacker, &filter_ctx, game) {
+            continue;
+        }
+        let mana = match &rule.mana_per_attacker {
+            crate::effect::Value::Fixed(amount) => u32::try_from(*amount).unwrap_or(0),
+            other => {
+                let ctx = crate::effects::ExecutionContext::new_default(
+                    restriction.source,
+                    restriction.controller,
+                );
+                crate::effects::helpers::resolve_value(game, other, &ctx)
+                    .ok()
+                    .and_then(|amount| u32::try_from(amount).ok())
+                    .unwrap_or(0)
+            }
+        };
+        let mut components = Vec::new();
+        if mana > 0 {
+            let mut pips = Vec::new();
+            let mut remaining = mana;
+            while remaining > 0 {
+                let chunk = remaining.min(u32::from(u8::MAX)) as u8;
+                pips.push(vec![crate::mana::ManaSymbol::Generic(chunk)]);
+                remaining -= u32::from(chunk);
+            }
+            components.push(crate::costs::Cost::mana(crate::mana::ManaCost::from_pips(
+                pips,
+            )));
+        }
+        if rule.life_per_attacker > 0 {
+            components.push(crate::costs::Cost::life(rule.life_per_attacker));
+        }
+        if components.is_empty() {
+            continue;
+        }
+        costs.push(ImposedAttackCost {
+            payer,
+            attacker: attacker.id,
+            source: restriction.source,
+            controller: restriction.controller,
+            cost: crate::cost::TotalCost::from_costs(components),
+            display: "Attack tax".into(),
+        });
     }
     costs
 }
@@ -3048,6 +3147,7 @@ mod tests {
             covers_planeswalkers: false,
             cost: cost.clone(),
             display_text: "Attack tax".into(),
+            planeswalkers_only: false,
         };
         assert_eq!(
             collected_cost(

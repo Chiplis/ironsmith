@@ -254,6 +254,8 @@ fn restriction_references_identity(
     match restriction {
         Restriction::AdditionalLandPlays(player, _)
         | Restriction::NoMaximumHandSize(player)
+        | Restriction::DrawFromBottom(player)
+        | Restriction::ActivateAbilities(player)
         | Restriction::GainLife(player)
         | Restriction::SearchLibraries(player)
         | Restriction::SearchOwnLibraryFromOwnEffects(player)
@@ -276,7 +278,12 @@ fn restriction_references_identity(
         }
         Restriction::PlayLandsMatching(player, filter)
         | Restriction::CastSpellsMatching(player, filter)
-        | Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
+        | Restriction::CastMoreThanOneSpellEachTurn(player, filter)
+        | Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
@@ -294,7 +301,11 @@ fn restriction_references_identity(
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
         | Restriction::BeTargetedFrom(blockers, attacker)
-        | Restriction::BeAttachedBy(blockers, attacker) => {
+        | Restriction::BeAttachedBy(blockers, attacker)
+        | Restriction::AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
         }
@@ -341,6 +352,7 @@ fn restriction_references_identity(
         Restriction::PreventDamageFrom { sources, .. } => {
             object_filter_references_identity(sources, identity)
         }
+        Restriction::AttackTax(rule) => object_filter_references_identity(&rule.attackers, identity),
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,

@@ -2313,6 +2313,7 @@ pub fn resolve_player_filter(
         PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
@@ -4565,6 +4566,13 @@ pub(crate) fn resolve_player_filter_to_list(
                 )),
             }
         }
+        PlayerFilter::TurnHistory(history) => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| crate::filter::player_turn_history_matches(game, player.id, *history))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::CastCardTypeThisTurn(card_type) => Ok(game
             .players
             .iter()

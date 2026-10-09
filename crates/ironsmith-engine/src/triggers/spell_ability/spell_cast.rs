@@ -893,6 +893,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                     "a player who cast one or more {} spells this turn",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(_) => player_filter.description(),
                 PlayerFilter::AttackedBySourceThisTurn => player_filter.description(),
                 PlayerFilter::WasDealtDamageBySourceThisGame { .. } => player_filter.description(),
                 PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => {

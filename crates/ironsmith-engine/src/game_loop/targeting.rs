@@ -4262,6 +4262,9 @@ pub fn player_matches_filter_with_combat(
             .any(|snapshot| {
                 snapshot.controller == player_id && snapshot.card_types.contains(card_type)
             }),
+        PlayerFilter::TurnHistory(history) => {
+            crate::filter::player_turn_history_matches(game, player_id, *history)
+        }
         // Source-relative history is not meaningful while validating a
         // standalone player target; these filters are used by effect loops.
         PlayerFilter::AttackedBySourceThisTurn

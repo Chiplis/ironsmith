@@ -217,7 +217,8 @@ pub use filter_model::{
     GlobalCharacteristicDomainSurface, GraveyardEntryHistorySurface, LiteralNameSurface,
     ObjectCharacteristic, ObjectCharacteristicRelation, ObjectCharacteristicRelationKind,
     ObjectFilter, ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef,
-    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PowerToughnessRelation, PtReference,
+    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PlayerTurnHistoryFilter,
+    PowerToughnessRelation, PtReference,
     SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
     TaggedOpbjectRelation, TargetabilityConstraint,
 };

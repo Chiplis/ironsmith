@@ -3827,6 +3827,7 @@ fn resolve_condition_player_simple(
         }
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. }

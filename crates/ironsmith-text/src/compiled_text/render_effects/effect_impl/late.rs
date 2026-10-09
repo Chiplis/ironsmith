@@ -1294,6 +1294,15 @@
                 lowercase_first(&describe_restriction(&cant.restriction))
             );
         }
+        if cant.duration == Until::EndOfTurn
+            && cant.duration_surface
+                == crate::effect::RestrictionDurationSurface::ThisTurnAndNextTurn
+        {
+            return format!(
+                "This turn and next turn, {}",
+                lowercase_first(&describe_restriction(&cant.restriction))
+            );
+        }
         if cant.duration == Until::YourNextTurn
             && cant.duration_surface
                 == crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn

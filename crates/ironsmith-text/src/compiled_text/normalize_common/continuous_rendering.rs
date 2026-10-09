@@ -5486,6 +5486,25 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::AttackPermanents {
+            attackers,
+            permanents,
+        } => format!(
+            "{} can't attack {}",
+            pluralize_relative_object_phrase(&attackers.description()),
+            pluralize_relative_object_phrase(&permanents.description())
+        ),
+        crate::effect::Restriction::ActivateAbilities(filter) => {
+            format!("{} can't activate abilities", describe_player_set_filter(filter))
+        }
+        crate::effect::Restriction::DrawFromBottom(filter) => {
+            let (subject, library) = if matches!(filter, PlayerFilter::You) {
+                ("You".to_string(), "your library")
+            } else {
+                (describe_player_set_filter(filter), "their library")
+            };
+            format!("{subject} draw cards from the bottom of {library} rather than the top")
+        }
         crate::effect::Restriction::NoMaximumHandSize(filter) => {
             let subject = describe_player_set_filter(filter);
             let verb = if matches!(
@@ -5620,6 +5639,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "{} can't cast more than one {} each turn",
             describe_player_set_filter(filter),
             describe_cast_limit_spell_filter(spell_filter)
+        ),
+        crate::effect::Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        } => format!(
+            "{} can cast no more than {} {} each turn",
+            describe_player_set_filter(player),
+            maximum,
+            pluralize_cast_spell_description(&describe_cast_limit_spell_filter(spells))
         ),
         crate::effect::Restriction::DrawCards(filter) => {
             format!("{} can't draw cards", describe_player_set_filter(filter))
@@ -5771,6 +5800,35 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     "Creatures can't attack you unless their controller pays {{{generic_mana}}} for each of those creatures"
                 )
             }
+        }
+        crate::effect::Restriction::AttackTax(rule) => {
+            use ironsmith_core::value_model::AttackTaxDefenders;
+            let subject = pluralize_relative_object_phrase(&rule.attackers.description());
+            let (scope, per) = match rule.defenders {
+                AttackTaxDefenders::Controller => ("attack you", "for each of those creatures"),
+                AttackTaxDefenders::ControllerOrPlaneswalkers => (
+                    "attack you or planeswalkers you control",
+                    "for each of those creatures",
+                ),
+                AttackTaxDefenders::ControllerPlaneswalkers => (
+                    "attack planeswalkers you control",
+                    "for each creature they control that's attacking a planeswalker you control",
+                ),
+                AttackTaxDefenders::Anyone => {
+                    ("attack", "for each attacking creature they control")
+                }
+            };
+            let mut payments = Vec::new();
+            if !matches!(rule.mana_per_attacker, Value::Fixed(0)) {
+                payments.push(format!("{{{}}}", describe_value(&rule.mana_per_attacker)));
+            }
+            if rule.life_per_attacker > 0 {
+                payments.push(format!("{} life", rule.life_per_attacker));
+            }
+            format!(
+                "{subject} can't {scope} unless their controller pays {} {per}",
+                payments.join(" and ")
+            )
         }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())

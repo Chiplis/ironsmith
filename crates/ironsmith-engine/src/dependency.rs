@@ -1038,6 +1038,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
+            | PlayerFilter::TurnHistory(_)
             | PlayerFilter::AttackedBySourceThisTurn
             | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
             | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }

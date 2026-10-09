@@ -1959,6 +1959,21 @@ pub struct CantEffectTracker {
     /// without hard-coding one tracker set per variant.
     pub cant_cast_limit_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
 
+    /// Counted cast limits ("can cast no more than two spells each turn",
+    /// Fires of Invention): the matching spell filter and its maximum.
+    pub cant_cast_more_than: HashMap<PlayerId, Vec<(crate::target::ObjectFilter, u32)>>,
+
+    /// Players who draw from the bottom of their library (River Song).
+    pub draws_from_bottom: HashSet<PlayerId>,
+
+    /// Attackers that can't attack particular planeswalkers or battles
+    /// ("can't attack Jaces you control").
+    pub cant_attack_permanents: HashMap<ObjectId, HashSet<ObjectId>>,
+
+    /// Players who can't activate any abilities, mana abilities included,
+    /// from any zone (City of Solitude during other players' turns).
+    pub cant_activate_abilities: HashSet<PlayerId>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -2728,6 +2743,19 @@ impl CantEffectTracker {
                 self.add_cast_limit_filter(player, filter);
             }
         }
+        self.draws_from_bottom.extend(other.draws_from_bottom);
+        self.cant_activate_abilities.extend(other.cant_activate_abilities);
+        for (creature, permanents) in other.cant_attack_permanents {
+            self.cant_attack_permanents
+                .entry(creature)
+                .or_default()
+                .extend(permanents);
+        }
+        for (player, limits) in other.cant_cast_more_than {
+            for (filter, maximum) in limits {
+                self.add_counted_cast_limit(player, filter, maximum);
+            }
+        }
         self.cant_draw.extend(other.cant_draw);
         self.cant_draw_extra_cards
             .extend(other.cant_draw_extra_cards);
@@ -2816,6 +2844,10 @@ impl CantEffectTracker {
         self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_limit_filters.clear();
+        self.cant_cast_more_than.clear();
+        self.draws_from_bottom.clear();
+        self.cant_activate_abilities.clear();
+        self.cant_attack_permanents.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -2914,6 +2946,13 @@ impl CantEffectTracker {
     /// Check if a creature can attack alone (as the only attacker).
     pub fn can_attack_alone(&self, creature: ObjectId) -> bool {
         !self.cant_attack_alone.contains(&creature)
+    }
+
+    /// Check if a creature can attack a particular planeswalker or battle.
+    pub fn can_attack_permanent(&self, creature: ObjectId, permanent: ObjectId) -> bool {
+        self.cant_attack_permanents
+            .get(&creature)
+            .is_none_or(|banned| !banned.contains(&permanent))
     }
 
     /// Check if a creature can block.
@@ -3039,6 +3078,12 @@ impl CantEffectTracker {
     /// Check if a player can activate non-mana abilities.
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         !self.cant_activate_non_mana_abilities.contains(&player)
+            && !self.cant_activate_abilities.contains(&player)
+    }
+
+    /// Check if a player can activate abilities at all, mana abilities included.
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        !self.cant_activate_abilities.contains(&player)
     }
 
     /// Check if activated abilities of a permanent can be activated (including mana abilities).
@@ -3121,6 +3166,30 @@ impl CantEffectTracker {
         if !filters.iter().any(|existing| existing == &spell_filter) {
             filters.push(spell_filter);
         }
+    }
+
+    /// Add a counted cast limit ("no more than `maximum` matching spells each
+    /// turn"). The strictest maximum per filter wins.
+    pub fn add_counted_cast_limit(
+        &mut self,
+        player: PlayerId,
+        spell_filter: crate::target::ObjectFilter,
+        maximum: u32,
+    ) {
+        let limits = self.cant_cast_more_than.entry(player).or_default();
+        if let Some(existing) = limits.iter_mut().find(|(filter, _)| filter == &spell_filter) {
+            existing.1 = existing.1.min(maximum);
+        } else {
+            limits.push((spell_filter, maximum));
+        }
+    }
+
+    /// Get active counted cast limits for a player, if any.
+    pub fn counted_cast_limits_for_player(
+        &self,
+        player: PlayerId,
+    ) -> Option<&[(crate::target::ObjectFilter, u32)]> {
+        self.cant_cast_more_than.get(&player).map(Vec::as_slice)
     }
 
     /// Get active cast-limit filters for a player, if any.
@@ -6136,6 +6205,7 @@ impl GameState {
             | crate::target::PlayerFilter::Attacking
             | crate::target::PlayerFilter::Defending
             | crate::target::PlayerFilter::CastCardTypeThisTurn(_)
+            | crate::target::PlayerFilter::TurnHistory(_)
             | crate::target::PlayerFilter::AttackedBySourceThisTurn => true,
             crate::target::PlayerFilter::WasDealtDamageBySourceThisGame { .. }
             | crate::target::PlayerFilter::LostLifeThisTurn { .. } => true,
@@ -8206,6 +8276,13 @@ impl GameState {
             .can_activate_non_mana_abilities(player)
     }
 
+    /// Can the player activate abilities at all (mana abilities included)?
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_activate_abilities(player)
+    }
+
     /// Can activated abilities of this permanent be activated (including mana abilities)?
     pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
         self.effect_store
@@ -8687,18 +8764,31 @@ impl GameState {
         Some(info)
     }
 
+    /// The card a draw by `player` takes: the top of their library (CR
+    /// 121.1), or the bottom while a draw-from-bottom rule applies to them.
+    pub fn next_draw_card(&self, player: PlayerId) -> Option<ObjectId> {
+        let library = &self.player(player)?.library;
+        if self
+            .effect_store
+            .cant_effects
+            .draws_from_bottom
+            .contains(&player)
+        {
+            library.first().copied()
+        } else {
+            library.last().copied()
+        }
+    }
+
     /// Draws cards for a player, moving them from library to hand.
     /// Uses move_object to properly update the object's zone.
     /// Returns the new ObjectIds of the drawn cards.
     pub fn draw_cards(&mut self, player: PlayerId, count: usize) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            // Get the top card of the library (last element)
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            // The top card of the library (last element), or the bottom card
+            // under a draw-from-bottom rule (River Song).
+            let card_id = self.next_draw_card(player);
 
             if let Some(id) = card_id {
                 // Move from library to hand
@@ -8723,11 +8813,7 @@ impl GameState {
     ) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            let card_id = self.next_draw_card(player);
 
             let Some(id) = card_id else {
                 self.record_empty_library_draw_attempt(player);

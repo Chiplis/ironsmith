@@ -1448,6 +1448,48 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::AttackPermanents {
+                attackers,
+                permanents,
+            } => {
+                let banned = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| permanents.matches(object, &ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                if banned.is_empty() {
+                    return;
+                }
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker
+                            .cant_attack_permanents
+                            .entry(obj_id)
+                            .or_default()
+                            .extend(banned.iter().copied());
+                    }
+                }
+            }
+            Restriction::ActivateAbilities(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_activate_abilities.insert(player.id);
+                    }
+                }
+            }
+            Restriction::DrawFromBottom(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.draws_from_bottom.insert(player.id);
+                    }
+                }
+            }
             Restriction::GainLife(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
@@ -1524,8 +1566,31 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::PlayLandsMatching(player_filter, land_filter) => {
+                // "lands with the chosen names can't be played" (Null
+                // Chamber): one prohibition per name recorded on the source.
+                let land_filters: Vec<crate::target::ObjectFilter> =
+                    if land_filter.name.as_deref() == Some("{chosen name}") {
+                        source
+                            .and_then(|source| game.chosen_named_option(source))
+                            .map(|names| {
+                                names
+                                    .lines()
+                                    .map(str::trim)
+                                    .filter(|name| !name.is_empty())
+                                    .map(|name| {
+                                        let mut resolved = land_filter.clone();
+                                        resolved.name = Some(name.to_string());
+                                        resolved
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        vec![land_filter.clone()]
+                    };
+                for land_filter in land_filters {
                 let restriction = crate::game_state::LandPlayRestrictionFilter {
-                    filter: land_filter.clone(),
+                    filter: land_filter,
                     source,
                     controller,
                     iterated_player,
@@ -1545,6 +1610,7 @@ impl RestrictionExt for Restriction {
                             .or_default()
                             .push(restriction.clone());
                     }
+                }
                 }
             }
             Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
@@ -1613,6 +1679,17 @@ impl RestrictionExt for Restriction {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.add_cast_limit_filter(player.id, spell_filter.clone());
+                    }
+                }
+            }
+            Restriction::CastMoreThanNSpellsEachTurn {
+                player: filter,
+                spells,
+                maximum,
+            } => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.add_counted_cast_limit(player.id, spells.clone(), *maximum);
                     }
                 }
             }
@@ -1767,7 +1844,7 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
+            Restriction::AttackYouUnlessControllerPaysPerAttacker(..) | Restriction::AttackTax(_) => {
                 // The payment exception is evaluated during attacker
                 // declaration. It must not be flattened into an unconditional
                 // `cant_attack` entry in the derived restriction tracker.

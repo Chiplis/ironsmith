@@ -616,6 +616,14 @@ pub(crate) fn can_attack_target_with_view(
     {
         return false;
     }
+    if let Some(permanent) = target.attacked_permanent()
+        && !game
+            .effect_store
+            .cant_effects
+            .can_attack_permanent(creature.id, permanent)
+    {
+        return false;
+    }
     can_attack_defender_kind_with_view(
         creature,
         defending_player,

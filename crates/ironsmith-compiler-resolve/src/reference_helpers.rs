@@ -378,6 +378,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::TaggedPlayer(_)

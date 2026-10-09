@@ -1243,6 +1243,94 @@ pub enum Restriction {
     /// the second filter names attachments that can't become (or stay,
     /// CR 704.5m/n) attached to the matching hosts. Appended.
     BeAttachedBy(ObjectFilter, ObjectFilter),
+    /// A resolving effect's general attack tax (CR 508.1g-h): War Tax ("this
+    /// turn, creatures can't attack unless their controller pays {X} for each
+    /// attacking creature they control") or Sivitri ("until your next turn,
+    /// ... unless their controller pays 2 life for each of those creatures").
+    /// Like `AttackYouUnlessControllerPaysPerAttacker` it outlives its source.
+    /// Appended to preserve existing serialized variant ordinals.
+    AttackTax(AttackTaxRule),
+    /// "[players] can cast no more than N [matching] spells each turn" (Fires
+    /// of Invention): a cast-limit like `CastMoreThanOneSpellEachTurn` with a
+    /// general maximum. Appended to preserve existing serialized ordinals.
+    CastMoreThanNSpellsEachTurn {
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    },
+    /// "You draw cards from the bottom of your library rather than the top."
+    /// (River Song): a lasting player rule changing which card a draw takes
+    /// (CR 121.1 draws the top card; this rule substitutes the bottom card).
+    /// Appended to preserve existing serialized variant ordinals.
+    DrawFromBottom(PlayerFilter),
+    /// "[players] can't activate abilities" with no exception: every
+    /// activated ability, mana abilities included, from any zone (City of
+    /// Solitude off-turn, CR 602.5). Appended to preserve serialized ordinals.
+    ActivateAbilities(PlayerFilter),
+    /// "[creatures] can't attack <permanents>" (Jace, Multiverse Architect:
+    /// "creatures they control can't attack Jaces you control"): matching
+    /// attackers can't choose a matching planeswalker or battle as their
+    /// attack target (CR 508.1b). Appended to preserve serialized ordinals.
+    AttackPermanents {
+        attackers: ObjectFilter,
+        permanents: ObjectFilter,
+    },
+}
+
+/// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
+/// controller (CR 508.1g-h).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
+pub enum AttackTaxDefenders {
+    /// "can't attack you unless ..."
+    #[default]
+    Controller,
+    /// "can't attack you or planeswalkers you control unless ..."
+    ControllerOrPlaneswalkers,
+    /// "can't attack planeswalkers you control unless ..."
+    ControllerPlaneswalkers,
+    /// "creatures can't attack unless ...": every attack, whoever is attacked.
+    Anyone,
+}
+
+/// The per-attacker payment of a resolving effect's attack tax. Each matching
+/// attacker costs its controller `mana_per_attacker` generic mana and
+/// `life_per_attacker` life. A variable amount ({X}) is fixed when the
+/// effect resolves (CR 107.3, 611.2a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AttackTaxRule {
+    pub attackers: ObjectFilter,
+    pub defenders: AttackTaxDefenders,
+    pub mana_per_attacker: Value,
+    pub life_per_attacker: u32,
+}
+
+impl AttackTaxRule {
+    /// Whether an attack on a target of this kind is taxed by a rule whose
+    /// controller is `rule_controller`, given the attacked target's defending
+    /// player and whether the target is a planeswalker.
+    pub fn taxes_attack(
+        &self,
+        rule_controller: PlayerId,
+        defending_player: PlayerId,
+        target_is_player: bool,
+        target_is_planeswalker: bool,
+    ) -> bool {
+        match self.defenders {
+            AttackTaxDefenders::Anyone => true,
+            AttackTaxDefenders::Controller => {
+                defending_player == rule_controller && target_is_player
+            }
+            AttackTaxDefenders::ControllerOrPlaneswalkers => {
+                defending_player == rule_controller
+                    && (target_is_player || target_is_planeswalker)
+            }
+            AttackTaxDefenders::ControllerPlaneswalkers => {
+                defending_player == rule_controller && target_is_planeswalker
+            }
+        }
+    }
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1635,6 +1723,37 @@ impl Restriction {
 
     pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
         Self::BeAttachedBy(hosts, attachments)
+    }
+
+    pub fn attack_tax(rule: AttackTaxRule) -> Self {
+        Self::AttackTax(rule)
+    }
+
+    pub fn attack_permanents(attackers: ObjectFilter, permanents: ObjectFilter) -> Self {
+        Self::AttackPermanents {
+            attackers,
+            permanents,
+        }
+    }
+
+    pub fn activate_abilities(player: PlayerFilter) -> Self {
+        Self::ActivateAbilities(player)
+    }
+
+    pub fn draw_from_bottom(player: PlayerFilter) -> Self {
+        Self::DrawFromBottom(player)
+    }
+
+    pub fn cast_more_than_n_spells_each_turn(
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    ) -> Self {
+        Self::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        }
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {

@@ -1225,6 +1225,9 @@ where
                     "Any player who cast one or more {} spells this turn may",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("Any player {} may", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     "A player this creature attacked this turn may".to_string()
                 }

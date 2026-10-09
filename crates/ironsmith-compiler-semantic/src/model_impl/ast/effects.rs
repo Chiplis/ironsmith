@@ -2001,6 +2001,8 @@ impl EffectAst {
                 battlefield_tapped,
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only: false,
+                battlefield_blocking: None,
                 battlefield_face_down,
                 battlefield_transformed: false,
                 attached_to,
@@ -2038,12 +2040,63 @@ impl EffectAst {
                 battlefield_tapped,
                 battlefield_attacking: false,
                 battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+                battlefield_attack_player_only: false,
+                battlefield_blocking: None,
                 battlefield_face_down: false,
                 battlefield_transformed: false,
                 attached_to,
                 all: true,
             }),
         )
+    }
+
+    /// "... onto the battlefield [tapped and] attacking that opponent / that
+    /// player or a planeswalker they control": the entering attacker's
+    /// attack-target player (CR 508.4). No-op for other effects or `None`.
+    pub fn with_battlefield_attack_target(mut self, target: Option<(PlayerAst, bool)>) -> Self {
+        if let Some((player, player_only)) = target
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_attacking,
+                battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_attacking = true;
+            *battlefield_attack_target_player_or_planeswalker_controlled_by = Some(player);
+            *battlefield_attack_player_only = player_only;
+        }
+        self
+    }
+
+    /// "onto the battlefield blocking that creature": the blocked attacker.
+    /// No-op for other effects or `None`.
+    pub fn with_battlefield_blocking(mut self, blocked: Option<TargetAst>) -> Self {
+        if let Some(blocked) = blocked
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_blocking,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_blocking = Some(blocked);
+        }
+        self
+    }
+
+    /// Narrows an entering-attacking move's attack target to the named player
+    /// itself ("attacking that opponent"). No-op for other effects.
+    pub fn with_battlefield_attack_player_only(mut self) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_attack_player_only,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_attack_player_only = true;
+        }
+        self
     }
 
     pub fn with_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {

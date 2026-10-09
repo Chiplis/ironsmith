@@ -365,14 +365,25 @@ fn read_cant_cast_this_unless(
         Some(&("creature" | "spell" | "card" | "planeswalker")) => 5,
         _ => 4,
     };
-    if words.get(skipped) != Some(&"unless") {
-        return Ok(None);
-    }
-    let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) else {
+    // "unless <condition>" requires the condition; "if <condition>" (Rock
+    // Jockey: "You can't cast this if you've played a land this turn")
+    // forbids casting while it holds.
+    let negated = match words.get(skipped) {
+        Some(&"unless") => false,
+        Some(&"if") => true,
+        _ => return Ok(None),
+    };
+    let keyword = if negated { "if" } else { "unless" };
+    let Some(unless_idx) = tokens.iter().position(|token| token.is_word(keyword)) else {
         return Ok(None);
     };
     let Some(condition) = super::static_condition_clause_bound(&tokens[unless_idx + 1..]) else {
         return Ok(None);
+    };
+    let condition = if negated {
+        crate::ConditionExpr::Not(Box::new(condition))
+    } else {
+        condition
     };
     Ok(Some(vec![
         StaticAbility::this_spell_cast_restriction(

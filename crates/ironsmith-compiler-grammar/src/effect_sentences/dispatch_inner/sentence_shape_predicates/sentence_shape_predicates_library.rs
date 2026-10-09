@@ -62,34 +62,124 @@ pub(super) fn parse_manifest_dread_graveyard_card_to_hand(
     )])
 }
 
+/// "Put <objects> on top of their owners' libraries, then those players
+/// shuffle [their libraries]." (Gomazoa, Vortex Elemental, Void Stalker):
+/// every named object moves first, then each distinct owner shuffles exactly
+/// once (CR 701.24a). The moved objects share one outcome tag; the shuffle's
+/// owner-of-tagged player set is deduplicated by the engine, so a player who
+/// owns two of them shuffles once and shuffle triggers fire once.
 pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    sentence_shapes::parse_source_blocked_library_shuffle_tokens(tokens)?;
-
-    let mut blocked_creature = ObjectFilter::creature();
-    blocked_creature.blocked_by_source = true;
-    let mut moved_objects = ObjectFilter::default();
-    moved_objects.any_of = vec![ObjectFilter::source(), blocked_creature];
-
-    Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
-        filter: moved_objects,
-        effects: vec![
-            EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                Zone::Library,
-                true,
-                crate::cards::builders::ReturnControllerAst::Preserve,
-                false,
-                None,
-            ),
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::ItsOwner,
-                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-            ),
-        ],
-    }))
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let tokens = trim_edge_punctuation(tokens);
+    let (_, body) = primitives::parse_prefix(&tokens, primitives::kw("put"))?;
+    let (top_idx, (), tail) = primitives::find_prefix(body, || {
+        primitives::phrase(&["on", "top", "of", "their"])
+    })?;
+    let ((), _) = primitives::parse_prefix(
+        tail,
+        (
+            winnow::combinator::alt((
+                primitives::kw("owners'"),
+                primitives::kw("owners"),
+                primitives::kw("owner's"),
+            )),
+            primitives::kw("libraries"),
+            winnow::combinator::opt(primitives::comma()),
+            primitives::phrase(&["then", "those", "players"]),
+            primitives::kw("shuffle"),
+            winnow::combinator::opt(primitives::phrase(&["their", "libraries"])),
+            primitives::sentence_end(),
+        )
+            .void(),
+    )?;
+    let operand = &body[..top_idx];
+    let operand_words = crate::lexer::parser_token_word_refs(operand);
+    let moved_tag = crate::util::helper_tag_for_tokens(&tokens, "moved_to_owners_libraries");
+    let joint_relation = match operand_words.as_slice() {
+        ["this", "creature", "and", "each", "creature", "it's" | "its", "blocking"] => {
+            let mut blocked_creature = ObjectFilter::creature();
+            blocked_creature.blocked_by_source = true;
+            Some(blocked_creature)
+        }
+        [
+            "this",
+            "creature",
+            "and",
+            "each",
+            "creature",
+            "blocking",
+            "or",
+            "blocked",
+            "by",
+            "it",
+        ] => {
+            let mut fighting_creature = ObjectFilter::creature();
+            fighting_creature.in_combat_with_source = true;
+            Some(fighting_creature)
+        }
+        _ => None,
+    };
+    let mut effects = Vec::new();
+    if let Some(related) = joint_relation {
+        let mut moved_objects = ObjectFilter::default();
+        moved_objects.any_of = vec![ObjectFilter::source(), related];
+        effects.push(EffectAst::TagAffected {
+            tag: moved_tag.clone(),
+            effect: Box::new(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                filter: moved_objects,
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                    Zone::Library,
+                    true,
+                    crate::cards::builders::ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            })),
+        });
+    } else {
+        // Two independently named objects ("this creature and target
+        // creature"): each is its own reference with the shared destination.
+        let and_positions = operand
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.is_word("and"))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let [and_idx] = and_positions.as_slice() else {
+            return None;
+        };
+        let (left, right) = (&operand[..*and_idx], &operand[*and_idx + 1..]);
+        let left_is_reference = left.first().is_some_and(|token| token.is_word("target"))
+            || (left.first().is_some_and(|token| token.is_word("this")) && left.len() <= 3);
+        if !left_is_reference
+            || !right.first().is_some_and(|token| token.is_word("target"))
+            || operand.iter().any(|token| token.is_comma())
+        {
+            return None;
+        }
+        let destination = body.get(top_idx..top_idx + 6)?;
+        for half in [left, right] {
+            let mut half_tokens = half.to_vec();
+            half_tokens.extend_from_slice(destination);
+            let moved = crate::grammar::primitives::probe_shape(
+                crate::effect_sentences::verb_handlers::parse_put_into_hand(&half_tokens, None),
+            )?;
+            effects.push(EffectAst::TagAffected {
+                tag: moved_tag.clone(),
+                effect: Box::new(moved),
+            });
+        }
+    }
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::ItsOwner,
+        SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+    ));
+    Some(EffectAst::Sequence { effects })
 }
 
 pub(super) fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(

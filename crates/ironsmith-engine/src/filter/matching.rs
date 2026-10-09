@@ -490,6 +490,19 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // "share a color with the spell most recently cast this turn" (Mana
+    // Maze): the turn's latest completed cast; none yet means no match.
+    if filter.shares_color_with_last_spell_cast_this_turn
+        && !game
+            .turn_store
+            .turn_history
+            .spell_cast_snapshot_history()
+            .last()
+            .is_some_and(|last| !last.colors.intersection(object_colors).is_empty())
+    {
+        return false;
+    }
+
     if filter.first_spell_cast_each_turn
         && !first_matching_spell_cast_each_turn_matches(
             filter,

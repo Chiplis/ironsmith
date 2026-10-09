@@ -4463,6 +4463,9 @@ pub fn player_filter_matches_with_context(
             .any(|snapshot| {
                 snapshot.controller == player && snapshot.card_types.contains(card_type)
             }),
+        PlayerFilter::TurnHistory(history) => {
+            crate::filter::player_turn_history_matches(game, player, *history)
+        }
         // This helper has no source object. Source-relative player history is
         // resolved by effect execution's game-aware filter context instead.
         PlayerFilter::AttackedBySourceThisTurn

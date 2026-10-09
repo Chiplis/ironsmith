@@ -61,6 +61,8 @@ mod variable_mana_payments;
 mod life_bid;
 #[path = "pair_procedure/same_way_balance.rs"]
 mod same_way_balance;
+#[path = "pair_procedure/viewer_face_down_play.rs"]
+mod viewer_face_down_play;
 #[path = "pair_procedure/each_opponent_consult_cast.rs"]
 mod each_opponent_consult_cast;
 
@@ -245,6 +247,22 @@ const PAIR_SHAPES: &[Shape] = &[
         consumed: 2,
         read: |sentences, index| {
             statements(sentences, index, each_opponent_consult_cast::read(sentences, index))
+        },
+    },
+    Shape {
+        id: RuleId::new("viewer-face-down-exile-play-with-mana-rider"),
+        head: HeadDiscriminator::words(&["its"]),
+        consumed: 3,
+        read: |sentences, index| {
+            statements(sentences, index, viewer_face_down_play::read(sentences, index, true))
+        },
+    },
+    Shape {
+        id: RuleId::new("viewer-face-down-exile-play"),
+        head: HeadDiscriminator::words(&["its"]),
+        consumed: 2,
+        read: |sentences, index| {
+            statements(sentences, index, viewer_face_down_play::read(sentences, index, false))
         },
     },
     Shape {

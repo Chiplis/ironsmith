@@ -114,6 +114,13 @@ pub struct OntoBattlefieldDestinationShape {
     /// A contextual player is not interchangeable with each card's owner.
     pub relative_controller: bool,
     pub supported_tail: bool,
+    /// "attacking that opponent" (the player itself, `true`) or "attacking
+    /// that player or a planeswalker they control" (`false`): the defending
+    /// player of the triggering attack (CR 508.4).
+    pub attack_target: Option<(crate::cards::builders::PlayerAst, bool)>,
+    /// "blocking that creature": the blocked attacker's reference tokens
+    /// (CR 509.4).
+    pub blocking_tokens: Option<Vec<OwnedLexToken>>,
 }
 
 fn article(input: &mut crate::lexer::LexStream<'_>) -> winnow::error::ModalResult<()> {

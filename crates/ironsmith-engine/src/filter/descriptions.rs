@@ -313,6 +313,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}'s", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
@@ -406,6 +407,7 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }

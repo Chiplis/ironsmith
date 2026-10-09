@@ -1662,6 +1662,29 @@ pub enum PlayerFilter {
     /// left of the player `base` names (CR 101.4a). Appended to preserve
     /// existing serialized variant ordinals.
     PlayerToLeftOf(Box<PlayerFilter>),
+    /// "who cast a spell this turn" / "who attacked with a creature this
+    /// turn" (Angelic Arbiter): players by this turn's history. Appended to
+    /// preserve existing serialized variant ordinals.
+    TurnHistory(PlayerTurnHistoryFilter),
+}
+
+/// A player's action this turn, for [`PlayerFilter::TurnHistory`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum PlayerTurnHistoryFilter {
+    /// Cast one or more spells this turn.
+    CastSpell,
+    /// Attacked with one or more creatures this turn.
+    AttackedWithCreature,
+}
+
+impl PlayerTurnHistoryFilter {
+    pub fn relative_clause(self) -> &'static str {
+        match self {
+            Self::CastSpell => "who cast a spell this turn",
+            Self::AttackedWithCreature => "who attacked with a creature this turn",
+        }
+    }
 }
 
 impl PlayerFilter {
@@ -2216,6 +2239,11 @@ pub struct ObjectFilter {
     pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
+    /// "spells that share a color with the spell most recently cast this
+    /// turn" (Mana Maze): the candidate shares at least one color with the
+    /// last spell cast this turn by any player. Appended with a serde default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_color_with_last_spell_cast_this_turn: bool,
     /// Exact ordinal among spells matching this filter that the caster has
     /// cast this turn. `None` is the ordinary unrestricted set; `Some(2)` is
     /// the reusable surface used by "the second spell you cast each turn".
@@ -4538,6 +4566,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::TurnHistory(history) => {
+                    parts.push(format!("a player {}'s", history.relative_clause()))
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4701,6 +4732,10 @@ impl ObjectFilter {
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
+        if self.shares_color_with_last_spell_cast_this_turn {
+            post_noun_qualifiers
+                .push("that share a color with the spell most recently cast this turn".to_string());
+        }
         if let Some(minimum) = self.spell_cast_minimum_each_turn {
             post_noun_qualifiers.push(format!(
                 "with matching cast ordinal at least {minimum} this turn"
@@ -4752,6 +4787,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("a player {} owns", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -7531,6 +7569,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}'s", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
@@ -7648,6 +7687,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }

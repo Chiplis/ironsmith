@@ -1336,9 +1336,21 @@ impl StaticAbilityModelInterpreter {
                 Self::cant_attack_unless_condition_from_model(condition),
                 display.clone(),
             ),
-            ironsmith_core::StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } => {
-                StaticAbility::attack_cost(attackers.clone(), *covers_planeswalkers, cost.clone(), display.clone())
-            }
+            ironsmith_core::StaticAbilityPayload::AttackCost {
+                attackers,
+                covers_planeswalkers,
+                cost,
+                display,
+                planeswalkers_only,
+            } => StaticAbility::new(
+                super::AttackCost::new(
+                    attackers.clone(),
+                    *covers_planeswalkers,
+                    cost.clone(),
+                    display.clone(),
+                )
+                .with_planeswalkers_only(*planeswalkers_only),
+            ),
             ironsmith_core::StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,
@@ -1724,11 +1736,15 @@ impl StaticAbilityModelInterpreter {
                 display,
                 reveal_opponents_hands,
                 require_nonland_from_revealed_opponents,
+                opponent_also_chooses,
+                exclude_basic_land_names,
             } => StaticAbility::choose_card_name_as_enters_with_spec(
                 display.clone(),
                 super::ChooseCardNameAsEntersSpec {
                     reveal_opponents_hands: *reveal_opponents_hands,
                     require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+                    opponent_also_chooses: *opponent_also_chooses,
+                    exclude_basic_land_names: *exclude_basic_land_names,
                 },
             ),
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
@@ -3418,6 +3434,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         let ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
             reveal_opponents_hands,
             require_nonland_from_revealed_opponents,
+            opponent_also_chooses,
+            exclude_basic_land_names,
             ..
         } = self.payload()
         else {
@@ -3426,6 +3444,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         Some(super::ChooseCardNameAsEntersSpec {
             reveal_opponents_hands: *reveal_opponents_hands,
             require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+            opponent_also_chooses: *opponent_also_chooses,
+            exclude_basic_land_names: *exclude_basic_land_names,
         })
     }
 

@@ -549,6 +549,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     match restriction {
         AdditionalLandPlays(player, _)
         | NoMaximumHandSize(player)
+        | DrawFromBottom(player)
+        | ActivateAbilities(player)
         | GainLife(player)
         | SearchLibraries(player)
         | SearchOwnLibraryFromOwnEffects(player)
@@ -569,7 +571,12 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
         PlayLandsMatching(player, filter)
         | CastSpellsMatching(player, filter)
-        | CastMoreThanOneSpellEachTurn(player, filter) => {
+        | CastMoreThanOneSpellEachTurn(player, filter)
+        | CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {
@@ -618,7 +625,11 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BlockSpecificAttacker { blockers, attacker }
         | MustBlockSpecificAttacker { blockers, attacker }
         | BeTargetedFrom(blockers, attacker)
-        | BeAttachedBy(blockers, attacker) => {
+        | BeAttachedBy(blockers, attacker)
+        | AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_mentions_iterated_player(blockers)
                 || object_filter_mentions_iterated_player(attacker)
         }
@@ -626,6 +637,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
         PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),
+        AttackTax(rule) => object_filter_mentions_iterated_player(&rule.attackers),
         PreventDamage | PreventCombatDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }

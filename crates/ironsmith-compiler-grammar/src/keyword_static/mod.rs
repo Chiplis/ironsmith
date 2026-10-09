@@ -588,8 +588,14 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_if_you_would_draw_instead_effects_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
-        "parse_activate_abilities_as_though_haste_line" => {
+        "parse_activate_abilities_as_though_haste_line"
+        | "parse_you_cast_spells_only_during_your_turn_line"
+        | "parse_you_draw_cards_from_bottom_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
+        }
+        "parse_each_opponent_controls_more_cant_line"
+        | "parse_each_opponent_who_did_this_turn_cant_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("each", "opponent")]
         }
         "parse_zero_loyalty_state_based_exception_line" => {
             vec![StaticAbilityLineHeadHint::Single("planeswalkers")]
@@ -1697,6 +1703,13 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_skip_untap_steps_line),
         single_static_ability_ast_rule!(parse_players_cast_spells_only_during_own_turns_line),
+        single_static_ability_ast_rule!(parse_players_cant_cast_spells_sharing_last_spell_color_line),
+        multi_static_ability_ast_rule!(parse_players_cast_and_activate_only_during_own_turns_line),
+        multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
+        single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
+        multi_static_ability_ast_rule!(parse_each_opponent_controls_more_cant_line),
+        multi_static_ability_ast_rule!(parse_spells_and_lands_with_chosen_names_cant_line),
+        single_static_ability_ast_rule!(parse_each_opponent_who_did_this_turn_cant_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2746,6 +2759,319 @@ fn parse_players_cast_spells_only_during_own_turns_line(
     )))
 }
 
+/// "Players can't cast spells that share a color with the spell most recently
+/// cast this turn." (Mana Maze, CR 601.3, 105.4).
+fn parse_players_cant_cast_spells_sharing_last_spell_color_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    if !matches!(
+        words.as_slice(),
+        [
+            "players", "can't" | "cant" | "cannot", "cast", "spells", "that", "share", "a",
+            "color", "with", "the", "spell", "most", "recently", "cast", "this", "turn",
+        ]
+    ) {
+        return Ok(None);
+    }
+    let spells = ObjectFilter {
+        shares_color_with_last_spell_cast_this_turn: true,
+        ..ObjectFilter::default()
+    };
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, spells),
+        crate::lexer::render_token_slice(&clean).trim().to_string(),
+    )))
+}
+
+fn non_active_players() -> PlayerFilter {
+    PlayerFilter::Excluding {
+        base: Box::new(PlayerFilter::Any),
+        excluded: Box::new(PlayerFilter::Active),
+    }
+}
+
+/// "Players can cast spells and activate abilities only during their own
+/// turns." (City of Solitude): a player who isn't the active player can't cast
+/// spells (CR 601.3) or activate abilities (CR 602.5), mana abilities
+/// included, whatever zone the ability's source is in (a card in hand
+/// included).
+fn parse_players_cast_and_activate_only_during_own_turns_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&[
+            "players", "can", "cast", "spells", "and", "activate", "abilities", "only", "during",
+            "their", "own", "turns",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    let display = "Players can cast spells and activate abilities only during their own turns";
+    Ok(Some(vec![
+        StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells(non_active_players()),
+            display.to_string(),
+        ),
+        StaticAbility::restriction(
+            crate::effect::Restriction::activate_abilities(non_active_players()),
+            display.to_string(),
+        ),
+    ]))
+}
+
+/// "You can cast spells only during your turn [and you can cast no more than
+/// N spells each turn]." (Fires of Invention): CR 601.3 casting prohibitions
+/// on the controller while another player is active, plus a counted cast
+/// limit (`CastMoreThanNSpellsEachTurn`).
+fn parse_you_cast_spells_only_during_your_turn_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&["you", "can", "cast", "spells", "only", "during", "your", "turn"]),
+    ) else {
+        return Ok(None);
+    };
+    let display = render_token_slice(&clean);
+    let mut abilities = vec![StaticAbility::restriction(
+        crate::effect::Restriction::cast_spells(PlayerFilter::Excluding {
+            base: Box::new(PlayerFilter::You),
+            excluded: Box::new(PlayerFilter::Active),
+        }),
+        display.clone(),
+    )];
+    if rest.is_empty() {
+        return Ok(Some(abilities));
+    }
+    let Some((maximum, tail)) = primitives::parse_prefix(
+        rest,
+        (
+            primitives::phrase(&["and", "you", "can", "cast", "no", "more", "than"]),
+            primitives::number_token,
+            primitives::phrase(&["spells", "each", "turn"]),
+        )
+            .map(|(_, maximum, _)| maximum),
+    ) else {
+        return Ok(None);
+    };
+    if !tail.is_empty() || maximum == 0 {
+        return Ok(None);
+    }
+    abilities.push(StaticAbility::restriction(
+        crate::effect::Restriction::cast_more_than_n_spells_each_turn(
+            PlayerFilter::You,
+            ObjectFilter::default(),
+            maximum,
+        ),
+        display,
+    ));
+    Ok(Some(abilities))
+}
+
+/// "Each opponent who cast a spell this turn can't attack with creatures." /
+/// "Each opponent who attacked with a creature this turn can't cast spells."
+/// (Angelic Arbiter): a prohibition on each opponent with that turn history,
+/// re-evaluated as the history changes (CR 508.1, 601.3).
+fn parse_each_opponent_who_did_this_turn_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use ironsmith_core::PlayerTurnHistoryFilter as History;
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    let (history, action) = match words.as_slice() {
+        ["each", "opponent", "who", "cast", "a", "spell", "this", "turn", "can't" | "cant" | "cannot", action @ ..] => {
+            (History::CastSpell, action)
+        }
+        [
+            "each", "opponent", "who", "attacked", "with", "a", "creature", "this", "turn",
+            "can't" | "cant" | "cannot", action @ ..,
+        ] => (History::AttackedWithCreature, action),
+        _ => return Ok(None),
+    };
+    // Opponents with that history: the history set minus your team.
+    let players = PlayerFilter::excluding(PlayerFilter::TurnHistory(history), PlayerFilter::your_team());
+    let restriction = match action {
+        ["attack", "with", "creatures"] | ["attack"] => crate::effect::Restriction::attack(
+            ObjectFilter::creature().controlled_by(players),
+        ),
+        ["cast", "spells"] => crate::effect::Restriction::cast_spells(players),
+        _ => return Ok(None),
+    };
+    Ok(Some(StaticAbility::restriction(
+        restriction,
+        crate::lexer::render_token_slice(&clean).trim().to_string(),
+    )))
+}
+
+/// "Spells with the chosen names can't be cast and lands with the chosen
+/// names can't be played." (Null Chamber): cast and land-play prohibitions for
+/// every name recorded as the permanent entered (CR 601.3, 305.2).
+fn parse_spells_and_lands_with_chosen_names_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    if !matches!(
+        words.as_slice(),
+        [
+            "spells", "with", "the", "chosen", "names" | "name", "can't" | "cant", "be", "cast",
+            "and", "lands", "with", "the", "chosen", "names" | "name", "can't" | "cant", "be",
+            "played",
+        ]
+    ) {
+        return Ok(None);
+    }
+    let display = crate::lexer::render_token_slice(&clean).trim().to_string();
+    let named = ObjectFilter {
+        name: Some("{chosen name}".to_string()),
+        ..ObjectFilter::default()
+    };
+    Ok(Some(vec![
+        StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, named.clone()),
+            display.clone(),
+        ),
+        StaticAbility::restriction(
+            crate::effect::Restriction::PlayLandsMatching(PlayerFilter::Any, named),
+            display,
+        ),
+    ]))
+}
+
+fn plural_card_type_word(word: &str) -> Option<crate::types::CardType> {
+    use crate::types::CardType;
+    Some(match word {
+        "creatures" => CardType::Creature,
+        "artifacts" => CardType::Artifact,
+        "enchantments" => CardType::Enchantment,
+        "lands" => CardType::Land,
+        "planeswalkers" => CardType::Planeswalker,
+        "instants" => CardType::Instant,
+        "sorceries" => CardType::Sorcery,
+        _ => return None,
+    })
+}
+
+/// "Each opponent who controls more creatures than you can't cast creature
+/// spells. The same is true for artifacts and enchantments." / "Each opponent
+/// who controls more lands than you can't play lands." (Ward of Bones): the
+/// prohibition applies to each opponent who currently controls more permanents
+/// of that type than you (CR 601.3, 305.2a), re-evaluated continuously.
+fn parse_each_opponent_controls_more_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::types::CardType;
+    let clean = trim_edge_punctuation(tokens);
+    let mut sentences = clean
+        .split(|token| token.is_period())
+        .filter(|sentence| !sentence.is_empty());
+    let Some(first) = sentences.next() else {
+        return Ok(None);
+    };
+    let words = crate::lexer::token_word_refs(first);
+    let (compared, action) = match words.as_slice() {
+        [
+            "each",
+            "opponent",
+            "who",
+            "controls",
+            "more",
+            compared,
+            "than",
+            "you",
+            "can't" | "cant" | "cannot",
+            action @ ..,
+        ] => (*compared, action),
+        _ => return Ok(None),
+    };
+    let Some(compared_type) = plural_card_type_word(compared) else {
+        return Ok(None);
+    };
+    let mut types = vec![compared_type];
+    let plays_lands = match action {
+        ["play", "lands"] if compared_type == CardType::Land => true,
+        ["cast", spell_type, "spells"] if plural_card_type_word(&format!("{spell_type}s")) == Some(compared_type)
+            || (*spell_type == "sorcery" && compared_type == CardType::Sorcery) => false,
+        _ => return Ok(None),
+    };
+    if let Some(second) = sentences.next() {
+        let words = crate::lexer::token_word_refs(second);
+        let ["the", "same", "is", "true", "for", rest @ ..] = words.as_slice() else {
+            return Ok(None);
+        };
+        for word in rest {
+            if matches!(*word, "and" | "," | "or") {
+                continue;
+            }
+            let Some(card_type) = plural_card_type_word(word) else {
+                return Ok(None);
+            };
+            types.push(card_type);
+        }
+    }
+    if sentences.next().is_some() || (plays_lands && types.len() > 1) {
+        return Ok(None);
+    }
+    let display = crate::lexer::render_token_slice(&clean).trim().to_string();
+    let abilities = types
+        .into_iter()
+        .map(|card_type| {
+            let player = PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                player: Box::new(PlayerFilter::You),
+                filter: Box::new(ObjectFilter::default().with_type(card_type)),
+                fewer: false,
+            };
+            let restriction = if plays_lands {
+                crate::effect::Restriction::PlayLandsMatching(player, ObjectFilter::default())
+            } else {
+                crate::effect::Restriction::cast_spells_matching(
+                    player,
+                    ObjectFilter::default().with_type(card_type),
+                )
+            };
+            StaticAbility::restriction(restriction, display.clone())
+        })
+        .collect();
+    Ok(Some(abilities))
+}
+
+/// "You draw cards from the bottom of your library rather than the top."
+/// (River Song): a lasting rule on which card the controller's draws take
+/// (CR 121.1).
+fn parse_you_draw_cards_from_bottom_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use crate::grammar::primitives;
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &clean,
+        primitives::phrase(&[
+            "you", "draw", "cards", "from", "the", "bottom", "of", "your", "library", "rather",
+            "than", "the", "top",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::draw_from_bottom(PlayerFilter::You),
+        "You draw cards from the bottom of your library rather than the top".to_string(),
+    )))
+}
+
 /// "Players skip their untap steps." (Stasis), "Each player skips their untap
 /// step.", "Skip your untap step." (CR 502, 614.10).
 fn parse_skip_untap_steps_line(
@@ -2775,6 +3101,101 @@ fn parse_skip_untap_steps_line(
 /// grant functioning from the graveyard, checked when the card is cast,
 /// CR 601.3). Both the permission and the condition are read by their shared
 /// grammars; an unreadable condition declines the line.
+/// "You can't play lands if this creature was cast this turn." (Rock
+/// Jockey): a land-play prohibition on its controller while this permanent
+/// was cast this turn. A permanent that was cast and entered this turn is
+/// exactly one cast this turn (a spell resolves in the turn it's cast).
+fn parse_cant_play_lands_if_source_cast_this_turn_line(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    let noun = match words.as_slice() {
+        [
+            "you",
+            "can't" | "cant" | "cannot",
+            "play",
+            "lands",
+            "if",
+            "this",
+            noun @ ("creature" | "permanent" | "artifact" | "enchantment"),
+            "was",
+            "cast",
+            "this",
+            "turn",
+        ] => *noun,
+        _ => return None,
+    };
+    let surface = ironsmith_core::SourceReferenceSurface::ThisPermanentType(noun.to_string());
+    let cast_this_turn = PredicateAst::And(
+        Box::new(PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceWasCast {
+                surface: surface.clone(),
+            },
+        )),
+        Box::new(PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn {
+                surface,
+            },
+        )),
+    );
+    Some(
+        StaticAbility::restriction(
+            crate::effect::Restriction::PlayLandsMatching(
+                PlayerFilter::You,
+                ObjectFilter::default(),
+            ),
+            "You can't play lands if this creature was cast this turn".to_string(),
+        )
+        .with_condition(cast_this_turn),
+    )
+}
+
+/// "You may cast this card from your graveyard, but not from anywhere else."
+/// (Haakon, Stromgald Scourge): the graveyard cast permission plus a cast
+/// restriction checked where the card is when it is proposed (CR 601.3e) —
+/// castable only from the graveyard, whatever other permission applies.
+fn parse_source_graveyard_cast_only_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    const PERMISSION: &[&str] = &["you", "may", "cast", "this", "card", "from", "your", "graveyard"];
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(&clean, primitives::phrase(PERMISSION)) else {
+        return Ok(None);
+    };
+    let rest = crate::lexer::trim_lexed_commas(rest);
+    let Some(((), tail)) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["but", "not", "from", "anywhere", "else"]),
+    ) else {
+        return Ok(None);
+    };
+    if !tail.is_empty() {
+        return Ok(None);
+    }
+    let permission_len = clean.len() - rest.len();
+    let permission_tokens = trim_edge_punctuation(&clean[..permission_len]);
+    let Some(mut abilities) =
+        parse_static_ability_ast_line_lexed_single_without_leading_condition(&permission_tokens)?
+    else {
+        return Ok(None);
+    };
+    if abilities.is_empty() {
+        return Ok(None);
+    }
+    abilities.push(
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::only_if(
+                ironsmith_core::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
+            ),
+            "You can cast this card only from your graveyard".to_string(),
+        )
+        .into(),
+    );
+    Ok(Some(abilities))
+}
+
 fn parse_source_graveyard_cast_trailing_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -2851,6 +3272,12 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![StaticAbilityAst::Static(
             ability.with_condition(condition),
         )]));
+    }
+    if let Some(ability) = parse_cant_play_lands_if_source_cast_this_turn_line(tokens) {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
+    if let Some(abilities) = parse_source_graveyard_cast_only_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_source_graveyard_cast_trailing_condition_line(tokens)? {
         return Ok(Some(abilities));
@@ -4509,6 +4936,18 @@ pub fn parse_choose_card_name_as_enters_line(
     else {
         return Ok(None);
     };
+    if crate::lexer::token_word_refs(tail_tokens)
+        == [
+            "you", "and", "an", "opponent", "each", "choose", "a", "card", "name", "other",
+            "than", "a", "basic", "land", "card", "name",
+        ]
+    {
+        return Ok(Some(
+            StaticAbility::you_and_an_opponent_choose_nonbasic_card_names_as_enters(format!(
+                "As {display_subject} enters, you and an opponent each choose a card name other than a basic land card name."
+            )),
+        ));
+    }
     if early_static_facts::parse_choose_card_name_tail_tokens(tail_tokens).is_none() {
         return Ok(None);
     }

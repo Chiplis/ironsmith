@@ -3216,12 +3216,20 @@ pub struct MoveToZoneEffect {
     /// Membership is bound before the native batch prepares any replacement.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub tagged_destinations: Vec<(crate::tag::TagKey, crate::zone::Zone)>,
+    /// "put ... onto the battlefield blocking that creature" (Aetherplasm):
+    /// the attacker the entering creature blocks (CR 509.4; it was never
+    /// declared as a blocker). Appended with a serde default.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub enters_blocking: Option<ChooseSpec>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum MoveToZoneAttackTargetMode {
     PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+    /// "tapped and attacking that opponent" (Kaalia of the Vast): the named
+    /// player itself (CR 508.4). Appended to preserve serialized ordinals.
+    Player(PlayerFilter),
 }
 
 impl MoveToZoneEffect {
@@ -3249,7 +3257,14 @@ impl MoveToZoneEffect {
             enters_face_down: false,
             enters_transformed: false,
             transfer_exiled_with_source_links: false,
+            enters_blocking: None,
         }
+    }
+
+    /// The entering creature blocks the attacker `attacker` names.
+    pub fn blocking(mut self, attacker: ChooseSpec) -> Self {
+        self.enters_blocking = Some(attacker);
+        self
     }
 
     pub fn to_top_of_library(target: ChooseSpec) -> Self {
@@ -3358,6 +3373,10 @@ impl MoveToZoneEffect {
         self.attack_target_mode(
             MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player),
         )
+    }
+
+    pub fn attacking_player_only(self, player: PlayerFilter) -> Self {
+        self.attack_target_mode(MoveToZoneAttackTargetMode::Player(player))
     }
 
     pub fn face_down(mut self) -> Self {

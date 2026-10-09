@@ -4923,7 +4923,8 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::MostCardsInHand
-        | PlayerFilter::CastCardTypeThisTurn(_) => true,
+        | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_) => true,
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)

@@ -10137,6 +10137,9 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     if let Some(compact) = describe_leading_duration_wrapped_modifications(effects) {
         return Some(compact);
     }
+    if let Some(compact) = describe_this_turn_and_next_turn_restrictions(effects) {
+        return Some(compact);
+    }
     if let Some(compact) =
         describe_coordinated_target_player_cast_and_activation_restrictions(effects, true)
     {
@@ -13966,6 +13969,60 @@ fn describe_optional_return_with_base_pt_and_haste(effects: &[Effect]) -> Option
         "{}. It has base power and toughness {power}/{toughness}. It gains haste until end of turn",
         returned_text.trim().trim_end_matches('.')
     ))
+}
+
+/// "This turn and next turn, creatures can't attack, and players and
+/// permanents can't be the targets of spells or activated abilities." (Peace
+/// Talks): restrictions sharing the leading two-turn duration render as one
+/// clause list behind that duration, as printed. The player and permanent
+/// untargetability pair shares one clause.
+fn describe_this_turn_and_next_turn_restrictions(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+    let cants = effects
+        .iter()
+        .map(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::CantEffect>()
+                .filter(|cant| {
+                    cant.duration == crate::effect::Until::EndOfTurn
+                        && cant.start == crate::effect::RestrictionStart::Immediate
+                        && cant.duration_surface
+                            == crate::effect::RestrictionDurationSurface::ThisTurnAndNextTurn
+                })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let mut clauses: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < cants.len() {
+        if let (
+            crate::effect::Restriction::BeTargetedPlayerFrom(PlayerFilter::Any, player_sources),
+            Some(next),
+        ) = (&cants[index].restriction, cants.get(index + 1))
+            && let crate::effect::Restriction::BeTargetedFrom(objects, object_sources) =
+                &next.restriction
+            && object_sources == player_sources
+            && objects == &ObjectFilter::permanent()
+        {
+            let restricted = describe_restriction(&next.restriction);
+            let tail = restricted
+                .find(" can't")
+                .map(|at| restricted[at..].replace("can't be the target of", "can't be the targets of"))?;
+            clauses.push(format!("players and permanents{tail}"));
+            index += 2;
+            continue;
+        }
+        clauses.push(lowercase_first(&describe_restriction(&cants[index].restriction)));
+        index += 1;
+    }
+    let body = match clauses.as_slice() {
+        [only] => only.clone(),
+        [first, second] => format!("{first}, and {second}"),
+        [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+        [] => return None,
+    };
+    Some(format!("This turn and next turn, {body}"))
 }
 
 /// Preserve an authored leading duration wrapped around one coordinated,

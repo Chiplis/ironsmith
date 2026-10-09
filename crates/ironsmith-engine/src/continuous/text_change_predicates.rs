@@ -72,7 +72,8 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
         | PlayerFilter::Active | PlayerFilter::Defending | PlayerFilter::Attacking
         | PlayerFilter::DamagedPlayer | PlayerFilter::EffectController | PlayerFilter::Specific(_)
         | PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied | PlayerFilter::MostCardsInHand
-        | PlayerFilter::CastCardTypeThisTurn(_) | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::CastCardTypeThisTurn(_) | PlayerFilter::TurnHistory(_)
+        | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer | PlayerFilter::TaggedPlayer(_) | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {}

@@ -714,6 +714,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
     use ironsmith_core::Restriction as R;
     match restriction {
         R::AdditionalLandPlays(player, _) | R::NoMaximumHandSize(player) | R::GainLife(player)
+        | R::DrawFromBottom(player) | R::ActivateAbilities(player)
         | R::SearchLibraries(player) | R::SearchOwnLibraryFromOwnEffects(player)
         | R::CastSpellsOnlyAsSorcery(player) | R::ActivateNonManaAbilities(player)
         | R::DrawCards(player) | R::DrawExtraCards(player) | R::PoisonCounters(player)
@@ -723,6 +724,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             *player = rewrite_player_filter_words(player, change)?;
         }
         R::CastSpellsMatching(player, filter) | R::CastMoreThanOneSpellEachTurn(player, filter)
+        | R::CastMoreThanNSpellsEachTurn { player, spells: filter, .. }
         | R::BeTargetedPlayerFrom(player, filter) | R::PlayerHexproofFrom(player, filter)
         | R::PlayLandsMatching(player, filter)
         | R::AttackPlayerOrPlaneswalkersControlledBy { attackers: filter, player }
@@ -749,7 +751,8 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::MaximumBlockers { filter, .. }
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }
-        | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker) => {
+        | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
+        | R::AttackPermanents { attackers: blockers, permanents: attacker } => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
         }
@@ -758,6 +761,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             optional_filter(&mut cause.source_filter, change)?;
             // Cause controller is a closed relation, not a PlayerFilter.
         }
+        R::AttackTax(rule) => rule.attackers = rewrite_filter_words(&rule.attackers, change)?,
         R::PreventDamage | R::PreventCombatDamage | R::AttackYouUnlessControllerPaysPerAttacker(_, _) => {}
     }
     Ok(())

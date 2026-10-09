@@ -3995,6 +3995,10 @@ pub enum RestrictionDurationSurface {
     /// steps. Unlike the other surfaces this one is executable: the
     /// restriction survives the first `count - 1` of those steps.
     NextUntapSteps(u32),
+    /// "This turn and next turn, ..." (Peace Talks): an end-of-turn duration
+    /// that spans through the end of the next turn (CR 611.2a). The engine
+    /// extends the restriction's end-of-turn expiry by one turn. Appended.
+    ThisTurnAndNextTurn,
 }
 
 impl RestrictionDurationSurface {

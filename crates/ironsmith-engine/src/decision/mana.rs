@@ -1531,14 +1531,22 @@ pub(crate) fn violates_any_cast_limit(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> bool {
-    game.effect_store
-        .cant_effects
-        .cast_limit_filters_for_player(player)
+    let cant = &game.effect_store.cant_effects;
+    cant.cast_limit_filters_for_player(player)
         .is_some_and(|filters| {
             filters
                 .iter()
                 .any(|spell_filter| violates_cast_limit(game, player, spell, spell_filter))
         })
+        || cant
+            .counted_cast_limits_for_player(player)
+            .is_some_and(|limits| {
+                limits.iter().any(|(spell_filter, maximum)| {
+                    spell_matches_cast_filter(game, spell, spell_filter)
+                        && spells_cast_this_turn_matching_filter(game, player, spell_filter)
+                            >= *maximum
+                })
+            })
 }
 
 pub(crate) fn violates_any_cant_cast_restriction(
@@ -2188,6 +2196,19 @@ pub(crate) fn spell_cast_restrictions_allow(
             let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
                 return true;
             };
+            // "You may cast this card from your graveyard, but not from
+            // anywhere else" (Haakon): where the card is cast from is checked
+            // at the proposal, against the zone the card is in (CR 601.3e),
+            // never against the stack it is moving to.
+            if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(
+                ironsmith_core::Condition::SourceIsInZone(zone),
+            )) = &kind.condition
+            {
+                return kind
+                    .timing
+                    .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing))
+                    && spell.zone == *zone;
+            }
             // A typed condition reads the spell itself as its source.
             if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) =
                 &kind.condition
@@ -8491,6 +8512,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     if game.controller_of(object) != player
         || object.zone != Zone::Battlefield
         || !ability.functions_in(&object.zone)
+        || !game.can_activate_abilities(player)
     {
         return None;
     }

@@ -379,6 +379,19 @@ fn normalize_restriction_for_resolution(
                 ),
             )
         }
+        // CR 107.3, 611.2a: War Tax's {X} is the value announced for this
+        // activation; it is fixed when the effect begins, not re-read later.
+        Restriction::AttackTax(rule) => {
+            let mut rule = rule.clone();
+            if !matches!(rule.mana_per_attacker, crate::effect::Value::Fixed(_))
+                && let Ok(amount) =
+                    crate::effects::helpers::resolve_value(game, &rule.mana_per_attacker, ctx)
+            {
+                rule.mana_per_attacker = crate::effect::Value::Fixed(amount.max(0));
+            }
+            rule.attackers = bind_restriction_target_players(&rule.attackers, ctx, game);
+            Restriction::AttackTax(rule)
+        }
         _ => restriction.clone(),
     }
 }
@@ -698,6 +711,15 @@ impl EffectExecutor for CantEffect {
                 starts_next_turn_of,
                 ctx.tagged_objects.clone(),
             );
+            // "This turn and next turn" (CR 611.2a): the end-of-turn duration
+            // runs through the end of the turn after this one.
+            if self.duration_surface == ironsmith_core::RestrictionDurationSurface::ThisTurnAndNextTurn
+                && matches!(duration, Until::EndOfTurn)
+                && starts_next_turn_of.is_none()
+                && let Some(added) = game.effect_store.restriction_effects.last_mut()
+            {
+                added.expires_end_of_turn = added.expires_end_of_turn.saturating_add(1);
+            }
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())
