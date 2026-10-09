@@ -152,12 +152,22 @@ pub fn parse_pregame_battlefield_shape(
 }
 
 pub fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAnthemHead {
-    if phrase_span(tokens, &["until", "end", "of", "turn"]).is_some() {
-        return ComposedAnthemHead::Temporary;
+    let mut quoted = false;
+    let mut action = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote { quoted = !quoted; continue; }
+        if quoted { continue; }
+        // A duration in a quoted activation belongs to that activation,
+        // not to the enclosing permanent static grant.
+        if tokens.get(index..index + 4).is_some_and(|part| part.iter()
+            .zip(["until", "end", "of", "turn"]).all(|(token, word)| token.is_word(word))) {
+            return ComposedAnthemHead::Temporary;
+        }
+        if action.is_none() && token.is_any_word(&["get", "gets", "have", "has"]) {
+            action = Some(TokenBoundary { token: index });
+        }
     }
-    ComposedAnthemHead::Permanent {
-        action: first_token_word(tokens, &["get", "gets", "have", "has"]),
-    }
+    ComposedAnthemHead::Permanent { action }
 }
 
 pub fn parse_as_enters_subject<'a>(
