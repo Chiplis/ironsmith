@@ -779,6 +779,13 @@ fn compiler_activation_cost_component_reference(
                 (crate::tag::CompilerReferenceTag::CostExiledTop.bind()).into(),
             ))
         }
+        // "Exile a card from your hand: ... the card exiled this way"
+        // (Holistic Wisdom): cost payment publishes the exiled card.
+        CompilerCost::ExileFromHand { .. } => {
+            Some(CompilerActivationCostObjectReference::Tagged(
+                (crate::tag::CompilerReferenceTag::CostExiledFromHand.bind()).into(),
+            ))
+        }
         CompilerCost::ReturnChosenToHand { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;

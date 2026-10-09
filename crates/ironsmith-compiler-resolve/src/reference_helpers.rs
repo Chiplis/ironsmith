@@ -99,6 +99,7 @@ fn is_exiled_collection_reference_tag(tag: &str) -> bool {
 fn is_cost_exiled_reference_tag(tag: &TagKey) -> bool {
     crate::tag::CompilerCostObjectTag::Exile.matches(tag)
         || tag.as_str() == crate::tag::CompilerReferenceTag::CostExiledTop.as_str()
+        || tag.as_str() == crate::tag::CompilerReferenceTag::CostExiledFromHand.as_str()
 }
 
 pub fn is_you_player_filter(filter: &PlayerFilter) -> bool {

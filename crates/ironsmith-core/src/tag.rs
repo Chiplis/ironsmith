@@ -56,6 +56,9 @@ pub const EXILED_BY_YOU_TAG: &str = "__exiled_by_you__";
 /// The exact new object created by a zone-change replacement before its
 /// replacement follow-up effects execute.
 pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";
+/// The card(s) an "Exile a card from your hand" activation cost exiled,
+/// published by cost payment to the ability ("the card exiled this way").
+pub const COST_EXILED_FROM_HAND_TAG: &str = "__cost_exiled_from_hand__";
 
 /// Runtime tag for a card explicitly referenced later as "the exiled card".
 pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
