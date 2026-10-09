@@ -2821,6 +2821,56 @@ fn parse_skip_untap_steps_line(
 /// grant functioning from the graveyard, checked when the card is cast,
 /// CR 601.3). Both the permission and the condition are read by their shared
 /// grammars; an unreadable condition declines the line.
+/// "You can't play lands if this creature was cast this turn." (Rock
+/// Jockey): a land-play prohibition on its controller while this permanent
+/// was cast this turn. A permanent that was cast and entered this turn is
+/// exactly one cast this turn (a spell resolves in the turn it's cast).
+fn parse_cant_play_lands_if_source_cast_this_turn_line(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    let noun = match words.as_slice() {
+        [
+            "you",
+            "can't" | "cant" | "cannot",
+            "play",
+            "lands",
+            "if",
+            "this",
+            noun @ ("creature" | "permanent" | "artifact" | "enchantment"),
+            "was",
+            "cast",
+            "this",
+            "turn",
+        ] => *noun,
+        _ => return None,
+    };
+    let surface = ironsmith_core::SourceReferenceSurface::ThisPermanentType(noun.to_string());
+    let cast_this_turn = PredicateAst::And(
+        Box::new(PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceWasCast {
+                surface: surface.clone(),
+            },
+        )),
+        Box::new(PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn {
+                surface,
+            },
+        )),
+    );
+    Some(
+        StaticAbility::restriction(
+            crate::effect::Restriction::PlayLandsMatching(
+                PlayerFilter::You,
+                ObjectFilter::default(),
+            ),
+            "You can't play lands if this creature was cast this turn".to_string(),
+        )
+        .with_condition(cast_this_turn),
+    )
+}
+
 /// "You may cast this card from your graveyard, but not from anywhere else."
 /// (Haakon, Stromgald Scourge): the graveyard cast permission plus a cast
 /// restriction checked where the card is when it is proposed (CR 601.3e) —
@@ -2942,6 +2992,9 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![StaticAbilityAst::Static(
             ability.with_condition(condition),
         )]));
+    }
+    if let Some(ability) = parse_cant_play_lands_if_source_cast_this_turn_line(tokens) {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
     }
     if let Some(abilities) = parse_source_graveyard_cast_only_line(tokens)? {
         return Ok(Some(abilities));
