@@ -50,4 +50,12 @@ pub enum ReplacedEventSpec {
     /// remove it from combat — every time, and "can't be regenerated" turns it
     /// off (CR 701.19c). The program is the engine's regeneration.
     SourceDestructionRegenerates,
+    /// "If a permanent with a wind counter on it would untap during its
+    /// controller's untap step" (Freyalise's Winds): a matching permanent's
+    /// untap, optionally only the untap step's own untap (CR 502.3). The
+    /// program's "it" is that permanent.
+    Untap {
+        object: ObjectFilter,
+        during_controllers_untap_step: bool,
+    },
 }

@@ -278,5 +278,25 @@
   "toughness": "1",
   "loyalty": null,
   "oracle_text": "If this creature would be destroyed, regenerate it.\n{1}: This creature can't be regenerated this turn. Only your opponents may activate this ability."
+ },
+ {
+  "name": "Freyalise's Winds",
+  "oracle_id": "ffeb792a-6df0-46c1-badc-4deb857f7d48",
+  "mana_cost": "{2}{G}{G}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Whenever a permanent becomes tapped, put a wind counter on it.\nIf a permanent with a wind counter on it would untap during its controller's untap step, remove all wind counters from it instead."
+ },
+ {
+  "name": "Bewitching Leechcraft",
+  "oracle_id": "a5d803bc-7fd4-4570-8cd6-cb138727a66e",
+  "mana_cost": "{1}{U}",
+  "type_line": "Enchantment — Aura",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Enchant creature\nWhen this Aura enters, tap enchanted creature.\nEnchanted creature has \"If this creature would untap during your untap step, remove a +1/+1 counter from it instead. If you do, untap it.\" (Otherwise, it doesn't untap.)"
  }
 ]

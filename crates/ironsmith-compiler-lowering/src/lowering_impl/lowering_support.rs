@@ -5643,6 +5643,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                 event,
                 ironsmith_core::ReplacedEventSpec::Destroy { .. }
                     | ironsmith_core::ReplacedEventSpec::ZoneChange { .. }
+                    | ironsmith_core::ReplacedEventSpec::Untap { .. }
             ) {
                 ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
             }

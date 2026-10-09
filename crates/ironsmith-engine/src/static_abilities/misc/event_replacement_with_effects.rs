@@ -73,7 +73,8 @@ impl StaticAbilityKind for EventReplacementWithEffects {
             ReplacedEventSpec::DamageToPlayer { .. }
             | ReplacedEventSpec::DamageToObject { .. }
             | ReplacedEventSpec::LifeGain { .. }
-            | ReplacedEventSpec::DrawInstruction { .. } => ReplacementEffect::with_matcher(
+            | ReplacedEventSpec::DrawInstruction { .. }
+            | ReplacedEventSpec::Untap { .. } => ReplacementEffect::with_matcher(
                 source,
                 controller,
                 ReplacedEventMatcher {
@@ -170,6 +171,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::LifeGain { .. } => kind == EventKind::LifeGain,
             ReplacedEventSpec::DrawInstruction { .. } => kind == EventKind::KeywordAction,
+            ReplacedEventSpec::Untap { .. } => kind == EventKind::BecomeUntapped,
             // Installed through their dedicated matchers instead.
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
@@ -228,6 +230,27 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 };
                 player.matches_player(gain.player, &ctx.filter_ctx)
             }
+            ReplacedEventSpec::Untap {
+                object,
+                during_controllers_untap_step,
+            } => {
+                let Some(untap) = downcast_event::<crate::events::UntapEvent>(event) else {
+                    return false;
+                };
+                let Some(permanent) = ctx.game.object(untap.permanent) else {
+                    return false;
+                };
+                if *during_controllers_untap_step
+                    && !(ctx.game.turn.step == Some(crate::game_state::Step::Untap)
+                        && ctx
+                            .game
+                            .turn_players()
+                            .contains(&ctx.game.controller_of(permanent)))
+                {
+                    return false;
+                }
+                object.matches(permanent, &ctx.filter_ctx, ctx.game)
+            }
             ReplacedEventSpec::DrawInstruction { player, minimum } => {
                 let Some(action) =
                     downcast_event::<crate::events::KeywordActionEvent>(event)
@@ -267,6 +290,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::SourceDestructionRegenerates => {
                 "When this permanent would be destroyed".to_string()
+            }
+            ReplacedEventSpec::Untap { .. } => {
+                "When a matching permanent would untap".to_string()
             }
             ReplacedEventSpec::DrawInstruction { minimum, .. } => {
                 format!("When a matching player would draw {minimum} or more cards")

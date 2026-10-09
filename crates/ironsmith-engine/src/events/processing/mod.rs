@@ -4001,6 +4001,19 @@ pub(crate) fn prepare_untap_with_execution_context(
     } = &original
     {
         let targets = untap_program_targets(context)?;
+        // "remove all wind counters from it instead" (Freyalise's Winds): the
+        // program's "it" is the permanent that would have untapped.
+        let it_snapshot = crate::events::downcast_event::<crate::events::UntapEvent>(
+            context.event.inner(),
+        )
+        .and_then(|untap| game.object(untap.permanent))
+        .map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
         let mut result = EffectOutcome::replaced();
         result.set_value(crate::effect::OutcomeValue::Count(0));
         Some(crate::effects::replacement::PreparedReplacementOriginal {
@@ -4017,7 +4030,10 @@ pub(crate) fn prepare_untap_with_execution_context(
             original: result,
             bindings: crate::effects::replacement::ReplacementProgramBindings {
                 targets,
-                object_tags: Vec::new(),
+                object_tags: vec![
+                    ("it".into(), it_snapshot.clone()),
+                    ("__it__".into(), it_snapshot),
+                ],
             },
         })
     } else {

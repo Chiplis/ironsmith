@@ -94,3 +94,16 @@ fn would_be_destroyed_regenerate_it_is_the_regeneration_replacement() {
         assert_eq!(game.object(clergy).map(|object| object.zone), Some(Zone::Battlefield));
     }
 }
+
+#[test]
+fn untap_step_untaps_are_replaced_by_instead_programs() {
+    for (name, fragment) in [("Freyalise's Winds", "Wind"), ("Bewitching Leechcraft", "PlusOnePlusOne")] {
+        for definition in definitions(name) {
+            let debug = format!("{definition:?}");
+            assert!(debug.contains("EventReplacementWithEffects"), "{name}: {debug}");
+            assert!(debug.contains("Untap"), "{name}: {debug}");
+            assert!(debug.contains("during_controllers_untap_step: true"), "{name}: {debug}");
+            assert!(debug.contains(fragment), "{name}: {debug}");
+        }
+    }
+}

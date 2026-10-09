@@ -27,6 +27,7 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         ReplacedEventSpec::ZoneChange { .. } => &[],
         ReplacedEventSpec::DrawInstruction { .. } => &[],
         ReplacedEventSpec::SourceDestructionRegenerates => &[],
+        ReplacedEventSpec::Untap { .. } => &[],
     }
 }
 
@@ -145,6 +146,20 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             (minimum >= 2).then_some(ReplacedEventSpec::DrawInstruction {
                 player: player_subject(subject)?,
                 minimum,
+            })
+        }
+        // "If a permanent with a wind counter on it would untap during its
+        // controller's untap step" (CR 502.3).
+        ["untap", rest @ ..] => {
+            let during_controllers_untap_step = match rest {
+                [] => false,
+                ["during", "its", "controller's" | "controllers", "untap", "step"]
+                | ["during", "your", "untap", "step"] => true,
+                _ => return None,
+            };
+            Some(ReplacedEventSpec::Untap {
+                object: object_subject(header, subject)?,
+                during_controllers_untap_step,
             })
         }
         // "If an opponent would gain life".
