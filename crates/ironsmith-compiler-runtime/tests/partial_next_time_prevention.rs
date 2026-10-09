@@ -99,5 +99,7 @@ fn forcefield_prevents_all_but_one_combat_damage_from_a_chosen_unblocked_creatur
         let debug = format!("{:?}", shields[0].source);
         assert!(debug.contains("ChoiceMatching"), "{debug}");
         assert!(debug.contains("Creature"), "{debug}");
+        // The choice is limited to unblocked creatures, not any creature.
+        assert!(debug.contains("unblocked: true"), "{debug}");
     }
 }

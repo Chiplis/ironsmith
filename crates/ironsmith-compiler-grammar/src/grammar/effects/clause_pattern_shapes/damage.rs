@@ -263,6 +263,17 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
         }
         if is_shadow_word(token) {
             filter = filter.with_static_ability(StaticAbilityId::Shadow);
+            continue;
+        }
+        // "an unblocked creature of your choice" (Forcefield): combat status
+        // is part of the source description, not a word to skip.
+        match word.to_ascii_lowercase().as_str() {
+            "unblocked" => filter.unblocked = true,
+            "attacking" => filter.attacking = true,
+            "blocking" => filter.blocking = true,
+            "tapped" => filter.tapped = true,
+            "untapped" => filter.untapped = true,
+            _ => {}
         }
     }
     filter.colors = colors;
