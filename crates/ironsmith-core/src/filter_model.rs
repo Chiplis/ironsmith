@@ -2199,6 +2199,11 @@ pub struct ObjectFilter {
     pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
+    /// "spells that share a color with the spell most recently cast this
+    /// turn" (Mana Maze): the candidate shares at least one color with the
+    /// last spell cast this turn by any player. Appended with a serde default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_color_with_last_spell_cast_this_turn: bool,
     /// Exact ordinal among spells matching this filter that the caster has
     /// cast this turn. `None` is the ordinary unrestricted set; `Some(2)` is
     /// the reusable surface used by "the second spell you cast each turn".
@@ -4681,6 +4686,10 @@ impl ObjectFilter {
         }
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
+        }
+        if self.shares_color_with_last_spell_cast_this_turn {
+            post_noun_qualifiers
+                .push("that share a color with the spell most recently cast this turn".to_string());
         }
         if let Some(minimum) = self.spell_cast_minimum_each_turn {
             post_noun_qualifiers.push(format!(

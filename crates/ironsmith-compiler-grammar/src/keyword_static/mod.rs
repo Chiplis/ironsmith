@@ -1633,6 +1633,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_skip_untap_steps_line),
         single_static_ability_ast_rule!(parse_players_cast_spells_only_during_own_turns_line),
+        single_static_ability_ast_rule!(parse_players_cant_cast_spells_sharing_last_spell_color_line),
         multi_static_ability_ast_rule!(parse_players_cast_and_activate_only_during_own_turns_line),
         multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
         single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
@@ -2675,6 +2676,32 @@ fn parse_players_cast_spells_only_during_own_turns_line(
             excluded: Box::new(PlayerFilter::Active),
         }),
         "Players can cast spells only during their own turns".to_string(),
+    )))
+}
+
+/// "Players can't cast spells that share a color with the spell most recently
+/// cast this turn." (Mana Maze, CR 601.3, 105.4).
+fn parse_players_cant_cast_spells_sharing_last_spell_color_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    if !matches!(
+        words.as_slice(),
+        [
+            "players", "can't" | "cant" | "cannot", "cast", "spells", "that", "share", "a",
+            "color", "with", "the", "spell", "most", "recently", "cast", "this", "turn",
+        ]
+    ) {
+        return Ok(None);
+    }
+    let spells = ObjectFilter {
+        shares_color_with_last_spell_cast_this_turn: true,
+        ..ObjectFilter::default()
+    };
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, spells),
+        crate::lexer::render_token_slice(&clean).trim().to_string(),
     )))
 }
 
