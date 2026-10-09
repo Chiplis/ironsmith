@@ -80,6 +80,9 @@ fn partition_destination(
         effect_grammar::LookedCardDisposition::HandAndGraveyard => {
             Some(effect_grammar::LookedPartitionDestination::Graveyard)
         }
+        effect_grammar::LookedCardDisposition::HandAndExile => {
+            Some(effect_grammar::LookedPartitionDestination::Exile)
+        }
         effect_grammar::LookedCardDisposition::HandAndLibraryBottom(order) => {
             Some(effect_grammar::LookedPartitionDestination::LibraryBottom(order))
         }
@@ -174,6 +177,7 @@ fn move_group(
     let (zone, order) = match destination {
         effect_grammar::LookedPartitionDestination::Hand => (Zone::Hand, None),
         effect_grammar::LookedPartitionDestination::Graveyard => (Zone::Graveyard, None),
+        effect_grammar::LookedPartitionDestination::Exile => (Zone::Exile, None),
         effect_grammar::LookedPartitionDestination::LibraryTop(order)
         | effect_grammar::LookedPartitionDestination::LibraryBottom(order) => {
             (Zone::Library, Some(order))

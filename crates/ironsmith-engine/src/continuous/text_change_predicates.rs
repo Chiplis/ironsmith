@@ -44,7 +44,7 @@ pub(crate) fn rewrite_choose_spec_words(spec: &ChooseSpec, change: TextChange) -
 pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextChange) -> RewriteResult<PlayerFilter> {
     let mut rewritten = player.clone();
     match &mut rewritten {
-        PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
@@ -294,7 +294,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
             *filter = rewrite_filter_words(filter, change)?;
         }
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
-        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::CountersOn(spec, _)
+        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::ChosenColorsOf(spec)
+        | Value::CountersOn(spec, _)
         | Value::ObjectVoteCount(spec) | Value::KicksPaidOf(spec) | Value::BasePowerOf(spec) => {
             **spec = rewrite_choose_spec_words(spec, change)?;
         }
@@ -386,7 +387,9 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
         | AnthemCountExpression::CountersOnSourceWithSurface { .. }
         | AnthemCountExpression::CountersOnSourceWithPronoun { .. }
         | AnthemCountExpression::StickersOnSource { .. } | AnthemCountExpression::CountersOnAffected(_)
-        | AnthemCountExpression::BlockingSource => {}
+        | AnthemCountExpression::BlockingSource
+        | AnthemCountExpression::PlayersLostGame
+        | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_) => {}
     }
     Ok(rewritten)
 }

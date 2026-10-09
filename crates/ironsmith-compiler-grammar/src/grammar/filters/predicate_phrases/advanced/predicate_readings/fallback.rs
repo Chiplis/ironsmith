@@ -239,6 +239,7 @@ const SHAPES: &[Shape] = &[
     source_kicked_twice,
     target_player_life_total,
     card_directly_above_source,
+    same_name_object_exists,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -1213,4 +1214,47 @@ fn negated_mana_spent(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     positive[negation] = OwnedLexToken::synthetic_word("was");
     let predicate = parse_predicate(&positive).ok()?;
     Some(PredicateAst::Not(Box::new(predicate)))
+}
+
+/// "if another permanent with the same name is on the battlefield" (Winnow),
+/// "if a card with the same name is in a graveyard or a nontoken permanent
+/// with the same name is on the battlefield" (Bazaar of Wonders): an object
+/// in that zone shares a name with the referenced object; "another" excludes
+/// the referenced object itself.
+fn same_name_object_exists(words: &[&str]) -> Option<PredicateAst> {
+    let (another, rest) = match words {
+        ["another", rest @ ..] => (true, rest),
+        ["a" | "an", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let marker = rest
+        .windows(5)
+        .position(|window| window == ["with", "the", "same", "name", "is"])?;
+    let noun = &rest[..marker];
+    if noun.is_empty() {
+        return None;
+    }
+    let zone = match &rest[marker + 5..] {
+        ["on", "the", "battlefield"] => Zone::Battlefield,
+        ["in", "a" | "any", "graveyard"] => Zone::Graveyard,
+        _ => return None,
+    };
+    let tokens = crate::lexer::synthetic_word_tokens(noun.iter().copied());
+    let mut filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).ok()?;
+    filter.zone = Some(zone);
+    filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    if another {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    }
+    Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        display: Some(words.join(" ")),
+    })
 }

@@ -421,6 +421,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             })
@@ -1168,6 +1172,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
@@ -1302,7 +1307,7 @@ pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
         | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner } => {
             player_filter_references_tag(inner, tag)
         }
@@ -1696,6 +1701,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })

@@ -95,6 +95,56 @@ fn shared_spell_characteristic_count(
         .filter(|object| intersection.comparison.matches(object, &filter_ctx, game))
         .collect::<Vec<_>>();
 
+    // "for each card with the same name as that spell in your graveyard"
+    // (Locket of Yesterdays): one per comparison object sharing the
+    // characteristic, not per distinct shared value.
+    if intersection.count_matching_objects {
+        let spell_name = game
+            .current_name(spell.id)
+            .unwrap_or_else(|| spell.name.to_string());
+        let spell_colors = game
+            .current_colors(spell.id)
+            .unwrap_or_else(|| spell.colors());
+        let spell_types = game
+            .current_card_types(spell.id)
+            .unwrap_or_else(|| spell.card_types.to_vec());
+        return comparison_objects
+            .iter()
+            .filter(|object| object.id != spell.id)
+            .filter(|object| match intersection.characteristic {
+                crate::ObjectCharacteristic::Name => crate::filter::names_share(
+                    &spell_name,
+                    spell.split_other_half_name(),
+                    &game
+                        .current_name(object.id)
+                        .unwrap_or_else(|| object.name.to_string()),
+                    object.split_other_half_name(),
+                ),
+                crate::ObjectCharacteristic::Color => !game
+                    .current_colors(object.id)
+                    .unwrap_or_else(|| object.colors())
+                    .intersection(spell_colors)
+                    .is_empty(),
+                crate::ObjectCharacteristic::CardType
+                | crate::ObjectCharacteristic::PermanentType => game
+                    .current_card_types(object.id)
+                    .unwrap_or_else(|| object.card_types.to_vec())
+                    .iter()
+                    .any(|card_type| spell_types.contains(card_type)),
+                crate::ObjectCharacteristic::Subtype(family) => {
+                    let spell_subtypes = game.calculated_subtypes(spell.id);
+                    game.calculated_subtypes(object.id)
+                        .into_iter()
+                        .filter(|subtype| subtype.belongs_to_family(family))
+                        .any(|subtype| spell_subtypes.contains(&subtype))
+                }
+                crate::ObjectCharacteristic::ManaValue => {
+                    object.subject_mana_value() == spell.subject_mana_value()
+                }
+            })
+            .count() as i32;
+    }
+
     match intersection.characteristic {
         crate::ObjectCharacteristic::CardType => {
             let comparison = comparison_objects
@@ -149,6 +199,14 @@ fn shared_spell_characteristic_count(
                 .filter(|subtype| comparison.contains(subtype))
                 .count() as i32
         }
+        crate::ObjectCharacteristic::Color if intersection.against_source_chosen_colors => game
+            .current_colors(spell.id)
+            .unwrap_or_else(|| spell.colors())
+            .intersection(
+                game.chosen_colors(source)
+                    .unwrap_or(crate::color::ColorSet::COLORLESS),
+            )
+            .count() as i32,
         crate::ObjectCharacteristic::Color => {
             let comparison = comparison_objects.iter().fold(
                 crate::color::ColorSet::COLORLESS,

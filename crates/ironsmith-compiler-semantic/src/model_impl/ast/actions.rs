@@ -2433,6 +2433,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PutCounterOfChosenKind")
                 .field("target", target)
                 .finish(),
+            Self::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                kind_source,
+                target,
+                each,
+                exclude_kind_object,
+                only_if_absent,
+            }) => f
+                .debug_struct("PutCounterOfKindChosenFrom")
+                .field("kind_source", kind_source)
+                .field("target", target)
+                .field("each", each)
+                .field("exclude_kind_object", exclude_kind_object)
+                .field("only_if_absent", only_if_absent)
+                .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                 target,
                 random,

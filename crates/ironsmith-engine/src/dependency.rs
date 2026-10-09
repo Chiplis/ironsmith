@@ -1655,6 +1655,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::ColorsOf(_)
+        | Value::ChosenColorsOf(_)
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
@@ -2451,7 +2452,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
             matches!(modification.layer(), Layer::Copy)
         }
-        Value::ColorsOf(_) => matches!(modification.layer(), Layer::Color | Layer::Copy),
+        Value::ColorsOf(_) | Value::ChosenColorsOf(_) => {
+            matches!(modification.layer(), Layer::Color | Layer::Copy)
+        }
         Value::Devotion { .. } | Value::DevotionToChosenColor(_) => {
             matches!(modification.layer(), Layer::Copy)
                 || modification_can_change_type_characteristics(modification)

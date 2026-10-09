@@ -506,6 +506,7 @@ pub(crate) fn move_looked_partition_group(
     let (zone, to_top, order) = match destination {
         effect_grammar::LookedPartitionDestination::Hand => (Zone::Hand, false, None),
         effect_grammar::LookedPartitionDestination::Graveyard => (Zone::Graveyard, false, None),
+        effect_grammar::LookedPartitionDestination::Exile => (Zone::Exile, false, None),
         effect_grammar::LookedPartitionDestination::LibraryTop(order) => {
             (Zone::Library, true, Some(order))
         }
@@ -593,6 +594,9 @@ pub fn parse_inline_look_at_top_then_singleton_hand_partition(
             }
             effect_grammar::LookedCardDisposition::HandAndGraveyard => {
                 effect_grammar::LookedPartitionDestination::Graveyard
+            }
+            effect_grammar::LookedCardDisposition::HandAndExile => {
+                effect_grammar::LookedPartitionDestination::Exile
             }
         };
     Some(compose_singleton_hand_partition(

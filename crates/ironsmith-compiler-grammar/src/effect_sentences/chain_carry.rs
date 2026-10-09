@@ -180,6 +180,8 @@ fn rest_action_effect(
 ) -> EffectAst {
     match action {
         chain_grammar::RestActionShape::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        // CR 701.26a: tapping the rest of the matching permanents.
+        chain_grammar::RestActionShape::Tap => EffectAst::subject_verb_tap_all(filter),
         chain_grammar::RestActionShape::Exile => EffectAst::subject_verb_exile_all(filter, false),
         chain_grammar::RestActionShape::Sacrifice => {
             EffectAst::subject_verb_sacrifice_all(player, filter)
@@ -896,6 +898,9 @@ pub use surface_preservation::{
 fn parse_for_each_object_effect_chain_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if crate::grammar::effects::counter_marker_shapes::parse_for_each_counter_kind_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(effects) = super::search_library::parse_for_each_revealed_this_way_sentence(tokens)?
     {
         return Ok(Some(effects));

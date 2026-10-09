@@ -382,6 +382,58 @@ pub fn parse_optional_life_additional_cost_reduction_line(
 fn parse_cost_reduction_characteristic_intersection(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::CostReductionCharacteristicIntersection>, CardTextError> {
+    // "for each of the chosen colors it is" (Seal of the Guildpact): the
+    // spell's colors among the source's chosen colors.
+    if (0..tokens.len()).any(|start| {
+        crate::grammar::primitives::parse_prefix(
+            &tokens[start..],
+            crate::grammar::primitives::phrase(&[
+                "for", "each", "of", "the", "chosen", "colors", "it", "is",
+            ]),
+        )
+        .is_some()
+    }) {
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::source_chosen_colors(),
+        ));
+    }
+    // "for each card with the same name as that spell in your graveyard"
+    // (Locket of Yesterdays): one per comparison card named like the spell.
+    for start in 0..tokens.len() {
+        let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+            &tokens[start..],
+            crate::grammar::primitives::phrase(&["for", "each"]),
+        ) else {
+            continue;
+        };
+        let Some((name_start, _, after)) = crate::grammar::primitives::find_prefix(rest, || {
+            crate::grammar::primitives::phrase(&[
+                "with", "the", "same", "name", "as", "that", "spell",
+            ])
+        }) else {
+            continue;
+        };
+        let mut comparison_tokens = rest[..name_start].to_vec();
+        comparison_tokens.extend_from_slice(after);
+        let comparison_tokens = trim_commas(&comparison_tokens);
+        if comparison_tokens.is_empty() {
+            continue;
+        }
+        let comparison = parse_object_filter(&comparison_tokens, false)?;
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::new(
+                ironsmith_core::ObjectCharacteristic::Name,
+                comparison,
+            )
+            .counting_matching_objects()
+            .with_comparison_surface(
+                render_token_slice(&comparison_tokens)
+                    .trim()
+                    .trim_end_matches('.')
+                    .to_string(),
+            ),
+        ));
+    }
     let characteristic_at = |start: usize| {
         if tokens.get(start).is_some_and(|token| token.is_word("card"))
             && tokens

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Council Guardian",
+  "oracle_id": "4f212675-e34d-4387-a125-e17b25757083",
+  "oracle_text": "Will of the council — When this creature enters, starting with you, each player votes for blue, black, red, or green. This creature gains protection from each color with the most votes or tied for most votes.",
+  "text": "Mana cost: {5}{W}\nType: Creature — Giant Soldier\nPower/Toughness: 5/5\nWill of the council — When this creature enters, starting with you, each player votes for blue, black, red, or green. This creature gains protection from each color with the most votes or tied for most votes."
+ },
+ {
+  "name": "Círdan the Shipwright",
+  "oracle_id": "063e05b0-554f-4b55-9feb-e11f3927f3a6",
+  "oracle_text": "Vigilance\nSecret council — Whenever Círdan enters or attacks, each player secretly votes for a player, then those votes are revealed. Each player draws a card for each vote they received. Each player who received no votes may put a permanent card from their hand onto the battlefield.",
+  "text": "Mana cost: {3}{G}{U}\nType: Legendary Creature — Elf Noble\nPower/Toughness: 3/4\nVigilance\nSecret council — Whenever Círdan enters or attacks, each player secretly votes for a player, then those votes are revealed. Each player draws a card for each vote they received. Each player who received no votes may put a permanent card from their hand onto the battlefield."
+ }
+]

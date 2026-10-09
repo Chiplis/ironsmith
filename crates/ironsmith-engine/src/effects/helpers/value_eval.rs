@@ -514,6 +514,28 @@ pub(crate) fn resolve_wide(
         Value::ColorsOf(target_spec) => context
             .object_number(target_spec, NumericProperty::ColorCount)
             .map(i64::from),
+        // "for each of the chosen colors it is" (Tablet of the Guilds): the
+        // referenced object's colors among the source's chosen colors.
+        Value::ChosenColorsOf(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "chosen-color counts require a resolving context",
+            );
+            let chosen = game
+                .chosen_colors(ctx.source)
+                .unwrap_or(crate::color::ColorSet::COLORLESS);
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            let colors = if let Some(object) = game.object(id) {
+                game.current_colors(id).unwrap_or_else(|| object.colors())
+            } else if let ChooseSpec::Tagged(tag) = target_spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                snapshot.colors
+            } else {
+                return Err(ExecutionError::ObjectNotFound(id));
+            };
+            Ok(i64::from(colors.intersection(chosen).count()))
+        }
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
             color,

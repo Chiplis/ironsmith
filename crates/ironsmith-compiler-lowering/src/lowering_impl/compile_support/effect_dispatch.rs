@@ -1306,6 +1306,15 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::ChoosePlayerOption(choice) = effect {
+        return Ok((vec![Effect::new(choice.clone())], Vec::new()));
+    }
+    if let EffectAst::ControlVotesThisTurn = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::ControlVotesThisTurnEffect::new())],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::SetDayNight(designation) = effect {
         return Ok((
             vec![Effect::new(crate::effects::SetDayNightEffect::new(*designation))],
@@ -3270,6 +3279,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
         _ => {}
@@ -3358,6 +3368,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())

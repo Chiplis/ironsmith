@@ -6,6 +6,16 @@ pub(super) fn parse_referenced_characteristic_state(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
+    // "if it's at least one of the chosen colors" (Tablet of the Guilds): the
+    // referenced object is any of the source's chosen colors.
+    if let ["it", "is", rest @ ..] | ["its" | "it's", rest @ ..] = words.as_slice()
+        && rest == ["at", "least", "one", "of", "the", "chosen", "colors"]
+    {
+        return Ok(Some(PredicateAst::ItMatches(ObjectFilter {
+            chosen_color: true,
+            ..Default::default()
+        })));
+    }
     if let Some(reference) = demonstrative_reference_prefix(clause)
         && words.get(reference.word_len..) == Some(&["was", "blocked", "this", "turn"][..])
     {

@@ -1384,6 +1384,8 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChooseColorAsEntersSpec {
     pub excluded: Option<crate::color::Color>,
+    /// Number of different colors chosen ("choose two colors").
+    pub count: u32,
 }
 
 /// Spec for "as this becomes attached, choose a color" abilities.
@@ -1394,6 +1396,8 @@ pub struct ChooseColorAsBecomesAttachedSpec;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChoosePlayerAsEntersSpec {
     pub filter: crate::target::PlayerFilter,
+    /// Number of different players chosen ("choose two players").
+    pub count: u32,
 }
 
 /// Spec for "as this enters, note your life total" abilities.
@@ -3959,6 +3963,11 @@ impl StaticAbility {
         Self::new(ChooseColorAsEnters::new(excluded, display))
     }
 
+    /// "As this enters, choose two colors." (Seal of the Guildpact).
+    pub fn choose_colors_as_enters(count: u32, display: String) -> Self {
+        Self::new(ChooseColorAsEnters::new(None, display).with_count(count))
+    }
+
     pub fn choose_color_as_becomes_attached(display: String) -> Self {
         Self::new(ChooseColorAsBecomesAttached::new(display))
     }
@@ -3972,6 +3981,17 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(ChoosePlayerAsEnters::new(filter, display))
+    }
+
+    /// "As this enters, choose two players." (Bitter Feud, Sower of Discord).
+    pub fn choose_players_as_enters(
+        filter: crate::target::PlayerFilter,
+        count: u32,
+        display: String,
+    ) -> Self {
+        let mut ability = ChoosePlayerAsEnters::new(filter, display);
+        ability.count = count.max(1);
+        Self::new(ability)
     }
 
     pub fn note_life_total_as_enters(display: String) -> Self {

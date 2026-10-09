@@ -1537,6 +1537,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
@@ -2274,6 +2275,12 @@ fn advance_reference_frame_for_effect(
                     if matches!(target, TargetAst::Player(..)) {
                         track_target_player(target, frame);
                     }
+                }
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                    target: Some(target),
+                    ..
+                }) => {
+                    maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                     target,
@@ -3645,6 +3652,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SolveCase
         | EffectAst::GreatestManaValueTieBreakExile { .. }
         | EffectAst::SetDayNight(_)
+        | EffectAst::ChoosePlayerOption(_)
+        | EffectAst::ControlVotesThisTurn
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
         | EffectAst::ChooseFriendsOrFoes { .. }
@@ -7236,6 +7245,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
             })
@@ -8678,9 +8688,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             }) => bind_unresolved_it_in_target(target, seed_tag),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: None,
+                ..
+            }) => 0,
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
@@ -9574,7 +9592,7 @@ fn bind_unresolved_it_in_player_filter(filter: &mut PlayerFilter, seed_tag: &Tag
             bind_unresolved_it_in_player_filter(base, seed_tag)
                 + bind_unresolved_it_in_player_filter(excluded, seed_tag)
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             bind_unresolved_it_in_player_filter(base, seed_tag)
         }
         PlayerFilter::LostLifeThisTurn { base } => {
@@ -9753,6 +9771,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),
         _ => 0,

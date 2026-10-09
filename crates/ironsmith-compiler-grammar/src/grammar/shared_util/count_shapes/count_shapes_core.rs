@@ -1,6 +1,17 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    // "for each of the chosen colors it is" (Tablet of the Guilds): the
+    // referenced object's colors among the source's chosen colors.
+    if let ["for", "each", "of", "the", "chosen", "colors", "it", "is", ..] = words {
+        return Some((
+            Value::ChosenColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            8,
+        ));
+    }
     // "for each player being attacked" / "for each opponent you're attacking"
     // (Apothecary White, Amber Gristle O'Maul): the defending players of the
     // current combat (CR 506.2), not every player in the game.

@@ -742,10 +742,12 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.chosen_color {
-        let Some(chosen_color) = ctx.source.and_then(|source| game.chosen_color(source)) else {
+        // "of the chosen color" / "at least one of the chosen colors": a
+        // multi-color choice (Tablet of the Guilds) matches any chosen color.
+        let Some(chosen_colors) = ctx.source.and_then(|source| game.chosen_colors(source)) else {
             return false;
         };
-        if !object_colors.contains(chosen_color) {
+        if object_colors.intersection(chosen_colors).is_empty() {
             return false;
         }
     }
@@ -789,6 +791,25 @@ pub(super) fn matches_subject(
     // Multicolored check
     if filter.multicolored && object_colors.count() < 2 {
         return false;
+    }
+
+    // "double-faced card" (CR 712.1): a second face that isn't a split or
+    // flip half printed on the same face.
+    if filter.double_faced {
+        let (other_face, layout) = match subject {
+            ObjectSubject::Live(object) => (object.other_face, object.linked_face_layout),
+            ObjectSubject::Snapshot(snapshot) => {
+                (snapshot.other_face, snapshot.linked_face_layout)
+            }
+        };
+        if other_face.is_none()
+            || matches!(
+                layout,
+                crate::card::LinkedFaceLayout::Split | crate::card::LinkedFaceLayout::Flip
+            )
+        {
+            return false;
+        }
     }
 
     // Monocolored check

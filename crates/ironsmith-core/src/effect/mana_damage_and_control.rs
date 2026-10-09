@@ -3990,6 +3990,22 @@ pub enum RestrictionDurationSurface {
     Default,
     LeadingUntilEndOfTurn,
     LeadingUntilYourNextTurn,
+    /// "during its controller's next two untap steps" (Telekinesis): a
+    /// next-untap-step duration covering this many of that player's untap
+    /// steps. Unlike the other surfaces this one is executable: the
+    /// restriction survives the first `count - 1` of those steps.
+    NextUntapSteps(u32),
+}
+
+impl RestrictionDurationSurface {
+    /// Further untap steps a next-untap-step restriction still covers after
+    /// the first one.
+    pub fn additional_untap_steps(self) -> u32 {
+        match self {
+            Self::NextUntapSteps(count) => count.saturating_sub(1),
+            _ => 0,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

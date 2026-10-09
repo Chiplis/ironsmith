@@ -6796,6 +6796,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::ChosenColorsOf(_) => "the number of the chosen colors it is".to_string(),
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),

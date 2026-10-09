@@ -1345,6 +1345,10 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             format!("{} attached to it", strip_article(filter.description()))
         }
         AnthemCountExpression::ColorsOfAffected => "color it has".to_string(),
+        AnthemCountExpression::PlayersLostGame => "player who has lost the game".to_string(),
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
+            format!("{} mana symbol in its mana cost", color.name())
+        }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             "time it has attacked this turn".to_string()
         }
@@ -1567,6 +1571,13 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             strip_article(filter.description())
         )),
         AnthemCountExpression::ColorsOfAffected => Some("of its colors".to_string()),
+        AnthemCountExpression::PlayersLostGame => {
+            Some("player who has lost the game".to_string())
+        }
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => Some(format!(
+            "{} mana symbol in its mana cost",
+            color.name()
+        )),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
@@ -3305,6 +3316,25 @@ pub(crate) fn resolve_anthem_count_expression(
             .calculated_characteristics(source)
             .map(|chars| chars.colors.count() as i32)
             .unwrap_or(0),
+        // CR 104.3 / 800.4: a player who lost has left the game but stays in
+        // the player list.
+        AnthemCountExpression::PlayersLostGame => {
+            game.players.iter().filter(|player| player.has_lost).count() as i32
+        }
+        // Chroma (CR 702.49): mana symbols of that color in the affected
+        // object's mana cost; a hybrid symbol of that color counts.
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
+            let symbol = crate::mana::ManaSymbol::from_color(*color);
+            game.object(source)
+                .and_then(|object| object.mana_cost.as_deref())
+                .map(|cost| {
+                    cost.pips()
+                        .iter()
+                        .filter(|pip| pip.contains(&symbol))
+                        .count() as i32
+                })
+                .unwrap_or(0)
+        }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             game.creature_attack_count_this_turn(source) as i32
         }

@@ -263,6 +263,7 @@ SkipTurnEffect	ironsmith_core::SkipTurnEffect	player
 SneakCostEffect	ironsmith_core::SneakCostEffect	permanent
 SolveCaseEffect	ironsmith_core::SolveCaseEffect	permanent
 SetClassLevelEffect	ironsmith_core::SetClassLevelEffect	permanent
+SetDayNightEffect	ironsmith_core::SetDayNightEffect	permanent
 SoulbondPairEffect	ironsmith_core::SoulbondPairEffect	permanent
 SupportEffect	ironsmith_core::SupportEffect	composition-m-z
 SurveilEffect	ironsmith_core::SurveilEffect	zone-library
@@ -318,3 +319,6 @@ SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
 RippleEffect	ironsmith_core::RippleEffect	player
 RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event
 CollectManaPaymentsEffect	ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>	composition-a-l
+ChoosePlayerOptionEffect	ironsmith_core::ChoosePlayerOptionEffect	player
+ControlVotesThisTurnEffect	ironsmith_core::ControlVotesThisTurnEffect	player
+PutCounterOfKindChosenFromEffect	ironsmith_core::PutCounterOfKindChosenFromEffect	resources

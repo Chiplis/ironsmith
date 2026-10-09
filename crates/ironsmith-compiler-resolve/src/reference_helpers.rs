@@ -347,7 +347,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(base, choices);
             push_target_player_filter_choices(excluded, choices);
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             push_target_player_filter_choices(base, choices);
         }
         PlayerFilter::LostLifeThisTurn { base } => {
@@ -544,9 +544,10 @@ fn resolve_contextual_player_filter(
                 excluded: Box::new(excluded),
             }
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(resolve_contextual_player_filter(base, refs)?),
+                this_turn: *this_turn,
             }
         }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
@@ -2560,6 +2561,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ChosenColorsOf(spec) => Ok(Value::ChosenColorsOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

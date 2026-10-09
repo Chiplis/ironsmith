@@ -3,11 +3,15 @@ use super::*;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedEtbChoices {
     pub(crate) chosen_color: Option<crate::color::Color>,
+    /// "choose two colors": the chosen colors, recorded together.
+    pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
     pub(crate) chosen_basic_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
     pub(crate) chosen_card_type: Option<crate::types::CardType>,
     pub(crate) chosen_player: Option<PlayerId>,
+    /// "choose two players": the chosen players, in choice order.
+    pub(crate) chosen_player_set: Option<Vec<PlayerId>>,
     pub(crate) chosen_named_option: Option<String>,
     pub(crate) noted_life_total: Option<i32>,
     pub(crate) power_toughness_choices:
@@ -2311,7 +2315,41 @@ impl GameState {
                 if let Some(excluded) = spec.excluded {
                     options.retain(|color| *color != excluded);
                 }
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two colors" (Seal of the Guildpact): that many
+                    // different colors, recorded together.
+                    let choice_spec =
+                        crate::decisions::specs::ManaColorsSpec::restricted_different_colors(
+                            old_id,
+                            spec.count,
+                            options.clone(),
+                        );
+                    let chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let mut set = crate::color::ColorSet::COLORLESS;
+                    for color in chosen {
+                        if options.contains(&color) && set.count() < spec.count {
+                            set = set.with(color);
+                        }
+                    }
+                    // A short answer is completed with the first unchosen
+                    // options, keeping the choice at its required size.
+                    for color in &options {
+                        if set.count() >= spec.count {
+                            break;
+                        }
+                        set = set.with(*color);
+                    }
+                    choices.chosen_color_set = Some(set);
+                } else if !options.is_empty() {
                     let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
                         old_id,
                         1,
@@ -2425,7 +2463,44 @@ impl GameState {
                     })
                     .map(|player| player.id)
                     .collect::<Vec<_>>();
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two players" (Sower of Discord): that many
+                    // different players, one choice at a time.
+                    let mut remaining = options.clone();
+                    let mut picked = Vec::new();
+                    while picked.len() < spec.count as usize && !remaining.is_empty() {
+                        let display_options = remaining
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(idx, player_id)| {
+                                self.player(*player_id).map(|player| {
+                                    crate::decisions::spec::DisplayOption::new(
+                                        idx,
+                                        player.name.to_string(),
+                                    )
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        let choice_spec =
+                            crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            prospective_controller,
+                            Some(old_id),
+                            choice_spec,
+                        );
+                        if decision_maker.awaiting_choice() {
+                            return Ok(None);
+                        }
+                        let index = chosen
+                            .pop()
+                            .filter(|idx| *idx < remaining.len())
+                            .unwrap_or(0);
+                        picked.push(remaining.remove(index));
+                    }
+                    choices.chosen_player_set = Some(picked);
+                } else if !options.is_empty() {
                     let display_options = options
                         .iter()
                         .enumerate()
@@ -3275,6 +3350,9 @@ impl GameState {
             if let Some(color) = choice_store.chosen_colors.remove(&old_id) {
                 choice_store.chosen_colors.insert(new_id, color);
             }
+            if let Some(colors) = choice_store.chosen_color_sets.remove(&old_id) {
+                choice_store.chosen_color_sets.insert(new_id, colors);
+            }
             if let Some(land_type) = choice_store.chosen_land_types.remove(&old_id) {
                 choice_store.chosen_land_types.insert(new_id, land_type);
             }
@@ -3293,6 +3371,9 @@ impl GameState {
             }
             if let Some(player) = choice_store.chosen_players.remove(&old_id) {
                 choice_store.chosen_players.insert(new_id, player);
+            }
+            if let Some(players) = choice_store.chosen_player_sets.remove(&old_id) {
+                choice_store.chosen_player_sets.insert(new_id, players);
             }
             if let Some(object) = choice_store.chosen_objects.remove(&old_id) {
                 choice_store.chosen_objects.insert(new_id, object);
@@ -3550,6 +3631,9 @@ impl GameState {
         if let Some(color) = choices.chosen_color {
             self.set_chosen_color(new_id, color);
         }
+        if let Some(colors) = choices.chosen_color_set {
+            self.set_chosen_colors(new_id, colors);
+        }
         if let Some(subtype) = choices.chosen_basic_land_type {
             self.set_chosen_basic_land_type(new_id, subtype);
         }
@@ -3564,6 +3648,9 @@ impl GameState {
         }
         if let Some(player) = choices.chosen_player {
             self.set_chosen_player(new_id, player);
+        }
+        if let Some(players) = choices.chosen_player_set.clone() {
+            self.set_chosen_players(new_id, players);
         }
         if let Some(option) = choices.chosen_named_option.clone() {
             self.set_chosen_named_option(new_id, option);

@@ -1091,6 +1091,9 @@ impl GameState {
                 .chosen_colors
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_color_sets
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_basic_land_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices
@@ -1112,6 +1115,9 @@ impl GameState {
                 .chosen_players
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_player_sets
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_objects
                 .retain(|source, _| !removed_ids.contains(source));
             choices
@@ -1131,6 +1137,8 @@ impl GameState {
                 .retain(|effect| effect.controller != player && effect.target != player);
             aux.combat_choice_control_effects
                 .retain(|effect| effect.controller != player);
+            aux.vote_control_effects
+                .retain(|(controller, _)| *controller != player);
         }
 
         // Rebuild static effects after owned sources leave and control effects
@@ -2122,6 +2130,34 @@ impl GameState {
 
     pub fn combat_choice_controller_for_blockers(&self) -> Option<PlayerId> {
         self.combat_choice_controller_for(false)
+    }
+
+    /// "You choose how each player votes this turn." (Illusion of Choice):
+    /// `controller` makes every vote choice for the rest of this turn.
+    pub fn add_vote_control_this_turn(&mut self, controller: PlayerId) {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut()
+            .vote_control_effects
+            .push((controller, current_turn));
+    }
+
+    /// The player who chooses how each player votes this turn, if any; the
+    /// most recent such effect wins.
+    pub fn vote_controller_this_turn(&self) -> Option<PlayerId> {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking
+            .vote_control_effects
+            .iter()
+            .rev()
+            .find(|(_, turn)| *turn == current_turn)
+            .map(|(controller, _)| *controller)
+    }
+
+    pub fn cleanup_vote_control_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut()
+            .vote_control_effects
+            .retain(|(_, turn)| *turn != current_turn);
     }
 
     pub fn cleanup_combat_choice_control_end_of_turn(&mut self) {
@@ -3492,6 +3528,15 @@ impl GameState {
                 tagged_objects.insert(
                     crate::tag::TagKey::from(crate::tag::CHOSEN_OBJECTS_TAG),
                     vec![chosen.clone()],
+                );
+            }
+            // "one of the chosen players" (Sower of Discord): the players
+            // this source chose.
+            let chosen_players = self.chosen_players(source_id);
+            if !chosen_players.is_empty() {
+                tagged_players.insert(
+                    crate::tag::TagKey::from(crate::tag::SOURCE_CHOSEN_PLAYERS_TAG),
+                    chosen_players,
                 );
             }
             if let Some(attached_target) = source_obj.attached_to {

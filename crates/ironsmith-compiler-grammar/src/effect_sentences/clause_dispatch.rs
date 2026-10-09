@@ -162,7 +162,7 @@ fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
             player_filter_mentions_source_object(base)

@@ -6381,6 +6381,22 @@ pub fn parse_choose_color_as_enters_line(
         return Ok(None);
     };
     let tail_words = LexedClause::new(tail_tokens).word_refs();
+    // "choose two colors" (Seal of the Guildpact, Tablet of the Guilds): that
+    // many different colors, recorded together.
+    if let ["choose", count, "colors"] = tail_words.as_slice()
+        && let Some(count) = match *count {
+            "two" => Some(2u32),
+            "three" => Some(3),
+            "four" => Some(4),
+            _ => None,
+        }
+    {
+        let display = format!(
+            "As {display_subject} enters, choose {} colors.",
+            tail_words[1]
+        );
+        return Ok(Some(StaticAbility::choose_colors_as_enters(count, display)));
+    }
     let Some((consumed, excluded_color_set)) = parse_choose_color_phrase_words(&tail_words)? else {
         return Ok(None);
     };
@@ -6516,6 +6532,21 @@ pub fn parse_choose_player_as_enters_line(
         return Ok(None);
     };
     let tail_words = LexedClause::new(tail_tokens).word_refs();
+    // "choose two players" (Bitter Feud, Sower of Discord): that many
+    // different players, recorded together for "the chosen players".
+    if let ["choose", count, "players"] = tail_words.as_slice()
+        && let Some(count) = match *count {
+            "two" => Some(2u32),
+            "three" => Some(3),
+            _ => None,
+        }
+    {
+        return Ok(Some(StaticAbility::choose_players_as_enters(
+            PlayerFilter::Any,
+            count,
+            format!("As {display_subject} enters, choose {} players.", tail_words[1]),
+        )));
+    }
     let (filter, choice_surface) =
         if crate::word_primitives::parse_sequence_complete(&tail_words, &["choose", "a", "player"])
         {

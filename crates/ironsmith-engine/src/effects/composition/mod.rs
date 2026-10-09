@@ -61,6 +61,7 @@ pub(crate) use repeat_effects::{
 pub(crate) mod original_observations;
 mod repeat_process;
 mod repeat_process_prompt;
+mod player_option_choice;
 mod secret_choice;
 mod sequence;
 mod simultaneous;
@@ -178,6 +179,10 @@ pub use target_only::TargetOnlyEffect;
 pub use unless_action::UnlessActionEffect;
 pub use unless_pays::UnlessPaysEffect;
 pub use villainous_choice::VillainousChoiceEffect;
+pub use player_option_choice::{
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
+};
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
 };

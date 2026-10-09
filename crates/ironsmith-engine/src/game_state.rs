@@ -686,6 +686,9 @@ struct AuxiliaryTrackingState {
     combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
     /// Timestamp counter for combat-choice control effects.
     combat_choice_control_timestamp: u64,
+    /// "You choose how each player votes this turn" (Illusion of Choice):
+    /// (controller, turn number), latest last.
+    vote_control_effects: Vec<(PlayerId, u32)>,
     /// Highest pregame draft-note number recorded by a player for a named card.
     draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
     /// Colors selected during draft instructions, grouped by player and the
@@ -1198,6 +1201,10 @@ pub struct ChoiceStore {
     pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
     /// Chosen colors for permanents ("as this enters, choose a color").
     pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+    /// Several chosen colors for one permanent ("as this enters, choose two
+    /// colors", Seal of the Guildpact). Single-color readers keep using
+    /// `chosen_colors`; set readers union both.
+    pub chosen_color_sets: HashMap<ObjectId, crate::color::ColorSet>,
     /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
     pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen land types for permanents ("as this enters, choose a land type").
@@ -1214,6 +1221,9 @@ pub struct ChoiceStore {
     pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
     /// Chosen players for permanents ("as this enters, choose a player").
     pub chosen_players: HashMap<ObjectId, PlayerId>,
+    /// Several players chosen by one permanent ("as this enters, choose two
+    /// players", Sower of Discord), in choice order.
+    pub chosen_player_sets: HashMap<ObjectId, Vec<PlayerId>>,
     /// Singular objects chosen by a source and referenced by a later ability.
     /// Snapshots retain stable identity and last-known characteristics when the
     /// chosen object changes zones.
@@ -2235,6 +2245,9 @@ pub struct RestrictionEffectInstance {
     /// Exact affected incarnation whose current controller owns the next step.
     /// None preserves fixed-player native owners such as exert.
     pub untap_step_object: Option<ObjectId>,
+    /// Further untap steps of the same player a next-untap-step restriction
+    /// still covers after the next one ("next two untap steps").
+    pub additional_untap_steps: u32,
     /// Creation timestamp, for rule modifications that must be applied in
     /// timestamp order (maximum hand size, CR 613.11 / 402.2).
     pub timestamp: u64,
@@ -6700,6 +6713,7 @@ impl GameState {
                 expires_end_of_turn,
                 consumed_next_untap: false,
                 untap_step_object: None,
+                additional_untap_steps: 0,
                 timestamp,
             });
     }

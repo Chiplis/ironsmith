@@ -69,6 +69,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "PutCounterOfChosenKindEffect" => {
             decode_as::<ironsmith_core::PutCounterOfChosenKindEffect>(payload).map(Some)
         }
+        "PutCounterOfKindChosenFromEffect" => {
+            decode_as::<ironsmith_core::PutCounterOfKindChosenFromEffect>(payload).map(Some)
+        }
         "PutCountersEffect" => decode_as::<ironsmith_core::PutCountersEffect>(payload).map(Some),
         "RemoveAnyCountersAmongEffect" => {
             decode_as::<ironsmith_core::RemoveAnyCountersAmongEffect>(payload).map(Some)
@@ -203,6 +206,10 @@ pub(super) fn map_card_ids(
         }
         "PutCounterOfChosenKindEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::PutCounterOfChosenKindEffect,
+        >(payload, context)
+        .map(Some),
+        "PutCounterOfKindChosenFromEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::PutCounterOfKindChosenFromEffect,
         >(payload, context)
         .map(Some),
         "PutCountersEffect" => {

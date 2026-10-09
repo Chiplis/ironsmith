@@ -2971,7 +2971,7 @@ impl PlayerFilterExt for PlayerFilter {
             // Source-relative turn history requires access to GameState and
             // is evaluated by `player_filter_matches_game` below.
             PlayerFilter::AttackedBySourceThisTurn => false,
-            PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
                 base.matches_player(player, ctx)
             }
             PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, .. } => {
@@ -3099,12 +3099,16 @@ pub(crate) fn player_filter_matches_game(
                     event.attacker == source
                 })
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             let Some(source) = ctx.source else {
                 return false;
             };
             player_filter_matches_game(base, player, game, ctx)
-                && game.source_dealt_damage_to_player_this_game(source, player)
+                && if *this_turn {
+                    game.source_dealt_damage_to_player_this_turn(source, player)
+                } else {
+                    game.source_dealt_damage_to_player_this_game(source, player)
+                }
         }
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
             if !player_filter_matches_game(base, player, game, ctx) {

@@ -931,6 +931,10 @@ pub enum Value {
     /// instruction. `if_unset` applies only to a known never-made choice. Missing
     /// historical evidence is an error, not an invented zero.
     SourceChosenNumber { if_unset: Option<i32>, pair: Option<crate::LinkedExilePair> },
+    /// Number of the source's chosen colors the referenced object is ("you
+    /// gain 1 life for each of the chosen colors it is", Tablet of the
+    /// Guilds). Appended to preserve existing serialized variant ordinals.
+    ChosenColorsOf(Box<ChooseSpec>),
 }
 
 impl Value {

@@ -14,6 +14,9 @@ pub enum RestActionShape {
     Sacrifice,
     /// "chooses a card in their hand and discards the rest" (Monomania).
     Discard,
+    /// "chooses one untapped creature they control, then taps the rest"
+    /// (Regna's Sanction).
+    Tap,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +54,7 @@ pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionSh
                     .value(RestActionShape::Sacrifice),
                 alt((semantic_kw("discard"), semantic_kw("discards")))
                     .value(RestActionShape::Discard),
+                alt((semantic_kw("tap"), semantic_kw("taps"))).value(RestActionShape::Tap),
             )),
             semantic_kw("rest"),
             semantic_finish,

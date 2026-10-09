@@ -38,6 +38,12 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ChooseNamedOptionEffect" => {
             decode_as::<ironsmith_core::ChooseNamedOptionEffect>(payload).map(Some)
         }
+        "ChoosePlayerOptionEffect" => {
+            decode_as::<ironsmith_core::ChoosePlayerOptionEffect>(payload).map(Some)
+        }
+        "ControlVotesThisTurnEffect" => {
+            decode_as::<ironsmith_core::ControlVotesThisTurnEffect>(payload).map(Some)
+        }
         "ChoosePlayerEffect" => decode_as::<ironsmith_core::ChoosePlayerEffect>(payload).map(Some),
         "ChooseFriendsOrFoesEffect" => {
             decode_as::<ironsmith_core::ChooseFriendsOrFoesEffect>(payload).map(Some)
@@ -228,6 +234,14 @@ pub(super) fn map_card_ids(
         "ChooseNumberEffect" => super::card_graph::map_payload_as::<ironsmith_core::ChooseNumberEffect>(payload, context).map(Some),
         "ChooseNamedOptionEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ChooseNamedOptionEffect,
+        >(payload, context)
+        .map(Some),
+        "ChoosePlayerOptionEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChoosePlayerOptionEffect,
+        >(payload, context)
+        .map(Some),
+        "ControlVotesThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ControlVotesThisTurnEffect,
         >(payload, context)
         .map(Some),
         "ChoosePlayerEffect" => super::card_graph::map_payload_as::<

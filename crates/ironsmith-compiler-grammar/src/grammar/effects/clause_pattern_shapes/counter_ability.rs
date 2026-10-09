@@ -158,16 +158,67 @@ fn parse_source_card_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
         .parse_next(input)
 }
 
-fn parse_source_types_tail<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CardType>> {
+/// The ability source's qualities: "from an artifact source", "from a
+/// colorless source", "from another legendary source that's not a
+/// commander" (Abstruse Archaic, The Peregrine Dynamo). Stack abilities are
+/// matched through their source object.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct AbilitySourceQualifiers {
+    pub(super) card_types: Vec<CardType>,
+    pub(super) colorless: bool,
+    pub(super) legendary: bool,
+    pub(super) another: bool,
+    pub(super) noncommander: bool,
+}
+
+#[derive(Clone, Copy)]
+enum SourceAdjective {
+    CardType(CardType),
+    Colorless,
+    Legendary,
+}
+
+fn source_adjective<'a>(input: &mut LexStream<'a>) -> WResult<SourceAdjective> {
+    alt((
+        primitives::kw("colorless").value(SourceAdjective::Colorless),
+        primitives::kw("legendary").value(SourceAdjective::Legendary),
+        parse_source_card_type.map(SourceAdjective::CardType),
+    ))
+    .parse_next(input)
+}
+
+fn parse_source_types_tail<'a>(input: &mut LexStream<'a>) -> WResult<AbilitySourceQualifiers> {
     primitives::kw("from").parse_next(input)?;
-    opt(article).parse_next(input)?;
-    let types = repeat(
+    let another = opt(primitives::kw("another")).parse_next(input)?.is_some();
+    if !another {
+        opt(article).parse_next(input)?;
+    }
+    let adjectives: Vec<SourceAdjective> = repeat(
         1..,
-        (opt(connector), parse_source_card_type).map(|(_, card_type)| card_type),
+        (opt(connector), source_adjective).map(|(_, adjective)| adjective),
     )
     .parse_next(input)?;
     source_noun.parse_next(input)?;
-    Ok(types)
+    let noncommander = opt(alt((
+        primitives::phrase(&["that's", "not", "a", "commander"]),
+        primitives::phrase(&["thats", "not", "a", "commander"]),
+        primitives::phrase(&["that", "is", "not", "a", "commander"]),
+    )))
+    .parse_next(input)?
+    .is_some();
+    let mut qualifiers = AbilitySourceQualifiers {
+        another,
+        noncommander,
+        ..AbilitySourceQualifiers::default()
+    };
+    for adjective in adjectives {
+        match adjective {
+            SourceAdjective::CardType(card_type) => qualifiers.card_types.push(card_type),
+            SourceAdjective::Colorless => qualifiers.colorless = true,
+            SourceAdjective::Legendary => qualifiers.legendary = true,
+        }
+    }
+    Ok(qualifiers)
 }
 
 fn triggered_filter() -> ObjectFilter {

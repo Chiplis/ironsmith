@@ -36,6 +36,14 @@ fn option_vote_tag(option_name: &str) -> TagKey {
     TagKey::new(format!("voted_for:{}", slug))
 }
 
+/// Who chooses how `voter` votes: the player an effect such as Illusion of
+/// Choice ("You choose how each player votes this turn") names, else the
+/// voter. The voter still casts the vote and decides whether to vote an
+/// additional time.
+fn vote_chooser(game: &GameState, voter: PlayerId) -> PlayerId {
+    game.vote_controller_this_turn().unwrap_or(voter)
+}
+
 fn active_players_in_vote_order(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
     let mut players: Vec<PlayerId> = game
         .players
@@ -173,10 +181,11 @@ fn collect_votes(
         let num_votes = vote_instances_for_player(effect, game, ctx, player_id);
         for _ in 0..num_votes {
             let spec = ChoiceSpec::single(ctx.source, display_options.to_vec());
+            let chooser = vote_chooser(game, player_id);
             let chosen = make_decision(
                 game,
                 &mut ctx.decision_maker,
-                player_id,
+                chooser,
                 Some(ctx.source),
                 spec,
             );
@@ -229,10 +238,11 @@ fn collect_object_votes(
                 max,
             )
             .allow_partial_completion();
+            let chooser = vote_chooser(game, player_id);
             let chosen = make_decision(
                 game,
                 &mut ctx.decision_maker,
-                player_id,
+                chooser,
                 Some(ctx.source),
                 spec,
             );
@@ -308,12 +318,13 @@ fn collect_player_votes(
                         .map(|player| (player.name.to_string(), *candidate))
                 })
                 .collect::<Vec<_>>();
+            let chooser = vote_chooser(game, player_id);
             let Some(chosen) = (!options.is_empty())
                 .then(|| {
                     crate::decisions::ask_choose_one(
                         game,
                         &mut ctx.decision_maker,
-                        player_id,
+                        chooser,
                         ctx.source,
                         &options,
                     )

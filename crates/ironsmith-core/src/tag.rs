@@ -234,6 +234,12 @@ pub const DAMAGE_SOURCE_CONTROLLER_TAG: &str = "__damage_source_controller__";
 /// constructs its filter context (CR 508.6), not the declaration's old actors.
 pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
 
+/// The players a source chose ("As this enters, choose two players", Sower of
+/// Discord). Runtime filter contexts populate this system tag from the
+/// source's recorded player choices, so "one of the chosen players" is
+/// `PlayerFilter::TaggedPlayer` of this key.
+pub const SOURCE_CHOSEN_PLAYERS_TAG: &str = "__source_chosen_players__";
+
 /// The player who currently holds the initiative designation.
 ///
 /// Runtime filter contexts populate this system tag from game state so typed

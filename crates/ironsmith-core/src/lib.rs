@@ -190,6 +190,8 @@ pub use effect::{
     SearchResultReferenceSurface, SearchSelectionMode, SecretChoiceEffect, SecretObjectChoice,
     SequenceEffect, SequenceSurface, SetBasePowerToughnessEffect, SetClassLevelEffect,
     DayNightDesignation, SetDayNightEffect,
+    ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ControlVotesThisTurnEffect, PutCounterOfKindChosenFromEffect,
     SetLifeTotalEffect, SetQuantifierSurface, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,

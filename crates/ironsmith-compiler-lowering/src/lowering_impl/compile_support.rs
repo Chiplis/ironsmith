@@ -973,7 +973,7 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base } => {
             bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
         }
@@ -1200,6 +1200,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);

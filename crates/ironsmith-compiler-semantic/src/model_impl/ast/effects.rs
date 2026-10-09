@@ -70,6 +70,12 @@ pub enum EffectAst {
     },
     /// "It becomes day." / "It becomes night." (CR 731.2-731.3).
     SetDayNight(ironsmith_core::DayNightDesignation),
+    /// One named choice per participating player ("For each player, choose
+    /// friend or foe", "Each opponent chooses fame or fortune"); the players
+    /// per option are recorded for the following instructions.
+    ChoosePlayerOption(ironsmith_core::ChoosePlayerOptionEffect),
+    /// "You choose how each player votes this turn." (Illusion of Choice).
+    ControlVotesThisTurn,
     /// "This ability still resolves if its target becomes illegal."
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."

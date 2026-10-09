@@ -5492,6 +5492,33 @@
             "Choose a counter on {target}. Remove that counter from it or put another of those counters on it"
         );
     }
+    if let Some(chosen_from) =
+        effect.downcast_ref::<crate::effects::PutCounterOfKindChosenFromEffect>()
+    {
+        let source = chosen_from.kind_source.description();
+        let source = source
+            .strip_prefix("a ")
+            .or_else(|| source.strip_prefix("an "))
+            .unwrap_or(&source)
+            .to_string();
+        let recipients = if chosen_from.exclude_kind_object
+            && let ChooseSpec::All(filter) = &chosen_from.recipients
+        {
+            let mut filter = filter.clone();
+            filter.other = false;
+            format!("each other {}", filter.description())
+        } else {
+            describe_choose_spec(&chosen_from.recipients)
+        };
+        let absent = if chosen_from.only_if_absent {
+            " if it doesn't have a counter of that kind on it"
+        } else {
+            ""
+        };
+        return format!(
+            "Choose a counter on a {source}. Put a counter of that kind on {recipients}{absent}"
+        );
+    }
     if let Some(chosen_kind) = effect.downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
     {
         if matches!(&chosen_kind.target, ChooseSpec::Target(_)) {
@@ -6450,6 +6477,37 @@
     }
     if let Some(level) = effect.downcast_ref::<crate::effects::SetClassLevelEffect>() {
         return format!("This Class becomes level {}", level.level);
+    }
+    fn describe_player_option_choice(choice: &crate::effects::ChoosePlayerOptionEffect) -> String {
+        let options = match choice.options.as_slice() {
+            [] => String::new(),
+            [only] => only.clone(),
+            [first, second] => format!("{first} or {second}"),
+            [init @ .., last] => format!("{}, or {last}", init.join(", ")),
+        };
+        let (subject, noun) = match &choice.participants {
+            PlayerFilter::Any => ("Each player", "player"),
+            PlayerFilter::Opponent => ("Each opponent", "opponent"),
+            PlayerFilter::NotYou => ("Each other player", "other player"),
+            _ => ("Each player", "player"),
+        };
+        match choice.chooser {
+            crate::effects::PlayerOptionChooser::Participant => {
+                format!("{subject} chooses {options}")
+            }
+            crate::effects::PlayerOptionChooser::Controller => {
+                format!("For each {noun}, choose {options}")
+            }
+        }
+    }
+    if let Some(choice) = effect.downcast_ref::<crate::effects::ChoosePlayerOptionEffect>() {
+        return describe_player_option_choice(choice);
+    }
+    if effect
+        .downcast_ref::<crate::effects::ControlVotesThisTurnEffect>()
+        .is_some()
+    {
+        return "You choose how each player votes this turn".to_string();
     }
     if let Some(day_night) = effect.downcast_ref::<crate::effects::SetDayNightEffect>() {
         return match day_night.designation {

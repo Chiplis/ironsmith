@@ -442,6 +442,16 @@ pub struct CostReductionCharacteristicIntersection {
     /// Authored comparison-set surface, such as
     /// "cards exiled with this creature".
     pub comparison_surface: Option<String>,
+    /// The comparison set is the source's chosen colors instead of
+    /// `comparison` ("for each of the chosen colors it is", Seal of the
+    /// Guildpact).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub against_source_chosen_colors: bool,
+    /// Count the comparison objects that share the characteristic with the
+    /// spell instead of the distinct shared values ("for each card with the
+    /// same name as that spell in your graveyard", Locket of Yesterdays).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub count_matching_objects: bool,
 }
 
 impl CostReductionCharacteristicIntersection {
@@ -450,6 +460,26 @@ impl CostReductionCharacteristicIntersection {
             characteristic,
             comparison,
             comparison_surface: None,
+            against_source_chosen_colors: false,
+            count_matching_objects: false,
+        }
+    }
+
+    /// Count the comparison objects sharing the characteristic with the
+    /// spell rather than the shared values.
+    pub fn counting_matching_objects(mut self) -> Self {
+        self.count_matching_objects = true;
+        self
+    }
+
+    /// Count the candidate spell's colors among the source's chosen colors.
+    pub fn source_chosen_colors() -> Self {
+        Self {
+            characteristic: crate::ObjectCharacteristic::Color,
+            comparison: ObjectFilter::default(),
+            comparison_surface: Some("the chosen colors".to_string()),
+            against_source_chosen_colors: true,
+            count_matching_objects: false,
         }
     }
 

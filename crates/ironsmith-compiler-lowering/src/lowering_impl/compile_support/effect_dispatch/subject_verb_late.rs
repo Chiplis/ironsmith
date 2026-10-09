@@ -110,6 +110,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { .. })
@@ -2069,6 +2070,36 @@ pub(super) fn compile_subject_verb_late(
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             Ok((vec![Effect::next_adapt_ignores_counters(spec)], choices))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+            kind_source,
+            target,
+            each,
+            exclude_kind_object,
+            only_if_absent,
+        }) => {
+            let (recipients, choices) = match (target, each) {
+                (Some(target), _) => {
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
+                }
+                (None, Some(filter)) => (ChooseSpec::All(filter.clone()), Vec::new()),
+                (None, None) => {
+                    return Err(CardTextError::ParseError(
+                        "chosen counter kind has no recipients".to_string(),
+                    ));
+                }
+            };
+            Ok((
+                vec![Effect::new(
+                    crate::effects::PutCounterOfKindChosenFromEffect::new(
+                        kind_source.clone(),
+                        recipients,
+                    )
+                    .excluding_kind_object(*exclude_kind_object)
+                    .only_if_absent(*only_if_absent),
+                )],
+                choices,
+            ))
         }
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
             let (spec, choices) =

@@ -157,6 +157,8 @@ pub use composition::{
     TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
 };
 pub use continuous::{
     ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification,
@@ -170,6 +172,7 @@ pub(crate) use counters::remove_any_counters_among_valid_targets_with_tags;
 pub use counters::{
     DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect,
     MoveCountersEffect, MoveOneCounterEffect, ProliferateEffect, PutCounterOfChosenKindEffect,
+    PutCounterOfKindChosenFromEffect,
     PutCountersEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
 };

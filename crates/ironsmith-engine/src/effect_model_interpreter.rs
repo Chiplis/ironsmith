@@ -764,6 +764,16 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::ChoosePlayerOptionEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::ControlVotesThisTurnEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::SetDayNightEffect>(&effect) {
         return Ok(converted);
     }
@@ -1642,6 +1652,11 @@ where
             crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(payload.target.clone())
         };
         return Ok(Effect::new(effect));
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::PutCounterOfKindChosenFromEffect>(&effect)
+    {
+        return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect)
     {

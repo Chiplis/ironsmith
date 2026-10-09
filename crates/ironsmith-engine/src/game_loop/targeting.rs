@@ -3259,9 +3259,10 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
             base: Box::new(specialize_iterated_player_filter(base, player)),
         },
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(specialize_iterated_player_filter(base, player)),
+                this_turn: *this_turn,
             }
         }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
@@ -4800,7 +4801,7 @@ fn specialize_target_player_relation(
         }
         PlayerFilter::Target(inner)
         | PlayerFilter::AliasedTarget(inner)
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
