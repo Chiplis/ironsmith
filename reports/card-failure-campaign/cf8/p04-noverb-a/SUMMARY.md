@@ -2,7 +2,7 @@
 
 Package: 151 cards failing with "could not find verb in effect clause". Branch cf8/p04-noverb-a, based on origin/main 84ea8b41c. Nothing was built or run (campaign policy). The prebuilt hint binary vanished mid-run; the fallback `.agents/target-score/release` binary is from June, so its results are weak evidence.
 
-Status (after round 5): 81 blocked, 4 covered-by-other-package, 66 source-proposed, 0 untriaged.
+Status (after round 6): 74 blocked, 4 covered-by-other-package, 73 source-proposed, 0 untriaged.
 
 ## Fixed clusters (source-proposed)
 - **elided-damage-recipients** (Tropical Storm, Hail Storm, Neonate's Rush, The Fall of Kroog, Wildfire Howl)
@@ -175,3 +175,24 @@ Everything below is source-only (no build, no tests run).
 - **Risks:**
   - Grouping one exile verb's actions into a Coordinated clause changes AST shape for those sentences. It applies only when at least two of the produced effects are exiles, so bundle readers matching flat "exile + other" lists are unaffected.
   - Delayed triggers now observe manual mana activations; any existing delayed trigger keyed on ManaAdded will fire there too, as the rules require.
+
+## Round 6
+- **Verifications (by reading):**
+  - **Crabomination: was wrong, now fixed.** The comma list goes through the coordination recognizer with object omission, so it reaches the resolver as ONE conjunctive Coordination, not a flat list, and the round-5 grouping never fired. The resolver now unions "exiled this way" across a conjunctive Coordination's members (beside the existing created-token union). Separate sentences stay last-wins.
+  - **Arcane Bombardment: half wrong, now fixed.** ExileEffect does link every exiled card to the source. But inside the same resolution, the source-exiled TAG is replaced by this resolution's exile only; the full linked set is rebuilt only in `filter_context`. "Each card exiled with <source>" now iterates a ForEachObject filter over the linked set.
+  - **Count procedure and Chaos Moon reader in trigger bodies: confirmed.** Trigger bodies go through `parse_effect_sentences_lexed`, whose document-program probe and bundle readings both include the new shapes.
+- **Kylox's Voltstrider:** p01's follow-the-card stack replacement with a library-bottom destination (b204e9960 / 5af14a45a) is NOT in this tree. Marked; the ledger has the wiring once merged.
+- **Copy cards:**
+  - Reversal of Fortune: an optional copy of a revealed hand card, then an optional cast of the copy.
+  - Bloodthirsty Adversary: the copy closes a longer reflexive instruction, so the casts go inside the "When you pay this cost one or more times" result.
+  - Zethi: "copy each exiled card <qualifier>" iterates the described exiled cards.
+  - Still blocked, each with its exact piece: Zemo (cast cap + Boast mana-symbol cost), Tamiyo I–III (pairwise shares-a-card-type over the milled cards), Spellweaver Volute (Aura on a graveyard card), Myra (Attractions).
+- **Other shared/singleton mechanisms:**
+  - Withering Wisps: appended `Condition::MaxActivationsPerTurnCount(AnthemCountExpression)`, with a reader for "activate no more times each turn than the number of <objects>".
+  - Dominaria's Judgment: per-quality conditional protection grants.
+  - Shay Cormac: bare "protection"/"ward" in a lost-ability list removes the whole static family.
+  - Exponential Growth: "<doubling> X times" via RepeatEffects.
+- **Risks:**
+  - New appended Condition variant (core, PredicateAst, resolve, engine eval, dependency, text-change, renderers).
+  - The exiled-this-way union now also applies to any conjunctive coordination with two or more exile members.
+  - The protection-list reader is a chain hook that requires two or more "from <quality> if <condition>" items.
