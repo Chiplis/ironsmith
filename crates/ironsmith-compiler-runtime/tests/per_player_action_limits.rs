@@ -120,3 +120,47 @@ fn keen_eared_sentry_limits_each_opponent_to_one_venture_each_turn() {
         assert_eq!(game.player_venture_count_this_turn(B), 0);
     }
 }
+
+#[test]
+fn mirri_caps_attackers_against_you_only_while_tapped() {
+    use ironsmith::combat_state::{AttackTarget, declare_attackers, new_combat};
+    use ironsmith::{GameState, PlayerId, Zone};
+
+    const A: PlayerId = PlayerId::from_index(0);
+    const B: PlayerId = PlayerId::from_index(1);
+    for definition in definitions("Mirri, Weatherlight Duelist") {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mirri = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let bear = ironsmith_compiler_runtime::compile_to_runtime_definition(
+            "Bear",
+            "Type: Creature — Bear\nPower/Toughness: 2/2",
+            false,
+        )
+        .unwrap();
+        let first = game.create_object_from_definition(&bear, B, Zone::Battlefield);
+        let second = game.create_object_from_definition(&bear, B, Zone::Battlefield);
+        game.remove_summoning_sickness(first);
+        game.remove_summoning_sickness(second);
+        game.turn.active_player = B;
+        game.refresh_continuous_state().unwrap();
+        let both = vec![(first, AttackTarget::Player(A)), (second, AttackTarget::Player(A))];
+        assert!(
+            declare_attackers(&mut game.clone(), &mut new_combat(), both.clone()).is_ok(),
+            "untapped Mirri imposes no cap (CR 604.2)"
+        );
+        game.tap(mirri);
+        game.refresh_continuous_state().unwrap();
+        assert!(
+            declare_attackers(&mut game.clone(), &mut new_combat(), both).is_err(),
+            "no more than one creature can attack Alice while Mirri is tapped"
+        );
+        assert!(
+            declare_attackers(
+                &mut game.clone(),
+                &mut new_combat(),
+                vec![(first, AttackTarget::Player(A))]
+            )
+            .is_ok()
+        );
+    }
+}
