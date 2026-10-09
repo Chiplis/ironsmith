@@ -554,41 +554,73 @@ pub(super) fn each_player_pay_life_tokens(
     ]))
 }
 
+/// "Each opponent may sacrifice a [nonland] permanent [of their choice] or
+/// discard a card." (either order) followed by "[Then] <this> deals <N>
+/// damage | damage equal to its power to each opponent who didn't [sacrifice a
+/// permanent or discard a card this way]." (Zoyowa Lava-Tongue and its
+/// power-scaled sibling): an optional per-opponent choice whose declining
+/// opponents are dealt the damage.
 pub(super) fn opponents_sacrifice_or_discard_damage(
     first: &SentenceInput,
     second: &SentenceInput,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !matches!(
-        crate::lexer::token_word_refs(first.lowered()).as_slice(),
+    let first_words = crate::lexer::token_word_refs(first.lowered());
+    let Some(modes) = first_words.strip_prefix(&["each", "opponent", "may"][..]) else {
+        return Ok(None);
+    };
+    fn sacrifice_mode(words: &[&str]) -> Option<bool> {
+        match words {
+            ["sacrifice", "a", "nonland", "permanent", rest @ ..]
+                if rest.is_empty() || rest == ["of", "their", "choice"] =>
+            {
+                Some(true)
+            }
+            ["sacrifice", "a", "permanent", rest @ ..]
+                if rest.is_empty() || rest == ["of", "their", "choice"] =>
+            {
+                Some(false)
+            }
+            _ => None,
+        }
+    }
+    let Some(or_idx) = modes.iter().position(|word| *word == "or") else {
+        return Ok(None);
+    };
+    let (left, right) = (&modes[..or_idx], &modes[or_idx + 1..]);
+    let discard = ["discard", "a", "card"];
+    let nonland = if left == discard {
+        sacrifice_mode(right)
+    } else if right == discard {
+        sacrifice_mode(left)
+    } else {
+        None
+    };
+    let Some(nonland) = nonland else {
+        return Ok(None);
+    };
+
+    let mut second_words = crate::lexer::token_word_refs(second.lowered());
+    if second_words.first() == Some(&"then") {
+        second_words.remove(0);
+    }
+    let Some(deals) = second_words.iter().position(|word| *word == "deals") else {
+        return Ok(None);
+    };
+    if !crate::util::is_source_reference_words(&second_words[..deals]) {
+        return Ok(None);
+    }
+    let tail = &second_words[deals + 1..];
+    let (equal_to_power, fixed, rest) = match tail {
+        ["damage", "equal", "to", "its", "power", "to", rest @ ..] => (true, None, rest),
+        [amount, "damage", "to", rest @ ..] => match crate::util::parse_number_word_u32(amount) {
+            Some(amount) => (false, Some(amount), rest),
+            None => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    let declined = match rest {
+        ["each", "opponent", "who", "didnt" | "didn't"] => true,
         [
-            "each",
-            "opponent",
-            "may",
-            "sacrifice",
-            "a",
-            "nonland",
-            "permanent",
-            "of",
-            "their",
-            "choice",
-            "or",
-            "discard",
-            "a",
-            "card"
-        ]
-    ) || !matches!(
-        crate::lexer::token_word_refs(second.lowered()).as_slice(),
-        [
-            "then",
-            "this",
-            "creature",
-            "deals",
-            "damage",
-            "equal",
-            "to",
-            "its",
-            "power",
-            "to",
             "each",
             "opponent",
             "who",
@@ -601,13 +633,20 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
             "a",
             "card",
             "this",
-            "way"
-        ]
-    ) {
+            "way",
+        ] => true,
+        _ => false,
+    };
+    if !declined || (!equal_to_power && fixed.is_none()) {
         return Ok(None);
     }
 
-    let sacrifice_filter = ObjectFilter::nonland()
+    let mut sacrifice_filter = if nonland {
+        ObjectFilter::nonland()
+    } else {
+        ObjectFilter::permanent()
+    };
+    sacrifice_filter = sacrifice_filter
         .in_zone(Zone::Battlefield)
         .controlled_by(PlayerFilter::IteratedPlayer);
     let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, 1, None);
@@ -618,7 +657,11 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
         player_surface: None,
         modes: vec![
             ChooseOneModeAst {
-                description: "Sacrifice a nonland permanent".to_string(),
+                description: if nonland {
+                    "Sacrifice a nonland permanent".to_string()
+                } else {
+                    "Sacrifice a permanent".to_string()
+                },
                 effects: vec![sacrifice],
             },
             ChooseOneModeAst {
@@ -633,10 +676,11 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
             effects: vec![choice],
         })],
     });
-    let damage = EffectAst::subject_verb_damage_equal_to_power(
-        TargetAst::Source(None),
-        TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-    );
+    let recipient = TargetAst::Player(PlayerFilter::IteratedPlayer, None);
+    let damage = match fixed {
+        Some(amount) => EffectAst::subject_verb_damage(Value::Fixed(amount as i32), recipient),
+        None => EffectAst::subject_verb_damage_equal_to_power(TargetAst::Source(None), recipient),
+    };
     let consequence = EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
         effects: vec![damage],
         predicate: None,
