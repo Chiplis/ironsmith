@@ -157,3 +157,63 @@ pub(crate) fn read(
     }
     Ok(Some(effects))
 }
+
+/// "You may copy an instant or sorcery card in it. If you do, you may cast
+/// the copy without paying its mana cost." (Reversal of Fortune, after a
+/// revealed hand): choosing the card is the optional copy; casting the copy
+/// is a second, independent option (CR 707.12).
+pub(crate) fn read_optional_copy_from_revealed(
+    copy: &[OwnedLexToken],
+    cast: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let copy = crate::util::trim_edge_punctuation_tokens(copy);
+    let words = parser_token_word_refs(copy);
+    if !words.starts_with(&["you", "may", "copy"]) || !words.ends_with(&["in", "it"]) {
+        return Ok(None);
+    }
+    let cast_words =
+        parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(cast));
+    let free = match cast_words.as_slice() {
+        ["if", "you", "do", "you", "may", "cast", "the", "copy"] => false,
+        [
+            "if", "you", "do", "you", "may", "cast", "the", "copy", "without", "paying", "its",
+            "mana", "cost",
+        ] => true,
+        _ => return Ok(None),
+    };
+    // Read the described card as the existing "you choose <card> from it"
+    // clause over the revealed hand.
+    let described = &copy[3..copy.len() - 2];
+    let mut choose = crate::lexer::synthetic_word_tokens(["you", "choose"]);
+    choose.extend_from_slice(described);
+    choose.extend(crate::lexer::synthetic_word_tokens(["from", "it"]));
+    let Some((_, filter, _, _)) =
+        crate::activation_and_restrictions::parse_you_choose_objects_clause_with_count_value(
+            &choose,
+        )?
+    else {
+        return Ok(None);
+    };
+    let chosen = crate::util::helper_tag_for_tokens(copy, "copied_from_hand");
+    Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May {
+        effects: vec![
+            EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count: crate::effect::ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen.clone(),
+            }),
+            EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    chosen,
+                    PlayerAst::You,
+                    false,
+                    true,
+                    free,
+                    None,
+                )],
+            }),
+        ],
+    })]))
+}

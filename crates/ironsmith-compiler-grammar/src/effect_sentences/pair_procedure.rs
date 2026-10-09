@@ -938,6 +938,21 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("optional-copy-from-revealed-hand"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            let effects = match (sentences.get(sentence_idx), sentences.get(sentence_idx + 1)) {
+                (Some(copy), Some(cast)) => super::copied_cards_cast::read_optional_copy_from_revealed(
+                    copy.lowered(),
+                    cast.lowered(),
+                ),
+                _ => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
         id: RuleId::new("guessed-wrong-free-cast"),
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 4,
