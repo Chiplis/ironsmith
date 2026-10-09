@@ -877,6 +877,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanAttackSourceEachCombat(usize),
     /// "can block as though it were untapped" (CR 509.1a).
     CanBlockAsThoughUntapped,
+    /// Blocker-side landwalk permission (CR 702.14).
+    CanBlockAsThoughNoLandwalk,
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
     Enchant(crate::AuraAttachmentFilter),
@@ -2363,6 +2365,9 @@ where
             }
             StaticAbilityPayload::CanBlockAsThoughUntapped => {
                 StaticAbilityPayload::CanBlockAsThoughUntapped
+            }
+            StaticAbilityPayload::CanBlockAsThoughNoLandwalk => {
+                StaticAbilityPayload::CanBlockAsThoughNoLandwalk
             }
             StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display)
@@ -4234,6 +4239,14 @@ impl<
         match self.payload {
             StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => Some(subtype),
             _ => None,
+        }
+    }
+
+    pub fn can_block_as_though_no_landwalk() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBlockAsThoughNoLandwalk),
+            label: "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string(),
+            payload: StaticAbilityPayload::CanBlockAsThoughNoLandwalk,
         }
     }
 

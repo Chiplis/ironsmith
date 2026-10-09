@@ -2948,6 +2948,10 @@ impl StaticAbility {
         Self::new(MaxCreaturesCanAttackYouEachCombat::new(maximum))
     }
 
+    pub fn can_block_as_though_no_landwalk() -> Self {
+        Self::new(CanBlockAsThoughNoLandwalk)
+    }
+
     pub fn can_block_as_though_untapped() -> Self {
         Self::new(CanBlockAsThoughUntapped)
     }

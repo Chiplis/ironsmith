@@ -1275,6 +1275,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAsThoughUntapped => {
                 StaticAbility::can_block_as_though_untapped()
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAsThoughNoLandwalk => {
+                StaticAbility::can_block_as_though_no_landwalk()
+            }
             ironsmith_core::StaticAbilityPayload::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender => {
                 StaticAbility::can_attack_players_who_attacked_controller_last_turn_as_though_no_defender()
             }

@@ -558,6 +558,22 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// "This creature can block creatures with landwalk abilities as though they
+/// didn't have those abilities" (Street Savvy): only this blocker ignores
+/// the attackers' landwalk evasion (CR 702.14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughNoLandwalk;
+
+impl StaticAbilityKind for CanBlockAsThoughNoLandwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughNoLandwalk
+    }
+
+    fn display(&self) -> String {
+        "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string()
+    }
+}
+
 /// "This creature can block as though it were untapped" (Masako the
 /// Humorless grants it to tapped creatures): being tapped doesn't stop it
 /// from being declared as a blocker (CR 509.1a); it stays tapped.

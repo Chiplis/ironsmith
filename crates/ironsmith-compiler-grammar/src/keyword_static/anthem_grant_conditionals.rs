@@ -1870,6 +1870,28 @@ fn parse_heterogeneous_granted_tail_remaining(
             continue;
         }
 
+        if crate::grammar::primitives::parse_all(
+            trim_edge_punctuation_tokens(&segment),
+            winnow::combinator::alt((
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "didnt", "have", "those", "abilities",
+                ]),
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "didn't", "have", "those", "abilities",
+                ]),
+            )),
+            "blocker landwalk permission",
+        )
+        .is_ok()
+        {
+            parsed
+                .granted_static
+                .push(StaticAbility::can_block_as_though_no_landwalk().into());
+            continue;
+        }
+
         if let Some((ability, display)) =
             parse_granted_object_ability_segment(&segment, clause_words, attached_subject)?
         {

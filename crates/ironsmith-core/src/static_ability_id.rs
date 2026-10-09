@@ -405,6 +405,9 @@ pub enum StaticAbilityId {
     MaxCreaturesCanAttackSourceEachCombat,
     /// "can block as though it were untapped"; appended for wire compatibility.
     CanBlockAsThoughUntapped,
+    /// Blocker-side "can block creatures with landwalk abilities as though
+    /// they didn't have those abilities"; appended for wire compatibility.
+    CanBlockAsThoughNoLandwalk,
 }
 
 impl StaticAbilityId {
@@ -490,6 +493,7 @@ impl StaticAbilityId {
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanAttackSourceEachCombat
             | CanBlockAsThoughUntapped
+            | CanBlockAsThoughNoLandwalk
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater
