@@ -62,3 +62,7 @@ fn aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_ph
         }
     }
 }
+
+card_reader!(ageless_sentinels,"Ageless Sentinels","Mana cost: {3}{W}\nType: Creature — Wall\nPower/Toughness: 4/4\nDefender (This creature can't attack.)\nFlying\nWhen this creature blocks, it becomes a Bird Giant, and it loses defender. (It's no longer a Wall. This effect lasts indefinitely.)");
+
+card_reader!(emrakul_the_promised_end,"Emrakul, the Promised End","Mana cost: {13}\nType: Legendary Creature — Eldrazi\nPower/Toughness: 13/13\nThis spell costs {1} less to cast for each card type among cards in your graveyard.\nWhen you cast this spell, you gain control of target opponent during that player's next turn. After that turn, that player takes an extra turn.\nFlying, trample, protection from instants");

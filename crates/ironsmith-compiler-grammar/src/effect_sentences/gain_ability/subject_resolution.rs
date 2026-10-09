@@ -383,6 +383,11 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
+    // A repeated pronoun starts an independent sibling instruction. The
+    // shared-subject reader must not absorb that subject into a become template.
+    if before_gain.ends_with(&["and", "it"]) {
+        return Ok(None);
+    }
     let get_idx = gain_shapes::find_get_verb(before_gain);
     let leading_become_subject_end_word_idx = gain_shapes::find_become_verb(before_gain)
         .map(|become_idx| subject_start_word_idx + become_idx);

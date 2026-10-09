@@ -32,6 +32,12 @@ pub fn split_segments_on_comma_effect_head_tokens(
 ) -> Vec<&[OwnedLexToken]> {
     let mut result = Vec::new();
     for segment in segments {
+        // The comma separates an authored turn anchor from its instruction.
+        // Both halves are owned by the complete extra-turn grammar.
+        if crate::grammar::effects::parse_extra_turn_shape(segment).is_some() {
+            result.push(segment);
+            continue;
+        }
         let mixed_target_ranges =
             crate::grammar::effects::coordination::explicit_mixed_target_ranges(segment);
         let mut start = 0usize;
