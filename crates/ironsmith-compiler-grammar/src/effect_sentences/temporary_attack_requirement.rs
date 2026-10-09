@@ -13,6 +13,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if let Some(effect) = parse_during_target_players_next_turn(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = parse_referenced_combat_requirement(tokens) {
+        return Ok(Some(effect));
+    }
     let (duration, body) = if let Some(prefix) =
         crate::grammar::leaf::parse_leaf_turn_duration_prefix_tokens(tokens)
     {
@@ -156,6 +159,104 @@ fn parse_during_target_players_next_turn(
             ),
         ],
     }))
+}
+
+/// The combat rule a referenced-creature sentence imposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReferencedCombatRule {
+    /// "... attack(s) that combat if able" (CR 508.1d), in the combat phase
+    /// the preceding instruction added (CR 500.8).
+    MustAttackThatCombat,
+    /// "... can't attack you or planeswalkers you control that combat"
+    /// (CR 508.1c), in that added combat phase.
+    CantAttackYouThatCombat,
+    /// "... block(s) this turn if able" (CR 509.1c).
+    MustBlockThisTurn,
+}
+
+/// A subject naming the creatures the preceding instruction affected:
+/// "Each of those creatures", "Those creatures", "They" (Illusionist's
+/// Gambit, Berserker's Frenzy).
+fn is_referenced_creatures_subject(subject: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(subject);
+    matches!(
+        words.as_slice(),
+        ["they"]
+            | ["those", "creatures"]
+            | ["each", "of", "those", "creatures"]
+            | ["each", "of", "them"]
+            | ["the", "chosen", "creatures"]
+    )
+}
+
+/// "Each of those creatures attacks that combat if able.", "They can't attack
+/// you or planeswalkers you control that combat." and "They block this turn
+/// if able.": a combat requirement or restriction over exactly the creatures
+/// the preceding instruction named.
+fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use crate::effect::RestrictionStart;
+    use crate::grammar::primitives;
+    use winnow::Parser;
+    use winnow::combinator::alt;
+
+    let body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let (index, rule, rest) = primitives::find_prefix(body, || {
+        alt((
+            alt((
+                primitives::phrase(&["attack", "that", "combat", "if", "able"]),
+                primitives::phrase(&["attacks", "that", "combat", "if", "able"]),
+            ))
+            .value(ReferencedCombatRule::MustAttackThatCombat),
+            alt((
+                primitives::phrase(&[
+                    "can't", "attack", "you", "or", "planeswalkers", "you", "control", "that",
+                    "combat",
+                ]),
+                primitives::phrase(&[
+                    "cant", "attack", "you", "or", "planeswalkers", "you", "control", "that",
+                    "combat",
+                ]),
+            ))
+            .value(ReferencedCombatRule::CantAttackYouThatCombat),
+            alt((
+                primitives::phrase(&["block", "this", "turn", "if", "able"]),
+                primitives::phrase(&["blocks", "this", "turn", "if", "able"]),
+            ))
+            .value(ReferencedCombatRule::MustBlockThisTurn),
+        ))
+    })?;
+    if index == 0 || !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
+        return None;
+    }
+    if !is_referenced_creatures_subject(&body[..index]) {
+        return None;
+    }
+    let creatures = crate::target::ObjectFilter::creature().match_tagged(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    Some(match rule {
+        ReferencedCombatRule::MustAttackThatCombat => EffectAst::subject_verb_cant_starting(
+            Restriction::must_attack(creatures),
+            Until::EndOfCombat,
+            RestrictionStart::LastAddedCombatPhase,
+            None,
+        ),
+        ReferencedCombatRule::CantAttackYouThatCombat => EffectAst::subject_verb_cant_starting(
+            Restriction::attack_player_or_planeswalkers_controlled_by(
+                creatures,
+                crate::target::PlayerFilter::You,
+            ),
+            Until::EndOfCombat,
+            RestrictionStart::LastAddedCombatPhase,
+            None,
+        ),
+        ReferencedCombatRule::MustBlockThisTurn => EffectAst::subject_verb_cant(
+            Restriction::must_block(creatures),
+            Until::EndOfTurn,
+            None,
+        ),
+    })
 }
 
 #[cfg(test)]
