@@ -1300,7 +1300,7 @@ fn parse_this_creature_cant_attack_its_owner_line<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     (
-        primitives::phrase(&["this", "creature"]),
+        winnow::combinator::alt((primitives::phrase(&["this", "creature"]), primitives::kw("this"))),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::phrase(&["attack", "its", "owner"]),
         primitives::sentence_end(),
