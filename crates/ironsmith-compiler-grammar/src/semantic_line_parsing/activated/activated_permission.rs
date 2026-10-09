@@ -67,7 +67,11 @@ pub(super) fn parse_activated_effects_lexed(
     // sentence grammar, the fallback for what no typed program reads, has no
     // reading of the body either.
     let typed_error = match activated_effects_readings::read(&input) {
-        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::Match(matched) => {
+            let mut effects = matched.value.value;
+            crate::effect_sentences::bind_single_outer_where_x(&mut effects, tokens)?;
+            return Ok(effects);
+        },
         crate::recognition::ParseOutcome::NoMatch => None,
         crate::recognition::ParseOutcome::Error(diagnostic) => Some(diagnostic),
     };

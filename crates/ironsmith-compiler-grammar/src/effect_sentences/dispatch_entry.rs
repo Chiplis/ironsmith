@@ -6215,6 +6215,31 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
     )
 }
 
+/// Finalize value ownership for whole-body readers that bypass the sentence
+/// loop. A unique, unquoted where-X clause in one sentence owns its values.
+pub(crate) fn bind_single_outer_where_x(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) -> Result<(), CardTextError> {
+    let mut inside_quote = false;
+    let mut outer_where = 0usize;
+    let mut all_where = 0usize;
+    for token in tokens {
+        if token.is_quote() { inside_quote = !inside_quote; }
+        if token.is_word("where") {
+            all_where += 1;
+            if !inside_quote { outer_where += 1; }
+        }
+    }
+    if split_lexed_sentences(tokens).len() == 1 && outer_where == 1 && all_where == 1
+        && let Some(value) = where_x_value_from_tokens(tokens) {
+        replace_unbound_x_in_effects_anywhere(
+            effects, &value, &crate::lexer::render_token_slice(tokens),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -6280,24 +6305,7 @@ pub fn parse_effect_sentences_lexed(
         std::panic::Location::caller(),
         || {
             let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
-            // Complete document readers can bypass the sentence loop's value
-            // binding. Bind a single, outer where-X clause after either route.
-            let mut inside_quote = false;
-            let mut outer_where = 0usize;
-            let mut all_where = 0usize;
-            for token in tokens {
-                if token.is_quote() { inside_quote = !inside_quote; }
-                if token.is_word("where") {
-                    all_where += 1;
-                    if !inside_quote { outer_where += 1; }
-                }
-            }
-            if split_lexed_sentences(tokens).len() == 1 && outer_where == 1 && all_where == 1
-                && let Some(value) = where_x_value_from_tokens(tokens) {
-                replace_unbound_x_in_effects_anywhere(
-                    &mut effects, &value, &crate::lexer::render_token_slice(tokens),
-                )?;
-            }
+            bind_single_outer_where_x(&mut effects, tokens)?;
             if tokens.iter().any(|token| token.is_word("instead"))
                 && matches!(effects.as_slice(), [EffectAst::SubjectVerb(subject)]
                     if matches!(subject.action, crate::cards::builders::SubjectVerbActionAst::LifeResources(
