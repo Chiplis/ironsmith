@@ -6801,9 +6801,18 @@ pub fn parse_copy_activated_abilities_line(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let mut filter = match parse_object_filter(&filter_tokens, false) {
-        Ok(filter) => filter,
-        Err(_) => return Ok(None),
+    let source_reference = crate::util::source_reference_surface_for_words(
+        &parser_token_word_refs(&filter_tokens),
+    )
+    .is_some();
+    let mut filter = if source_reference {
+        // "the loyalty abilities of Kasmina": the donor is this object.
+        ObjectFilter::source()
+    } else {
+        match parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
     };
     if fact.exclude_source_name {
         // "that don't have the same name as this creature" is carried by

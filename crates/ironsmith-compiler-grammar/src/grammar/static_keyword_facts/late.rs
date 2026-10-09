@@ -997,6 +997,13 @@ fn parse_copy_activated_marker_lexed(input: &mut LexStream<'_>) -> WResult<bool>
             semantic_phrase(&["all", "loyalty", "abilities", "of"]),
         )
             .value(true),
+        // "Each other planeswalker you control has the loyalty abilities of
+        // Kasmina." (CR 613.1f): the same grant without "all".
+        (
+            alt((strict_kw("has"), strict_kw("have"))),
+            semantic_phrase(&["the", "loyalty", "abilities", "of"]),
+        )
+            .value(true),
     ))
     .parse_next(input)
 }
