@@ -42,6 +42,7 @@ fn ecological_appreciation_opponent_chooses_two_rest_onto_battlefield() {
         assert!(debug.contains("IsNotTaggedObject"), "{debug}");
         let text = support::rendered(&definition);
         support::assert_no_internal_markers("Ecological Appreciation", &text);
+        assert!(text.contains("search your library and graveyard for"), "{text}");
         assert!(text.contains("an opponent chooses two of those cards"), "{text}");
         assert!(text.contains("shuffle the chosen cards into your library and put the rest onto the battlefield"), "{text}");
         assert!(text.contains("exile"), "{text}");

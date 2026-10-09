@@ -363,7 +363,11 @@ fn describe_cross_segment_delegated_search_partition_program(
             selection.push_str(" you own");
         }
     }
-    let origin = describe_search_origin_zones(search)?;
+    // A searched set an opponent then partitions is printed "your library
+    // and graveyard" (Ecological Appreciation), not the optional-zone
+    // "and/or" of a single-card multi-zone search.
+    let origin = describe_search_origin_zones(search)?
+        .replace("library and/or graveyard", "library and graveyard");
     let search_line = match first_sequence.surface {
         ironsmith_core::SequenceSurface::CommaThen => {
             format!("Search {origin} for {selection}, then reveal those cards")
