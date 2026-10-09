@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Icy Blast",
+    "oracle_id": "f49302c5-8510-4360-841c-a59f53f87e0b",
+    "text": "Mana cost: {X}{U}\nType: Instant\nTap X target creatures.\nFerocious — If you control a creature with power 4 or greater, those creatures don't untap during their controllers' next untap steps."
+  },
+  {
+    "name": "Send to Sleep",
+    "oracle_id": "9e3fd1e9-7db6-40de-b1de-cd8cc9f60590",
+    "text": "Mana cost: {1}{U}\nType: Instant\nTap up to two target creatures.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, those creatures don't untap during their controllers' next untap steps."
+  }
+]
