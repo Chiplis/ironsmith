@@ -91,6 +91,30 @@ pub(super) fn parse_modal_header_choose_spec_inner<'a>(
     ))
 }
 
+/// "An opponent chooses one —" (Fatal Lore, Misfortune): an opponent makes
+/// the mode choice (CR 700.2); the range follows "chooses".
+pub fn parse_opponent_modal_choose_spec(
+    tokens: &[OwnedLexToken],
+) -> Option<ModalHeaderChooseSpec> {
+    let (_, choose_tail) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["an", "opponent", "chooses"]),
+    )?;
+    let Some((Some(min), max)) =
+        crate::grammar::primitives::probe_shape(values::parse_modal_choose_range(choose_tail))
+            .flatten()
+    else {
+        return None;
+    };
+    Some(ModalHeaderChooseSpec {
+        choose_idx: tokens.len() - choose_tail.len() - 1,
+        min,
+        max,
+        random: false,
+        x_clause_start: None,
+    })
+}
+
 pub fn parse_modal_header_choose_spec<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Option<ModalHeaderChooseSpec>, ErrMode<ContextError>> {

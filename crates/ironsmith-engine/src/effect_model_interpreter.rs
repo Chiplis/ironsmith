@@ -288,6 +288,7 @@ where
         converted.conditional_mode_range = payload.conditional_mode_range.clone();
         converted.presentation_label = payload.presentation_label.clone();
         converted.endure = payload.endure;
+        converted.cast_chooser = payload.cast_chooser.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =

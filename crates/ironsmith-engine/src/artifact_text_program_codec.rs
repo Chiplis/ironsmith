@@ -161,7 +161,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             disallow_previously_chosen_modes_this_turn: model.disallow_previously_chosen_modes_this_turn,
             distinct_player_targets_per_mode: model.distinct_player_targets_per_mode,
             conditional_mode_range: model.conditional_mode_range.clone(), presentation_label: model.presentation_label.clone(),
-            endure: model.endure,
+            endure: model.endure, cast_chooser: model.cast_chooser.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<ForEachObject>() {

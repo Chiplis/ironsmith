@@ -178,6 +178,15 @@
         if choose_mode.spree {
             header = "Spree (Choose one or more additional costs.)".to_string();
         }
+        if let Some(chooser) = &choose_mode.cast_chooser
+            && let Some(rest) = header.strip_prefix("Choose ")
+        {
+            let chooser = match chooser {
+                PlayerFilter::Opponent => "An opponent".to_string(),
+                other => capitalize_first(&describe_player_filter(other)),
+            };
+            header = format!("{chooser} chooses {rest}");
+        }
         if choose_mode.tiered {
             header = "Tiered (Choose one additional cost.)".to_string();
         }

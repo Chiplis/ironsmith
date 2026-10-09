@@ -77,6 +77,7 @@ pub fn try_merge_modal_into_remove_mode(
             conditional_mode_range: choose_mode.conditional_mode_range.clone(),
             presentation_label: choose_mode.presentation_label.clone(),
             endure: choose_mode.endure,
+            cast_chooser: choose_mode.cast_chooser.clone(),
         },
     ));
     true
@@ -120,11 +121,19 @@ pub fn lower_parsed_modal(
         common_prefix_effects_ast: _,
         common_suffix_effects_ast,
         modal_gate,
+        cast_chooser,
     } = header;
     let header_source = info
         .provenance
         .and_then(|id| provenance.slice(id))
         .unwrap_or("modal ability");
+    // Only a spell's modes are chosen while it is cast by another player;
+    // an ability's modes are chosen as it is put on the stack.
+    if cast_chooser.is_some() && (trigger.is_some() || activated.is_some()) {
+        return Err(CardTextError::ParseError(format!(
+            "another player choosing an ability's modes is not supported: '{header_source}'"
+        )));
+    }
     let common_suffix_effect_count = common_suffix_effects_ast.len();
     let modal_spell_presentation = trigger
         .is_none()
@@ -321,6 +330,9 @@ pub fn lower_parsed_modal(
         }
         if let Some(label) = modal_spell_presentation.clone() {
             choose_mode = choose_mode.with_presentation_label(label);
+        }
+        if let Some(chooser) = cast_chooser.clone() {
+            choose_mode = choose_mode.with_cast_chooser(chooser);
         }
         crate::effect::Effect::new(choose_mode)
     };

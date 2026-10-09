@@ -61,6 +61,8 @@ pub struct Script {
     /// option prompt.
     pub option_prompts: Vec<(PlayerId, String)>,
     pub number_prompts: Vec<(PlayerId, String)>,
+    /// Legal targets offered for each target requirement, in prompt order.
+    pub offered_targets: Vec<Vec<Target>>,
 }
 
 impl DecisionMaker for Script {
@@ -86,6 +88,9 @@ impl DecisionMaker for Script {
         SelectFirstDecisionMaker.decide_number(game, ctx)
     }
     fn decide_targets(&mut self, game: &GameState, context: &TargetsContext) -> Vec<Target> {
+        for requirement in &context.requirements {
+            self.offered_targets.push(requirement.legal_targets.clone());
+        }
         if self.targets.is_empty() {
             return SelectFirstDecisionMaker.decide_targets(game, context);
         }

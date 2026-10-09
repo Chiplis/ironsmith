@@ -22,7 +22,8 @@ use super::grammar::abilities::parse_activation_condition_lexed;
 use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::grammar::structure::{
-    ModalHeaderChooseSpec, parse_modal_header_choose_spec, scan_modal_header_flags,
+    ModalHeaderChooseSpec, parse_modal_header_choose_spec, parse_opponent_modal_choose_spec,
+    scan_modal_header_flags,
     split_lexed_sentences, split_trailing_modal_gate_clause,
 };
 use super::keyword_static::parse_value_binding_clause_lexed;
@@ -141,7 +142,13 @@ pub fn parse_modal_header(
 ) -> Result<Option<ModalHeader>, CardTextError> {
     let spree = tokens.first().is_some_and(|token| token.is_word("spree"));
     let tiered = tokens.first().is_some_and(|token| token.is_word("tiered"));
-    let choose_spec = if spree || tiered {
+    // CR 700.2: "An opponent chooses one —" has an opponent choose the modes
+    // while the spell is cast.
+    let opponent_choose_spec = parse_opponent_modal_choose_spec(tokens);
+    let cast_chooser = opponent_choose_spec.as_ref().map(|_| PlayerFilter::Opponent);
+    let choose_spec = if let Some(spec) = opponent_choose_spec {
+        spec
+    } else if spree || tiered {
         ModalHeaderChooseSpec {
             choose_idx: 0,
             min: Value::Fixed(1),
@@ -256,7 +263,8 @@ pub fn parse_modal_header(
         effect_start_idx = comma_idx + 1;
     }
 
-    let prechoose_tokens = if spree || tiered {
+    // "An opponent" names the chooser, not an effect before the choice.
+    let prechoose_tokens = if spree || tiered || cast_chooser.is_some() {
         &[]
     } else {
         trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
@@ -294,6 +302,7 @@ pub fn parse_modal_header(
         common_prefix_effects_ast,
         common_suffix_effects_ast,
         modal_gate,
+        cast_chooser,
     }))
 }
 
