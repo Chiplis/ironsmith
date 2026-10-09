@@ -42,7 +42,9 @@ pub(super) fn pre_rule_token_followups(
             ),
         }));
     }
-    if let Some(followup) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects) {
+    if let Some(followup) = parse_create_more_of_prior_tokens(sentence_tokens, state.effects)
+        .or_else(|| parse_instead_create_that_token_and(sentence_tokens, state.effects))
+    {
         if followup.instead {
             let Some(previous) = state.effects.pop() else {
                 return Err(CardTextError::InvariantViolation(
@@ -296,6 +298,57 @@ fn parse_instead_replacement_sentence(
         return Ok(None);
     }
     Ok(Some((effects, predicate)))
+}
+
+/// "If you rolled 6 or higher, instead create that token and a Treasure
+/// token." (Mr. House): the prior creation plus additional tokens replaces the
+/// prior creation alone when the condition holds (CR 614.1a).
+fn parse_instead_create_that_token_and(
+    sentence_tokens: &[OwnedLexToken],
+    prior_effects: &[EffectAst],
+) -> Option<PriorTokenCreateFollowup> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence_tokens);
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return None;
+    }
+    let comma = tokens.iter().position(OwnedLexToken::is_comma)?;
+    let tail = &tokens[comma + 1..];
+    let words = crate::lexer::parser_token_word_refs(tail);
+    let [
+        "instead",
+        "create",
+        "that" | "those",
+        "token" | "tokens",
+        "and",
+        rest @ ..,
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let extra_start = crate::lexer::TokenWordView::new(tail)
+        .token_span_for_words(0, 5)?
+        .end;
+    let predicate = parse_trailing_if_predicate_lexed(&tokens[..=comma])?;
+    let previous = prior_effects.last()?.clone();
+    if !effect_creates_any_token(&previous) {
+        return None;
+    }
+    let mut extra_tokens = crate::lexer::lex_line("create", 0).ok()?;
+    extra_tokens.extend_from_slice(&tail[extra_start..]);
+    let extra = crate::effect_sentences::parse_effect_sentences_lexed(&extra_tokens).ok()?;
+    if extra.is_empty() {
+        return None;
+    }
+    let mut effects = vec![previous];
+    effects.extend(extra);
+    Some(PriorTokenCreateFollowup {
+        predicate,
+        create: EffectAst::Sequence { effects },
+        instead: true,
+    })
 }
 
 pub(super) fn parse_create_more_of_prior_tokens(
