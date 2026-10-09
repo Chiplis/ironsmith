@@ -45,6 +45,8 @@ pub enum SourcePredicateAst {
     SourceInGraveyardWithCardsAbove {
         filter: ObjectFilter,
         count: u32,
+        /// The single card immediately above the source must match.
+        directly_above: bool,
     },
     SourceIsInZone(Zone),
     SourceWasCast,

@@ -39,7 +39,7 @@ fn nether_shadow_keeps_the_ordered_graveyard_condition() {
         })
         .expect("Nether Shadow should have an upkeep trigger");
     assert_eq!(triggered.0.functional_zones, vec![Zone::Graveyard]);
-    let crate::effect::Condition::SourceInGraveyardWithCardsAbove { filter, count } =
+    let crate::effect::Condition::SourceInGraveyardWithCardsAbove { filter, count, .. } =
         triggered.1.intervening_if.as_ref().expect("condition")
     else {
         panic!("unexpected condition: {:#?}", triggered.1.intervening_if);

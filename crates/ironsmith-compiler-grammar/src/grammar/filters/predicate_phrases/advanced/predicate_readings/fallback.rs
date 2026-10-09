@@ -238,6 +238,7 @@ const SHAPES: &[Shape] = &[
     card_exiled_with_it,
     source_kicked_twice,
     target_player_life_total,
+    card_directly_above_source,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -380,7 +381,42 @@ fn cards_above_source(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     Some(PredicateAst::Source(
-        SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count },
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above: false,
+        },
+    ))
+}
+
+/// "this card is in your graveyard with a creature card directly above it"
+/// (Death Spark, Krovikan Horror): the card immediately above the source in
+/// its owner's ordered graveyard matches (CR 404.1).
+fn card_directly_above_source(words: &[&str]) -> Option<PredicateAst> {
+    let rest = match words {
+        ["this", "card", "is", "in", "your", "graveyard", "with", rest @ ..] => rest,
+        _ => return None,
+    };
+    let [descriptor @ .., "directly", "above", "it"] = rest else {
+        return None;
+    };
+    let descriptor = strip_article(descriptor);
+    if descriptor.is_empty() {
+        return None;
+    }
+    let mut filter = filter_from_words(descriptor)?;
+    if filter.zone == Some(Zone::Battlefield) {
+        filter.zone = None;
+    }
+    if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
+        return None;
+    }
+    Some(PredicateAst::Source(
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count: 1,
+            directly_above: true,
+        },
     ))
 }
 

@@ -76,3 +76,14 @@ fn a_player_counter_condition_declares_its_target_and_gives_the_difference() {
         assert!(debug.contains("Scaled("), "{debug}");
     }
 }
+
+#[test]
+fn a_card_directly_above_the_source_in_the_graveyard() {
+    for name in ["Death Spark", "Krovikan Horror"] {
+        for definition in definitions(name) {
+            let debug = format!("{definition:?}");
+            assert!(debug.contains("SourceInGraveyardWithCardsAbove"), "{name}: {debug}");
+            assert!(debug.contains("directly_above: true"), "{name}: {debug}");
+        }
+    }
+}

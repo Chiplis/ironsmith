@@ -2220,6 +2220,11 @@ pub enum Condition {
     SourceInGraveyardWithCardsAbove {
         filter: ObjectFilter,
         count: u32,
+        /// "with a creature card directly above it" (Death Spark): the one
+        /// card immediately above the source must match (CR 404.1, ordered
+        /// graveyard).
+        #[cfg_attr(feature = "serde", serde(default))]
+        directly_above: bool,
     },
     SourceIsInZone(Zone),
     ActivationTiming(ActivationTiming),

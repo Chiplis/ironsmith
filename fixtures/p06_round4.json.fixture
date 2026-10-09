@@ -298,5 +298,25 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "Enchant creature\nWhen this Aura enters, tap enchanted creature.\nEnchanted creature has \"If this creature would untap during your untap step, remove a +1/+1 counter from it instead. If you do, untap it.\" (Otherwise, it doesn't untap.)"
+ },
+ {
+  "name": "Death Spark",
+  "oracle_id": "4b23a89c-89ba-41ad-b894-ec02221689eb",
+  "mana_cost": "{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Death Spark deals 1 damage to any target.\nAt the beginning of your upkeep, if this card is in your graveyard with a creature card directly above it, you may pay {1}. If you do, return this card to your hand."
+ },
+ {
+  "name": "Krovikan Horror",
+  "oracle_id": "a4c15223-784f-43a7-8626-30f96ccfdcaf",
+  "mana_cost": "{3}{B}",
+  "type_line": "Creature — Horror Spirit",
+  "power": "2",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "At the beginning of the end step, if this card is in your graveyard with a creature card directly above it, you may return this card to your hand.\n{1}, Sacrifice a creature: This creature deals 1 damage to any target."
  }
 ]

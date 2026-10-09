@@ -3831,7 +3831,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 )
             }
         }
-        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+        Condition::SourceInGraveyardWithCardsAbove {
+            filter,
+            directly_above: true,
+            ..
+        } => {
+            let card = filter.description();
+            format!(
+                "this card is in your graveyard with {} directly above it",
+                with_indefinite_article(&card)
+            )
+        }
+        Condition::SourceInGraveyardWithCardsAbove { filter, count, .. } => {
             let count = small_number_word(*count).unwrap_or_else(|| count.to_string());
             let cards = crate::compiled_text::pluralize_noun_phrase_for_trigger(
                 &filter.description(),
