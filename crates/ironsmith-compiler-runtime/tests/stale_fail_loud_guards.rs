@@ -52,3 +52,20 @@ fn death_cloud_each_player_chain_keeps_every_x_step() {
         }
     }
 }
+
+/// Round 5: the copy-exception keywords are owned by p12 ("they have
+/// vigilance and menace", CR 707.9a), so the ChooseLeadingSpell fail-loud
+/// rule is retired; the body is a land target plus three token copies.
+#[test]
+fn rebuild_the_city_creates_three_land_creature_copies() {
+    for definition in support::definitions("Rebuild the City") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("CreateTokenCopy"), "{debug}");
+        let text = support::rendered(&definition);
+        support::assert_no_internal_markers("Rebuild the City", &text);
+        assert!(text.contains("choose target land"), "{text}");
+        assert!(text.contains("three tokens that are copies of it"), "{text}");
+        assert!(text.contains("3/3"), "{text}");
+        assert!(text.contains("vigilance and menace"), "{text}");
+    }
+}
