@@ -77,3 +77,28 @@ card_reader!(transcendent_dragon,"Transcendent Dragon","Mana cost: {4}{U}{U}\nTy
 card_reader!(flaring_flame_kin,"Flaring Flame-Kin","Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"");
 
 card_reader!(the_fallen,"The Fallen","Mana cost: {1}{B}{B}{B}\nType: Creature — Zombie\nPower/Toughness: 2/3\nAt the beginning of your upkeep, this creature deals 1 damage to each opponent and planeswalker it has dealt damage to this game.");
+
+#[test]
+fn shared_static_condition_gates_pump_keyword_and_activated_grant_together() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::{GameState, PlayerId, Zone};
+    let player = PlayerId(0);
+    for definition in support::definitions_for_text("Flaring Flame-Kin", "Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"") {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let creature = game.create_object_from_definition(&definition, player, Zone::Battlefield);
+        let check = |game: &GameState, enchanted: bool| {
+            assert_eq!(game.current_power(creature), Some(if enchanted { 4 } else { 2 }));
+            let view = game.calculated_characteristics(creature).unwrap();
+            assert_eq!(view.static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Trample), enchanted);
+            assert_eq!(game.current_abilities(creature).unwrap().iter().any(|ability| matches!(&ability.kind, AbilityKind::Activated(_))), enchanted);
+        };
+        check(&game, false);
+        let aura = ironsmith_compiler_runtime::compile_to_runtime_definition("Test Aura", "Mana cost: {W}\nType: Enchantment — Aura\nEnchant creature", false).unwrap();
+        let aura = game.create_object_from_definition(&aura, player, Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(creature)));
+        check(&game, true);
+        game.move_object_by_game_rule(aura, Zone::Graveyard).unwrap();
+        check(&game, false);
+    }
+}
