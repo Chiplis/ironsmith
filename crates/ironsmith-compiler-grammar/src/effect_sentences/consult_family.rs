@@ -217,16 +217,31 @@ pub fn parse_consult_traversal_with_inline_followup(
 
 /// Whether a consult sentence's subject is "each opponent".
 pub(crate) fn consult_subject_is_each_opponent(tokens: &[OwnedLexToken]) -> bool {
+    consult_subject_is(tokens, &["each", "opponent"])
+}
+
+/// Whether a consult sentence's subject is exactly `subject_words`.
+pub(crate) fn consult_subject_is(tokens: &[OwnedLexToken], subject_words: &[&str]) -> bool {
     effect_grammar::parse_consult_traversal_shape(tokens).is_some_and(|shape| {
         matches!(
             &shape.player,
             effect_grammar::ConsultTraversalPlayerShape::Subject(subject)
                 if crate::word_primitives::parse_sequence_complete(
                     &crate::lexer::parser_token_word_refs(subject),
-                    &["each", "opponent"],
+                    subject_words,
                 )
         )
     })
+}
+
+/// "Each player exiles cards from the top of their library until ...": as
+/// [`wrap_each_opponent_consult`], once per player in APNAP order.
+pub(crate) fn wrap_each_player_consult(effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    let mut wrapped = wrap_each_opponent_consult(effects);
+    if let Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })) = wrapped.pop() {
+        return vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })];
+    }
+    wrapped
 }
 
 /// "Each opponent exiles cards from the top of their library until ...":
