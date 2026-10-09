@@ -216,6 +216,25 @@ pub fn has_enter_as_copy_result_followup_sentence(tokens: &[OwnedLexToken]) -> b
     })
 }
 
+/// Strip a leading "it doesn't copy that creature's color" (and a following
+/// "and") from an enter-as-copy exception, returning the remaining exception.
+pub fn strip_copy_color_exception_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let (_, rest) = primitives::strip_lexed_prefix_phrases(
+        tokens,
+        &[
+            &["it", "doesn't", "copy", "that", "creature's", "color"],
+            &["it", "doesnt", "copy", "that", "creatures", "color"],
+            &["it", "doesn't", "copy", "that", "creatures", "color"],
+            &["it", "does", "not", "copy", "that", "creature's", "color"],
+        ],
+    )?;
+    let rest = trim_lexed_commas(rest);
+    Some(
+        primitives::strip_lexed_prefix_phrases(rest, &[&["and"]])
+            .map_or(rest, |(_, rest)| trim_lexed_commas(rest)),
+    )
+}
+
 pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExceptionShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,

@@ -199,6 +199,8 @@ pub enum WireRuntimeModification {
         copy_exception_surface: Option<String>,
         abilities: Vec<WireAbility>,
     },
+    /// "except it doesn't copy that creature's color" (CR 707.9b).
+    RetainSourceColors,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

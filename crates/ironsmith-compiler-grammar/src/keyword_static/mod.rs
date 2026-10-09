@@ -5787,7 +5787,7 @@ pub fn parse_enter_as_copy_as_enters_line(
             clause_words.join(" ")
         )));
     }
-    let copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup> =
+    let mut copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup> =
         copy_followup.into_iter().collect();
     let display = render_token_slice(tokens).trim().to_string();
 
@@ -5943,6 +5943,17 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
 
+            // "except it doesn't copy that creature's color [and <more>]"
+            // (Vesuvan Doppelganger, CR 707.9b): the copy keeps its own colors.
+            let exception_tokens = match exception_tokens.and_then(|tokens| {
+                keyword_static_lines::strip_copy_color_exception_tokens(tokens)
+            }) {
+                Some(rest) => {
+                    copy_followups.push(ironsmith_core::EnterAsCopyFollowup::RetainOwnColors);
+                    (!rest.is_empty()).then_some(rest)
+                }
+                None => exception_tokens,
+            };
             if let Some(exception_tokens) = exception_tokens {
                 let exception = keyword_static_lines::parse_copy_exception_tokens(exception_tokens)
                     .ok_or_else(|| {

@@ -170,6 +170,28 @@ pub fn parse_become_copy_exception_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomeCopyExceptionShape> {
     let tokens = trim_lexed_commas(tokens);
+    // "it doesn't copy that creature's color [and <more exceptions>]"
+    // (Vesuvan Doppelganger, CR 707.9b): the copy keeps its own colors.
+    if let Some((_, rest)) = primitives::strip_lexed_prefix_phrases(
+        tokens,
+        &[
+            &["it", "doesn't", "copy", "that", "creature's", "color"],
+            &["it", "doesnt", "copy", "that", "creatures", "color"],
+            &["it", "doesn't", "copy", "that", "creatures", "color"],
+            &["it", "does", "not", "copy", "that", "creature's", "color"],
+        ],
+    ) {
+        let rest = trim_lexed_commas(rest);
+        let rest = primitives::strip_lexed_prefix_phrases(rest, &[&["and"]])
+            .map_or(rest, |(_, rest)| trim_lexed_commas(rest));
+        let mut shape = if rest.is_empty() {
+            BecomeCopyExceptionShape::default()
+        } else {
+            parse_become_copy_exception_shape(rest)?
+        };
+        shape.retain_source_colors = true;
+        return Some(shape);
+    }
     if let Some(parsed) = parse_structured_become_copy_exception_shape(tokens) {
         return Some(parsed);
     }

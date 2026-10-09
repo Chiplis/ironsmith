@@ -43,6 +43,9 @@ pub enum RuntimeModification {
     RemoveAllAbilities,
     /// Remove the activated ability currently resolving.
     RemoveThisAbility,
+    /// Keep the source's colors as the effect begins: "except it doesn't copy
+    /// that creature's color" (CR 707.9b). Resolved to a layer-5 color set.
+    RetainSourceColors,
     /// Set the Aura attachment restriction while this effect applies.
     SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
     /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
@@ -459,6 +462,9 @@ fn resolve_runtime_modification(
         RuntimeModification::SetAuraAttachmentFilter(filter) => {
             Ok(Modification::SetAuraAttachmentFilter(filter.clone().into()))
         }
+        RuntimeModification::RetainSourceColors => Ok(Modification::SetColors(
+            game.current_colors(ctx.source).unwrap_or_default(),
+        )),
     }
 }
 

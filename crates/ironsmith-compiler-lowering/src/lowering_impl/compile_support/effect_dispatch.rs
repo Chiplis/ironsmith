@@ -2583,6 +2583,7 @@ fn compile_become_copy(
         granted_abilities,
         set_base_power_toughness,
         copy_exception_surface,
+        retain_source_colors,
     }) = &subject_verb.action
     else {
         unreachable!("typed copy route requires a BecomeCopy action")
@@ -2698,6 +2699,12 @@ fn compile_become_copy(
     if !remove_supertypes.is_empty() {
         apply = apply.with_additional_modification(
             crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),
+        );
+    }
+    if *retain_source_colors {
+        // CR 707.9b: the copy keeps the colors the source has now.
+        apply = apply.with_additional_runtime_modification(
+            crate::effects::continuous::RuntimeModification::RetainSourceColors,
         );
     }
     if !add_colors.is_empty() {

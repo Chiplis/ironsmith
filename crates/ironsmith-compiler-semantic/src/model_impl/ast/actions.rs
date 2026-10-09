@@ -1771,6 +1771,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 granted_abilities,
                 set_base_power_toughness,
                 copy_exception_surface,
+                retain_source_colors,
             }) => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -1789,6 +1790,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("granted_abilities", granted_abilities)
                 .field("set_base_power_toughness", set_base_power_toughness)
                 .field("copy_exception_surface", copy_exception_surface)
+                .field("retain_source_colors", retain_source_colors)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,

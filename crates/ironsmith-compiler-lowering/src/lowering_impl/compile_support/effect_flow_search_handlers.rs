@@ -380,6 +380,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     granted_abilities,
                     set_base_power_toughness,
                     copy_exception_surface,
+                    retain_source_colors,
                 }),
             ..
         }),
@@ -447,6 +448,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         granted_abilities.clone(),
         set_base_power_toughness.clone(),
         copy_exception_surface.clone(),
+        *retain_source_colors,
     );
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }

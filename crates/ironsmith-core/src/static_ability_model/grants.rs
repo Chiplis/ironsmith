@@ -1059,6 +1059,10 @@ pub enum EnterAsCopyFollowup {
     /// controller's untap step for as long as you control this creature"
     /// (Wall of Stolen Identity): a reflexive triggered ability (CR 603.12).
     TapCopiedObjectFrozenWhileYouControlSource,
+    /// "except it doesn't copy that creature's color" (Vesuvan Doppelganger,
+    /// CR 707.9b): the copy keeps the entering object's own colors. Applied as
+    /// the copy's copiable values are set, not as a later effect.
+    RetainOwnColors,
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.

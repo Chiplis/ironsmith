@@ -180,6 +180,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             compiler::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            compiler::effects::continuous::RuntimeModification::RetainSourceColors => {
+                ironsmith::effects::continuous::RuntimeModification::RetainSourceColors
+            }
             compiler::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter) => {
                 ironsmith::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)
             }

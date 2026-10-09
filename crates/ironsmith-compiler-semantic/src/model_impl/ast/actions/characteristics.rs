@@ -131,6 +131,8 @@ pub enum CharacteristicActionAst {
         granted_abilities: Vec<GrantedAbilityAst>,
         set_base_power_toughness: Option<(Value, Value)>,
         copy_exception_surface: Option<String>,
+        /// "except it doesn't copy that creature's color" (CR 707.9b).
+        retain_source_colors: bool,
     },
     SetLifeTotal {
         amount: Value,

@@ -4207,6 +4207,7 @@ fn push_plain_iterated_copy_of_it(effects: &mut Vec<EffectAst>) {
         Vec::new(),
         None,
         None,
+        false,
     ));
 }
 
