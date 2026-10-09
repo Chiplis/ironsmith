@@ -1299,11 +1299,16 @@ pub(super) fn compile_subject_verb_early(
             effect.secretly = *secretly;
             Effect::new(effect)
         }),
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+            exclude_basic,
+            basic_only,
+        }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            if *basic_only {
+                Effect::choose_basic_land_type(subject.into_player_filter())
+            } else {
                 Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
-            })
-        }
+            }
+        }),
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
@@ -1943,9 +1948,16 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
         }) => {
-            // "that player" in a resolving multiplier names the ability's
-            // player antecedent; the registration fixes it on resolution.
+            // "if that creature would deal combat damage to one of your
+            // opponents" / "to that player or a permanent that player
+            // controls": the referenced object and player are the ones the
+            // instruction names (the engine locks them as it registers).
+            let refs = current_reference_env(ctx);
             let mut spec = spec.clone();
+            spec.source_filter = resolve_it_tag(&spec.source_filter, &refs)?;
+            if let Some(filter) = spec.target_object_filter.as_mut() {
+                *filter = resolve_it_tag(filter, &refs)?;
+            }
             if let Some(antecedent) = ctx.last_player_filter.clone()
                 && antecedent != PlayerFilter::IteratedPlayer
             {
@@ -2818,6 +2830,8 @@ pub(super) fn compile_subject_verb_early(
                 reflect_damage_to_source_controller,
                 reflect_source_filter,
                 follow_up_effects,
+                portion,
+                combat_only,
             },
         ) => {
             let source_spec = match source {
@@ -2874,7 +2888,11 @@ pub(super) fn compile_subject_verb_early(
                 }
             };
             let mut effect =
-                crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec);
+                crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec)
+                    .with_portion(*portion);
+            if *combat_only {
+                effect = effect.combat_damage_only();
+            }
             let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
                 (Vec::new(), Vec::new())
             } else {

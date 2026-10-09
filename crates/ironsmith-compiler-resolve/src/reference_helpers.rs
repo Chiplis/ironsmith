@@ -627,6 +627,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -2315,6 +2316,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             *multiplier,
         )),
         Value::GreatestCount(filter) => Ok(Value::GreatestCount(resolve_it_tag(filter, refs)?)),
+        Value::LeastCount(filter) => Ok(Value::LeastCount(resolve_it_tag(filter, refs)?)),
         Value::GreatestSharedCreatureTypeCount(filter) => Ok(
             Value::GreatestSharedCreatureTypeCount(resolve_it_tag(filter, refs)?),
         ),

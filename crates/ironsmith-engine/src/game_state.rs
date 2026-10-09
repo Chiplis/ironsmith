@@ -2522,6 +2522,14 @@ impl CantEffectTracker {
                             ironsmith_core::LandwalkKind::SnowLand,
                             crate::static_abilities::LandwalkKind::SnowLand,
                         ) => true,
+                        (
+                            ironsmith_core::LandwalkKind::ChosenType { snow: left },
+                            crate::static_abilities::LandwalkKind::ChosenType { snow: right },
+                        ) => left == right,
+                        (
+                            ironsmith_core::LandwalkKind::SacrificedLandTypes,
+                            crate::static_abilities::LandwalkKind::SacrificedLandTypes,
+                        ) => true,
                         _ => false,
                     })
                     && permission.spec.objects.matches(
@@ -5795,6 +5803,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter) => {
                 Self::object_filter_is_tap_sensitive(filter)
@@ -5911,6 +5920,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
             | crate::effect::Value::GreatestSharedNameCount(filter)
             | crate::effect::Value::TotalPower(filter)

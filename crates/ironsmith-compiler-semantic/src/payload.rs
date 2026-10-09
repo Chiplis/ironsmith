@@ -164,9 +164,15 @@ pub enum KeywordAction {
     UmbraArmor,
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    /// "Bloodthirst X" (CR 702.54c): enters with X +1/+1 counters, where X is
+    /// the total damage your opponents have been dealt this turn.
+    BloodthirstX,
     Tribute(u32),
     Rampage(u32),
     Bushido(u32),
+    /// "Bushido X, where X is ..." (Fumiko the Lowblood): the bonus is the
+    /// defined value as the trigger resolves (CR 702.45a).
+    BushidoValue(Value),
     Frenzy(u32),
     Changeling,
     HexproofFrom(ObjectFilter),
@@ -231,6 +237,15 @@ pub fn describe_soulshift_value(value: &Value) -> String {
         return "the number of Spirits you control".to_string();
     }
     "that value".to_string()
+}
+
+/// The defined X of a valued keyword ("bushido X, where X is the number of
+/// attacking creatures").
+pub fn describe_defined_x_value(value: &Value) -> String {
+    match value {
+        Value::Count(filter) => format!("the number of {}", filter.description()),
+        _ => "that value".to_string(),
+    }
 }
 
 impl KeywordAction {
@@ -330,9 +345,11 @@ impl KeywordAction {
                 | Self::UmbraArmor
                 | Self::Landwalk(_)
                 | Self::Bloodthirst(_)
+                | Self::BloodthirstX
                 | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
+                | Self::BushidoValue(_)
                 | Self::Frenzy(_)
                 | Self::Changeling
                 | Self::HexproofFrom(_)
@@ -532,9 +549,14 @@ impl KeywordAction {
             Self::UmbraArmor => "Umbra armor".to_string(),
             Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+            Self::BloodthirstX => "Bloodthirst X".to_string(),
             Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
+            Self::BushidoValue(value) => format!(
+                "Bushido X, where X is {}",
+                describe_defined_x_value(value)
+            ),
             Self::Frenzy(amount) => format!("Frenzy {amount}"),
             Self::Changeling => "Changeling".to_string(),
             Self::HexproofFrom(filter) => {

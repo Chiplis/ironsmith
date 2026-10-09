@@ -1815,7 +1815,19 @@ pub fn parse_prevent_next_time_damage_sentence(
         }
     };
 
-    let effect = if shape.reflect_damage_to_source_controller {
+    let effect = if shape.portion != ironsmith_core::NextTimeDamagePreventionPortion::All
+        || shape.combat_only
+    {
+        if shape.reflect_damage_to_source_controller {
+            return Ok(None);
+        }
+        EffectAst::subject_verb_prevent_next_time_damage_portion(
+            source,
+            target,
+            shape.portion,
+            shape.combat_only,
+        )
+    } else if shape.reflect_damage_to_source_controller {
         EffectAst::subject_verb_prevent_next_time_damage_with_reflection(source, target, true)
     } else {
         EffectAst::subject_verb_prevent_next_time_damage(source, target)

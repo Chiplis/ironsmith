@@ -16,6 +16,16 @@ pub enum LandwalkKind {
     /// CR 702.14c: "snow landwalk" — the defending player controls a snow
     /// land (of any subtype).
     SnowLand,
+    /// "landwalk of the chosen type" granted by a resolving instruction
+    /// (Illusionary Presence, Barbarian Guides): the land type chosen for that
+    /// resolution, materialized to [`Self::Subtype`] as the grant resolves
+    /// (CR 702.14a). Unmaterialized, it grants no evasion.
+    ChosenType { snow: bool },
+    /// "landwalk of each of the land types of the sacrificed land"
+    /// (Excavator): one landwalk per land type the sacrificed cost land had
+    /// (CR 702.14a), expanded as the grant resolves. Unexpanded, it grants no
+    /// evasion.
+    SacrificedLandTypes,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1122,6 +1132,11 @@ impl LandwalkKind {
             Self::ArtifactLand => "Artifact landwalk".to_string(),
             Self::LegendaryLand => "Legendary landwalk".to_string(),
             Self::SnowLand => "Snow landwalk".to_string(),
+            Self::ChosenType { snow: false } => "Landwalk of the chosen type".to_string(),
+            Self::ChosenType { snow: true } => "Snow landwalk of the chosen type".to_string(),
+            Self::SacrificedLandTypes => {
+                "Landwalk of each of the land types of the sacrificed land".to_string()
+            }
         }
     }
 }

@@ -5,6 +5,8 @@ mod dynamic_keyword_instructions;
 #[path = "dispatch_entry/temporary_damage_addition.rs"]
 mod temporary_damage_addition;
 mod temporary_damage_multiplier;
+#[path = "dispatch_entry/scoped_damage_multiplier.rs"]
+mod scoped_damage_multiplier;
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
     run_post_parse_followup_registry, run_pre_parse_followup_registry,
@@ -2529,6 +2531,7 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
         }
         if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?
             .or(temporary_damage_multiplier::parse(authored_sentence)?)
+            .or(scoped_damage_multiplier::parse(authored_sentence)?)
         {
             effects.push(effect);
             carried_context = None;
@@ -6239,7 +6242,9 @@ pub fn parse_effect_sentences_lexed(
     }
     if let Some(effect) = dynamic_keyword_instructions::parse(tokens) { return Ok(vec![effect]); }
     if let Some(effect) =
-        temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?)
+        temporary_damage_addition::parse(tokens)?
+            .or(temporary_damage_multiplier::parse(tokens)?)
+            .or(scoped_damage_multiplier::parse(tokens)?)
     {
         return Ok(vec![effect]);
     }

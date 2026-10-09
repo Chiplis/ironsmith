@@ -367,6 +367,18 @@ fn normalize_restriction_for_resolution(
         Restriction::PhaseIn(filter) => {
             Restriction::phase_in(lock_filter_to_current_matching_objects(filter, ctx, game))
         }
+        // "You gain protection from that player": the targeting sources are
+        // the ones the player named by this resolution controls (CR 702.16k).
+        Restriction::BeTargetedPlayerFrom(player, source_filter) => {
+            Restriction::be_targeted_player_from(
+                player.clone(),
+                crate::effects::player_reference_binding::bind_filter_player_references(
+                    source_filter,
+                    game,
+                    ctx,
+                ),
+            )
+        }
         _ => restriction.clone(),
     }
 }

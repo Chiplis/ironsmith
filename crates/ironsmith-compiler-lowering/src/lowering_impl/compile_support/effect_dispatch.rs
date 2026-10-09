@@ -3166,6 +3166,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)

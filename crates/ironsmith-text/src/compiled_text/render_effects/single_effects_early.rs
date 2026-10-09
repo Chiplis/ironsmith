@@ -648,6 +648,10 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
             "the greatest number of {}",
             pluralize_noun_phrase(&describe_for_each_count_filter(filter))
         )),
+        Value::LeastCount(filter) => Some(format!(
+            "the number of {} of the player with the fewest",
+            pluralize_noun_phrase(&describe_for_each_count_filter(filter))
+        )),
         Value::GreatestSharedCreatureTypeCount(filter) => Some(format!(
             "the greatest number of {} that have a creature type in common",
             pluralize_noun_phrase(&describe_for_each_count_filter(filter))
@@ -1925,6 +1929,7 @@ fn damage_count_filter(value: &Value) -> Option<&ObjectFilter> {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter) => Some(filter),
         Value::Scaled(inner, _) => damage_count_filter(inner),
         _ => None,

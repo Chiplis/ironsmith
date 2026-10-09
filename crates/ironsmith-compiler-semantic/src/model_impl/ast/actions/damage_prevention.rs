@@ -59,6 +59,11 @@ pub enum DamagePreventionActionAst {
         /// matches this filter at that time.
         reflect_source_filter: Option<ObjectFilter>,
         follow_up_effects: Vec<EffectAst>,
+        /// "prevent half that damage, rounded down" / "prevent all but 1 of
+        /// that damage": the part of the next damage the shield prevents.
+        portion: ironsmith_core::NextTimeDamagePreventionPortion,
+        /// "would deal combat damage".
+        combat_only: bool,
     },
     ReplaceNextDamageToTarget {
         target: TargetAst,

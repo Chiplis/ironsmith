@@ -112,6 +112,54 @@ pub(crate) fn player_has_protection_from_object(
             }
         })
         || player_has_protection_from_everything(game, player)
+        || player_has_composed_protection_from_object(game, player, source)
+}
+
+/// A resolution grant of player protection from a quality ("you gain
+/// protection from that player until your next turn", "target player gains
+/// protection from red") lowers to the same two observable halves as
+/// protection from everything, but scoped to the quality: "can't be the
+/// target of <quality> spells or abilities" plus "prevent all damage <quality>
+/// sources would deal to that player", created together by one source. The
+/// pair is that player's protection, so its enchant half applies too: an Aura
+/// (a Curse) with the quality can't enchant the player, and an attached one is
+/// put into its owner's graveyard as a state-based action (CR 702.16e,
+/// 704.5m).
+fn player_has_composed_protection_from_object(
+    game: &GameState,
+    player: crate::ids::PlayerId,
+    source: &crate::object::Object,
+) -> bool {
+    let shields = game.effect_store.prevention_effects.shields();
+    game.effect_store
+        .restriction_effects
+        .iter()
+        .filter(|restriction| !restriction.is_pending())
+        .filter_map(|restriction| match &restriction.restriction {
+            crate::effect::Restriction::BeTargetedPlayerFrom(_, quality) => {
+                Some((restriction, quality))
+            }
+            _ => None,
+        })
+        .any(|(restriction, quality)| {
+            let paired_shield = shields.iter().any(|shield| {
+                shield.source == restriction.source
+                    && matches!(
+                        shield.protected,
+                        crate::prevention::PreventionTarget::Player(protected) if protected == player
+                    )
+                    && shield.damage_filter.from_source.as_ref() == Some(quality)
+                    && crate::prevention::DamageFilter {
+                        from_source: None,
+                        ..shield.damage_filter.clone()
+                    } == crate::prevention::DamageFilter::all()
+            });
+            paired_shield && {
+                let filter_ctx =
+                    game.filter_context_for(restriction.controller, Some(restriction.source));
+                quality.matches(source, &filter_ctx, game)
+            }
+        })
 }
 
 pub(crate) fn attachment_can_attach_to_target(

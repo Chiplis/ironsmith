@@ -246,6 +246,12 @@ pub(super) fn read_choose_land_type(
             parsed.exclude_basic,
         )));
     }
+    // "choose a basic land type" (Giant Slug) as a standalone instruction.
+    if crate::grammar::choices::parse_choice_basic_land_type_phrase_words(&choice_words)
+        .is_some_and(|parsed| parsed.consumed == choice_words.len())
+    {
+        return Ok(Some(EffectAst::subject_verb_choose_basic_land_type(choice_player)));
+    }
     Ok(None)
 }
 pub(super) fn read_choose_subtype_family(

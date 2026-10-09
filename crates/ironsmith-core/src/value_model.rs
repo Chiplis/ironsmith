@@ -636,6 +636,12 @@ pub enum Value {
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
     GreatestCount(ObjectFilter),
+    /// The number of matching objects controlled (or, with no controller
+    /// partition, owned) by the player who has the fewest of them ("equal to
+    /// the number of lands controlled by the player who controls the fewest",
+    /// Balance). The player partition is the filter's controller, else its
+    /// owner (cards in hand).
+    LeastCount(ObjectFilter),
     /// The largest cohort of matching creatures that share one creature type.
     /// A creature with multiple creature types contributes once to each of its
     /// type cohorts; the value is the size of the largest cohort, not the sum.

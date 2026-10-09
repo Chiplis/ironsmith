@@ -16,6 +16,11 @@ pub struct PreventNextTimeDamageShape<'a> {
     pub source: DamageSourceShape<'a>,
     pub target: DamageTargetShape<'a>,
     pub reflect_damage_to_source_controller: bool,
+    /// "prevent half that damage, rounded down" / "prevent all but N of that
+    /// damage" (CR 615.1): the part of the next damage the shield prevents.
+    pub portion: ironsmith_core::NextTimeDamagePreventionPortion,
+    /// "would deal combat damage".
+    pub combat_only: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DestroyDamageTargetReference {
@@ -261,6 +266,17 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
         }
         if is_shadow_word(token) {
             filter = filter.with_static_ability(StaticAbilityId::Shadow);
+            continue;
+        }
+        // "an unblocked creature of your choice" (Forcefield): combat status
+        // is part of the source description, not a word to skip.
+        match word.to_ascii_lowercase().as_str() {
+            "unblocked" => filter.unblocked = true,
+            "attacking" => filter.attacking = true,
+            "blocking" => filter.blocking = true,
+            "tapped" => filter.tapped = true,
+            "untapped" => filter.untapped = true,
+            _ => {}
         }
     }
     filter.colors = colors;
@@ -499,23 +515,55 @@ fn simple_prevent_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     Ok(false)
 }
 
+/// "prevent half that damage, rounded down" (Dark Sphere).
+fn half_prevent_tail<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ironsmith_core::NextTimeDamagePreventionPortion> {
+    primitives::phrase(&["prevent", "half", "that", "damage"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["rounded", "down"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown)
+}
+
+/// "prevent all but 1 of that damage" (Forcefield).
+fn all_but_prevent_tail<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ironsmith_core::NextTimeDamagePreventionPortion> {
+    primitives::phrase(&["prevent", "all", "but"]).parse_next(input)?;
+    let remaining = primitives::number_token.parse_next(input)?;
+    primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining))
+}
+
 fn parse_prevent_next_time_damage_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PreventNextTimeDamageShape<'a>> {
     primitives::phrase(&["the", "next", "time"]).parse_next(input)?;
     let source_tokens = one_or_more_tokens_before(input, primitives::kw("would").void())?;
-    primitives::phrase(&["would", "deal", "damage"]).parse_next(input)?;
+    primitives::phrase(&["would", "deal"]).parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::kw("damage").parse_next(input)?;
     opt(primitives::kw("to")).parse_next(input)?;
     let target_tokens = tokens_before(input, primitives::phrase(&["this", "turn"]))?;
     primitives::phrase(&["this", "turn"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    let reflect_damage_to_source_controller =
-        alt((reflect_tail, simple_prevent_tail)).parse_next(input)?;
+    let (reflect_damage_to_source_controller, portion) = alt((
+        reflect_tail.map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
+        simple_prevent_tail
+            .map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
+        half_prevent_tail.map(|portion| (false, portion)),
+        all_but_prevent_tail.map(|portion| (false, portion)),
+    ))
+    .parse_next(input)?;
     Ok(PreventNextTimeDamageShape {
         source: classify_damage_source(source_tokens)
             .ok_or_else(|| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?,
         target: classify_damage_target(target_tokens),
         reflect_damage_to_source_controller,
+        portion,
+        combat_only,
     })
 }
 

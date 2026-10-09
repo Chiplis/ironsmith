@@ -1,0 +1,11 @@
+[
+ {
+  "name": "Petrified Wood-Kin",
+  "oracle_id": "3bc9649c-4350-4c6a-8441-dc76a5f833af",
+  "mana_cost": "{6}{G}",
+  "type_line": "Creature — Elemental Warrior",
+  "oracle_text": "This spell can't be countered.\nBloodthirst X\nProtection from instants",
+  "power": "3",
+  "toughness": "3"
+ }
+]

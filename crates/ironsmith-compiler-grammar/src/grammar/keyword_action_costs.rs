@@ -110,6 +110,10 @@ pub enum SpecialAbilityPhraseKind {
     ArtifactLandwalk,
     LegendaryLandwalk,
     SnowLandwalk,
+    /// "landwalk of the chosen type" / "snow landwalk of the chosen type".
+    ChosenTypeLandwalk { snow: bool },
+    /// "landwalk of each of the land types of the sacrificed land".
+    SacrificedLandTypesLandwalk,
 }
 
 pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
@@ -205,6 +209,32 @@ fn parse_exact_special_ability_phrase_words(
             primitives::word_slice_exact("engines"),
         )
             .value(SpecialAbilityPhraseKind::StartYourEngines),
+        // The chosen-type forms precede the bare keywords they extend.
+        (
+            opt(primitives::word_slice_exact("snow")),
+            primitives::word_slice_exact("landwalk"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("chosen"),
+            primitives::word_slice_exact("type"),
+        )
+            .map(|(snow, _, _, _, _, _)| SpecialAbilityPhraseKind::ChosenTypeLandwalk {
+                snow: snow.is_some(),
+            }),
+        (
+            primitives::word_slice_exact("landwalk"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("each"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("land"),
+            primitives::word_slice_exact("types"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("sacrificed"),
+            primitives::word_slice_exact("land"),
+        )
+            .value(SpecialAbilityPhraseKind::SacrificedLandTypesLandwalk),
         primitives::word_slice_exact("landwalk").value(SpecialAbilityPhraseKind::AnyLandwalk),
         (
             primitives::word_slice_exact("nonbasic"),
@@ -784,6 +814,58 @@ pub fn dynamic_keyword_tail_start(tokens: &[OwnedLexToken]) -> Option<usize> {
 pub struct DynamicKeywordAmountShape<'a> {
     pub kind: DynamicAmountKeyword,
     pub definition: Option<&'a [OwnedLexToken]>,
+}
+
+/// A keyword whose amount is an X defined by a following "where X is" clause
+/// on the same line ("bushido X, where X is the number of attacking
+/// creatures", "soulshift X, where X is the number of Spirits you control").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefinedXKeyword {
+    Bushido,
+    Soulshift,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DefinedXKeywordShape<'a> {
+    pub kind: DefinedXKeyword,
+    /// The complete "where X is ..." clause.
+    pub definition: &'a [OwnedLexToken],
+}
+
+/// "[this creature has] <keyword> X, where X is <value>" as a complete line.
+/// The optional subject is the card's own (already normalized) self
+/// reference: a creature that "has" a keyword has it (CR 113.3).
+pub fn parse_defined_x_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<DefinedXKeywordShape<'_>> {
+    fn read<'a>(input: &mut LexStream<'a>) -> WResult<DefinedXKeywordShape<'a>> {
+        opt((
+            primitives::kw("this"),
+            alt((primitives::kw("creature"), primitives::kw("permanent"))),
+            primitives::kw("has"),
+        ))
+        .parse_next(input)?;
+        let kind = alt((
+            primitives::kw("bushido").value(DefinedXKeyword::Bushido),
+            primitives::kw("soulshift").value(DefinedXKeyword::Soulshift),
+        ))
+        .parse_next(input)?;
+        primitives::kw("x").parse_next(input)?;
+        opt(primitives::comma()).parse_next(input)?;
+        let definition = (
+            primitives::phrase(&["where", "x", "is"]),
+            repeat_till::<_, _, (), _, _, _, _>(
+                1..,
+                any.verify(|token: &&OwnedLexToken| token.kind != crate::lexer::TokenKind::Period)
+                    .void(),
+                peek(primitives::sentence_end()),
+            )
+            .map(|((), _)| ()),
+        )
+            .take()
+            .parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(DefinedXKeywordShape { kind, definition })
+    }
+    primitives::probe_all(tokens, read, "complete defined-x keyword amount")
 }
 
 pub fn parse_dynamic_keyword_amount_tokens(tokens: &[OwnedLexToken]) -> Option<DynamicKeywordAmountShape<'_>> {

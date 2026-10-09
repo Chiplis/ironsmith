@@ -1,0 +1,18 @@
+[
+ {
+  "name": "Eon Frolicker",
+  "oracle_id": "c0a18a53-d520-4795-9b3b-0f93bcf35848",
+  "mana_cost": "{2}{U}{U}",
+  "type_line": "Creature — Elemental Otter",
+  "oracle_text": "Flying\nWhen this creature enters, if you cast it, target opponent takes an extra turn after this one. Until your next turn, you and planeswalkers you control gain protection from that player.",
+  "power": "5",
+  "toughness": "5"
+ },
+ {
+  "name": "Noble Heritage",
+  "oracle_id": "2e342aa3-2590-4b59-852a-9adb31bafe5c",
+  "mana_cost": "{1}{W}",
+  "type_line": "Legendary Enchantment — Background",
+  "oracle_text": "Commander creatures you own have \"When this creature enters and at the beginning of your upkeep, each player may put two +1/+1 counters on a creature they control. For each opponent who does, you gain protection from that player until your next turn.\""
+ }
+]

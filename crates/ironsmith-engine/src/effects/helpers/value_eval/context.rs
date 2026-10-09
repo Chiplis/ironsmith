@@ -342,6 +342,43 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             .fold(0, i32::max)
     }
 
+    /// "the number of <objects> controlled by the player who controls the
+    /// fewest" (Balance): the smallest per-player count among in-game players
+    /// matching the filter's controller partition, or its owner partition
+    /// when it has no controller (cards in hand).
+    pub(super) fn least_per_player(&self, filter: &ObjectFilter) -> i32 {
+        let filter_ctx = self.filter_context(self.game);
+        let count = |filter: &ObjectFilter| match self.mode {
+            Mode::Execution(ctx) => value_candidate_ids_for_filter(self.game, filter, ctx)
+                .iter()
+                .filter_map(|id| self.game.object(*id))
+                .filter(|object| filter.matches(object, &filter_ctx, self.game))
+                .count() as i32,
+            Mode::Continuous(layer) => layer.aggregate_count(filter),
+        };
+        let by_controller = filter.controller.is_some();
+        let Some(partition) = filter.controller.as_ref().or(filter.owner.as_ref()) else {
+            return count(filter);
+        };
+        self.game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game() && partition.matches_player(player.id, &filter_ctx)
+            })
+            .map(|player| {
+                let mut filter = filter.clone();
+                if by_controller {
+                    filter.controller = Some(PlayerFilter::Specific(player.id));
+                } else {
+                    filter.owner = Some(PlayerFilter::Specific(player.id));
+                }
+                count(&filter)
+            })
+            .min()
+            .unwrap_or(0)
+    }
+
     /// Aggregation owns arithmetic. The visitors only choose the authoritative
     /// object state: retained execution snapshots or in-progress layer values.
     pub(super) fn aggregate(

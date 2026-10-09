@@ -2040,6 +2040,10 @@ impl Effect {
         ))
     }
 
+    pub fn choose_basic_land_type(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ChooseLandTypeEffect::new(player, false).basic_only())
+    }
+
     pub fn may_choose_new_targets_player(
         effect_id: impl Into<EffectId>,
         player: crate::target::PlayerFilter,

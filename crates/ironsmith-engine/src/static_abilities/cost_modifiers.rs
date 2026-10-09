@@ -793,6 +793,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 describe_greatest_count_cost_filter(filter)
             )),
         ),
+        Value::LeastCount(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the fewest number of {}",
+                describe_greatest_count_cost_filter(filter)
+            )),
+        ),
         Value::GreatestSharedCreatureTypeCount(filter) => (
             "{X}".to_string(),
             Some(format!(

@@ -481,9 +481,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("excluded_subtypes", excluded_subtypes)
                 .field("family", family)
                 .finish(),
-            Self::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => f
+            Self::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic,
+                basic_only,
+            }) => f
                 .debug_struct("ChooseLandType")
                 .field("exclude_basic", exclude_basic)
+                .field("basic_only", basic_only)
                 .finish(),
             Self::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => f
                 .debug_struct("ChooseCardName")
@@ -987,6 +991,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 reflect_damage_to_source_controller,
                 reflect_source_filter,
                 follow_up_effects,
+                portion,
+                combat_only,
             }) => f
                 .debug_struct("PreventNextTimeDamage")
                 .field("source", source)
@@ -997,6 +1003,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 )
                 .field("reflect_source_filter", reflect_source_filter)
                 .field("follow_up_effects", follow_up_effects)
+                .field("portion", portion)
+                .field("combat_only", combat_only)
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget {
                 target,

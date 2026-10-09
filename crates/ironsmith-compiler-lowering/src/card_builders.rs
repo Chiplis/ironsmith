@@ -2403,6 +2403,24 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// "Bushido X, where X is ...": whenever this creature blocks or becomes
+    /// blocked, it gets +X/+X until end of turn, X read as the trigger
+    /// resolves (CR 702.45a).
+    pub fn bushido_value(self, amount: Value) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::either(
+                crate::triggers::Trigger::this_blocks(),
+                crate::triggers::Trigger::this_becomes_blocked(),
+            ),
+            vec![crate::effect::Effect::pump(
+                amount.clone(),
+                amount,
+                crate::target::ChooseSpec::Source,
+                crate::effect::Until::EndOfTurn,
+            )],
+        ))
+    }
+
     pub fn frenzy(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_attacks_and_isnt_blocked(),

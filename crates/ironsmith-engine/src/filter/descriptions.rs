@@ -1284,6 +1284,9 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
             Value::GreatestCount(filter) => {
                 format!("the greatest number of {}", filter.description())
             }
+            Value::LeastCount(filter) => {
+                format!("the number of {} of the player with the fewest", filter.description())
+            }
             Value::GreatestSharedCreatureTypeCount(filter) => format!(
                 "the greatest number of {} that have a creature type in common",
                 filter.description()

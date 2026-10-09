@@ -813,8 +813,84 @@ fn counter_with_payment_payer(
     }
 }
 
+/// "Counter target spell if it has the same mana value as the discarded card"
+/// (Hisoka, Minamo Sensei), "counter that spell if it has the same mana value
+/// as the revealed card" (Counterbalance): a resolution-time comparison with
+/// the cost-discarded or just-revealed card. The spell is any spell when it is
+/// targeted; the condition is checked as the ability resolves (CR 608.2c), so
+/// it is not a targeting restriction.
+fn parse_counter_if_same_mana_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((if_index, (), reference)) = grammar::find_prefix(tokens, || {
+        grammar::phrase(&["if", "it", "has", "the", "same", "mana", "value", "as"])
+    }) else {
+        return Ok(None);
+    };
+    let reference = crate::util::trim_edge_punctuation_tokens(reference);
+    let tag = if grammar::probe_all(
+        reference,
+        grammar::phrase(&["the", "discarded", "card"]),
+        "discarded cost card",
+    )
+    .is_some()
+    {
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
+    } else if grammar::probe_all(
+        reference,
+        winnow::combinator::alt((
+            grammar::phrase(&["the", "revealed", "card"]),
+            grammar::phrase(&["that", "card"]),
+        )),
+        "revealed card",
+    )
+    .is_some()
+    {
+        crate::tag::CompilerReferenceTag::It.bind()
+    } else {
+        return Ok(None);
+    };
+    let spell_tokens = &tokens[..if_index];
+    let targeted = spell_tokens.first().is_some_and(|token| token.is_word("target"));
+    let triggering = grammar::probe_all(
+        spell_tokens,
+        grammar::phrase(&["that", "spell"]),
+        "triggering spell",
+    )
+    .is_some();
+    if !targeted && !triggering {
+        return Ok(None);
+    }
+    let target = parse_counter_target_phrase(spell_tokens)?;
+    let mut filter = ObjectFilter::default();
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: tag.into(),
+        relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
+    });
+    // "that spell" in a cast trigger is the triggering spell (CR 603.7c).
+    let predicate = if targeted {
+        crate::cards::builders::PredicateAst::TargetMatches(filter)
+    } else {
+        crate::cards::builders::PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            filter,
+        )
+    };
+    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: vec![EffectAst::subject_verb_counter(target)],
+        if_false: Vec::new(),
+    })))
+}
+
 pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_counter_if_same_mana_value(tokens)? {
         return Ok(effect);
     }
 

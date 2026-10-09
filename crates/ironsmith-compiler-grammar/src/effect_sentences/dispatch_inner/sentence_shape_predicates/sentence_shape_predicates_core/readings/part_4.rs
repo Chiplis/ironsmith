@@ -420,9 +420,35 @@ pub(super) fn read_immediate_sacrifice_sentence(
         }
         let mut effects = super::super::super::super::parse_effect_chain_inner_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        if tokens.first().is_some_and(|token| token.is_word("sacrifice")) {
+            bind_imperative_source_sacrifice_to_controller(&mut effects);
+        }
         return Ok(Some(effects));
     }
     Ok(None)
+}
+
+/// "Target player loses all rad counters. Sacrifice this artifact." (Survivor's
+/// Med Kit): an imperative with no subject is performed by the controller of
+/// the spell or ability (CR 608.2c), and only a permanent's controller can
+/// sacrifice it (CR 701.21a). The subject is the controller even when an
+/// earlier sentence named another player.
+fn bind_imperative_source_sacrifice_to_controller(effects: &mut [EffectAst]) {
+    use crate::cards::builders::{
+        PlayerAst as Player, SubjectVerbActionAst as Action, SubjectVerbEffectAst as Statement,
+        ZoneMoveActionAst as ZoneMove,
+    };
+    for effect in effects {
+        if let EffectAst::SubjectVerb(Statement {
+            subject,
+            action: Action::ZoneMoves(ZoneMove::Sacrifice { filter, .. }),
+        }) = effect
+            && filter.source
+            && subject.player == Player::Implicit
+        {
+            subject.player = Player::You;
+        }
+    }
 }
 pub(super) fn read_end_of_combat_remainder(
     input: &Sentence<'_>,

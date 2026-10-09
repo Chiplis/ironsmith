@@ -752,6 +752,19 @@ impl<E> PreventAllDamageToTargetEffect<E> {
     }
 }
 
+/// How much of the next matching damage event a one-shot prevention shield
+/// prevents (CR 615.1): all of it, half of it rounded down ("prevent half
+/// that damage, rounded down", Dark Sphere), or all but a fixed amount
+/// ("prevent all but 1 of that damage", Forcefield).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum NextTimeDamagePreventionPortion {
+    #[default]
+    All,
+    HalfRoundedDown,
+    AllBut(u32),
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PreventNextTimeDamageEffect<E = ()> {
@@ -764,6 +777,12 @@ pub struct PreventNextTimeDamageEffect<E = ()> {
     #[cfg_attr(feature = "serde", serde(default))]
     pub reflect_source_filter: Option<ObjectFilter>,
     pub follow_up_effects: Vec<E>,
+    /// The part of the next damage event the shield prevents.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub portion: NextTimeDamagePreventionPortion,
+    /// "would deal combat damage": only a combat damage event uses the shield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub combat_only: bool,
 }
 
 impl<E> PreventNextTimeDamageEffect<E> {
@@ -774,11 +793,23 @@ impl<E> PreventNextTimeDamageEffect<E> {
             reflect_damage_to_source_controller: false,
             reflect_source_filter: None,
             follow_up_effects: Vec::new(),
+            portion: NextTimeDamagePreventionPortion::All,
+            combat_only: false,
         }
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_portion(mut self, portion: NextTimeDamagePreventionPortion) -> Self {
+        self.portion = portion;
+        self
+    }
+
+    pub fn combat_damage_only(mut self) -> Self {
+        self.combat_only = true;
         self
     }
 
@@ -1935,6 +1966,10 @@ impl ChooseColorEffect {
 pub struct ChooseLandTypeEffect {
     pub chooser: PlayerFilter,
     pub exclude_basic: bool,
+    /// "choose a basic land type" (Giant Slug): only the five basic land
+    /// types are offered (CR 205.3i).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub basic_only: bool,
 }
 
 impl ChooseLandTypeEffect {
@@ -1942,7 +1977,13 @@ impl ChooseLandTypeEffect {
         Self {
             chooser,
             exclude_basic,
+            basic_only: false,
         }
+    }
+
+    pub fn basic_only(mut self) -> Self {
+        self.basic_only = true;
+        self
     }
 }
 

@@ -360,6 +360,9 @@ pub(crate) fn can_block_with_view(
                     // current supertypes.
                     LandwalkKind::LegendaryLand => supertypes().contains(&Supertype::Legendary),
                     LandwalkKind::SnowLand => supertypes().contains(&Supertype::Snow),
+                    // Materialized when the grant resolved; an unbound choice
+                    // names no land type.
+                    LandwalkKind::ChosenType { .. } | LandwalkKind::SacrificedLandTypes => false,
                 }
             });
         if defending_has_required_land {

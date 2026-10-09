@@ -5653,6 +5653,22 @@ fn parse_damage_amount_replacement_target_filters(
             Some(ObjectFilter::permanent().controlled_by(PlayerFilter::ChosenPlayer)),
         ));
     }
+    // "one of your opponents" (Jeska, Thrice Reborn): any opponent.
+    if simple == ["one", "of", "your", "opponents"] {
+        return Ok((Some(PlayerFilter::Opponent), None));
+    }
+    // "that player or a permanent that player controls" (Lightning, Army of
+    // One): the player the instruction names; reference resolution binds it.
+    if matches!(
+        simple,
+        ["that", "player", "or", "a", "permanent", "that", "player", "controls"]
+            | ["that", "player", "or", "permanent", "that", "player", "controls"]
+    ) {
+        return Ok((
+            Some(PlayerFilter::IteratedPlayer),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::IteratedPlayer)),
+        ));
+    }
     #[derive(Clone, Copy)]
     enum DamageReplacementTargetKind {
         You,

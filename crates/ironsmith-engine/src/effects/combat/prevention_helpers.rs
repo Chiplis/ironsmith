@@ -157,6 +157,18 @@ pub fn register_prevention_shield(
     follow_up_targets: Vec<ResolvedTarget>,
     follow_up_target_assignments: Vec<TargetAssignment>,
 ) -> PreventionShieldId {
+    // "Damage from sources that player controls" keeps naming the player this
+    // resolution meant after its targets and loop binding are gone.
+    let mut damage_filter = damage_filter;
+    if let Some(from_source) = damage_filter.from_source.as_ref() {
+        damage_filter.from_source = Some(
+            crate::effects::player_reference_binding::bind_filter_player_references(
+                from_source,
+                game,
+                ctx,
+            ),
+        );
+    }
     let shield = PreventionShield::new(ctx.source, ctx.controller, protected, amount, duration)
         .with_filter(damage_filter)
         .with_follow_up_effects(follow_up_effects)

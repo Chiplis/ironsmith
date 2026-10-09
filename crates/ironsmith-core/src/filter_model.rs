@@ -8155,6 +8155,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "the greatest number of {}",
                 describe_count_filter_subject(filter)
             ),
+            Value::LeastCount(filter) => format!(
+                "the number of {} of the player with the fewest",
+                describe_count_filter_subject(filter)
+            ),
             Value::GreatestSharedCreatureTypeCount(filter) => format!(
                 "the greatest number of {} that have a creature type in common",
                 describe_count_filter_subject(filter)

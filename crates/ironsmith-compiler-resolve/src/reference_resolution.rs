@@ -2265,6 +2265,12 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
+                    // "Target player loses all poison counters. ~ deals that
+                    // much damage to that player" (Leeches): a player holder
+                    // is the next "that player".
+                    if matches!(target, TargetAst::Player(..)) {
+                        track_target_player(target, frame);
+                    }
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                     target,
@@ -9702,6 +9708,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
