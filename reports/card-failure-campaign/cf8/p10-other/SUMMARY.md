@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger (after round 6): 38 `source-proposed`, 119 `blocked`, 1 `semantic-fix-collateral` (Gomazoa), 0 untriaged.
+Ledger (after round 7): 38 `source-proposed`, 119 `blocked`, 1 `semantic-fix-collateral` (Gomazoa), 0 untriaged.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -246,3 +246,41 @@ None of these were implemented this round.
 - The Haakon zone check special-cases `Condition::SourceIsInZone` inside cast-time restrictions.
 - New pair shapes (head "its"/"each") claim 2-3 sentence programs; they decline unless every
   sentence matches exactly.
+
+## Round 7 (coordinator follow-up; source-only, UNRUN)
+- **Peace Talks rendering** (65c309896): `CantEffect` with `ThisTurnAndNextTurn` renders "This turn
+  and next turn, ..." (effect_impl/late.rs), and an effect-list renderer joins the card's three
+  restrictions into the printed single clause list (effect_lists.rs). Sibling-surface renderers
+  (clause_and_ability_surfaces, costs_and_triggers) only special-case `LeadingUntilEndOfTurn` /
+  `LeadingUntilYourNextTurn` for coordinated target bundles and need no arm.
+- **Angelic Arbiter** (666544f80): appended `PlayerFilter::TurnHistory(PlayerTurnHistoryFilter::
+  {CastSpell, AttackedWithCreature})`, matched from turn history (`spell_cast_snapshot_history`,
+  `creatures_attacked_by_player_this_turn`) in every game-aware matcher; arms added at all
+  exhaustive PlayerFilter sites. Statics: attack ban / cast ban on `Excluding{TurnHistory, your team}`.
+- **Mana Maze** (a2b0049bd): `ObjectFilter.shares_color_with_last_spell_cast_this_turn` (serde
+  default) matched against the turn's latest cast snapshot; static cast ban for all players.
+- **Moonhold** (36588e8f4): "<target> can't X this turn if {C} was spent ... and can't Y this turn if
+  {D} was spent ..." -> one TargetOnly + two resolution-time `Conditional`s each gating its own
+  end-of-turn restriction on its mana-spent predicate.
+- **Null Chamber** (365695130): `ChooseCardNameAsEnters.{opponent_also_chooses,
+  exclude_basic_land_names}` (serde defaults); the engine asks the next opponent for a second name and
+  rejects basic land names (CR 205.4c); `PlayLandsMatching` now expands "{chosen name}" per recorded
+  name like `CastSpellsMatching`; static reader for "Spells with the chosen names can't be cast and
+  lands with the chosen names can't be played."
+- **Dihada triage**: the frozen error is a correct rejection. Its −3 has no memory-producing effect
+  between the loyalty cost and "Create a Treasure token for each card put into your graveyard this
+  way", so the pending PutIntoGraveyard count resolves against the loyalty counter-cost producer
+  (`bind_counter_cost_quantity`) and is refused. Fix belongs to the reveal/partition program (make the
+  "the rest into your graveyard" move a PutIntoGraveyard memory producer); not done here.
+- NOT built: **Suffocation** (cast condition is expressible as `Value::DamageHistory` >= 1, but the
+  damage recipient "the controller of the last red instant or sorcery spell that dealt damage to you
+  this turn" needs a player reference resolved from damage records); **Invasion of Alara** (exile
+  until two matches; "one of those two" free cast + "one of them" to hand + rest to bottom);
+  **Talent of the Telepath** (a spell-mastery line on another line replaces the count of the cast
+  statement).
+
+### Round 7 risks
+- New appended schema: `PlayerFilter::TurnHistory`, `PlayerTurnHistoryFilter`,
+  `ObjectFilter.shares_color_with_last_spell_cast_this_turn`, `ChooseCardNameAsEnters` fields.
+  ObjectFilter has ~470 struct-literal sites; any exhaustive one without `..` needs the new field.
+- `PlayLandsMatching` with "{chosen name}" now expands names (previously never matched).
