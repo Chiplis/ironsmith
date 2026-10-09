@@ -63,12 +63,7 @@ struct LineFamilyRuleDef {
     run: StructuredLineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
-    LineFamilyRuleDef {
-        id: RuleId::new("ignore-effect-object-exception"),
-        head: HeadDiscriminator::words(&[]),
-        run: run_continuous_control_exception_line_family,
-    },
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     LineFamilyRuleDef {
         id: RuleId::new("trailing-keyword-activation"),
         head: HeadDiscriminator::words(&[]),
@@ -236,109 +231,6 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
         run: run_colon_nonactivation_statement_line_family,
     },
 ];
-
-/// Resolve a preceding instruction's explicitly named controller through its
-/// parsed filter. Do not manufacture words or infer a player from card names.
-fn previous_player_antecedent(ctx: &LineDispatchContext<'_>) -> Option<crate::target::PlayerFilter> {
-    use crate::model::visit::{SemanticVisitor, visit_effect_tree};
-    struct PlayerReference(Option<crate::target::PlayerFilter>, bool);
-    impl SemanticVisitor for PlayerReference {
-        type Break = ();
-        fn visit_filter(&mut self, filter: &crate::target::ObjectFilter) -> std::ops::ControlFlow<()> {
-            if let Some(player) = &filter.controller {
-                if self.0.as_ref().is_some_and(|previous| previous != player) {
-                    self.1 = true;
-                }
-                self.0 = Some(player.clone());
-            }
-            std::ops::ControlFlow::Continue(())
-        }
-    }
-    for item in ctx.preprocessed.items.get(..ctx.idx)?.iter().rev() {
-        let PreprocessedItem::Line(line) = item else { continue };
-        let Ok(effects) = crate::effect_sentences::parse_effect_sentence_lexed(&line.tokens) else { continue };
-        let mut reference = PlayerReference(None, false);
-        for effect in &effects { let _ = visit_effect_tree(&mut reference, effect); }
-        if reference.1 { return None; }
-        if reference.0.is_some() { return reference.0; }
-    }
-    None
-}
-
-/// A trailing "Ignore this effect for each <object filter>" is an authored
-/// set exception. Parse its actual filter, then narrow the preceding mass
-/// instruction through the same exclusion mechanism as "except for ...".
-fn run_continuous_control_exception_line_family(
-    ctx: &LineDispatchContext<'_>,
-) -> ParseOutcome<LineDispatchResult> {
-    use crate::cards::builders::{SubjectVerbActionAst, ZoneMoveActionAst};
-    use crate::model::visit::for_each_nested_effects_mut;
-    use crate::target::{ObjectFilter, PlayerFilter};
-    fn narrow(
-        effects: &mut [crate::cards::builders::EffectAst],
-        exception: &ObjectFilter,
-        antecedent: Option<&PlayerFilter>,
-    ) -> Result<usize, crate::cards::builders::CardTextError> {
-        let mut count = 0;
-        for effect in effects {
-            if let crate::cards::builders::EffectAst::SubjectVerb(subject) = effect {
-                let filter = match &mut subject.action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
-                    SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter }
-                        | PermanentStateActionAst::UntapAll { filter }) => Some(filter),
-                    _ => None,
-                };
-                if let Some(filter) = filter {
-                    crate::effect_sentences::apply_except_filter_exclusions(filter, exception)?;
-                    if filter.controller == Some(PlayerFilter::IteratedPlayer) {
-                        if let Some(player) = antecedent { filter.controller = Some(player.clone()); }
-                    }
-                    count += 1;
-                }
-            }
-            let mut child_result = Ok(0);
-            for_each_nested_effects_mut(effect, true, |children| {
-                if child_result.is_ok() {
-                    child_result = narrow(children, exception, antecedent).map(|n| n + child_result.as_ref().copied().unwrap_or(0));
-                }
-            });
-            count += child_result?;
-        }
-        Ok(count)
-    }
-    let tokens = crate::util::trim_edge_punctuation_tokens(&ctx.line.tokens);
-    let Some(boundary) = tokens.iter().rposition(|token| token.is_period()) else { return ParseOutcome::NoMatch };
-    let tail = &tokens[boundary + 1..];
-    let Some(((), exception_tokens)) = crate::grammar::primitives::parse_prefix(
-        tail, crate::grammar::primitives::phrase(&["ignore", "this", "effect", "for", "each"]),
-    ) else { return ParseOutcome::NoMatch };
-    let span = span_from_tokens(&ctx.line.tokens);
-    let parsed = (|| {
-        let exception = crate::object_filters::parse_object_filter_lexed(exception_tokens, false)?;
-        let mut effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens[..=boundary])?;
-        let antecedent = previous_player_antecedent(ctx);
-        if narrow(&mut effects, &exception, antecedent.as_ref())? != 1 {
-            return Err(crate::cards::builders::CardTextError::ParseError(
-                "Ignore this effect requires one supported mass instruction".into(),
-            ));
-        }
-        Ok(effects)
-    })();
-    match parsed {
-        Ok(effects) => ParseOutcome::matched(LineDispatchResult::single(
-            RecognizedLine::Statement(RecognizedStatementLine {
-                info: ctx.line.info.clone(),
-                text: ctx.line.info.raw_line.clone(),
-                parse_tokens: ctx.line.tokens.clone(),
-                parse_groups: vec![ctx.line.tokens.clone()],
-                parsed_effects: Some(effects),
-            }), ctx.idx + 1,
-        ), span),
-        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(
-            RuleId::new("ignore-effect-object-exception"), span, error,
-        )),
-    }
-}
 
 fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
     dispatch

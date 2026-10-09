@@ -2,6 +2,7 @@ mod ability_loss_templates;
 mod bounded_number_choice;
 mod shared_object_verb_pairs;
 mod new_target_restriction;
+mod ignore_effect_exclusion;
 mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;

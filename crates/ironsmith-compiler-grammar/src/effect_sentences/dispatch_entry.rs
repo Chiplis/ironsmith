@@ -6254,6 +6254,14 @@ pub fn parse_effect_sentences_lexed(
         super::new_target_restriction::attach_new_target_restriction(&mut effects, restriction)?;
         return Ok(effects);
     }
+    if let Some((instructions, exclusion)) =
+        super::ignore_effect_exclusion::split_ignore_effect_exclusion(tokens)
+    {
+        let exception = super::ignore_effect_exclusion::parse_ignore_effect_exclusion(exclusion)?;
+        let mut effects = parse_effect_sentences_lexed(instructions)?;
+        super::ignore_effect_exclusion::attach_ignore_effect_exclusion(&mut effects, &exception)?;
+        return Ok(effects);
+    }
     if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
         return Ok(effects);
     }

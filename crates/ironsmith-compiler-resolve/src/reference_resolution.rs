@@ -607,6 +607,15 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
         // chosen opponent available to the second half.
         return;
     }
+    // "Creatures the active player controls attack this turn if able. ...
+    // that player controls" (Siren's Call): the active player (CR 102.1) is
+    // a fixed participant, published as the antecedent itself rather than as
+    // the controller of a possibly-empty affected set, exactly like an
+    // announced player target below.
+    if player_filter_from_object_filter(filter) == Some(PlayerFilter::Active) {
+        frame.last_player_filter = Some(PlayerFilter::Active);
+        return;
+    }
     // "Destroy all creatures target opponent controls. ... that player": an
     // announced player target stays the antecedent even when the affected
     // set is empty.

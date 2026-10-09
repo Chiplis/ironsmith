@@ -52,16 +52,43 @@ const SIRENS_CALL: &str = "Mana cost: {U}\nType: Instant\nCast this spell only d
 fn sirens_call_binds_that_player_to_the_active_player_and_spares_newcomers() {
     for definition in compile::compile_both("Siren's Call", SIRENS_CALL) {
         let debug = format!("{definition:?}");
-        // Line 2: the requirement covers the active player's creatures only.
+        // Line 2: the requirement covers the active player's creatures only,
+        // and "the active player" becomes the player antecedent.
         assert!(debug.contains("MustAttack"), "{debug}");
-        assert!(debug.contains("Active"), "{debug}");
-        // Line 3: the delayed destroy is limited to creatures the active
-        // player has controlled continuously since the turn began.
+        // Line 3: "that player" binds to that antecedent through ordinary
+        // reference resolution, so both the requirement and the delayed
+        // destroy are scoped to the active player's creatures.
+        assert!(
+            debug.matches("controller: Some(Active)").count() >= 2,
+            "{debug}"
+        );
+        assert!(!debug.contains("IteratedPlayer"), "'that player' is bound: {debug}");
+        // The trailing "Ignore this effect for each creature the player
+        // didn't control continuously since the beginning of the turn"
+        // folds into the destroy as the complementary relation (CR 302.6).
         assert!(
             debug.contains("controlled_continuously_since_turn_began: Some(true)"),
             "{debug}"
         );
         assert!(debug.contains("Wall"), "{debug}");
-        assert!(!debug.contains("IteratedPlayer"), "'that player' is bound: {debug}");
+    }
+}
+
+const IGNORE_OWN_CREATURES_DESTROY: &str = "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy all creatures. Ignore this effect for each creature you control.";
+const IGNORE_OWN_CREATURES_DAMAGE: &str = "Mana cost: {2}{R}\nType: Sorcery\nThis spell deals 2 damage to each creature. Ignore this effect for each creature you control.";
+
+#[test]
+fn ignore_this_effect_for_each_excludes_objects_from_any_preceding_set_instruction() {
+    for (name, text) in [
+        ("Ignore Exclusion Destroy", IGNORE_OWN_CREATURES_DESTROY),
+        ("Ignore Exclusion Damage", IGNORE_OWN_CREATURES_DAMAGE),
+    ] {
+        for definition in compile::compile_both(name, text) {
+            let debug = format!("{definition:?}");
+            // "each creature you control" is removed from the affected set:
+            // only creatures you don't control are destroyed / dealt damage.
+            assert!(debug.contains("controller: Some(NotYou)"), "{name}: {debug}");
+            assert!(!debug.contains("controller: Some(You)"), "{name}: {debug}");
+        }
     }
 }
