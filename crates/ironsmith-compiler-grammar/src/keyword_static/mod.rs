@@ -26,7 +26,8 @@ mod event_instead_replacements;
 pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
 mod event_amount_replacements;
 pub use event_amount_replacements::{
-    parse_if_event_would_happen_amount_line, parse_you_may_look_at_additional_cards_each_time_line,
+    parse_damage_life_floor_static_line, parse_if_event_would_happen_amount_line,
+    parse_you_may_look_at_additional_cards_each_time_line,
 };
 mod prevention_follow_ups;
 pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line};
@@ -816,6 +817,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_damage_life_floor_static_line" => vec![
+            StaticAbilityLineHeadHint::Single("if"),
+            StaticAbilityLineHeadHint::Single("damage"),
+        ],
         "parse_you_may_look_at_additional_cards_each_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1543,6 +1548,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_event_would_happen_instead_line),
         single_static_ability_ast_rule!(parse_if_event_would_happen_amount_line),
         single_static_ability_ast_rule!(parse_you_may_look_at_additional_cards_each_time_line),
+        single_static_ability_ast_rule!(parse_damage_life_floor_static_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),

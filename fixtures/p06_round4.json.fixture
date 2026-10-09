@@ -248,5 +248,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "If you would copy a spell one or more times, instead copy it that many times plus an additional time. You may choose new targets for the additional copy.\n{7}, {T}: Copy target instant or sorcery spell you control. You may choose new targets for the copy."
+ },
+ {
+  "name": "Worship",
+  "oracle_id": "99f9a4c8-b59f-4a41-8577-6c1e4684b240",
+  "mana_cost": "{3}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead."
  }
 ]

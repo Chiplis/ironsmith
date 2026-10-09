@@ -297,3 +297,8 @@ fn twinning_staff_adds_one_spell_copy() {
         &["EventAmountReplacement", "CopySpell", "Add(1)", "CopySpellEffect"],
     )]);
 }
+
+#[test]
+fn worship_floors_damage_life_loss_while_you_control_a_creature() {
+    assert_cluster(&[("Worship", &["DamageReduceLifeBelowOne", "Creature"])]);
+}

@@ -480,3 +480,42 @@ pub fn parse_you_may_look_at_additional_cards_each_time_line(
         amount_display(&tokens),
     )))
 }
+
+/// "If you control a creature, damage that would reduce your life total to
+/// less than 1 reduces it to 1 instead." (Worship): a static life floor for
+/// damage (CR 614.1a). The damage is still dealt — lifelink and other
+/// results see its full amount — and only the life total is floored, through
+/// the shared `DamageReduceLifeBelowOne` rule the resolving form (Angel's
+/// Grace) already uses. A leading "if" condition gates the static ability.
+pub fn parse_damage_life_floor_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    const CLAUSE: &[&str] = &[
+        "damage", "that", "would", "reduce", "your", "life", "total", "to", "less", "than", "1",
+        "reduces", "it", "to", "1", "instead",
+    ];
+    let tokens = trim_edge_punctuation(tokens);
+    let (condition_tokens, clause_tokens) = match tokens.first() {
+        Some(first) if first.is_word("if") => {
+            let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
+                return Ok(None);
+            };
+            (Some(&tokens[1..comma]), &tokens[comma + 1..])
+        }
+        _ => (None, &tokens[..]),
+    };
+    if parser_token_word_refs(clause_tokens).as_slice() != CLAUSE {
+        return Ok(None);
+    }
+    let ability = StaticAbility::restriction(
+        crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
+        amount_display(&tokens),
+    );
+    Ok(Some(match condition_tokens {
+        Some(condition) if !condition.is_empty() => {
+            ability.with_condition(parse_static_condition_clause(condition)?)
+        }
+        Some(_) => return Ok(None),
+        None => ability,
+    }))
+}
