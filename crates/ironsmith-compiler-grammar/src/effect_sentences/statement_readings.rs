@@ -60,6 +60,12 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("transform-any-number"),
+        head: HeadDiscriminator::Words(&["transform", "then"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_transform_any_number(input)),
+    },
+    Reading {
         id: RuleId::new("counted-next-untap-steps"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1387,4 +1393,47 @@ fn read_counted_next_untap_steps(
         }
     }
     Ok((widened == 1).then_some(effects))
+}
+
+/// "Then transform any number of Human Werewolves you control." (Tovolar,
+/// Dire Overlord): choose any number of matching permanents, then transform
+/// each chosen one (CR 701.27).
+fn read_transform_any_number(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let tokens = primitives::parse_prefix(tokens, primitives::kw("then"))
+        .map(|(_, rest)| crate::lexer::trim_lexed_commas(rest))
+        .unwrap_or(tokens);
+    let Some((_, filter_tokens)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["transform", "any", "number", "of"]),
+    ) else {
+        return Ok(None);
+    };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = crate::object_filters::parse_object_filter_lexed(filter_tokens, false)?;
+    filter.zone.get_or_insert(crate::zone::Zone::Battlefield);
+    let tag = crate::util::helper_tag_for_tokens(tokens, "transform_chosen");
+    Ok(Some(vec![
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: crate::effect::ChoiceCount::any_number(),
+            count_value: None,
+            player: crate::cards::builders::PlayerAst::You,
+            tag: tag.clone(),
+        }),
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+            tag,
+            effects: vec![EffectAst::subject_verb_transform(
+                crate::cards::builders::TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                ),
+            )],
+        }),
+    ]))
 }

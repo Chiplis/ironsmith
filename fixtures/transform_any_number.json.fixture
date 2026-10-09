@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Tovolar, Dire Overlord",
+  "oracle_id": "45d49831-548a-4a0e-9a18-9f7397913895",
+  "oracle_text": "Whenever a Wolf or Werewolf you control deals combat damage to a player, draw a card.\nAt the beginning of your upkeep, if you control three or more Wolves and/or Werewolves, it becomes night. Then transform any number of Human Werewolves you control.\nDaybound",
+  "text": "Mana cost: {1}{R}{G}\nType: Legendary Creature — Human Werewolf\nPower/Toughness: 3/3\nWhenever a Wolf or Werewolf you control deals combat damage to a player, draw a card.\nAt the beginning of your upkeep, if you control three or more Wolves and/or Werewolves, it becomes night. Then transform any number of Human Werewolves you control.\nDaybound"
+ }
+]
