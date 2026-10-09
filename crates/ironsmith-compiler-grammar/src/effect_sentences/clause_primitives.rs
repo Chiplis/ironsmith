@@ -369,7 +369,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "choose-card-name-clause",
-            &["choose"],
+            &["choose", "that", "target"],
             parse_choose_card_name_clause,
         ),
         specific_primitive!(
