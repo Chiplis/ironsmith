@@ -4444,6 +4444,10 @@ impl<
         Self::new(LandwalkKind::ChosenType { snow })
     }
 
+    pub fn sacrificed_land_types_landwalk() -> Self {
+        Self::new(LandwalkKind::SacrificedLandTypes)
+    }
+
     pub fn landwalk(kind: Subtype) -> Self {
         Self::new(LandwalkKind::Subtype {
             subtype: kind,

@@ -25,5 +25,12 @@
   "oracle_text": "{5}: At the beginning of your next upkeep, choose a basic land type. This creature gains landwalk of the chosen type until the end of that turn.",
   "power": "1",
   "toughness": "1"
+ },
+ {
+  "name": "Excavator",
+  "oracle_id": "2d5ebcd7-07c2-412e-b0d9-54e3a88895fd",
+  "mana_cost": "{2}",
+  "type_line": "Artifact",
+  "oracle_text": "{T}, Sacrifice a basic land: Target creature gains landwalk of each of the land types of the sacrificed land until end of turn."
  }
 ]

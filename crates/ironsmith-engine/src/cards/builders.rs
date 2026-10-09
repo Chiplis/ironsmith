@@ -1879,6 +1879,9 @@ impl CardDefinitionBuilder {
                     crate::static_abilities::LandwalkKind::ChosenType { snow } => {
                         StaticAbility::chosen_type_landwalk(snow)
                     }
+                    crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                        StaticAbility::sacrificed_land_types_landwalk()
+                    }
                 };
                 self.with_ability(Ability::static_ability(ability))
             }

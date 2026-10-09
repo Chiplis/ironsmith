@@ -112,6 +112,8 @@ pub enum SpecialAbilityPhraseKind {
     SnowLandwalk,
     /// "landwalk of the chosen type" / "snow landwalk of the chosen type".
     ChosenTypeLandwalk { snow: bool },
+    /// "landwalk of each of the land types of the sacrificed land".
+    SacrificedLandTypesLandwalk,
 }
 
 pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
@@ -219,6 +221,20 @@ fn parse_exact_special_ability_phrase_words(
             .map(|(snow, _, _, _, _, _)| SpecialAbilityPhraseKind::ChosenTypeLandwalk {
                 snow: snow.is_some(),
             }),
+        (
+            primitives::word_slice_exact("landwalk"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("each"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("land"),
+            primitives::word_slice_exact("types"),
+            primitives::word_slice_exact("of"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("sacrificed"),
+            primitives::word_slice_exact("land"),
+        )
+            .value(SpecialAbilityPhraseKind::SacrificedLandTypesLandwalk),
         primitives::word_slice_exact("landwalk").value(SpecialAbilityPhraseKind::AnyLandwalk),
         (
             primitives::word_slice_exact("nonbasic"),

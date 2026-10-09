@@ -5,6 +5,7 @@
 //! registration boilerplate.
 
 mod apply_continuous;
+pub(crate) use apply_continuous::sacrificed_cost_land_types;
 mod exchange_text_boxes;
 mod change_text;
 

@@ -159,3 +159,66 @@ fn giant_slug_chooses_a_basic_land_type_at_its_next_upkeep() {
         assert!(debug.contains("EndOfTurn"), "{debug}");
     }
 }
+
+#[test]
+fn excavator_grants_one_landwalk_per_land_type_of_the_sacrificed_land() {
+    use ironsmith::snapshot::ObjectSnapshot;
+    let rows = support::rows(FIXTURE);
+    let row = support::row(&rows, "Excavator");
+    assert_eq!(row["oracle_id"], "2d5ebcd7-07c2-412e-b0d9-54e3a88895fd");
+    for definition in support::definitions(row) {
+        let activated = support::activated(&definition);
+        assert_eq!(activated.len(), 1);
+        let debug = format!("{:?}", support::activated_effects(activated[0]));
+        assert!(debug.contains("SacrificedLandTypes"), "{debug}");
+        assert!(debug.contains("EndOfTurn"), "{debug}");
+
+        // Gameplay: the sacrificed land was a Swamp, so the target gains
+        // swampwalk; a Forest controlled by the defender doesn't stop blocks.
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.active_player = A;
+        game.turn.phase = Phase::FirstMain;
+        let excavator = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let swamp = permanent(&mut game, A, "Witness Swamp", "Type: Basic Land — Swamp");
+        let swamp_snapshot = ObjectSnapshot::from_object(game.object(swamp).unwrap(), &game);
+        let raider = permanent(
+            &mut game,
+            A,
+            "Witness Raider",
+            "Mana cost: {1}{R}\nType: Creature — Human\nPower/Toughness: 2/2",
+        );
+        let blocker = permanent(
+            &mut game,
+            B,
+            "Witness Bear",
+            "Mana cost: {1}{G}\nType: Creature — Bear\nPower/Toughness: 2/2",
+        );
+        permanent(&mut game, B, "Witness Forest", "Type: Basic Land — Forest");
+        let mut tagged = std::collections::HashMap::new();
+        tagged.insert(ironsmith::TagKey::from("sacrifice_cost_0"), vec![swamp_snapshot.clone()]);
+        tagged.insert(
+            ironsmith::TagKey::from("__original_sacrifice_cost_0"),
+            vec![swamp_snapshot],
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = EffectContext::new(excavator, A, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(raider)])
+            .with_tagged_objects(tagged);
+        for effect in activated[0].effects.all_effects() {
+            execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        game.refresh_continuous_state().unwrap();
+        assert!(ironsmith::rules::combat::can_block(
+            game.object(raider).unwrap(),
+            game.object(blocker).unwrap(),
+            &game
+        ));
+        permanent(&mut game, B, "Witness Swamp B", "Type: Basic Land — Swamp");
+        game.refresh_continuous_state().unwrap();
+        assert!(!ironsmith::rules::combat::can_block(
+            game.object(raider).unwrap(),
+            game.object(blocker).unwrap(),
+            &game
+        ));
+    }
+}

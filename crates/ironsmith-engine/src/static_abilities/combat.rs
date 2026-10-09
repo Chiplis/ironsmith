@@ -1166,6 +1166,9 @@ pub enum LandwalkKind {
     /// Landwalk of the land type chosen for the granting resolution;
     /// materialized to `Subtype` as that grant resolves.
     ChosenType { snow: bool },
+    /// One landwalk per land type of the sacrificed cost land; expanded by
+    /// the resolving grant.
+    SacrificedLandTypes,
 }
 
 impl LandwalkKind {
@@ -1186,6 +1189,9 @@ impl LandwalkKind {
             Self::SnowLand => "Snow landwalk".to_string(),
             Self::ChosenType { snow: false } => "Landwalk of the chosen type".to_string(),
             Self::ChosenType { snow: true } => "Snow landwalk of the chosen type".to_string(),
+            Self::SacrificedLandTypes => {
+                "Landwalk of each of the land types of the sacrificed land".to_string()
+            }
         }
     }
 }

@@ -32,8 +32,9 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
             return Ok(EffectOutcome::resolved());
         }
 
+        let abilities = expand_sacrificed_land_type_landwalks(&self.abilities, ctx);
         let mut outcomes = Vec::new();
-        for ability in &self.abilities {
+        for ability in &abilities {
             let apply = ApplyContinuousEffect::new(
                 EffectTarget::Specific(target_id),
                 Modification::AddAbility(ability.clone()),
@@ -48,6 +49,28 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
     }
+}
+
+/// "Target creature gains landwalk of each of the land types of the
+/// sacrificed land until end of turn" (Excavator): one landwalk ability per
+/// land type the sacrificed cost land had as it was sacrificed (CR 702.14a,
+/// last-known information). A sacrificed land with no land type grants none.
+fn expand_sacrificed_land_type_landwalks(
+    abilities: &[StaticAbility],
+    ctx: &ExecutionContext,
+) -> Vec<StaticAbility> {
+    let mut expanded = Vec::with_capacity(abilities.len());
+    for ability in abilities {
+        if ability.landwalk_kind()
+            != Some(crate::static_abilities::LandwalkKind::SacrificedLandTypes)
+        {
+            expanded.push(ability.clone());
+            continue;
+        }
+        let land_types = crate::effects::continuous::sacrificed_cost_land_types(ctx);
+        expanded.extend(land_types.into_iter().map(StaticAbility::landwalk));
+    }
+    expanded
 }
 
 fn spec_names_player(spec: &ChooseSpec) -> bool {

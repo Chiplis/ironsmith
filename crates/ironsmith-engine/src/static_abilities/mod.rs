@@ -2980,6 +2980,10 @@ impl StaticAbility {
         Self::new(Landwalk::new(LandwalkKind::ChosenType { snow }))
     }
 
+    pub fn sacrificed_land_types_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::SacrificedLandTypes))
+    }
+
     pub fn attached_chosen_landwalk_grant(display: String, snow: bool) -> Self {
         Self::new(AttachedChosenLandwalkGrant::new(display, snow))
     }

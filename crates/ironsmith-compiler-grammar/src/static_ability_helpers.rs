@@ -125,6 +125,9 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
             crate::static_abilities::LandwalkKind::ChosenType { snow } => {
                 CompilerStaticAbility::chosen_type_landwalk(snow)
             }
+            crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                CompilerStaticAbility::sacrificed_land_types_landwalk()
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(CompilerStaticAbility::bloodthirst(amount)),
         KeywordAction::BloodthirstX => Some(CompilerStaticAbility::enters_with_counters_value(

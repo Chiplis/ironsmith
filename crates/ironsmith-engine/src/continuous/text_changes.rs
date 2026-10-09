@@ -94,7 +94,8 @@ pub(crate) fn rewrite_landwalk_words(kind: LandwalkKind, change: TextChange) -> 
         | LandwalkKind::ArtifactLand
         | LandwalkKind::LegendaryLand
         | LandwalkKind::SnowLand
-        | LandwalkKind::ChosenType { .. } => kind,
+        | LandwalkKind::ChosenType { .. }
+        | LandwalkKind::SacrificedLandTypes => kind,
     }
 }
 
@@ -112,7 +113,8 @@ pub(crate) fn rewrite_core_landwalk_words(
         | ironsmith_core::LandwalkKind::ArtifactLand
         | ironsmith_core::LandwalkKind::LegendaryLand
         | ironsmith_core::LandwalkKind::SnowLand
-        | ironsmith_core::LandwalkKind::ChosenType { .. } => kind,
+        | ironsmith_core::LandwalkKind::ChosenType { .. }
+        | ironsmith_core::LandwalkKind::SacrificedLandTypes => kind,
     }
 }
 

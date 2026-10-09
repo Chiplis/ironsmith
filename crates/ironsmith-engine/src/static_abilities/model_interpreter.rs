@@ -349,6 +349,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::LandwalkKind::ChosenType { snow } => {
                 crate::static_abilities::LandwalkKind::ChosenType { snow }
             }
+            ironsmith_core::LandwalkKind::SacrificedLandTypes => {
+                crate::static_abilities::LandwalkKind::SacrificedLandTypes
+            }
         }
     }
 
@@ -2212,6 +2215,9 @@ impl StaticAbilityModelInterpreter {
                 ironsmith_core::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
                 ironsmith_core::LandwalkKind::ChosenType { snow } => {
                     StaticAbility::chosen_type_landwalk(*snow)
+                }
+                ironsmith_core::LandwalkKind::SacrificedLandTypes => {
+                    StaticAbility::sacrificed_land_types_landwalk()
                 }
             },
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
