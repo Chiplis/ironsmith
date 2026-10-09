@@ -3553,6 +3553,14 @@ pub fn parse_double_counters_replacement_line(
                 display_text_for_tokens(tokens, true),
             )
         }
+        keyword_static_lines::CounterReplacementShape::EnergyYouGetPlus { additional } => {
+            StaticAbility::add_player_counters_placement_replacement(
+                PlayerFilter::You,
+                Some(CounterType::Energy),
+                additional,
+                display_text_for_tokens(tokens, true),
+            )
+        }
         keyword_static_lines::CounterReplacementShape::ActorAnyKindMultiply { opponent, halve } => {
             StaticAbility::actor_counter_multiplier_replacement(
                 if opponent {

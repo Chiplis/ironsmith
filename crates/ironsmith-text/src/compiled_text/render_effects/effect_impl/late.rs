@@ -4698,7 +4698,29 @@
             _ => "",
         };
         let prefix = if matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot) { "The next time" } else { "If" };
-        return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals {multiplier} that damage instead");
+        let threshold = register
+            .minimum
+            .map(|minimum| format!("{minimum} or more "))
+            .unwrap_or_default();
+        let repeated = match (&register.target_player_filter, &register.target_object_filter) {
+            (Some(_), Some(_)) => "that permanent or player",
+            (Some(_), None) => "that player",
+            _ => "that permanent",
+        };
+        match register.amount_override {
+            Some(ironsmith_core::AmountModifierSpec::SetTo(amount)) => {
+                return format!("{prefix} {source} would deal {threshold}{damage} to {recipient}{duration}, it deals {amount} {damage} to {repeated} instead");
+            }
+            Some(ironsmith_core::AmountModifierSpec::Half { round_up }) => {
+                let rounding = if round_up { "up" } else { "down" };
+                return format!("{prefix} {source} would deal {threshold}{damage} to {recipient}{duration}, it deals half that damage, rounded {rounding}, to {repeated} instead");
+            }
+            Some(ironsmith_core::AmountModifierSpec::Add(amount)) => {
+                return format!("{prefix} {source} would deal {threshold}{damage} to {recipient}{duration}, it deals that much damage plus {amount} instead");
+            }
+            Some(ironsmith_core::AmountModifierSpec::Multiply(_)) | None => {}
+        }
+        return format!("{prefix} {source} would deal {threshold}{damage} to {recipient}{duration}, it deals {multiplier} that damage instead");
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDamageAdditionEffect>() {
         let mut base = register.source_filter.clone();

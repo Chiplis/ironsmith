@@ -716,9 +716,11 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
             filter,
             count,
+            directly_above,
         }) => Condition::SourceInGraveyardWithCardsAbove {
             filter: filter.clone(),
             count: *count,
+            directly_above: *directly_above,
         },
         PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => {
             Condition::SourceIsInZone(*zone)

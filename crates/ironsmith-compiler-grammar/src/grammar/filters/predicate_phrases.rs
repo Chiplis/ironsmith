@@ -560,7 +560,11 @@ fn parse_source_graveyard_cards_above_predicate(
         ));
     }
     Ok(Some(PredicateAst::Source(
-        SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count },
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above: false,
+        },
     )))
 }
 

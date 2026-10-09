@@ -5437,6 +5437,14 @@ pub struct RegisterDamageMultiplierEffect {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
+    /// A non-multiplying amount change registered the same way: "it deals 2
+    /// damage to that permanent or player instead" (Equal Treatment) or "half
+    /// that damage". When present it replaces `factor` (CR 614.1a, 616.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub amount_override: Option<crate::AmountModifierSpec>,
+    /// "1 or more damage": the proposed amount must be at least this.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub minimum: Option<u32>,
 }
 
 /// One source deals one amount to the complete union of recipients at once.

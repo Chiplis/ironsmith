@@ -6163,7 +6163,11 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
             .unwrap_or(false)),
-        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+        Condition::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above,
+        } => {
             Ok(game.object(shared.source).is_some_and(|source| {
                 if source.zone != crate::zone::Zone::Graveyard {
                     return false;
@@ -6177,6 +6181,12 @@ fn evaluate_condition_in_context(
                     return false;
                 };
                 let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
+                if *directly_above {
+                    return graveyard.get(source_index + 1).is_some_and(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    });
+                }
                 graveyard[source_index + 1..]
                     .iter()
                     .filter(|id| {

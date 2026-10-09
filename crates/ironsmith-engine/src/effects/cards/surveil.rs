@@ -85,159 +85,198 @@ impl EffectExecutor for SurveilEffect {
                         EffectOutcome::count(0),
                     ));
                 }
-
-                // Get the top N cards (they're at the end of the library vec)
-                let top_cards_top_to_bottom: Vec<ObjectId> = game
-                    .player(player_id)
-                    .map(|p| p.library.iter().rev().take(count).copied().collect())
-                    .unwrap_or_default();
-
-                if top_cards_top_to_bottom.is_empty() {
-                    // CR 701.25d: surveilling with an empty library is still a
-                    // surveil for "whenever you surveil" triggers.
-                    return crate::effects::composition::complete_keyword_action_with_outputs(
-                        game,
-                        ctx,
-                        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                // CR 614.1a, 616.1: the surveil is proposed before any card is
+                // looked at, so "look at an additional two cards each time you
+                // surveil" (Enhanced Surveillance) modifies its number.
+                // Nothing could replace or modify it: skip the replacement
+                // pass (and its state copy) and perform the action directly.
+                if !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game) {
+                    return execute_surveil_body(game, ctx, player_id, count);
+                }
+                crate::effects::composition::execute_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    crate::events::Event::new_with_provenance(
                         KeywordActionEvent::new(
                             KeywordActionKind::Surveil,
                             player_id,
                             ctx.source,
-                            0,
+                            u32::try_from(count).unwrap_or(u32::MAX),
                         ),
-                    );
-                }
-
-                let surveil_count = top_cards_top_to_bottom.len();
-                let surveilled_snapshots = top_cards_top_to_bottom
-                    .iter()
-                    .filter_map(|card_id| {
-                        game.object(*card_id)
-                            .map(|object| ObjectSnapshot::from_object(object, game))
-                    })
-                    .collect::<Vec<_>>();
-
-                let observation = super::look_at_cards_with_outputs(
-                    game,
-                    ctx,
-                    player_id,
-                    player_id,
-                    Zone::Library,
-                    &top_cards_top_to_bottom,
-                    format!("Surveil {surveil_count} card(s)"),
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                let spec = SurveilSpec::new(ctx.source, top_cards_top_to_bottom.clone());
-                let cards_to_graveyard: Vec<ObjectId> = make_decision(
-                    game,
-                    &mut ctx.decision_maker,
-                    player_id,
-                    Some(ctx.source),
-                    spec,
-                )
-                .into_iter()
-                .filter(|c| top_cards_top_to_bottom.contains(c))
-                .collect();
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                let kept_on_top_top_to_bottom: Vec<ObjectId> = top_cards_top_to_bottom
-                    .iter()
-                    .filter(|c| !cards_to_graveyard.contains(c))
-                    .copied()
-                    .collect();
-                let ordered_top_cards = super::order_library_cards_top_to_bottom(
-                    game,
-                    ctx,
-                    player_id,
-                    "Reorder cards to keep on top of your library",
-                    &kept_on_top_top_to_bottom,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                // Put cards going to graveyard. CR 701.25a + 614.1: this is an
-                // ordinary zone change, so "would be put into a graveyard"
-                // replacements (Rest in Peace, Leyline of the Void, Dauthi
-                // Voidwalker) apply to it, exactly as they do for mill.
-                let moves = cards_to_graveyard
-                    .iter()
-                    .filter_map(|id| {
-                        game.object(*id).map(|object| {
-                            crate::effects::zones::PreparedZoneMove::capture(
-                                game,
-                                *id,
-                                object.zone,
-                                Zone::Graveyard,
-                                ctx.cause.clone(),
-                                None,
-                            )
-                        })
-                    })
-                    .collect();
-                let opened_batch = game.open_simultaneous_action();
-                let mut keyword_outputs = None;
-                let mut outputs = crate::effects::zones::execute_zone_moves_with_outputs(
-                    game,
-                    ctx,
-                    moves,
-                    |game, ctx, _| {
-                        super::arrange_library_cards(
-                            game,
-                            player_id,
-                            &ordered_top_cards,
-                            &[],
-                            "surveil arranged cards kept on top",
-                        );
-                        game.close_simultaneous_action(opened_batch);
-                        let mut object_tags = HashMap::new();
-                        object_tags
-                            .insert(TagKey::from(SURVEILLED_THIS_TURN_TAG), surveilled_snapshots);
-                        let keyword =
-                            crate::effects::composition::complete_keyword_action_with_outputs(
-                                game,
-                                ctx,
-                                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
-                                    surveil_count as i32,
-                                )),
-                                KeywordActionEvent::new(
-                                    KeywordActionKind::Surveil,
-                                    player_id,
-                                    ctx.source,
-                                    surveil_count as u32,
-                                )
-                                .with_object_tags(object_tags),
-                            )?;
-                        let outcome = EffectOutcome::aggregate_with_primary_result(
-                            keyword.outcome.clone(),
-                            [observation.outcome.clone()],
-                        );
-                        keyword_outputs = Some(keyword);
-                        Ok(outcome)
+                        ctx.provenance,
+                    ),
+                    crate::effects::composition::KeywordActionOutput::Body,
+                    crate::effects::composition::KeywordActionAmount::BodyMagnitude,
+                    |game, ctx, action| {
+                        execute_surveil_body(game, ctx, action.player, action.amount as usize)
                     },
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                outputs.retain_published_children([observation]);
-                outputs.retain_published_children(keyword_outputs);
-                Ok(outputs)
+                )
             },
         )
     }
+}
+
+/// Surveil `count` cards for `player_id` once the proposed surveil proceeds.
+fn execute_surveil_body(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    count: usize,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    if count == 0 {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    // Get the top N cards (they're at the end of the library vec)
+    let top_cards_top_to_bottom: Vec<ObjectId> = game
+        .player(player_id)
+        .map(|p| p.library.iter().rev().take(count).copied().collect())
+        .unwrap_or_default();
+
+    if top_cards_top_to_bottom.is_empty() {
+        // CR 701.25d: surveilling with an empty library is still a
+        // surveil for "whenever you surveil" triggers.
+        return crate::effects::composition::complete_keyword_action_with_outputs(
+            game,
+            ctx,
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            KeywordActionEvent::new(
+                KeywordActionKind::Surveil,
+                player_id,
+                ctx.source,
+                0,
+            ),
+        );
+    }
+
+    let surveil_count = top_cards_top_to_bottom.len();
+    let surveilled_snapshots = top_cards_top_to_bottom
+        .iter()
+        .filter_map(|card_id| {
+            game.object(*card_id)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+        })
+        .collect::<Vec<_>>();
+
+    let observation = super::look_at_cards_with_outputs(
+        game,
+        ctx,
+        player_id,
+        player_id,
+        Zone::Library,
+        &top_cards_top_to_bottom,
+        format!("Surveil {surveil_count} card(s)"),
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+
+    let spec = SurveilSpec::new(ctx.source, top_cards_top_to_bottom.clone());
+    let cards_to_graveyard: Vec<ObjectId> = make_decision(
+        game,
+        &mut ctx.decision_maker,
+        player_id,
+        Some(ctx.source),
+        spec,
+    )
+    .into_iter()
+    .filter(|c| top_cards_top_to_bottom.contains(c))
+    .collect();
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+
+    let kept_on_top_top_to_bottom: Vec<ObjectId> = top_cards_top_to_bottom
+        .iter()
+        .filter(|c| !cards_to_graveyard.contains(c))
+        .copied()
+        .collect();
+    let ordered_top_cards = super::order_library_cards_top_to_bottom(
+        game,
+        ctx,
+        player_id,
+        "Reorder cards to keep on top of your library",
+        &kept_on_top_top_to_bottom,
+    );
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+
+    // Put cards going to graveyard. CR 701.25a + 614.1: this is an
+    // ordinary zone change, so "would be put into a graveyard"
+    // replacements (Rest in Peace, Leyline of the Void, Dauthi
+    // Voidwalker) apply to it, exactly as they do for mill.
+    let moves = cards_to_graveyard
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|object| {
+                crate::effects::zones::PreparedZoneMove::capture(
+                    game,
+                    *id,
+                    object.zone,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    None,
+                )
+            })
+        })
+        .collect();
+    let opened_batch = game.open_simultaneous_action();
+    let mut keyword_outputs = None;
+    let mut outputs = crate::effects::zones::execute_zone_moves_with_outputs(
+        game,
+        ctx,
+        moves,
+        |game, ctx, _| {
+            super::arrange_library_cards(
+                game,
+                player_id,
+                &ordered_top_cards,
+                &[],
+                "surveil arranged cards kept on top",
+            );
+            game.close_simultaneous_action(opened_batch);
+            let mut object_tags = HashMap::new();
+            object_tags
+                .insert(TagKey::from(SURVEILLED_THIS_TURN_TAG), surveilled_snapshots);
+            let keyword =
+                crate::effects::composition::complete_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                        surveil_count as i32,
+                    )),
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Surveil,
+                        player_id,
+                        ctx.source,
+                        surveil_count as u32,
+                    )
+                    .with_object_tags(object_tags),
+                )?;
+            let outcome = EffectOutcome::aggregate_with_primary_result(
+                keyword.outcome.clone(),
+                [observation.outcome.clone()],
+            );
+            keyword_outputs = Some(keyword);
+            Ok(outcome)
+        },
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    outputs.retain_published_children([observation]);
+    outputs.retain_published_children(keyword_outputs);
+    Ok(outputs)
 }
 
 #[cfg(test)]

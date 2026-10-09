@@ -481,6 +481,10 @@ pub enum EventModification {
     /// Evaluate a signed bonus using the replacement source and controller.
     /// Appended to preserve the existing fixed Add schema.
     AddDynamic(crate::effect::Value),
+
+    /// "half that damage, rounded down" (Ghosts of the Innocent): halve the
+    /// proposed amount. Appended to preserve the existing schema.
+    Halve { round_up: bool },
 }
 
 /// Where to redirect an effect.

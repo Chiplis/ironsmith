@@ -208,8 +208,19 @@ pub fn parse_if_result_predicate_lexed_tokens(
     ) {
         return Some(IfResultPredicate::Did);
     }
+    // "If a player does either" (Worms of the Earth): either offered action
+    // of the preceding any-player choice was taken.
+    if matches_phrase(&normalized, &["player", "does", "either"])
+        || matches_phrase(&normalized, &["player", "do", "either"])
+    {
+        return Some(IfResultPredicate::Did);
+    }
+    // "If no player does" (Distant Memories): the preceding any-player
+    // optional instruction was declined by everyone.
     if matches_phrase(&normalized, &["no", "one", "do"])
         || matches_phrase(&normalized, &["no", "one", "does"])
+        || matches_phrase(&normalized, &["no", "player", "does"])
+        || matches_phrase(&normalized, &["no", "player", "do"])
     {
         return Some(IfResultPredicate::DidNot);
     }

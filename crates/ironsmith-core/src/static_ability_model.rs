@@ -1549,6 +1549,25 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         pair: Option<crate::LinkedExilePair>,
         source: SourceReferenceSurface,
     },
+    /// An amount-modifying replacement over one watched event (CR 614.1a).
+    pub fn event_amount_replacement(
+        event: crate::AmountEventSpec,
+        modifier: crate::AmountModifierSpec,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EventAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
+            },
+        }
+    }
     /// "If <event> would happen, <effects> instead." (Tainted Remedy, Lich,
     /// Delaying Shield): a replacement whose program runs in place of the
     /// event with the replaced event as context (CR 614.1a, 614.6).
@@ -1556,6 +1575,23 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     EventReplacementWithEffects {
         event: crate::ReplacedEventSpec,
         replacement_effects: Vec<E>,
+        display: String,
+        /// "you may <program> instead": an optional replacement; declining
+        /// it lets the event happen (CR 614.1a, 616.1).
+        #[cfg_attr(feature = "serde", serde(default))]
+        optional: bool,
+    },
+    /// "If an opponent would mill one or more cards, they mill twice that
+    /// many cards instead." (Bruvac), "If a source would deal 4 or more
+    /// damage to a permanent or player, that source deals 3 damage to that
+    /// permanent or player instead." (Divine Presence): the watched event
+    /// still happens with a modified amount (CR 614.1a, 616.1). `optional`
+    /// reads "you may" ("You may look at an additional two cards each time
+    /// you surveil"). Appended to preserve published payload variant ordinals.
+    EventAmountReplacement {
+        event: crate::AmountEventSpec,
+        modifier: crate::AmountModifierSpec,
+        optional: bool,
         display: String,
     },
     /// "You may pay {0} rather than pay the echo cost for permanents you
@@ -2035,12 +2071,25 @@ where
                 event,
                 replacement_effects,
                 display,
+                optional,
             } => StaticAbilityPayload::EventReplacementWithEffects {
                 event,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(&mut *map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                display,
+                optional,
+            },
+            StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
+            } => StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
                 display,
             },
             StaticAbilityPayload::GrantSpellKeyword {
@@ -7203,8 +7252,24 @@ impl<
                 event,
                 replacement_effects,
                 display,
+                optional: false,
             },
         }
+    }
+    /// "If <event> would happen, you may <effects> instead." (Pulmonic
+    /// Sliver's granted ability): the optional form (CR 614.1a).
+    pub fn optional_event_replacement_with_effects(
+        event: crate::ReplacedEventSpec,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let mut ability = Self::event_replacement_with_effects(event, replacement_effects, display);
+        if let StaticAbilityPayload::EventReplacementWithEffects { optional, .. } =
+            &mut ability.payload
+        {
+            *optional = true;
+        }
+        ability
     }
     /// "If you would draw a card, instead <effects>." (Underrealm Lich)
     pub fn draw_replacement_with_effects(

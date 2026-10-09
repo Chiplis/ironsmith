@@ -33,6 +33,9 @@ fn apply_damage_result_modification(
             let delta = resolve_signed_value_for_replacement(value, game, effect)?;
             (i128::from(amount) + i128::from(delta)).max(0) as u128
         },
+        EventModification::Halve { round_up } => {
+            u128::from(if *round_up { amount.div_ceil(2) } else { amount / 2 })
+        }
     };
     // A rules-imposed maximum (an event-local player-counter lock) is
     // applied mathematically before asking whether the final event fits.

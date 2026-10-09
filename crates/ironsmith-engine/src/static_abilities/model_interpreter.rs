@@ -1932,9 +1932,24 @@ impl StaticAbilityModelInterpreter {
                 event,
                 replacement_effects,
                 display,
-            } => StaticAbility::new(super::EventReplacementWithEffects::new(
+                optional,
+            } => StaticAbility::new(
+                super::EventReplacementWithEffects::new(
+                    event.clone(),
+                    replacement_effects.clone(),
+                    display.clone(),
+                )
+                .with_optional(*optional),
+            ),
+            ironsmith_core::StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
+            } => StaticAbility::new(super::EventAmountReplacement::new(
                 event.clone(),
-                replacement_effects.clone(),
+                *modifier,
+                *optional,
                 display.clone(),
             )),
             ironsmith_core::StaticAbilityPayload::RedirectMatchingDamage(spec) => {

@@ -12,6 +12,9 @@ use crate::events::DamageTarget;
 use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::life::LifeGainEvent;
+use crate::events::life::matchers::WouldLoseLifeMatcher;
+use crate::events::permanents::matchers::WouldBeDestroyedMatcher;
+use crate::events::zones::matchers::WouldChangeZoneMatcher;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::ids::{ObjectId, PlayerId};
@@ -26,6 +29,9 @@ pub struct EventReplacementWithEffects {
     pub event: ReplacedEventSpec,
     pub replacement_effects: Vec<Effect>,
     pub display: String,
+    /// "you may ... instead": the affected player may decline it, and then
+    /// the event happens unchanged (CR 616.1).
+    pub optional: bool,
 }
 
 impl EventReplacementWithEffects {
@@ -38,7 +44,13 @@ impl EventReplacementWithEffects {
             event,
             replacement_effects,
             display: display.into(),
+            optional: false,
         }
+    }
+
+    pub fn with_optional(mut self, optional: bool) -> Self {
+        self.optional = optional;
+        self
     }
 }
 
@@ -56,14 +68,63 @@ impl StaticAbilityKind for EventReplacementWithEffects {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(ReplacementEffect::with_matcher(
-            source,
-            controller,
-            ReplacedEventMatcher {
-                event: self.event.clone(),
-            },
-            ReplacementAction::Instead(self.replacement_effects.clone()),
-        ))
+        let action = ReplacementAction::Instead(self.replacement_effects.clone());
+        let replacement = match &self.event {
+            ReplacedEventSpec::DamageToPlayer { .. }
+            | ReplacedEventSpec::DamageToObject { .. }
+            | ReplacedEventSpec::LifeGain { .. }
+            | ReplacedEventSpec::DrawInstruction { .. }
+            | ReplacedEventSpec::Untap { .. } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                ReplacedEventMatcher {
+                    event: self.event.clone(),
+                },
+                action,
+            ),
+            ReplacedEventSpec::LifeLoss { player } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldLoseLifeMatcher::new(player.clone()),
+                action,
+            ),
+            // The destruction owner binds the permanent as "it" and as the
+            // program's target.
+            ReplacedEventSpec::Destroy { target } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldBeDestroyedMatcher::new(target.clone()),
+                action,
+            ),
+            // Regeneration is its own destruction replacement (CR 701.19a);
+            // its matcher is the regeneration-shield matcher, so "can't be
+            // regenerated" suspends it (CR 701.19c).
+            ReplacedEventSpec::SourceDestructionRegenerates => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                crate::events::permanents::matchers::RegenerationShieldMatcher::new(source),
+                ReplacementAction::Instead(vec![
+                    Effect::tap(crate::target::ChooseSpec::SpecificObject(source))
+                        .tag(crate::tag::TagKey::from("__it__")),
+                    Effect::clear_damage(crate::target::ChooseSpec::SpecificObject(source)),
+                    Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
+                        crate::target::ChooseSpec::SpecificObject(source),
+                    )),
+                ]),
+            ),
+            // Zone-change owners bind the moving object as "it".
+            ReplacedEventSpec::ZoneChange { object, from, to } => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldChangeZoneMatcher::new(object.clone(), *from, *to),
+                action,
+            ),
+        };
+        Some(if self.optional {
+            replacement.optional()
+        } else {
+            replacement
+        })
     }
 }
 
@@ -109,6 +170,13 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 kind == EventKind::Damage
             }
             ReplacedEventSpec::LifeGain { .. } => kind == EventKind::LifeGain,
+            ReplacedEventSpec::DrawInstruction { .. } => kind == EventKind::KeywordAction,
+            ReplacedEventSpec::Untap { .. } => kind == EventKind::BecomeUntapped,
+            // Installed through their dedicated matchers instead.
+            ReplacedEventSpec::LifeLoss { .. }
+            | ReplacedEventSpec::Destroy { .. }
+            | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
 
@@ -162,6 +230,41 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 };
                 player.matches_player(gain.player, &ctx.filter_ctx)
             }
+            ReplacedEventSpec::Untap {
+                object,
+                during_controllers_untap_step,
+            } => {
+                let Some(untap) = downcast_event::<crate::events::UntapEvent>(event) else {
+                    return false;
+                };
+                let Some(permanent) = ctx.game.object(untap.permanent) else {
+                    return false;
+                };
+                if *during_controllers_untap_step
+                    && !(ctx.game.turn.step == Some(crate::game_state::Step::Untap)
+                        && ctx
+                            .game
+                            .turn_players()
+                            .contains(&ctx.game.controller_of(permanent)))
+                {
+                    return false;
+                }
+                object.matches(permanent, &ctx.filter_ctx, ctx.game)
+            }
+            ReplacedEventSpec::DrawInstruction { player, minimum } => {
+                let Some(action) =
+                    downcast_event::<crate::events::KeywordActionEvent>(event)
+                else {
+                    return false;
+                };
+                action.action == crate::events::KeywordActionKind::DrawCards
+                    && action.amount >= *minimum
+                    && player.matches_player(action.player, &ctx.filter_ctx)
+            }
+            ReplacedEventSpec::LifeLoss { .. }
+            | ReplacedEventSpec::Destroy { .. }
+            | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
 
@@ -175,6 +278,24 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::LifeGain { .. } => {
                 "When a matching player would gain life".to_string()
+            }
+            ReplacedEventSpec::LifeLoss { .. } => {
+                "When a matching player would lose life".to_string()
+            }
+            ReplacedEventSpec::Destroy { .. } => {
+                "When a matching permanent would be destroyed".to_string()
+            }
+            ReplacedEventSpec::ZoneChange { .. } => {
+                "When a matching object would change zones".to_string()
+            }
+            ReplacedEventSpec::SourceDestructionRegenerates => {
+                "When this permanent would be destroyed".to_string()
+            }
+            ReplacedEventSpec::Untap { .. } => {
+                "When a matching permanent would untap".to_string()
+            }
+            ReplacedEventSpec::DrawInstruction { minimum, .. } => {
+                format!("When a matching player would draw {minimum} or more cards")
             }
         }
     }

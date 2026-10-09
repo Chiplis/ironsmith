@@ -147,3 +147,34 @@ fn tainted_remedy_turns_an_opponents_life_gain_into_life_loss() {
         assert_eq!(game.player(A).unwrap().life, 22);
     }
 }
+
+#[test]
+fn would_die_instead_programs_move_the_dying_object() {
+    assert_cluster(&[
+        ("Gravebane Zombie", &["EventReplacementWithEffects", "ZoneChange", "Some(Battlefield)", "Some(Graveyard)"]),
+        ("Nissa's Chosen", &["EventReplacementWithEffects", "ZoneChange"]),
+        ("Necromancer's Magemark", &["EventReplacementWithEffects", "ZoneChange"]),
+        ("Wumpus Aberration", &["Not("]),
+    ]);
+}
+
+#[test]
+fn gravebane_zombie_goes_to_its_owners_library_instead_of_dying() {
+    for definition in definitions("Gravebane Zombie") {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let zombie = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let library_before = game.player(A).unwrap().library.len();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(zombie, B, &mut dm);
+        execute_effect(
+            &mut game,
+            &Effect::destroy(ironsmith::target::ChooseSpec::SpecificObject(zombie)),
+            &mut ctx,
+        )
+        .unwrap();
+        // CR 614.6: the creature never dies; it is put into its owner's
+        // library instead.
+        assert!(game.player(A).unwrap().graveyard.is_empty());
+        assert_eq!(game.player(A).unwrap().library.len(), library_before + 1);
+    }
+}

@@ -23,6 +23,7 @@ mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
 pub(crate) mod now_attacking;
 pub(crate) mod turn_scoped_enter_replacement;
+pub(crate) mod turn_scoped_control_entry;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;
@@ -137,6 +138,9 @@ pub(crate) fn recognizes_scalar_self_replacement_sentence(
 mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;
+mod cast_spell_graveyard_rider;
+mod elliptical_conditions;
+mod unless_payment_results;
 mod statement_readings;
 pub use procedures::RIDDEN_STATEMENT;
 mod search_library;

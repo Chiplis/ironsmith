@@ -986,6 +986,9 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
     if let Some(effect) = super::turn_scoped_enter_replacement::parse(tokens) {
         return Some(effect);
     }
+    if let Some(effect) = super::turn_scoped_control_entry::parse(tokens) {
+        return Some(effect);
+    }
     // This marker-based legacy representation has no characteristic gate.
     // A permanent-only counter destination belongs to the complete typed
     // counter/permission owner, including its fail-closed missing-tail case.
@@ -3070,6 +3073,26 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             parse_tagged_characteristics_and_keyword_sentence(&sentence_tokens)?
         {
             effects.extend(characteristic_effects);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        // "If you pay, ..." after "unless you pay" (CR 118.12).
+        if super::unless_payment_results::try_bind_unless_payment_result(
+            &mut effects,
+            &sentence_tokens,
+        )? {
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        // "If it doesn't, ..." completes the preceding conditional's false arm.
+        if super::elliptical_conditions::try_merge_elliptical_condition(
+            &mut effects,
+            &sentence_tokens,
+        )? {
             carried_context = None;
             sentence_idx += 1;
             continue;

@@ -595,8 +595,8 @@ pub(crate) fn rewrite_static_model_words(
         // A generic instead-replacement's event selectors are not yet
         // rewritten; hold rather than change only part of its words.
         | P::EventReplacementWithEffects { .. }
-        // An echo-cost alternative's permanent filter is not rewritten yet.
-        | P::EchoCostAlternative { .. } => return Err(hold(model)),
+        | P::EchoCostAlternative { .. }
+        | P::EventAmountReplacement { .. } => return Err(hold(model)),
     }
     Ok(rewritten)
 }

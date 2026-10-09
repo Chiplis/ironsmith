@@ -44,6 +44,8 @@ pub mod static_ability_id;
 pub mod static_ability_model;
 pub mod replaced_event_model;
 pub use replaced_event_model::ReplacedEventSpec;
+pub mod amount_replacement_model;
+pub use amount_replacement_model::{AmountEventSpec, AmountModifierSpec};
 pub mod suspend;
 pub use suspend::SuspendTime;
 pub mod tag;

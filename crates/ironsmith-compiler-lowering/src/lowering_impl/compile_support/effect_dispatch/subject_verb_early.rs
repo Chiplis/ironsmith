@@ -1942,7 +1942,24 @@ pub(super) fn compile_subject_verb_early(
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
-        }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
+        }) => {
+            // "that player" in a resolving multiplier names the ability's
+            // player antecedent; the registration fixes it on resolution.
+            let mut spec = spec.clone();
+            if let Some(antecedent) = ctx.last_player_filter.clone()
+                && antecedent != PlayerFilter::IteratedPlayer
+            {
+                if spec.target_player_filter == Some(PlayerFilter::IteratedPlayer) {
+                    spec.target_player_filter = Some(antecedent.clone());
+                }
+                if let Some(object) = spec.target_object_filter.as_mut()
+                    && object.controller == Some(PlayerFilter::IteratedPlayer)
+                {
+                    object.controller = Some(antecedent);
+                }
+            }
+            Ok((vec![Effect::new(spec)], Vec::new()))
+        }
         SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterCounterPlacementReplacement {
                 filter,

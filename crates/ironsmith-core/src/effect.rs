@@ -44,6 +44,10 @@ impl EffectId {
 
     /// The unique retained counter-removal producer of one activation.
     pub const ACTIVATION_COUNTER_COST: Self = Self(u32::MAX - 2);
+
+    /// Spell copies a copy-count replacement added beyond the instruction's
+    /// own number ("plus an additional time"), for their new-target choice.
+    pub const ADDITIONAL_COPIES: Self = Self(u32::MAX - 3);
 }
 
 impl From<u32> for EffectId {

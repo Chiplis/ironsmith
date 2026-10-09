@@ -420,6 +420,8 @@ pub enum StaticAbilityId {
     /// "If <creature> attacks, <creatures> attack if able"; appended for wire
     /// compatibility.
     ConditionalAttackRequirement,
+    /// Generic amount-modifying replacement; appended for wire compatibility.
+    EventAmountReplacement,
 }
 
 impl StaticAbilityId {
@@ -745,6 +747,7 @@ impl StaticAbilityId {
             | DrawReplacementWithEffects
             | EventReplacementWithEffects
             | EchoCostAlternative
+            | EventAmountReplacement
             | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

@@ -26,11 +26,32 @@ pub fn parse_instead_followup_semantics_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<InsteadSemantics> {
     let tokens: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;
+    let would_outside_conditional_head = would_outside_conditional_head(&tokens);
     let words = tokens
         .into_iter()
         .filter_map(|token| token.as_word().map(|_| token.parser_text()))
         .collect::<Vec<_>>();
-    Ok(classify_instead_words(&words))
+    Ok(classify_instead_words(&words, would_outside_conditional_head))
+}
+
+/// "If this spell was kicked, prevent the next 4 damage that would be dealt
+/// to that permanent or player this turn instead." (Orim's Touch): the
+/// "would" belongs to the replacing prevention, not to a future event the
+/// sentence watches. A future replacement names its event in the conditional
+/// head ("If a creature would die this turn, ..."). True when a leading-if
+/// head ends at a comma without "would" and "would" occurs only after it.
+fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
+    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+        return false;
+    };
+    let Some(comma_offset) = tokens[if_idx..].iter().position(|token| token.is_comma()) else {
+        return false;
+    };
+    let head = &tokens[if_idx..if_idx + comma_offset];
+    !tokens[..if_idx + comma_offset]
+        .iter()
+        .any(|token| token.is_word("would"))
+        && !head.is_empty()
 }
 
 pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
@@ -56,12 +77,16 @@ pub fn parse_instead_followup_shape_tokens(tokens: &[OwnedLexToken]) -> InsteadF
     }
 }
 
-fn classify_instead_words(words: &[&str]) -> InsteadSemantics {
+fn classify_instead_words(
+    words: &[&str],
+    would_outside_conditional_head: bool,
+) -> InsteadSemantics {
     let Some(first_instead) = first_word_offset(words, "instead") else {
         return InsteadSemantics::NonReplacement;
     };
 
-    if first_word_offset(words, "would").is_some_and(|offset| offset < first_instead)
+    if (!would_outside_conditional_head
+        && first_word_offset(words, "would").is_some_and(|offset| offset < first_instead))
         || grammar_phrase_present(words, THE_NEXT_TIME)
     {
         return InsteadSemantics::FutureReplacement;

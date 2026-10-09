@@ -558,5 +558,45 @@
   "toughness": "4",
   "loyalty": null,
   "oracle_text": "Kicker {B} and/or {R}\nFlying, lifelink\nWhen this creature enters, if it was kicked, it deals 2 damage to any target.\nWhen this creature enters, if it was kicked twice, it deals 2 damage to any target."
+ },
+ {
+  "name": "Gravebane Zombie",
+  "oracle_id": "d04a836b-7e42-424d-9600-42a40d0dfccd",
+  "mana_cost": "{3}{B}",
+  "type_line": "Creature — Zombie",
+  "power": "3",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "If this creature would die, put it on top of its owner's library instead."
+ },
+ {
+  "name": "Nissa's Chosen",
+  "oracle_id": "d14c9d2b-41c7-4c9a-a66a-cda34d29c7ba",
+  "mana_cost": "{G}{G}",
+  "type_line": "Creature — Elf Warrior",
+  "power": "2",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "If this creature would die, put it on the bottom of its owner's library instead."
+ },
+ {
+  "name": "Necromancer's Magemark",
+  "oracle_id": "dffa7c06-096a-47f8-9645-1ba7306ba5b0",
+  "mana_cost": "{2}{B}",
+  "type_line": "Enchantment — Aura",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Enchant creature\nCreatures you control that are enchanted get +1/+1.\nIf a creature you control that's enchanted would die, return it to its owner's hand instead."
+ },
+ {
+  "name": "Wumpus Aberration",
+  "oracle_id": "c116801e-9893-46e8-a967-352b5fa27e86",
+  "mana_cost": "{3}{G}",
+  "type_line": "Creature — Eldrazi Beast",
+  "power": "6",
+  "toughness": "6",
+  "loyalty": null,
+  "oracle_text": "Devoid\nWhen you cast this spell, if {C} wasn't spent to cast it, target opponent may put a creature card from their hand onto the battlefield.\nTrample"
  }
 ]

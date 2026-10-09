@@ -1,0 +1,332 @@
+[
+ {
+  "name": "Bruvac the Grandiloquent",
+  "oracle_id": "274b999f-f193-48fd-9a4a-0fdaf535e6c3",
+  "mana_cost": "{2}{U}",
+  "type_line": "Legendary Creature — Human Advisor",
+  "power": "1",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "If an opponent would mill one or more cards, they mill twice that many cards instead. (To mill a card, a player puts the top card of their library into their graveyard.)"
+ },
+ {
+  "name": "Kenessos, Priest of Thassa",
+  "oracle_id": "45b3a028-5705-4dc8-bfab-04bb5e01eea6",
+  "mana_cost": "{1}{U}",
+  "type_line": "Legendary Creature — Merfolk Cleric",
+  "power": "1",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "If you would scry a number of cards, scry that many cards plus one instead.\n{3}{G/U}: Look at the top card of your library. If it's a Kraken, Leviathan, Octopus, or Serpent creature card, you may put it onto the battlefield. If you don't put the card onto the battlefield, you may put it on the bottom of your library."
+ },
+ {
+  "name": "Eligeth, Crossroads Augur",
+  "oracle_id": "65e15354-4258-411f-a8f1-f64f4ccb873b",
+  "mana_cost": "{4}{U}{U}",
+  "type_line": "Legendary Creature — Sphinx",
+  "power": "5",
+  "toughness": "6",
+  "loyalty": null,
+  "oracle_text": "Flying\nIf you would scry a number of cards, draw that many cards instead.\nPartner (You can have two commanders if both have partner.)"
+ },
+ {
+  "name": "Divine Presence",
+  "oracle_id": "ff9a5529-83bd-46a8-b20b-235a5fd26d93",
+  "mana_cost": "{2}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If a source would deal 4 or more damage to a permanent or player, that source deals 3 damage to that permanent or player instead."
+ },
+ {
+  "name": "Forethought Amulet",
+  "oracle_id": "0edf0988-9ed8-4fe6-aa47-4921870f05a8",
+  "mana_cost": "{5}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, sacrifice this artifact unless you pay {3}.\nIf an instant or sorcery source would deal 3 or more damage to you, it deals 2 damage to you instead."
+ },
+ {
+  "name": "Ghosts of the Innocent",
+  "oracle_id": "9243bd95-5467-490d-9bd2-4d5ce1ebc589",
+  "mana_cost": "{5}{W}{W}",
+  "type_line": "Creature — Spirit",
+  "power": "4",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "If a source would deal damage to a permanent or player, it deals half that damage, rounded down, to that permanent or player instead."
+ },
+ {
+  "name": "Izzet Generatorium",
+  "oracle_id": "6a618c4a-e604-4dce-a078-755fd35ac5d9",
+  "mana_cost": "{U}{R}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you would get one or more {E} (energy counters), you get that many plus one {E} instead.\n{T}: Draw a card. Activate only if you've paid or lost four or more {E} this turn."
+ },
+ {
+  "name": "Enhanced Surveillance",
+  "oracle_id": "bfb5104b-01e3-4d37-ac93-1dc342121531",
+  "mana_cost": "{1}{U}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "You may look at an additional two cards each time you surveil.\nExile this enchantment: Shuffle your graveyard into your library."
+ },
+ {
+  "name": "Radiant Scrollwielder",
+  "oracle_id": "8f5ef838-839a-4eb0-8d65-c8c8def0a233",
+  "mana_cost": "{2}{R}{W}",
+  "type_line": "Creature — Dwarf Cleric",
+  "power": "2",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Instant and sorcery spells you control have lifelink.\nAt the beginning of your upkeep, exile an instant or sorcery card at random from your graveyard. You may cast it this turn. If a spell cast this way would be put into your graveyard, exile it instead."
+ },
+ {
+  "name": "Blood Lust",
+  "oracle_id": "55a253f9-f44d-4898-af83-fea68b7b279d",
+  "mana_cost": "{1}{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If target creature has toughness 5 or greater, it gets +4/-4 until end of turn. Otherwise, it gets +4/-X until end of turn, where X is its toughness minus 1."
+ },
+ {
+  "name": "Hidetsugu's Second Rite",
+  "oracle_id": "749683c9-8cc0-4e8e-8d90-adda5e5f4e93",
+  "mana_cost": "{3}{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If target player has exactly 10 life, Hidetsugu's Second Rite deals 10 damage to that player."
+ },
+ {
+  "name": "Marcus, Mutant Mayor",
+  "oracle_id": "c9db8f36-2c72-403e-b2b7-7cdfba5feaa4",
+  "mana_cost": "{3}{G}{U}",
+  "type_line": "Legendary Creature — Mutant Advisor",
+  "power": "4",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Vigilance, trample\nWhenever a creature you control deals combat damage to a player, draw a card if that creature has a +1/+1 counter on it. If it doesn't, put a +1/+1 counter on it."
+ },
+ {
+  "name": "Weatherlight Compleated",
+  "oracle_id": "060a7d77-61a8-4964-8fb6-35bd9a999517",
+  "mana_cost": "{2}",
+  "type_line": "Legendary Artifact — Vehicle",
+  "power": "5",
+  "toughness": "5",
+  "loyalty": null,
+  "oracle_text": "Flying\nAs long as Weatherlight Compleated has four or more phyresis counters on it, it's a Phyrexian creature in addition to its other types.\nWhenever a creature you control dies, put a phyresis counter on Weatherlight Compleated. Then draw a card if it has seven or more phyresis counters on it. If it doesn't, scry 1."
+ },
+ {
+  "name": "Cyclone",
+  "oracle_id": "fc9e82b2-f148-431b-9312-97b7101cffe4",
+  "mana_cost": "{2}{G}{G}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "At the beginning of your upkeep, put a wind counter on this enchantment, then sacrifice this enchantment unless you pay {G} for each wind counter on it. If you pay, this enchantment deals damage equal to the number of wind counters on it to each creature and each player."
+ },
+ {
+  "name": "Orim's Touch",
+  "oracle_id": "cc22c210-efd0-494c-8560-448b038b3c5f",
+  "mana_cost": "{W}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Kicker {1} (You may pay an additional {1} as you cast this spell.)\nPrevent the next 2 damage that would be dealt to any target this turn. If this spell was kicked, prevent the next 4 damage that would be dealt to that permanent or player this turn instead."
+ },
+ {
+  "name": "Pulmonic Sliver",
+  "oracle_id": "f578465d-f3a5-48da-bcab-cffbbdd88be8",
+  "mana_cost": "{3}{W}{W}",
+  "type_line": "Creature — Sliver",
+  "power": "3",
+  "toughness": "3",
+  "loyalty": null,
+  "oracle_text": "All Sliver creatures have flying.\nAll Slivers have \"If this permanent would be put into a graveyard, you may put it on top of its owner's library instead.\""
+ },
+ {
+  "name": "Lightning, Army of One",
+  "oracle_id": "585eb5bc-5a3d-44d8-b593-1ff0d67f96a7",
+  "mana_cost": "{1}{R}{W}",
+  "type_line": "Legendary Creature — Human Soldier",
+  "power": "3",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "First strike, trample, lifelink\nStagger — Whenever Lightning deals combat damage to a player, until your next turn, if a source would deal damage to that player or a permanent that player controls, it deals double that damage instead."
+ },
+ {
+  "name": "Jeska, Thrice Reborn",
+  "oracle_id": "b1fbfcf3-6921-4417-a58e-0f5e5d34a105",
+  "mana_cost": "{2}{R}",
+  "type_line": "Legendary Planeswalker — Jeska",
+  "power": null,
+  "toughness": null,
+  "loyalty": "0",
+  "oracle_text": "Jeska enters with a loyalty counter on her for each time you've cast a commander from the command zone this game.\n0: Choose target creature. Until your next turn, if that creature would deal combat damage to one of your opponents, it deals triple that damage to that player instead.\n−X: Jeska deals X damage to each of up to three targets.\nJeska, Thrice Reborn can be your commander.\nPartner"
+ },
+ {
+  "name": "Gather Specimens",
+  "oracle_id": "e3b8d70b-17aa-4a31-a4f9-319907d088c2",
+  "mana_cost": "{3}{U}{U}{U}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If a creature would enter the battlefield under an opponent's control this turn, it enters under your control instead."
+ },
+ {
+  "name": "Crafty Cutpurse",
+  "oracle_id": "2ef53e18-0baf-4eee-b671-4c19b464cbfb",
+  "mana_cost": "{3}{U}",
+  "type_line": "Creature — Human Pirate",
+  "power": "2",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "Flash\nWhen this creature enters, each token that would be created under an opponent's control this turn is created under your control instead."
+ },
+ {
+  "name": "Isengard Unleashed",
+  "oracle_id": "2b947703-751a-4d95-b5de-e2d6b1fcb502",
+  "mana_cost": "{2}{R}{R}{R}",
+  "type_line": "Sorcery",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Damage can't be prevented this turn. If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead.\nFlashback {4}{R}{R}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+ },
+ {
+  "name": "Equal Treatment",
+  "oracle_id": "beef71f4-f607-4718-9fde-98e8d7871ce9",
+  "mana_cost": "{1}{W}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If any source would deal 1 or more damage to a permanent or player this turn, it deals 2 damage to that permanent or player instead.\nDraw a card."
+ },
+ {
+  "name": "Alms Collector",
+  "oracle_id": "278e51fe-3cd9-4c82-bd81-2164771f8611",
+  "mana_cost": "{3}{W}",
+  "type_line": "Creature — Cat Cleric",
+  "power": "3",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Flash\nIf an opponent would draw two or more cards, instead you and that player each draw a card."
+ },
+ {
+  "name": "Vraska, Betrayal's Sting",
+  "oracle_id": "05d09c55-f551-4cb4-a8d2-4811dccc848d",
+  "mana_cost": "{4}{B}{B/P}",
+  "type_line": "Legendary Planeswalker — Vraska",
+  "power": null,
+  "toughness": null,
+  "loyalty": "6",
+  "oracle_text": "Compleated ({B/P} can be paid with {B} or 2 life. If life was paid, this planeswalker enters with two fewer loyalty counters.)\n0: You draw a card and lose 1 life. Proliferate.\n−2: Target creature becomes a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color\" and loses all other card types and abilities.\n−9: If target player has fewer than nine poison counters, they get a number of poison counters equal to the difference."
+ },
+ {
+  "name": "Twinning Staff",
+  "oracle_id": "3ca8113b-f5b8-41a7-aae6-ebb32554dfe3",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you would copy a spell one or more times, instead copy it that many times plus an additional time. You may choose new targets for the additional copy.\n{7}, {T}: Copy target instant or sorcery spell you control. You may choose new targets for the copy."
+ },
+ {
+  "name": "Worship",
+  "oracle_id": "99f9a4c8-b59f-4a41-8577-6c1e4684b240",
+  "mana_cost": "{3}{W}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead."
+ },
+ {
+  "name": "Overblaze",
+  "oracle_id": "543599e2-8312-43a6-ab26-0be17e690d4f",
+  "mana_cost": "{3}{R}",
+  "type_line": "Instant — Arcane",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Each time target permanent would deal damage to a permanent or player this turn, it deals double that damage to that permanent or player instead.\nSplice onto Arcane {2}{R}{R} (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)"
+ },
+ {
+  "name": "Clergy of the Holy Nimbus",
+  "oracle_id": "66566999-f70a-4f14-9bf0-23325295a977",
+  "mana_cost": "{W}",
+  "type_line": "Creature — Human Cleric",
+  "power": "1",
+  "toughness": "1",
+  "loyalty": null,
+  "oracle_text": "If this creature would be destroyed, regenerate it.\n{1}: This creature can't be regenerated this turn. Only your opponents may activate this ability."
+ },
+ {
+  "name": "Freyalise's Winds",
+  "oracle_id": "ffeb792a-6df0-46c1-badc-4deb857f7d48",
+  "mana_cost": "{2}{G}{G}",
+  "type_line": "Enchantment",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Whenever a permanent becomes tapped, put a wind counter on it.\nIf a permanent with a wind counter on it would untap during its controller's untap step, remove all wind counters from it instead."
+ },
+ {
+  "name": "Bewitching Leechcraft",
+  "oracle_id": "a5d803bc-7fd4-4570-8cd6-cb138727a66e",
+  "mana_cost": "{1}{U}",
+  "type_line": "Enchantment — Aura",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Enchant creature\nWhen this Aura enters, tap enchanted creature.\nEnchanted creature has \"If this creature would untap during your untap step, remove a +1/+1 counter from it instead. If you do, untap it.\" (Otherwise, it doesn't untap.)"
+ },
+ {
+  "name": "Death Spark",
+  "oracle_id": "4b23a89c-89ba-41ad-b894-ec02221689eb",
+  "mana_cost": "{R}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Death Spark deals 1 damage to any target.\nAt the beginning of your upkeep, if this card is in your graveyard with a creature card directly above it, you may pay {1}. If you do, return this card to your hand."
+ },
+ {
+  "name": "Krovikan Horror",
+  "oracle_id": "a4c15223-784f-43a7-8626-30f96ccfdcaf",
+  "mana_cost": "{3}{B}",
+  "type_line": "Creature — Horror Spirit",
+  "power": "2",
+  "toughness": "2",
+  "loyalty": null,
+  "oracle_text": "At the beginning of the end step, if this card is in your graveyard with a creature card directly above it, you may return this card to your hand.\n{1}, Sacrifice a creature: This creature deals 1 damage to any target."
+ },
+ {
+  "name": "Polukranos, Unchained",
+  "oracle_id": "649e7237-b38b-43e9-83f4-763751fb1bea",
+  "mana_cost": "{2}{B}{G}",
+  "type_line": "Legendary Creature — Zombie Hydra",
+  "power": "0",
+  "toughness": "0",
+  "loyalty": null,
+  "oracle_text": "Polukranos enters with six +1/+1 counters on it. It escapes with twelve +1/+1 counters on it instead.\nIf damage would be dealt to Polukranos while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it.\n{1}{B}{G}: Polukranos fights another target creature.\nEscape—{4}{B}{G}, Exile six other cards from your graveyard."
+ }
+]

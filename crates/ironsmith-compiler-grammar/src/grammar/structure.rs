@@ -1351,7 +1351,9 @@ pub fn split_if_clause_lexed(
                     &predicate,
                     predicate_tokens,
                     effect_tokens,
-                ) {
+                )
+                .or_else(|| parse_player_counter_difference_effect(&predicate, effect_tokens))
+                {
                     return Ok(IfClauseSplitSpec {
                         predicate: IfClausePredicateSpec::Conditional(predicate),
                         effects,
@@ -1405,7 +1407,9 @@ pub fn split_if_clause_lexed(
                 &predicate,
                 predicate_tokens,
                 effect_tokens,
-            ) {
+            )
+            .or_else(|| parse_player_counter_difference_effect(&predicate, effect_tokens))
+            {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
                     effects,
@@ -1516,6 +1520,57 @@ pub fn split_if_clause_lexed(
         predicate: IfClausePredicateSpec::Result(predicate),
         effects,
     })
+}
+
+/// "If target player has fewer than nine poison counters, they get a number
+/// of poison counters equal to the difference." (Vraska, Betrayal's Sting):
+/// the difference between the compared threshold and the player's current
+/// count, read as the counters are given.
+fn parse_player_counter_difference_effect(
+    predicate: &PredicateAst,
+    effect_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let PredicateAst::ValueComparison {
+        left,
+        operator: ValueComparisonOperator::LessThan,
+        right,
+    } = predicate
+    else {
+        return None;
+    };
+    let Value::PlayerCounters(player, crate::object::CounterType::Poison) = left.unhinted() else {
+        return None;
+    };
+    let Value::Fixed(threshold) = right.unhinted() else {
+        return None;
+    };
+    let words = TokenWordView::new(trim_lexed_commas(effect_tokens)).to_word_refs();
+    let tail = match words.as_slice() {
+        ["they", "get", tail @ ..] | ["that", "player", "gets", tail @ ..] => tail,
+        _ => return None,
+    };
+    if tail
+        != [
+            "a", "number", "of", "poison", "counters", "equal", "to", "the", "difference",
+        ]
+    {
+        return None;
+    }
+    let difference = Value::Add(
+        Box::new(Value::Fixed(*threshold)),
+        Box::new(Value::Scaled(
+            Box::new(Value::PlayerCounters(
+                player.clone(),
+                crate::object::CounterType::Poison,
+            )),
+            -1,
+        )),
+    )
+    .with_surface_hint(ValueSurfaceHint::Difference);
+    Some(vec![EffectAst::subject_verb_poison_counters(
+        PlayerAst::That,
+        difference,
+    )])
 }
 
 fn parse_cards_in_hand_difference_draw_effect(

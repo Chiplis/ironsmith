@@ -250,17 +250,18 @@ fn parse_damage_multiplier_lexed<'a>(
         primitives::phrase(&["would", "deal", "damage"]).value((false, false)),
     ))
     .parse_next(input)?;
-    // The recipient ends before either the duration, a live condition, or
-    // the replacement clause. None of those are part of its object filter.
-    let mut damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
-    let this_turn = opt(primitives::phrase(&["this", "turn"]))
+    // "would deal damage this turn to an opponent or ..." (Isengard
+    // Unleashed): the duration may precede the recipient.
+    let leading_this_turn = opt(primitives::phrase(&["this", "turn"]))
         .parse_next(input)?
         .is_some();
-    // "would deal damage this turn to an opponent or a permanent an opponent
-    // controls" (Isengard Unleashed): the duration may precede the recipient.
-    if this_turn && damaged_tokens.is_none() {
-        damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
-    }
+    // The recipient ends before either the duration, a live condition, or
+    // the replacement clause. None of those are part of its object filter.
+    let damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
+    let this_turn = opt(primitives::phrase(&["this", "turn"]))
+        .parse_next(input)?
+        .is_some()
+        || leading_this_turn;
     let condition_tokens = opt((
         primitives::kw("while"),
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::comma()))

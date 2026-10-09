@@ -1,6 +1,6 @@
 # cf8 / p06-predicates — summary
 
-204 cards. Status: 56 source-proposed, 2 already-on-main, 146 blocked, 0 untriaged
+204 cards. Status: 60 source-proposed, 2 already-on-main, 142 blocked, 0 untriaged
 (see `ledger.jsonl`). Nothing was built or run; tests in
 `crates/ironsmith-compiler-runtime/tests/predicate_fallback_readings.rs` and
 `crates/ironsmith-compiler-runtime/tests/event_instead_and_this_way_readings.rs` (fixture
@@ -94,3 +94,100 @@ Each one now has a precise gap in the ledger. They are mostly singletons that ne
 - A new core payload variant and a new `StaticAbilityId` were appended at the enum ends to keep ordinals stable. Sibling packages that append too will conflict textually at the enum tail, the `try_map` arm list and the id classification guard. These are trivial merges.
 - `event_instead_replacements` overlaps the "If ... would ..." lines of existing readers. Overlaps are avoided by declining their vocabulary. Because the static registry runs every rule and reports differing results as ambiguous, the first corpus run must check that no previously compiling "would ... instead" card changed.
 - Lich, Delaying Shield and Nefarious Lich now have their replacement lines, but they stay blocked on other lines. The ledger names each one's remaining gap.
+
+## Round 3
+
+### Instead replacement extended to more events
+`ReplacedEventSpec` now also covers:
+- **LifeLoss**, through the existing `WouldLoseLifeMatcher`;
+- **Destroy**, through `WouldBeDestroyedMatcher`. The destruction owner binds the permanent as `__it__` and as the program's target;
+- **ZoneChange**, for "would die" and "would be put into a graveyard [from the battlefield / from anywhere]", through `WouldChangeZoneMatcher`.
+
+Two supporting changes:
+- **Engine fix (`events/processing/mod.rs`):** an instead-program on a zone change outside a draw continuation now binds the object that would have moved as `it` / `__it__`, as the draw branch already did. Without this, "put it on top of its owner's library instead" had no object.
+- **Lowering:** sets the program's antecedent to that tag for Destroy and ZoneChange events.
+
+Grammar ownership:
+- The reader defers to the exile-instead readers and the "reveal it and shuffle it into its owner's library" reader.
+- It declines regeneration programs, because regeneration is itself the destruction replacement (CR 701.19).
+
+New source-proposed cards: Gravebane Zombie, Nissa's Chosen, Necromancer's Magemark. Ugin's Nexus, Darigaaz and Firestorm Phoenix now have their would-die lines but stay blocked on other lines.
+
+Not done: would draw, mill and scry. Draw already has its own owner (`DrawReplacementWithEffects`), and the mill/scry/surveil cases in this package and its dependants are count modifications, not instead programs.
+
+### Dependants in other packages
+Recorded in the Tainted Remedy ledger note:
+- **Now expressible:** Crackling Emergence and Harmonious Emergence (p01), via the Destroy instead program.
+- **Need an owner that isn't built yet:**
+  - p04's spell-cast-this-way graveyard replacements need a one-shot replacement on one specific spell.
+  - Pulmonic Sliver needs a granted, optional zone-change replacement.
+  - Many p02/p03/p07 cards are damage, counter, energy or draw count modifications or redirections, not instead programs.
+- **Wrongly attributed to p06:** Gideon's Triumph, Epicenter, Orim's Touch and Archmage's Newt are resolution-time "X instead if Y" spell text, not replacements.
+
+### Own remaining clusters
+- **Choice results:** "If no player does" now reads as did-not and "If a player does either" as did, in the if-result grammar. Distant Memories and Worms of the Earth stay blocked on their any-player choice bodies. "If you pay" after "unless you pay" is not mapped: whether that result records the payment or the punished action is ambiguous.
+- **Cast records:** "{C} wasn't spent to cast it" now reads as the negated mana-spent check (Wumpus Aberration). Bargain (Rowan's Grim Search) is blocked on its comma split, not on the predicate.
+- **Targets inside a leading "if"** (Blood Lust, Hidetsugu's Second Rite, Vraska, Guiding Spirit) and **elliptical conditions** ("If it doesn't", "If it is"): still blocked. Both need sentence-level work — declaring targets from a condition, or carrying the previous conditional's predicate to the next sentence — that I couldn't verify without a build.
+
+## Round 4
+
+Status now: 71 source-proposed, 2 already-on-main, 131 blocked (204 cards). Nothing
+was built or run. Tests are authored and unrun. Their fixture is
+`fixtures/p06_round4.json.fixture`.
+
+### Mechanisms built
+
+1. **Amount-modifying replacements (CR 614.1a, 616.1).**
+   - New core payload `StaticAbilityPayload::EventAmountReplacement { event: AmountEventSpec, modifier: AmountModifierSpec, optional, display }`, in `core/src/amount_replacement_model.rs`. It is appended, along with a new `StaticAbilityId`.
+     - Events: `Damage { source, player, object, combat_only, minimum }` and `KeywordAction { action, performer }`.
+     - Modifiers: `Multiply`, `Add`, `SetTo` and `Half { round_up }`. `Half` maps to the new `EventModification::Halve`, which has arms in all three exhaustive sites.
+   - The engine kind (`static_abilities/misc/event_amount_replacement.rs`) emits `ReplacementAction::Modify`. Several modifiers therefore compose in the affected player's chosen order. The damage matcher reuses `DamageAmountReplacementMatcher` and adds a minimum-amount gate.
+   - Scry and surveil now propose their number through the shared keyword-action envelope (`execute_keyword_action_with_outputs`), as heal, connive and earthbend already do. This means "would scry" instead programs (`KeywordActionReplacement`) also apply now.
+   - Mill gets `KeywordActionKind::Mill`, appended. It is proposed only for replacement: the mill freezes its cards first, then the proposed number may shrink the frozen set or extend it further down the library. A cheap pre-check skips the pass when no replacement could watch a keyword action.
+   - Energy plus-N reuses `AddCountersPlacementReplacement` through a new shape in `replacement_facts.rs`.
+   - Grammar is in `keyword_static/event_amount_replacements.rs`. It handles:
+     - mill/scry/surveil "twice / N times / that many plus N";
+     - "draw that many cards instead" (Eligeth);
+     - "You may look at an additional N cards each time you surveil";
+     - damage "N or more ... deals M instead";
+     - "half that damage, rounded down".
+   - Resolving damage multipliers:
+     - "Until your next turn, if a source/that creature would deal [combat] damage to that player or a permanent that player controls / one of your opponents, it deals double/triple that damage instead."
+     - The registration fixes "that player" / "that creature" as it resolves (`register_damage_multiplier.rs`). Lowering binds "that player" to the ability's player antecedent.
+     - "this turn" multipliers accept "a source you control" and the recipient-after-duration order.
+2. **A spell cast this way, then into a graveyard (CR 614.1a).** "If a spell cast this way would be put into your graveyard, exile it instead" binds to the tag of the statement's this-turn cast permission. It produces a future zone replacement (stack → graveyard ⇒ exile) lasting until end of turn. This is a rider binder in `effect_sentences/cast_spell_graveyard_rider.rs`.
+   - "If that spell would ..." already read through the anaphoric spell path and is left alone.
+   - The other cards in this family (Sorcerous Squall, Kylox, Gale, Mavinda, Bösium Strip) fail on their *cast* clause (play-from-graveyard/exile variants, owned by p05/p04), not on the rider.
+3. **Granted optional replacement.** `EventReplacementWithEffects` gains `optional` (serde default). For a source's own zone change, "you may <program> instead" becomes `ReplacementEffect::optional()`; declining lets the event happen. Pulmonic Sliver's quoted grant reads through the existing quoted-static grant path.
+4. **Targets inside a leading "if" (CR 601.2c, 608.2b).**
+   - "If target <object> has <quality>, ..." declares the target first, then tests `TargetMatches(<noun> with <quality>)`. This is in `grammar/effects/leading_condition_targets.rs`.
+   - "target player/opponent has <cmp> life" reads as `LifeTotal(Target(..))`, which the existing life-condition prelude declares.
+5. **Elliptical conditions.** "If it doesn't, ..." / "If it isn't, ..." becomes the false arm of the immediately preceding conditional. The fallback's "it" is bound to the condition's object (`effect_sentences/elliptical_conditions.rs`). Positive "If it does" is left to the result readers.
+6. **"If you pay" after "unless you pay" (CR 118.12).** `UnlessPaysEffect` reports a paid cost as a `Declined` outcome (punishment prevented) and an unpaid one as the punishment's own outcome. So the follow-up is `IfResult(WasDeclined)`; `Did` would read the opposite. This applies only when the immediately preceding effect is `UnlessPays` by you (`effect_sentences/unless_payment_results.rs`).
+7. **"Do X instead if Y" inside one resolution.** The instead classifier treated any "would" before "instead" as a future replacement. Orim's Touch's "prevent the next 4 damage that would be dealt ... instead" was therefore read as a replacement, and the marker was dropped. Now a "would" counts only inside the conditional head (before its comma) when a leading "if" exists (`grammar/effects/instead.rs`).
+   - Gideon's Triumph, Epicenter and Archmage's Newt were not changed. Their dropped "instead" sits in the line-level self-replacement assembly (`semantic_line_parsing/lines.rs`, `dispatch_entry.rs` flat-statement guards), and without a probe I could not locate which reader loses it.
+8. **Turn-scoped control-changing entry.** "If a creature would enter under an opponent's control this turn, it enters under your control instead" (Gather Specimens), and the token-creation form (Crafty Cutpurse), now read as an until-end-of-turn `RegisterEnterUnderControlReplacement`. The old reader required the word "opponent", not the possessive.
+
+### Dependants in other packages now expressible (their ledgers are untouched)
+Izzet Generatorium (energy plus one), Ghosts of the Innocent (half, rounded down),
+Enhanced Surveillance (optional surveil +2), Pulmonic Sliver, Orim's Touch, Lightning,
+Army of One and Jeska, Thrice Reborn (multiplier line only; their other lines are
+unverified), Isengard Unleashed, Insult // Injury (Insult half), Crafty Cutpurse,
+Gather Specimens. Still blocked:
+- Sorcerous Squall, Kylox's Voltstrider, Gale, Mavinda, Bösium Strip: blocked by their cast clauses.
+- Zabaz: needs a cause filter (modular ability).
+- Worship and Elderscale Wurm: need a damage-result life-floor that keeps lifelink at full damage.
+- Alms Collector and Reed Richards: draws are per-card events.
+- Twinning Staff: copy count.
+- Equal Treatment: needs a resolution-registered amount effect.
+- Overblaze and Impulsive Maneuvers: need a target-scoped or next-time multiplier.
+- Kor Chant, Kor Dirge, Eye for an Eye: redirection, owned by p03.
+
+### Risks
+- **Scry and surveil now go through the keyword-action envelope.** It processes the proposed event (one game clone, as for heal and connive) and can suspend for a replacement-order choice before the cards are looked at. Existing "would scry" `KeywordActionReplacement`s, which were inert before because the event was completion-only, now apply.
+- **Mill runs a replacement pass when any keyword-action replacement might exist.** The pre-check scans live replacements and ability-generated ones. Instead programs on Mill fail closed with an internal error; no reader produces them.
+- **New variants:** `KeywordActionKind::Mill`, `StaticAbilityId::EventAmountReplacement`, `StaticAbilityPayload::EventAmountReplacement` and `EventModification::Halve`, all appended. There are exhaustive arms in `event_model.rs` (2), `static_ability_id.rs`, `static_ability_model.rs` (`try_map`), `text_change_statics.rs`, `model_interpreter.rs`, `application.rs` (2) and `damage_result_modification.rs`.
+- **`EventReplacementWithEffects` gained a field.** Its explicit struct patterns are updated in core `try_map`, the lowering arm and the engine interpreter.
+- **The instead-classifier change affects every follow-up sentence with a leading "if" and a later "would".** The first corpus run should diff "instead" cards.
+- **The rider binder, elliptical merge and unless-payment binder run in the sentence loop** before ordinary parsing. They claim only exact shapes after the right antecedent effect.
+- **`register_damage_multiplier.rs` now fixes `IteratedPlayer`, `Target`, `TaggedPlayer` and single-tag object filters as it resolves.** Existing registrations used only class filters (`You`, `Opponent`, `Any`), which pass through unchanged.

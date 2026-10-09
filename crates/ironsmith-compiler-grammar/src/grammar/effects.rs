@@ -68,6 +68,8 @@ pub mod coordination;
 mod damage;
 #[path = "effects/life_condition_targets.rs"]
 mod life_condition_targets;
+#[path = "effects/leading_condition_targets.rs"]
+mod leading_condition_targets;
 #[path = "effects/toughness_assignment.rs"]
 pub mod toughness_assignment;
 pub use damage::*;
@@ -1569,6 +1571,12 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
                 }),
             ]);
         }
+    }
+    if let Some(effects) = leading_condition_targets::leading_object_target_condition(
+        tokens,
+        parse_effect_chain_lexed,
+    ) {
+        return Ok(effects);
     }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 

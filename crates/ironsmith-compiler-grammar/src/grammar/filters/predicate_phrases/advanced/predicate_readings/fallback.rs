@@ -9,6 +9,9 @@ use super::Predicate;
 
 /// The input's fallback reading, if a shape reads it.
 pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
+    if let Some(predicate) = negated_mana_spent(input.predicate_tokens) {
+        return Some(predicate);
+    }
     let words: Vec<String> = crate::lexer::token_word_refs(input.predicate_tokens)
         .into_iter()
         .map(|word| word.replace(['\'', '’'], ""))
@@ -234,6 +237,8 @@ const SHAPES: &[Shape] = &[
     creatures_attacked_this_turn,
     card_exiled_with_it,
     source_kicked_twice,
+    target_player_life_total,
+    card_directly_above_source,
 ];
 
 const SOURCE_NOUNS: &[&str] = &[
@@ -376,7 +381,42 @@ fn cards_above_source(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     Some(PredicateAst::Source(
-        SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count },
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above: false,
+        },
+    ))
+}
+
+/// "this card is in your graveyard with a creature card directly above it"
+/// (Death Spark, Krovikan Horror): the card immediately above the source in
+/// its owner's ordered graveyard matches (CR 404.1).
+fn card_directly_above_source(words: &[&str]) -> Option<PredicateAst> {
+    let rest = match words {
+        ["this", "card", "is", "in", "your", "graveyard", "with", rest @ ..] => rest,
+        _ => return None,
+    };
+    let [descriptor @ .., "directly", "above", "it"] = rest else {
+        return None;
+    };
+    let descriptor = strip_article(descriptor);
+    if descriptor.is_empty() {
+        return None;
+    }
+    let mut filter = filter_from_words(descriptor)?;
+    if filter.zone == Some(Zone::Battlefield) {
+        filter.zone = None;
+    }
+    if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
+        return None;
+    }
+    Some(PredicateAst::Source(
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count: 1,
+            directly_above: true,
+        },
     ))
 }
 
@@ -854,6 +894,44 @@ fn you_have_less_life_than_opponent(words: &[&str]) -> Option<PredicateAst> {
     }))
 }
 
+/// "target player has exactly 10 life" (Hidetsugu's Second Rite): a life-total
+/// comparison of a player the condition itself targets. The comparison reads
+/// as for "you have ..."; the player is the ability's target, which the
+/// conditional announces before it resolves (CR 601.2c, 608.2b).
+fn target_player_life_total(words: &[&str]) -> Option<PredicateAst> {
+    let (player, rest) = match words {
+        ["target", "player", "has", rest @ ..] => (PlayerFilter::target_player(), rest),
+        ["target", "opponent", "has", rest @ ..] => (PlayerFilter::target_opponent(), rest),
+        _ => return None,
+    };
+    // "... has exactly 10 life", "... has fewer than nine poison counters".
+    if !matches!(rest.last(), Some(&("life" | "counters"))) {
+        return None;
+    }
+    let tokens =
+        crate::lexer::synthetic_word_tokens(["you", "have"].into_iter().chain(rest.iter().copied()));
+    let PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    } = parse_predicate(&tokens).ok()?
+    else {
+        return None;
+    };
+    let left = match left.unhinted() {
+        Value::LifeTotal(PlayerFilter::You) => Value::LifeTotal(player),
+        Value::PlayerCounters(PlayerFilter::You, counter_type) => {
+            Value::PlayerCounters(player, *counter_type)
+        }
+        _ => return None,
+    };
+    Some(PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    })
+}
+
 /// "you've committed a crime this turn" (Servant of the Stinger, Oko, the
 /// Ringleader): you targeted an opponent, or something they control, this
 /// turn (CR 700.13).
@@ -1119,4 +1197,20 @@ fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     Some(at_least(Value::KickCount, 2))
+}
+
+/// "if {C} wasn't spent to cast it" (Wumpus Aberration): the denial of the
+/// mana-spent reading, rebuilt from the authored tokens (the mana symbol stays
+/// a real mana-group token) with the positive copula.
+fn negated_mana_spent(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let negation = tokens
+        .iter()
+        .position(|token| token.is_word("wasn't") || token.is_word("wasnt"))?;
+    if negation == 0 || !tokens.get(negation + 1)?.is_word("spent") {
+        return None;
+    }
+    let mut positive = tokens.to_vec();
+    positive[negation] = OwnedLexToken::synthetic_word("was");
+    let predicate = parse_predicate(&positive).ok()?;
+    Some(PredicateAst::Not(Box::new(predicate)))
 }

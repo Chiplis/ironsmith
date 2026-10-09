@@ -28,6 +28,12 @@ pub(crate) use damage_redirection::redirection_recipient_filters;
 mod life_change_replacements;
 mod event_instead_replacements;
 pub use event_instead_replacements::parse_if_event_would_happen_instead_line;
+mod event_amount_replacements;
+pub use event_amount_replacements::{
+    parse_damage_life_floor_static_line, parse_enters_or_escapes_instead_counters_line,
+    parse_if_event_would_happen_amount_line,
+    parse_you_may_look_at_additional_cards_each_time_line,
+};
 mod prevention_follow_ups;
 pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line, parse_shared_color_pair_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
@@ -841,6 +847,14 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_damage_life_floor_static_line" => vec![
+            StaticAbilityLineHeadHint::Single("if"),
+            StaticAbilityLineHeadHint::Single("damage"),
+        ],
+        "parse_you_may_look_at_additional_cards_each_time_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
         "parse_you_may_look_top_card_any_time_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -977,7 +991,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
         ],
-        "parse_enters_tapped_with_counters_line" | "parse_enters_with_counters_line" => vec![
+        "parse_enters_tapped_with_counters_line"
+        | "parse_enters_with_counters_line"
+        | "parse_enters_or_escapes_instead_counters_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
             StaticAbilityLineHeadHint::Single("if"),
@@ -1584,6 +1600,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
         single_static_ability_ast_rule!(parse_if_you_would_gain_life_replacement_line),
         single_static_ability_ast_rule!(parse_if_event_would_happen_instead_line),
+        single_static_ability_ast_rule!(parse_if_event_would_happen_amount_line),
+        single_static_ability_ast_rule!(parse_you_may_look_at_additional_cards_each_time_line),
+        single_static_ability_ast_rule!(parse_damage_life_floor_static_line),
         single_static_ability_ast_rule!(parse_if_player_would_change_life_double_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_sacrifice_or_redirect_replacement_line),
@@ -1871,6 +1890,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
         multi_static_ability_ast_rule!(parse_enters_with_counters_line),
+        multi_static_ability_ast_rule!(parse_enters_or_escapes_instead_counters_line),
         single_static_ability_ast_rule!(parse_as_enters_reveal_from_hand_line),
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
@@ -5448,6 +5468,8 @@ pub(crate) fn damage_multiplier_parts_from_shape(
         combat_only: spec.combat_only,
         noncombat_only: spec.noncombat_only,
         mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+        amount_override: None,
+        minimum: None,
     }))
 }
 
