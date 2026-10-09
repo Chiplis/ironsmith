@@ -2247,7 +2247,59 @@ fn parse_choose_target_prelude_targets(
     if targets.len() < 2 {
         return Ok(None);
     }
+    bind_prelude_player_pronouns(&mut targets);
     Ok(Some(targets))
+}
+
+/// "choose target player and any number of target attacking creatures their
+/// opponents control": each target phrase is read on its own, so its
+/// "their"/"they" defaults to an iterated player. In one declaration the
+/// pronoun names the earlier target player instead, a relation checked as
+/// the targets are chosen (CR 115.1, 601.2c).
+fn bind_prelude_player_pronouns(targets: &mut [TargetAst]) {
+    fn player_target(target: &TargetAst) -> Option<&PlayerFilter> {
+        match target {
+            TargetAst::Player(filter, _) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                player_target(inner)
+            }
+            _ => None,
+        }
+    }
+    fn object_filter(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, _, _) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                object_filter(inner)
+            }
+            _ => None,
+        }
+    }
+    fn rebind(relation: &mut Option<PlayerFilter>, player: &PlayerFilter) {
+        match relation {
+            Some(PlayerFilter::IteratedPlayer) => *relation = Some(player.clone()),
+            Some(PlayerFilter::OpponentOf(inner))
+                if matches!(inner.as_ref(), PlayerFilter::IteratedPlayer) =>
+            {
+                *relation = Some(PlayerFilter::OpponentOf(Box::new(player.clone())));
+            }
+            _ => {}
+        }
+    }
+    let mut prior_player: Option<PlayerFilter> = None;
+    for target in targets.iter_mut() {
+        if let Some(filter) = player_target(target) {
+            prior_player = Some(match filter {
+                PlayerFilter::Target(_) => filter.clone(),
+                other => PlayerFilter::Target(Box::new(other.clone())),
+            });
+            continue;
+        }
+        if let (Some(player), Some(filter)) = (prior_player.as_ref(), object_filter(target)) {
+            rebind(&mut filter.controller, player);
+            rebind(&mut filter.owner, player);
+        }
+    }
 }
 
 fn parse_kicked_additional_targets_prelude(

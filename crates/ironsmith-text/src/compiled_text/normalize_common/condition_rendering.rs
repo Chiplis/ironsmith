@@ -3866,6 +3866,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
                     "by an opponent at sorcery speed"
                 }
+                crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+                    "by the attacked player during the declare attackers step"
+                }
                 crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                     "during the activating player's turn before the end step"
                 }

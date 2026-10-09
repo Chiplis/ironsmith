@@ -1654,6 +1654,10 @@ pub enum PlayerFilter {
     ControlsFewestTied {
         filter: Box<ObjectFilter>,
     },
+    /// "the player to their left": the nearest in-game player seated to the
+    /// left of the player `base` names (CR 101.4a). Appended to preserve
+    /// existing serialized variant ordinals.
+    PlayerToLeftOf(Box<PlayerFilter>),
 }
 
 impl PlayerFilter {
@@ -1788,7 +1792,9 @@ impl PlayerFilter {
             Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
                 filter.mentions_player_filter(needle)
             }
-            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_player_filter(needle),
+            Self::OpponentOf(base) | Self::PlayerToLeftOf(base) | Self::MaxSpeed { base, .. } => {
+                base.mentions_player_filter(needle)
+            }
             Self::Excluding { base, excluded } => {
                 base.mentions_player_filter(needle) || excluded.mentions_player_filter(needle)
             }
@@ -1945,6 +1951,10 @@ impl PlayerFilter {
                 pluralize_count_terminal_word(&filter.description())
             ),
             Self::OpponentOf(base) => format!("an opponent of {}", base.description()),
+            Self::PlayerToLeftOf(base) => match base.as_ref() {
+                Self::IteratedPlayer => "the player to their left".to_string(),
+                base => format!("the player to the left of {}", base.description()),
+            },
             Self::MaxSpeed {
                 base,
                 has_max_speed,
@@ -4541,7 +4551,9 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
@@ -4750,7 +4762,9 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
@@ -7539,7 +7553,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
             format!("{}'s", filter.description())
         }
-        PlayerFilter::OpponentOf(_) => format!("{}'s", describe_player_filter(filter)),
+        PlayerFilter::OpponentOf(_) | PlayerFilter::PlayerToLeftOf(_) => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -7667,6 +7683,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
+        PlayerFilter::PlayerToLeftOf(base) => match base.as_ref() {
+            PlayerFilter::IteratedPlayer => "the player to their left".to_string(),
+            base => format!("the player to the left of {}", describe_player_filter(base)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

@@ -3068,14 +3068,20 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
             target,
             players_only,
+            attacked_player,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut reselect =
+                crate::effects::ReselectAttackTargetEffect::new(spec.clone(), *players_only);
+            if let Some(player) = attacked_player {
+                reselect = reselect.now_attacking(resolve_non_target_player_filter(
+                    *player,
+                    &current_reference_env(ctx),
+                )?);
+            }
             let effect = tag_object_target_effect(
-                Effect::new(crate::effects::ReselectAttackTargetEffect::new(
-                    spec.clone(),
-                    *players_only,
-                )),
+                Effect::new(reselect),
                 &spec,
                 ctx,
                 "attack_reselected",

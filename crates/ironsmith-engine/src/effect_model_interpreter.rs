@@ -2378,6 +2378,8 @@ where
         crate::effects::MoveToZoneEffect,
         crate::effects::PayAnyEnergyEffect,
         crate::effects::PayAnyLifeEffect,
+        crate::effects::TagPlayersEffect,
+        crate::effects::KeepGreatestManaValuePlayersEffect,
         crate::effects::PayEnergyEffect,
         crate::effects::PayLifeEffect,
         crate::effects::PayManaEffect,

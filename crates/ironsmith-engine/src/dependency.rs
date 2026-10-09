@@ -1035,6 +1035,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::ControlsMost { .. }
             | PlayerFilter::ControlsFewestTied { .. }
             | PlayerFilter::OpponentOf(_)
+            | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::AttackedBySourceThisTurn

@@ -21,6 +21,7 @@ pub(crate) mod counted_number;
 pub(crate) mod copied_cards_cast;
 mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
+pub(crate) mod now_attacking;
 pub(crate) mod turn_scoped_enter_replacement;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;
@@ -124,6 +125,8 @@ mod next_spell_family;
 pub(crate) mod flashback_grants;
 mod optional_companion_fanout;
 mod pair_procedure;
+mod repeat_process_variants;
+mod ordered_group_choice;
 mod local_self_replacement;
 mod toughness_assignment;
 pub(crate) fn recognizes_scalar_self_replacement_sentence(

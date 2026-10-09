@@ -2296,13 +2296,14 @@ pub(super) fn compile_subject_verb_early(
             tapped,
             controller,
             cloak,
+            manifest,
             shuffle_before,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            if *controller == ReturnControllerAst::Owner && !*cloak {
+            if *controller == ReturnControllerAst::Owner && !*cloak && !*manifest {
                 // Ownership is per object, including a captured collection
                 // with several owners. The native movement owner already
                 // retains that choice through prepared entry and completion.
@@ -2339,17 +2340,21 @@ pub(super) fn compile_subject_verb_early(
             for choice in choices {
                 push_choice(&mut all_choices, choice);
             }
-            let mut effect = if *cloak {
-                let mut manifest =
-                    crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter)
-                        .cloak();
+            let mut effect = if *cloak || *manifest {
+                // CR 701.58a cloak / CR 701.40a manifest: the same face-down
+                // entry, with ward {2} only for cloak.
+                let mut face_down =
+                    crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter);
+                if *cloak {
+                    face_down = face_down.cloak();
+                }
                 if *tapped {
-                    manifest = manifest.tapped();
+                    face_down = face_down.tapped();
                 }
                 if *shuffle_before {
-                    manifest = manifest.shuffled();
+                    face_down = face_down.shuffled();
                 }
-                Effect::new(manifest)
+                Effect::new(face_down)
             } else {
                 Effect::put_onto_battlefield(spec.clone(), *tapped, controller_filter)
             };

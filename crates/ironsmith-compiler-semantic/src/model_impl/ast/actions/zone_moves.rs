@@ -22,6 +22,9 @@ pub enum ZoneMoveActionAst {
         tapped: bool,
         controller: ReturnControllerAst,
         cloak: bool,
+        /// Manifest rather than put face up (CR 701.40a): each card enters
+        /// face down as a 2/2 creature. Exclusive with `cloak`.
+        manifest: bool,
         shuffle_before: bool,
     },
     MayMoveToZone {

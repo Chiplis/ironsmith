@@ -381,14 +381,29 @@ fn parse_effect_sentence_lexed_uncached_inner(
     // act one at a time beginning with the controller instead of in APNAP
     // order (CR 101.4), which the lowering reads from the source-sentence
     // order flag.
+    // "[Then] starting with the next opponent in turn order, each opponent
+    // chooses ..." (Manifold Insights, Rejoin the Fight): the opponents act
+    // one at a time in turn order beginning after the controller, which is
+    // the same controller-first order over the opponents.
+    let ordered_tokens = crate::util::strip_leading_token_words_any(
+        crate::lexer::trim_lexed_commas(tokens),
+        &["then"],
+    );
     let ordered_rest = crate::grammar::primitives::parse_prefix(
-        tokens,
-        crate::grammar::primitives::phrase(&["starting", "with", "you"]),
+        ordered_tokens,
+        winnow::combinator::alt((
+            crate::grammar::primitives::phrase(&["starting", "with", "you"]),
+            crate::grammar::primitives::phrase(&[
+                "starting", "with", "the", "next", "opponent", "in", "turn", "order",
+            ]),
+        )),
     )
     .map(|((), rest)| crate::lexer::trim_lexed_commas(rest));
     if let Some(rest) = ordered_rest
         && rest.first().is_some_and(|token| token.is_word("each"))
-        && rest.get(1).is_some_and(|token| token.is_word("player"))
+        && rest
+            .get(1)
+            .is_some_and(|token| token.is_word("player") || token.is_word("opponent"))
     {
         // Any other reading of the full sentence (votes, payment loops)
         // keeps its own owner.
@@ -397,12 +412,14 @@ fn parse_effect_sentence_lexed_uncached_inner(
                 effects.first(),
                 Some(EffectAst::ForEach(
                     crate::cards::builders::ForEachEffectAst::ForEachPlayer { .. }
+                        | crate::cards::builders::ForEachEffectAst::ForEachOpponent { .. }
                 ))
             )
         {
             return Ok(vec![EffectAst::SourceSentence {
                 effects,
-                leading_then: false,
+                leading_then: ordered_tokens.len()
+                    != crate::lexer::trim_lexed_commas(tokens).len(),
                 starting_with_controller: true,
             }]);
         }

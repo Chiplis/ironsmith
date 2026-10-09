@@ -381,5 +381,165 @@
     "oracle_text": "First strike\nWhenever this creature deals combat damage to a player, you may exile target black or red permanent that player controls.",
     "power": "4",
     "toughness": "4"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Parting of the Ways",
+    "oracle_id": "58d5b285-eb0c-4478-b137-26a897075f70",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Exile the top five cards of your library. For each nonland card exiled this way, put a number of time counters on that card equal to its mana value. If it doesn't have suspend, it gains suspend.\nII — Time travel, then time travel.\nIII — For each opponent, destroy up to one target artifact that player controls."
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Tenth Doctor",
+    "oracle_id": "23af0a0a-1d12-47c7-b191-2bd3f84eea93",
+    "mana_cost": "{3}{U}{R}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "Allons-y! — Whenever you attack, exile cards from the top of your library until you exile a nonland card. Put three time counters on it. If it doesn't have suspend, it gains suspend.\nTimey-Wimey — {7}: Time travel three times. Activate only as a sorcery.",
+    "power": "3",
+    "toughness": "5"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Girl in the Fireplace",
+    "oracle_id": "39068bf1-cae4-4ac9-82ef-4e81bf59446e",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Create a 1/1 white Human Noble creature token with vanishing 3 and \"Prevent all damage that would be dealt to this token.\"\nII — Create a 2/2 white Horse creature token with \"Doctors you control have horsemanship.\"\nIII — Whenever a creature you control deals combat damage to a player this turn, time travel."
+  },
+  {
+    "cluster": "attacked_player_activation",
+    "name": "Capricopian",
+    "oracle_id": "3a5a6732-bdfa-4b64-b897-6817983dbb0e",
+    "mana_cost": "{X}{G}",
+    "type_line": "Creature — Goat Hydra",
+    "oracle_text": "This creature enters with X +1/+1 counters on it.\n{2}: Put a +1/+1 counter on this creature, then you may reselect which player this creature is attacking. Only the player this creature is attacking may activate this ability and only during the declare attackers step.",
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "cluster": "prevention_follow_up_repeat",
+    "name": "Immortal Coil",
+    "oracle_id": "c85fc672-12d8-4ab0-b18d-ccd590ac063c",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}, Exile two cards from your graveyard: Draw a card.\nIf damage would be dealt to you, prevent that damage. Exile a card from your graveyard for each 1 damage prevented this way.\nWhen there are no cards in your graveyard, you lose the game."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Abstruse Appropriation",
+    "oracle_id": "61a23402-3244-4b5e-9134-98e1f82eda65",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Devoid\nExile target nonland permanent. You may cast that card for as long as it remains exiled, and you may spend colorless mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Curse of Hospitality",
+    "oracle_id": "0fb70b94-0847-4155-8953-cb53fef82ef1",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment — Aura Curse",
+    "oracle_text": "Enchant player\nCreatures attacking enchanted player have trample.\nWhenever a creature deals combat damage to enchanted player, that player exiles the top card of their library. Until end of turn, that creature's controller may play that card and they may spend mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Write into Being",
+    "oracle_id": "4fc69345-4c1f-4113-8e1c-15b8e2e597fc",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top two cards of your library. Manifest one of those cards, then put the other on the top or bottom of your library."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Jeskai Infiltrator",
+    "oracle_id": "39b359c1-48b8-43a7-b972-54764eadd2c7",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Monk",
+    "oracle_text": "This creature can't be blocked as long as you control no other creatures.\nWhen this creature deals combat damage to a player, exile it and the top card of your library in a face-down pile, shuffle that pile, then manifest those cards.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "cluster": "forced_attack_reassignment",
+    "name": "Portal Manipulator",
+    "oracle_id": "0dd3127e-de13-4785-b5f2-0af996e9f15f",
+    "mana_cost": "{2}{W/U}{W/U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, choose target player and any number of target attacking creatures their opponents control. Those creatures are now attacking that player.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Firemind's Foresight",
+    "oracle_id": "bf5765e0-def0-4ddf-9cd7-083feae71660",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Search your library for an instant card with mana value 3, reveal it, and put it into your hand. Then repeat this process for instant cards with mana values 2 and 1. Then shuffle."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Protection Racket",
+    "oracle_id": "4b51edb1-37cc-4993-a8a5-2eb5f79fa191",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, repeat the following process for each opponent in turn order. Reveal the top card of your library. That player may pay life equal to that card's mana value. If they do, exile that card. Otherwise, put it into your hand."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Horus Heresy",
+    "oracle_id": "fc315174-d063-41dd-9379-11d95c5fd4ed",
+    "mana_cost": "{3}{U}{B}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — For each opponent, gain control of up to one target nonlegendary creature that player controls for as long as this Saga remains on the battlefield.\nII — Draw a card for each creature you control but don't own.\nIII — Starting with you, each player chooses a creature. Destroy each creature chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Legend of Yangchen // Avatar Yangchen",
+    "oracle_id": "521a63cf-5e83-4649-9800-c62b2fc474d6",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Starting with you, each player chooses up to one permanent with mana value 3 or greater from among permanents your opponents control. Exile those permanents.\nII — You may have target opponent draw three cards. If you do, draw three cards.\nIII — Exile this Saga, then return it to the battlefield transformed under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Grenzo's Rebuttal",
+    "oracle_id": "afcfcb74-ee64-4528-8498-2e8109ad5142",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 4/4 red Ogre creature token. Starting with you, each player chooses an artifact, a creature, and a land from among the permanents controlled by the player to their left. Destroy each permanent chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Rejoin the Fight",
+    "oracle_id": "d22ea32b-2128-4dcc-8b1c-c4c52f0b2f45",
+    "mana_cost": "{5}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Mill three cards. Then starting with the next opponent in turn order, each opponent chooses a creature card in your graveyard that hasn't been chosen. Return each card chosen this way to the battlefield under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Manifold Insights",
+    "oracle_id": "9c793037-6ba8-400a-b24d-6032141e8dae",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Reveal the top ten cards of your library. Starting with the next opponent in turn order, each opponent chooses a different nonland card from among them. Put the chosen cards into your hand and the rest on the bottom of your library in a random order."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Timesifter",
+    "oracle_id": "99f8805f-6618-4838-a4e7-a3660e3b087f",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each upkeep, each player exiles the top card of their library. The player who exiled the card with the greatest mana value takes an extra turn after this one. If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Thieves' Auction",
+    "oracle_id": "230ee0b4-eb75-457f-b171-72d585cfb5aa",
+    "mana_cost": "{4}{R}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exile all nontoken permanents. Starting with you, each player chooses one of the exiled cards and puts it onto the battlefield tapped under their control. Repeat this process until all cards exiled this way have been chosen."
   }
 ]

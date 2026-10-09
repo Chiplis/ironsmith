@@ -67,6 +67,10 @@ pub enum ActivationTiming {
     /// sorcery": an opponent of the source's controller, during their own
     /// main phase with an empty stack (CR 307.1, 602.5d).
     SorcerySpeedByOpponents,
+    /// "Only the player this creature is attacking may activate this ability
+    /// and only during the declare attackers step." (Capricopian): the
+    /// activator is the player the source is attacking (CR 506.2, 508).
+    DeclareAttackersStepByAttackedPlayer,
 }
 
 impl ActivationTiming {
@@ -1138,6 +1142,7 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
                 | ActivationTiming::AnyTimeByEnchantedCreatureController
                 | ActivationTiming::AnyTimeByOpponents
                 | ActivationTiming::SorcerySpeedByOpponents
+                | ActivationTiming::DeclareAttackersStepByAttackedPlayer
         ) || self.additional_restrictions.iter().any(|restriction| {
                 restriction
                     .trim()

@@ -19,10 +19,12 @@ mod ascend;
 mod mana_damage_and_control;
 mod reselect_attack;
 mod friend_or_foe;
+mod tie_break;
 pub use ascend::*;
 pub use friend_or_foe::*;
 pub use mana_damage_and_control::*;
 pub use reselect_attack::*;
+pub use tie_break::*;
 
 /// Identifier for an effect within an effect sequence.
 ///

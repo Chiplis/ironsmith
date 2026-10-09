@@ -1256,6 +1256,49 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::GreatestManaValueTieBreakExile {
+        contenders_tag,
+        exiled_tag,
+    } = effect
+    {
+        // CR 608.2c: the round is repeated, by the tied players only, while
+        // two or more of them share the greatest mana value.
+        let contenders: crate::tag::TagKey = contenders_tag.clone().into();
+        let exiled: crate::tag::TagKey = exiled_tag.clone().into();
+        let card_tag = ctx.next_tag("tie_break_card");
+        let round = Effect::for_players(
+            crate::target::PlayerFilter::TaggedPlayer(contenders.clone()),
+            vec![Effect::exile_top_of_library_player(
+                Value::Fixed(1),
+                crate::target::PlayerFilter::IteratedPlayer,
+                card_tag,
+                Some(exiled.clone()),
+            )],
+        );
+        let narrow_id = ctx.next_effect_id();
+        let narrow = Effect::with_id(
+            narrow_id.0,
+            Effect::new(crate::effects::KeepGreatestManaValuePlayersEffect::new(
+                contenders.clone(),
+                exiled,
+            )),
+        );
+        let repeat = Effect::new(crate::effects::RepeatProcessEffect::new(
+            vec![round, narrow],
+            narrow_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(1)),
+        ));
+        return Ok((
+            vec![
+                Effect::new(crate::effects::TagPlayersEffect::new(
+                    crate::target::PlayerFilter::Any,
+                    contenders,
+                )),
+                repeat,
+            ],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::SolveCase = effect {
         return Ok((
             vec![Effect::new(crate::effects::SolveCaseEffect::new())],

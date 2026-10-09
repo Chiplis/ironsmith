@@ -79,6 +79,8 @@ pub use additional_land_plays::AdditionalLandPlaysEffect;
 pub use additional_phases::{AdditionalPhase, AdditionalPhasesEffect};
 pub use ascend::AscendEffect;
 pub use become_monarch::BecomeMonarchEffect;
+mod tie_break;
+pub use tie_break::{KeepGreatestManaValuePlayersEffect, TagPlayersEffect};
 pub use cascade::CascadeEffect;
 pub use cast_source::CastSourceEffect;
 pub use cast_tagged::CastTaggedEffect;

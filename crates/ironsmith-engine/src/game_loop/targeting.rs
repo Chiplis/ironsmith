@@ -2628,10 +2628,18 @@ fn player_filter_has_prior_object_controller(filter: &PlayerFilter) -> bool {
     }
 }
 
+/// "target creatures their opponents control" after "target player": the
+/// candidate's controller must be an opponent of the prior target player.
+fn player_filter_is_opponent_of_prior_target_player(filter: &PlayerFilter) -> bool {
+    matches!(filter, PlayerFilter::OpponentOf(inner) if matches!(inner.as_ref(), PlayerFilter::Target(_)))
+}
+
 fn relax_prior_target_player_filter(filter: &PlayerFilter) -> PlayerFilter {
     // A dependency under exclusion cannot be replaced with Any in place:
     // Any minus Any is empty. Enumerate a superset, then validate exact pairs.
-    if player_filter_has_prior_object_controller(filter) {
+    if player_filter_has_prior_object_controller(filter)
+        || player_filter_is_opponent_of_prior_target_player(filter)
+    {
         return PlayerFilter::Any;
     }
     match filter {
@@ -2654,6 +2662,15 @@ fn prior_shared_player_requirement(
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
+    if filter
+        .controller
+        .as_ref()
+        .is_some_and(player_filter_is_opponent_of_prior_target_player)
+    {
+        return requirements
+            .iter()
+            .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)));
+    }
     if filter
         .controller
         .as_ref()
@@ -2729,6 +2746,39 @@ fn link_target_controller_requirement(
         return None;
     };
     let prior_index = prior_shared_player_requirement(spec, requirements)?;
+    if filter
+        .controller
+        .as_ref()
+        .is_some_and(player_filter_is_opponent_of_prior_target_player)
+    {
+        // Each candidate pairs with every prior target player its
+        // controller is an opponent of.
+        let mut allowed_pairs = Vec::new();
+        for prior in &requirements[prior_index].legal_targets {
+            let Target::Player(player) = prior else {
+                continue;
+            };
+            for candidate in candidates {
+                let Target::Object(id) = candidate else {
+                    continue;
+                };
+                if game
+                    .current_controller(*id)
+                    .is_some_and(|controller| game.are_opponents(controller, *player))
+                {
+                    allowed_pairs.push((*prior, *candidate));
+                }
+            }
+        }
+        return Some(crate::decisions::context::SharedTargetPlayerGroup {
+            group: 0,
+            target_players: Vec::new(),
+            pair_constraint: Some(crate::decisions::context::TargetPairConstraint {
+                prior_requirement: prior_index,
+                allowed_pairs,
+            }),
+        });
+    }
     if filter
         .controller
         .as_ref()
@@ -4260,6 +4310,12 @@ pub fn player_matches_filter_with_combat(
                 && game.are_opponents(other.id, player_id)
                 && player_matches_filter_with_combat(other.id, base, game, controller, combat)
         }),
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_matches_filter_with_combat(other.id, base, game, controller, combat)
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player_id)
+        }),
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
         PlayerFilter::IteratedPlayer => {
@@ -4749,6 +4805,7 @@ fn specialize_target_player_relation(
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             specialize_target_player_relation(inner, player, relation);
         }

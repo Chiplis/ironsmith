@@ -888,6 +888,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_all_players_subtype_choices_to_destroy_exclusion(effects);
     bind_all_players_subtype_choices_to_return_inclusion(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
+    bind_quantified_choice_collections_to_pronoun_followups(effects);
     bind_counted_set_followups(effects);
     bind_drawn_cards_to_reveal_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
@@ -2223,6 +2224,114 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
                     });
             }
         }
+    }
+}
+
+/// "Starting with you, each player chooses up to one permanent ... Exile
+/// those permanents.": a plural pronoun right after a choice made by every
+/// player names the union of their choices, as "chosen this way" does. The
+/// producer gets the durable accumulating chosen-set tag and the consumer's
+/// pronoun is bound to it.
+fn bind_quantified_choice_collections_to_pronoun_followups(effects: &mut [EffectAst]) {
+    fn consumer_target_mut(effect: &mut EffectAst) -> Option<&mut TargetAst> {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } => match effects.as_mut_slice() {
+                [effect] => consumer_target_mut(effect),
+                _ => None,
+            },
+            EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    target, ..
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                    target,
+                    ..
+                }) => Some(target),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn pronoun_target_mut(target: &mut TargetAst) -> Option<&mut TargetAst> {
+        let is_pronoun = matches!(
+            &*target,
+            TargetAst::Tagged(tag, _)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        );
+        if is_pronoun {
+            return Some(target);
+        }
+        match target {
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                pronoun_target_mut(inner)
+            }
+            _ => None,
+        }
+    }
+    /// "each card chosen this way": the producer's pronoun constraint on a
+    /// chosen-object noun.
+    fn chosen_this_way_filter_mut(target: &mut TargetAst) -> Option<&mut crate::filter::ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, _, _)
+                if filter.prior_effect_action_surface()
+                    == Some(ironsmith_core::PriorEffectAction::Chosen) =>
+            {
+                Some(filter)
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                chosen_this_way_filter_mut(inner)
+            }
+            _ => None,
+        }
+    }
+    for consumer_index in 1..effects.len() {
+        if choice_collection_producer_is_quantified(&effects[consumer_index - 1]) != Some(true)
+            || !choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1])
+        {
+            continue;
+        }
+        let durable_tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
+        let Some(target) = consumer_target_mut(&mut effects[consumer_index]) else {
+            continue;
+        };
+        fn is_pronoun(target: &TargetAst) -> bool {
+            match target {
+                TargetAst::Tagged(tag, _) => {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                }
+                TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                    is_pronoun(inner)
+                }
+                _ => false,
+            }
+        }
+        if is_pronoun(target) {
+            let Some(pronoun) = pronoun_target_mut(target) else {
+                continue;
+            };
+            let span = match &*pronoun {
+                TargetAst::Tagged(_, span) => *span,
+                _ => None,
+            };
+            *pronoun = TargetAst::Tagged(durable_tag.clone(), span);
+        } else if let Some(filter) = chosen_this_way_filter_mut(target) {
+            let mut rebound = false;
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                {
+                    constraint.tag = durable_tag.clone().into();
+                    rebound = true;
+                }
+            }
+            if !rebound {
+                continue;
+            }
+        } else {
+            continue;
+        }
+        retag_choice_collection_producer(&mut effects[consumer_index - 1], &durable_tag);
     }
 }
 

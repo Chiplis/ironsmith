@@ -47,6 +47,52 @@ enum Statements {
     Permission(EffectAst),
     /// The permission and its event were spelled.
     PermissionWithEvent,
+    /// "Choose one [of them]." selected one exiled card; the permission over
+    /// "that card" is awaited.
+    Chosen,
+}
+
+/// "Choose one [of them / of those cards]." over the exiled collection.
+fn choose_one_statement(sentence: &SentenceInput) -> bool {
+    use winnow::Parser as _;
+    crate::grammar::primitives::probe_all(
+        crate::lexer::trim_lexed_commas(sentence.lowered()),
+        (
+            crate::grammar::primitives::phrase(&["choose", "one"]),
+            winnow::combinator::opt(crate::grammar::primitives::any_phrase(&[
+                &["of", "them"],
+                &["of", "those", "cards"],
+            ])),
+            crate::grammar::primitives::sentence_end(),
+        )
+            .void(),
+        "exiled-collection-choose-one",
+    )
+    .is_some()
+}
+
+/// "You may cast Equipment spells this way without paying their mana
+/// costs." (Nahiri, Forged in Fury): the play permission's free price,
+/// limited to the named kind of spell.
+fn free_cast_rider_filter(sentence: &SentenceInput) -> Result<Option<ObjectFilter>, CardTextError> {
+    let tokens = crate::lexer::trim_lexed_commas(sentence.lowered());
+    let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["you", "may", "cast"]),
+    ) else {
+        return Ok(None);
+    };
+    let Some((filter_end, (), after)) = crate::grammar::primitives::find_prefix(rest, || {
+        crate::grammar::primitives::phrase(&[
+            "spells", "this", "way", "without", "paying", "their", "mana", "costs",
+        ])
+    }) else {
+        return Ok(None);
+    };
+    if !after.iter().all(OwnedLexToken::is_period) || filter_end == 0 {
+        return Ok(None);
+    }
+    crate::object_filters::parse_object_filter(&rest[..filter_end], false).map(Some)
 }
 
 /// The exiled collection an exile statement bound, and the statements made
@@ -162,7 +208,22 @@ pub(super) fn open(
     let Some(tag) = find_exiled_top_collection_tag(&effects) else {
         return Ok(None);
     };
-    let continues = cast_collection(next, &tag)?.is_some()
+    let following = sentences.get(sentence_idx + 2);
+    let continues = (effects.len() == 1
+        && choose_one_statement(next)
+        && following.is_some_and(|following| {
+            crate::grammar::primitives::probe_shape(play_this_turn_permission(following, &tag))
+                .flatten()
+                .is_some()
+        }))
+        || (effects.len() == 1
+            && following.is_some_and(|following| {
+                matches!(free_cast_rider_filter(following), Ok(Some(_)))
+            })
+            && crate::grammar::primitives::probe_shape(play_this_turn_permission(next, &tag))
+                .flatten()
+                .is_some())
+        || cast_collection(next, &tag)?.is_some()
         || parse_exile_top_then_put_from_among_tokens(sentence.lowered(), next.lowered())?
             .is_some()
         || (effects.len() == 1
@@ -192,6 +253,31 @@ pub(super) fn continue_with(
     sentence: &SentenceInput,
 ) -> Result<bool, CardTextError> {
     match &group.statements {
+        Statements::None if group.effects.len() == 1 && choose_one_statement(sentence) => {
+            let chosen = helper_tag_for_tokens(sentence.lowered(), "exiled_choice");
+            let mut filter = ObjectFilter::tagged(group.tag.clone());
+            filter.zone = Some(Zone::Exile);
+            group.effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count: crate::cards::builders::ChoiceCount::exactly(1),
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(chosen.clone()),
+                    zone: Zone::Exile,
+                },
+            ));
+            group.tag = chosen.key.clone();
+            group.statements = Statements::Chosen;
+        }
+        Statements::Chosen => {
+            let Some(permission) = crate::grammar::primitives::probe_shape(
+                play_this_turn_permission(sentence, &group.tag),
+            )
+            .flatten() else {
+                return Ok(false);
+            };
+            group.statements = Statements::Permission(permission);
+        }
         Statements::None => {
             if let Some((effects, chosen)) = cast_collection(sentence, &group.tag)? {
                 group.effects.extend(effects);
@@ -244,6 +330,41 @@ pub(super) fn continue_with(
                 chosen,
                 partitioned: true,
             };
+        }
+        Statements::Permission(_) if matches!(free_cast_rider_filter(sentence), Ok(Some(_))) => {
+            let Some(mut filter) = free_cast_rider_filter(sentence)? else {
+                return Ok(false);
+            };
+            let Statements::Permission(permission) =
+                std::mem::replace(&mut group.statements, Statements::PermissionWithEvent)
+            else {
+                unreachable!("matched a pending permission");
+            };
+            group.effects.push(permission);
+            // The free price applies to the matching spells cast through the
+            // permission just granted: narrow the exiled card to that kind
+            // and grant the free cast over the narrowed set.
+            let free_tag = helper_tag_for_tokens(sentence.lowered(), "free_cast_this_way");
+            filter.zone = Some(Zone::Exile);
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: group.tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+            group.effects.push(EffectAst::subject_verb_tag_matching_objects(
+                filter,
+                vec![Zone::Exile],
+                crate::tag::TagRef::of(free_tag.clone()),
+            ));
+            group.effects.push(
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+                    crate::tag::TagRef::of(free_tag),
+                    PlayerAst::Implicit,
+                    false,
+                    true,
+                    ironsmith_core::value_model::ManaSpendMode::Normal,
+                    None,
+                ),
+            );
         }
         Statements::Permission(_) => {
             let Some((kind, followup_effects)) = permission_event(sentence)? else {
@@ -317,6 +438,7 @@ pub(super) fn feature_tag(group: &ExiledTopGroup) -> &'static str {
         Statements::Cast { .. } => "exiled-collection-cast-choice",
         Statements::Battlefield => "exiled-collection-battlefield",
         Statements::Permission(_) | Statements::PermissionWithEvent => "exile-play-event-followup",
+        Statements::Chosen => "exiled-collection-choose-one",
         Statements::None => "exiled-collection",
     }
 }

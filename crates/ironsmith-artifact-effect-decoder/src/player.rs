@@ -110,6 +110,10 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         }
         "PayAnyEnergyEffect" => decode_as::<ironsmith_core::PayAnyEnergyEffect>(payload).map(Some),
         "PayAnyLifeEffect" => decode_as::<ironsmith_core::PayAnyLifeEffect>(payload).map(Some),
+        "TagPlayersEffect" => decode_as::<ironsmith_core::TagPlayersEffect>(payload).map(Some),
+        "KeepGreatestManaValuePlayersEffect" => {
+            decode_as::<ironsmith_core::KeepGreatestManaValuePlayersEffect>(payload).map(Some)
+        }
         "PayEnergyEffect" => decode_as::<ironsmith_core::PayEnergyEffect>(payload).map(Some),
         "PlaySubgameEffect" => {
             decode_as::<ironsmith_core::PlaySubgameEffect<wire::WireEffect>>(payload).map(Some)
@@ -328,6 +332,14 @@ pub(super) fn map_card_ids(
         .map(Some),
         "PayAnyEnergyEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::PayAnyEnergyEffect,
+        >(payload, context)
+        .map(Some),
+        "TagPlayersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TagPlayersEffect,
+        >(payload, context)
+        .map(Some),
+        "KeepGreatestManaValuePlayersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::KeepGreatestManaValuePlayersEffect,
         >(payload, context)
         .map(Some),
         "PayAnyLifeEffect" => {

@@ -53,13 +53,21 @@ pub fn parse_prevention_amount_follow_up_line(
         else { return Ok(None); };
         let body = trim_edge_punctuation_tokens(&tail[range]);
         let mut effects = crate::clause_support::parse_effect_sentences_lexed(body)?;
-        let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
             ..
-        })] = effects.as_mut_slice() else { return Ok(None); };
-        if !matches!(count.unhinted(), Value::Fixed(1)) { return Ok(None); }
-        *count = amount;
-        effects
+        })] = effects.as_mut_slice()
+        {
+            if !matches!(count.unhinted(), Value::Fixed(1)) { return Ok(None); }
+            *count = amount;
+            effects
+        } else {
+            // "Exile a card from your graveyard for each 1 damage prevented
+            // this way." (Immortal Coil): the single action happens once per
+            // point prevented.
+            if effects.is_empty() { return Ok(None); }
+            vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count: amount, effects })]
+        }
     };
     Ok(Some(StaticAbility::prevent_matching_damage_with_follow_up(
         ironsmith_core::StaticDamagePreventionFollowUp {

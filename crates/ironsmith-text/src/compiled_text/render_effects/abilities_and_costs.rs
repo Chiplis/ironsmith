@@ -2758,6 +2758,7 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::SorcerySpeedByOpponents => {
                 "Only your opponents may activate this ability and only as a sorcery".to_string()
             }
+            ActivationTiming::DeclareAttackersStepByAttackedPlayer => "Only the player this creature is attacking may activate this ability and only during the declare attackers step".to_string(),
             ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                 "Any player may activate this ability but only during their turn before the end step"
                     .to_string()

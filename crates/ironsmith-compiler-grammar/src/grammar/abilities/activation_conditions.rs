@@ -213,6 +213,15 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     ) {
         return Some(ActivationTiming::SorcerySpeedByOpponents);
     }
+    if matches_exact_tokens(
+        tokens,
+        &[
+            "only", "the", "player", "this", "creature", "is", "attacking", "may", "activate",
+            "this", "ability", "and", "only", "during", "the", "declare", "attackers", "step",
+        ],
+    ) {
+        return Some(ActivationTiming::DeclareAttackersStepByAttackedPlayer);
+    }
     if matches_prefix_tokens(
         tokens,
         &[

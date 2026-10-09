@@ -106,6 +106,7 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. } => player_filter_references_target_player(base),
         _ => false,
     }

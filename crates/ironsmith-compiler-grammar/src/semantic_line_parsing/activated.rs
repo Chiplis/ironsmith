@@ -340,6 +340,7 @@ fn finalize_rewrite_activated_effect_sentences(
                     ActivationTiming::AnyTimeByEnchantedCreatureController
                         | ActivationTiming::AnyTimeByOpponents
                         | ActivationTiming::SorcerySpeedByOpponents
+                        | ActivationTiming::DeclareAttackersStepByAttackedPlayer
                 )
             )
         {

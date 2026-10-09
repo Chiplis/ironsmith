@@ -16,6 +16,9 @@ pub struct CloakPileSequenceShape<'a> {
     pub library_count: Value,
     pub library_owner: PlayerAst,
     pub enters_tapped: bool,
+    /// "then manifest those cards" (CR 701.40a) rather than cloak
+    /// (CR 701.58a): the cards enter face down without ward.
+    pub manifest: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,8 +71,12 @@ fn parse_face_down_pile_exile_prefix<'a>(
     primitives::kw("and").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     primitives::kw("top").parse_next(input)?;
-    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
-    card_noun.parse_next(input)?;
+    // "the top card of your library" names exactly one card.
+    let count = alt((
+        (leaf::parse_leaf_number_prefix_lexed, card_noun).map(|(count, ())| count),
+        primitives::kw("card").value(1u32),
+    ))
+    .parse_next(input)?;
     primitives::kw("of").parse_next(input)?;
     let owner_tokens = repeat_till(1.., any.void(), peek(pile_intro))
         .map(|((), _)| ())
@@ -89,15 +96,25 @@ fn parse_face_down_pile_exile_prefix<'a>(
     })
 }
 
-fn parse_cloak_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExileShape<'a>> {
+/// "..., shuffle that pile, then cloak/manifest those cards": true when the
+/// pile is manifested.
+fn parse_cloak_pile_exile<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(CloakPileExileShape<'a>, bool)> {
     let shape = parse_face_down_pile_exile_prefix.parse_next(input)?;
     primitives::comma().parse_next(input)?;
     primitives::phrase(&["shuffle", "that", "pile"]).parse_next(input)?;
     primitives::comma().parse_next(input)?;
-    primitives::phrase(&["then", "cloak", "those", "cards"]).parse_next(input)?;
+    primitives::kw("then").parse_next(input)?;
+    let manifest = alt((
+        primitives::kw("cloak").value(false),
+        primitives::kw("manifest").value(true),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["those", "cards"]).parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
     eof.void().parse_next(input)?;
-    Ok(shape)
+    Ok((shape, manifest))
 }
 
 fn parse_standalone_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<CloakPileExileShape<'a>> {
@@ -161,7 +178,7 @@ pub fn parse_cloak_pile_sequence_shape<'a>(
     exile: &'a [OwnedLexToken],
     entry: &[OwnedLexToken],
 ) -> Option<CloakPileSequenceShape<'a>> {
-    let exile =
+    let (exile, manifest) =
         crate::grammar::primitives::probe_all(exile, parse_cloak_pile_exile, "cloak-pile-exile")?;
     let enters_tapped =
         crate::grammar::primitives::probe_all(entry, parse_cloak_entry, "cloak-pile-entry")?;
@@ -170,7 +187,108 @@ pub fn parse_cloak_pile_sequence_shape<'a>(
         library_count: exile.library_count,
         library_owner: exile.library_owner,
         enters_tapped,
+        manifest,
     })
+}
+
+/// The face-down pile sequence as one complete sentence, with no entry
+/// sentence after it: "exile it and the top card of your library in a
+/// face-down pile, shuffle that pile, then manifest those cards."
+pub fn parse_face_down_pile_sentence_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CloakPileSequenceShape<'_>> {
+    let (exile, manifest) =
+        crate::grammar::primitives::probe_all(tokens, parse_cloak_pile_exile, "face-down-pile")?;
+    Some(CloakPileSequenceShape {
+        target_tokens: exile.target_tokens,
+        library_count: exile.library_count,
+        library_owner: exile.library_owner,
+        enters_tapped: false,
+        manifest,
+    })
+}
+
+/// What happens to the looked-at cards a face-down selection leaves behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LookedFaceDownRemainder {
+    /// "then put the other on the top or bottom of your library"
+    TopOrBottom,
+    /// "and put the rest on the bottom of your library in <order>"
+    Bottom(crate::cards::builders::LibraryBottomOrderAst),
+}
+
+/// "Manifest one of those cards, then put the other on the top or bottom of
+/// your library." / "Cloak two of them and put the rest on the bottom of
+/// your library in a random order.": a selection out of a looked-at group
+/// that enters face down (CR 701.40a manifest, CR 701.58a cloak), and the
+/// disposition of the rest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LookedFaceDownSelectionShape {
+    pub manifest: bool,
+    pub count: crate::cards::builders::ChoiceCount,
+    pub remainder: LookedFaceDownRemainder,
+}
+
+fn looked_face_down_remainder(input: &mut LexStream<'_>) -> WResult<LookedFaceDownRemainder> {
+    use crate::cards::builders::LibraryBottomOrderAst;
+    primitives::kw("on").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    alt((
+        (
+            primitives::phrase(&["top", "or", "bottom"]),
+            opt(primitives::phrase(&["of", "your", "library"])),
+        )
+            .value(LookedFaceDownRemainder::TopOrBottom),
+        (
+            primitives::kw("bottom"),
+            opt(primitives::phrase(&["of", "your", "library"])),
+            alt((
+                primitives::phrase(&["in", "any", "order"])
+                    .value(LibraryBottomOrderAst::ChooserChooses),
+                primitives::phrase(&["in", "a", "random", "order"])
+                    .value(LibraryBottomOrderAst::Random),
+            )),
+        )
+            .map(|(_, _, order)| LookedFaceDownRemainder::Bottom(order)),
+    ))
+    .parse_next(input)
+}
+
+fn looked_face_down_selection(input: &mut LexStream<'_>) -> WResult<LookedFaceDownSelectionShape> {
+    let manifest = alt((
+        primitives::kw("cloak").value(false),
+        primitives::kw("manifest").value(true),
+    ))
+    .parse_next(input)?;
+    let count = leaf::parse_leaf_choice_count_prefix_lexed.parse_next(input)?;
+    alt((
+        primitives::phrase(&["of", "them"]),
+        primitives::phrase(&["of", "those", "cards"]),
+    ))
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    alt((primitives::kw("then"), primitives::kw("and"))).parse_next(input)?;
+    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    alt((primitives::kw("other"), primitives::kw("rest"))).parse_next(input)?;
+    let remainder = looked_face_down_remainder.parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(LookedFaceDownSelectionShape {
+        manifest,
+        count,
+        remainder,
+    })
+}
+
+pub fn parse_looked_face_down_selection_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedFaceDownSelectionShape> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        looked_face_down_selection,
+        "looked-face-down-selection",
+    )
 }
 
 #[cfg(test)]
@@ -191,6 +309,7 @@ mod tests {
         assert_eq!(shape.library_count, Value::Fixed(2));
         assert_eq!(shape.library_owner, PlayerAst::You);
         assert!(shape.enters_tapped);
+        assert!(!shape.manifest);
         assert_eq!(
             TokenWordView::new(shape.target_tokens).word_refs(),
             vec!["target", "nontoken", "creature", "you", "own"]

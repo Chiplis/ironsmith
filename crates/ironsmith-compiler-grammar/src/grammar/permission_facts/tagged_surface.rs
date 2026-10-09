@@ -19,6 +19,9 @@ pub enum PermissionActor {
     AnyPlayer,
     ItsOwner,
     Implicit,
+    /// "that creature's controller": in a triggered ability, the controller
+    /// of the creature that caused the event (the trigger's event source).
+    TriggeringCreatureController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -452,6 +455,8 @@ fn parse_permission_lead_lexed<'a>(
                 primitives::kw("you").value(PermissionActor::You),
                 primitives::phrase(&["any", "player"]).value(PermissionActor::AnyPlayer),
                 primitives::phrase(&["its", "owner"]).value(PermissionActor::ItsOwner),
+                primitives::phrase(&["that", "creature's", "controller"])
+                    .value(PermissionActor::TriggeringCreatureController),
             )),
             primitives::kw("may"),
             parse_permission_verb_lexed,
@@ -535,6 +540,27 @@ fn parse_tagged_permission_target_lexed<'a>(
                 &["permanent"],
                 &["card"],
                 &["land"],
+                &["saga"],
+            ])),
+        )
+            .value((
+                TaggedPermissionReference::SourceExiled,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                None,
+            )),
+        // "you may cast spells from among cards exiled with this Saga" (King
+        // Narfi's Betrayal): the source-linked exile pool; "cast spells"
+        // excludes lands.
+        (
+            primitives::phrase(&["spells", "from", "among", "cards", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"],
+                &["artifact"],
+                &["enchantment"],
+                &["permanent"],
+                &["card"],
+                &["saga"],
             ])),
         )
             .value((
@@ -801,11 +827,25 @@ fn parse_allow_any_color_for_cast_lexed<'a>(
             "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast",
         ])
         .value(ironsmith_core::value_model::ManaSpendMode::AnyType),
-        primitives::phrase(&[
-            "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-            "any", "color", "to", "cast",
-        ])
-        .value(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+        // "and you/they may spend [colorless] mana as though it were mana of
+        // any color to cast": "they" names the permitted player; with
+        // "colorless" only colorless mana converts (CR 609.4b).
+        (
+            primitives::kw("and"),
+            alt((primitives::kw("you"), primitives::kw("they"))),
+            primitives::phrase(&["may", "spend"]),
+            opt(primitives::kw("colorless")),
+            primitives::phrase(&[
+                "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "to", "cast",
+            ]),
+        )
+            .map(|(_, _, (), colorless, ())| {
+                if colorless.is_some() {
+                    ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor
+                } else {
+                    ironsmith_core::value_model::ManaSpendMode::AnyColor
+                }
+            }),
     ))
     .parse_next(input)?;
     let reference = alt((

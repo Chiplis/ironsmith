@@ -160,6 +160,7 @@ fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::WasDealtDamageBySourceThisGame { base }
         | PlayerFilter::LostLifeThisTurn { base }

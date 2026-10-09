@@ -405,6 +405,10 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "OpenAttractionEffect" => decode_as::<T, ironsmith_core::OpenAttractionEffect>(effect),
         "PayAnyEnergyEffect" => decode_as::<T, ironsmith_core::PayAnyEnergyEffect>(effect),
         "PayAnyLifeEffect" => decode_as::<T, ironsmith_core::PayAnyLifeEffect>(effect),
+        "TagPlayersEffect" => decode_as::<T, ironsmith_core::TagPlayersEffect>(effect),
+        "KeepGreatestManaValuePlayersEffect" => {
+            decode_as::<T, ironsmith_core::KeepGreatestManaValuePlayersEffect>(effect)
+        }
         "PayEnergyEffect" => decode_as::<T, ironsmith_core::PayEnergyEffect>(effect),
         "PayLifeEffect" => decode_as::<T, ironsmith_core::PayLifeEffect>(effect),
         "PayManaEffect" => decode_as::<T, ironsmith_core::PayManaEffect>(effect),
@@ -1500,6 +1504,8 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::NoteActivationManaTypeEffect,
             crate::effects::PayAnyEnergyEffect,
             crate::effects::PayAnyLifeEffect,
+            crate::effects::TagPlayersEffect,
+            crate::effects::KeepGreatestManaValuePlayersEffect,
             crate::effects::PayEnergyEffect,
             crate::effects::PayLifeEffect,
             crate::effects::PayManaEffect,

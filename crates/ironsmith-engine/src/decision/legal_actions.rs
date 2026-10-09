@@ -2102,6 +2102,17 @@ pub(crate) fn activation_timing_allows(
                 && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
                 && game.stack_is_empty()
         }
+        crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+            game.turn.phase == Phase::Combat
+                && game.turn.step == Some(crate::game_state::Step::DeclareAttackers)
+                && game.combat.as_ref().is_some_and(|combat| {
+                    combat.attackers.iter().any(|info| {
+                        info.creature == source
+                            && info.target
+                                == crate::combat_state::AttackTarget::Player(controller)
+                    })
+                })
+        }
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)
                 .is_some_and(|object| game.is_active_player(object.owner))

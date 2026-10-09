@@ -7141,6 +7141,24 @@
             prompt.description().to_string()
         };
     }
+    if effect.downcast_ref::<crate::effects::TagPlayersEffect>().is_some() {
+        return String::new();
+    }
+    if effect
+        .downcast_ref::<crate::effects::KeepGreatestManaValuePlayersEffect>()
+        .is_some()
+    {
+        return "If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken".to_string();
+    }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()
+        && let Some(player) = &reselect.attacked_player
+    {
+        return format!(
+            "{} are now attacking {}",
+            describe_choose_spec(&reselect.target),
+            describe_player_filter(player)
+        );
+    }
     if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>() {
         let choices = if reselect.players_only { "player" } else { "player or permanent" };
         return format!(

@@ -59,6 +59,15 @@ pub enum EffectAst {
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    /// "Each player exiles the top card of their library. ... If two or more
+    /// players' cards are tied for greatest, the tied players repeat this
+    /// process until the tie is broken." (Timesifter): the contenders each
+    /// exile the top card of their library until at most one has the
+    /// greatest mana value; `contenders_tag` then names that player.
+    GreatestManaValueTieBreakExile {
+        contenders_tag: TagRef,
+        exiled_tag: TagRef,
+    },
     /// "It becomes day." / "It becomes night." (CR 731.2-731.3).
     SetDayNight(ironsmith_core::DayNightDesignation),
     /// "This ability still resolves if its target becomes illegal."
@@ -4800,6 +4809,7 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: false,
+                manifest: false,
                 shuffle_before: false,
             }),
         )
@@ -4820,6 +4830,30 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: true,
+                manifest: false,
+                shuffle_before,
+            }),
+        )
+    }
+
+    /// Manifest the chosen/tagged cards (CR 701.40a): each is put onto the
+    /// battlefield face down as a 2/2 creature.
+    pub fn subject_verb_manifest_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+        shuffle_before: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+                cloak: false,
+                manifest: true,
                 shuffle_before,
             }),
         )
@@ -6450,6 +6484,20 @@ impl EffectAst {
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
                 target,
                 players_only,
+                attacked_player: None,
+            }),
+        )
+    }
+
+    /// "<attacking creatures> are now attacking <player>" (CR 506.4).
+    pub fn subject_verb_now_attacking_player(target: TargetAst, player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                target,
+                players_only: true,
+                attacked_player: Some(player),
             }),
         )
     }

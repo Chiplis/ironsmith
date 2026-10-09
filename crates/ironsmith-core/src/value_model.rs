@@ -1247,11 +1247,16 @@ pub enum ManaSpendMode {
     Normal,
     AnyColor,
     AnyType,
+    /// "You may spend colorless mana as though it were mana of any color"
+    /// (CR 609.4b): only colorless mana converts; colored mana is spent
+    /// normally. Appended so earlier variant indices stay stable.
+    ColorlessAsAnyColor,
 }
 
 impl ManaSpendMode {
     pub fn is_normal(&self) -> bool { *self == Self::Normal }
 
+    /// True when every mana symbol may be spent as any color.
     pub fn allows_any_color(self) -> bool {
         matches!(self, Self::AnyColor | Self::AnyType)
     }
@@ -1260,8 +1265,21 @@ impl ManaSpendMode {
         self == Self::AnyType
     }
 
+    /// The one mana symbol this mode lets be spent as any color, when the
+    /// conversion is restricted to a single symbol.
+    pub fn any_color_mana_symbol(self) -> Option<crate::ManaSymbol> {
+        (self == Self::ColorlessAsAnyColor).then_some(crate::ManaSymbol::Colorless)
+    }
+
+    /// The broadest of two permissions. A restricted single-symbol
+    /// conversion is subsumed by either unrestricted mode.
     pub fn combine(self, other: Self) -> Self {
-        self.max(other)
+        match (self, other) {
+            (Self::Normal, mode) | (mode, Self::Normal) => mode,
+            (Self::AnyType, _) | (_, Self::AnyType) => Self::AnyType,
+            (Self::AnyColor, _) | (_, Self::AnyColor) => Self::AnyColor,
+            (Self::ColorlessAsAnyColor, Self::ColorlessAsAnyColor) => Self::ColorlessAsAnyColor,
+        }
     }
 }
 

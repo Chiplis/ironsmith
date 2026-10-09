@@ -538,6 +538,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_attack_this_turn_if_able_clause,
         ),
         specific_primitive!(
+            "time-travel-clause",
+            &["time", "then"],
+            parse_time_travel_clause,
+        ),
+        specific_primitive!(
             "reselect-attack-target-clause",
             &["reselect"],
             parse_reselect_attack_target_clause,
@@ -876,6 +881,25 @@ pub fn parse_attack_this_turn_if_able_clause(
         vec![ability],
         duration,
     )))
+}
+
+/// "time travel" / "time travel three times" / "time travel, then time
+/// travel" (CR 701.55): the keyword action, repeated when counted.
+pub fn parse_time_travel_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(count) = clause_shapes::parse_time_travel_count_shape(tokens) else {
+        return Ok(None);
+    };
+    let single = super::dispatch_entry::time_travel_effect_ast();
+    Ok(Some(if count == 1 {
+        single
+    } else {
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+            count: Value::Fixed(count as i32),
+            effects: vec![single],
+        })
+    }))
 }
 
 /// "reselect which player or permanent target attacking creature is

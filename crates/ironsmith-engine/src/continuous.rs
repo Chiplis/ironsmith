@@ -4927,6 +4927,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::LostLifeThisTurn { base } => player_filter_source_independent(base),
         // The comparison reads the current battlefield and may contain

@@ -569,6 +569,9 @@ fn parse_permission_lead_tokens(
         permission_tagged_facts::PermissionActor::AnyPlayer => PlayerAst::Any,
         permission_tagged_facts::PermissionActor::ItsOwner => PlayerAst::ItsOwner,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
+        permission_tagged_facts::PermissionActor::TriggeringCreatureController => {
+            PlayerAst::TriggeringSourceController
+        }
     };
     Some((
         PermissionLead {
@@ -615,7 +618,8 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         permission_tagged_facts::PermissionActor::You => PlayerAst::You,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
         permission_tagged_facts::PermissionActor::AnyPlayer
-        | permission_tagged_facts::PermissionActor::ItsOwner => return None,
+        | permission_tagged_facts::PermissionActor::ItsOwner
+        | permission_tagged_facts::PermissionActor::TriggeringCreatureController => return None,
     };
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => {
@@ -1763,7 +1767,7 @@ pub fn parse_until_end_of_turn_may_play_tagged_clause(
             surface,
             max_plays,
             ..
-        }) if player == PlayerAst::You => Ok(Some(build_temporary_tagged_permission_effect(
+        }) if matches!(player, PlayerAst::You | PlayerAst::TriggeringSourceController) => Ok(Some(build_temporary_tagged_permission_effect(
             &trimmed,
             tag,
             player,
@@ -2555,12 +2559,23 @@ pub fn parse_cast_or_play_tagged_clause(
             surface,
             max_plays,
             ..
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+        }) if matches!(
+            player,
+            PlayerAst::Implicit | PlayerAst::You | PlayerAst::TriggeringSourceController
+        ) => {
             let surface = with_mana_reference_surface(surface, mana_reference);
+            // A permission granted to another player ("that creature's
+            // controller may play that card", CR 611.2) keeps its grantee;
+            // "you" stays the implicit controller.
+            let grantee = if player == PlayerAst::TriggeringSourceController {
+                player
+            } else {
+                PlayerAst::Implicit
+            };
             Ok(Some(build_temporary_tagged_permission_effect(
                 &trimmed,
                 tag,
-                PlayerAst::Implicit,
+                grantee,
                 allow_land,
                 without_paying_mana_cost,
                 mana_spend_mode,

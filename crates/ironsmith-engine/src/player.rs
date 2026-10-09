@@ -51,6 +51,13 @@ impl ManaSpendPolicy {
     }
 
     pub fn allow_mode(&mut self, mode: ironsmith_core::value_model::ManaSpendMode) {
+        // A single-symbol conversion ("spend colorless mana as though it
+        // were mana of any color", CR 609.4b) is a per-symbol permission,
+        // never a blanket mode.
+        if let Some(symbol) = mode.any_color_mana_symbol() {
+            self.add_symbol_as_any_color(symbol);
+            return;
+        }
         self.mode = self.mode.combine(mode);
     }
 

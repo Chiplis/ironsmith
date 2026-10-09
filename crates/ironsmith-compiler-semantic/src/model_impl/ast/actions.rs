@@ -839,6 +839,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tapped,
                 controller,
                 cloak,
+                manifest,
                 shuffle_before,
             }) => f
                 .debug_struct("PutOntoBattlefield")
@@ -846,6 +847,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("tapped", tapped)
                 .field("controller", controller)
                 .field("cloak", cloak)
+                .field("manifest", manifest)
                 .field("shuffle_before", shuffle_before)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::RevealCardsFromHand {
@@ -2702,10 +2704,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
                 target,
                 players_only,
+                attacked_player,
             }) => f
                 .debug_struct("ReselectAttackTarget")
                 .field("target", target)
                 .field("players_only", players_only)
+                .field("attacked_player", attacked_player)
                 .finish(),
             Self::PermanentState(PermanentStateActionAst::Flip { target }) => {
                 f.debug_tuple("Flip").field(target).finish()

@@ -3808,6 +3808,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
@@ -5557,6 +5558,20 @@ fn evaluate_condition_in_context(
                                     | crate::game_state::Phase::NextMain
                             )
                             && game.stack_is_empty()
+                    }
+                    crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+                        game.turn.phase == crate::game_state::Phase::Combat
+                            && game.turn.step
+                                == Some(crate::game_state::Step::DeclareAttackers)
+                            && game.combat.as_ref().is_some_and(|combat| {
+                                combat.attackers.iter().any(|info| {
+                                    info.creature == ctx.source
+                                        && info.target
+                                            == crate::combat_state::AttackTarget::Player(
+                                                ctx.controller,
+                                            )
+                                })
+                            })
                     }
                     crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                         game.object(ctx.source)

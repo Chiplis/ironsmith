@@ -2987,7 +2987,9 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
             PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => false,
-            PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => false,
+            PlayerFilter::OpponentOf(_)
+            | PlayerFilter::PlayerToLeftOf(_)
+            | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
                 .tagged_players
@@ -3299,6 +3301,14 @@ pub(crate) fn player_filter_matches_game(
             other.is_in_game()
                 && game.are_opponents(other.id, player)
                 && player_filter_matches_game(base, other.id, game, ctx)
+        }),
+        // "the player to their left" (CR 101.4a seating): the nearest in-game
+        // player to the left of a player `base` names.
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_filter_matches_game(base, other.id, game, ctx)
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player)
         }),
         PlayerFilter::Target(inner) => {
             let inner = inner
@@ -4450,7 +4460,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentOf(base) if !matches!(base.as_ref(), PlayerFilter::You) => {
                     controller_suffix = Some("one of their opponents controls".to_string());
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
@@ -4619,7 +4631,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
@@ -6406,3 +6420,32 @@ mod fewest_controller_set_tests {
 #[cfg(test)]
 #[path = "filter/shared_card_type_reference_tests.rs"]
 mod shared_card_type_reference_tests;
+
+#[cfg(test)]
+mod player_to_left_of_tests {
+    use super::*;
+
+    #[test]
+    fn player_to_their_left_follows_the_iterated_player_seat() {
+        // "the player to their left" (CR 101.4a seating) is relative to the
+        // player the enclosing per-player process is for.
+        let game = crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let players = [
+            crate::PlayerId::from_index(0),
+            crate::PlayerId::from_index(1),
+            crate::PlayerId::from_index(2),
+        ];
+        let filter = PlayerFilter::PlayerToLeftOf(Box::new(PlayerFilter::IteratedPlayer));
+        for iterated in players {
+            let ctx = FilterContext::new(players[0]).with_iterated_player(Some(iterated));
+            let expected = game.closest_in_game_player_to_left_matching(iterated, |_| true);
+            let matching = players
+                .iter()
+                .copied()
+                .filter(|player| player_filter_matches_game(&filter, *player, &game, &ctx))
+                .collect::<Vec<_>>();
+            assert_eq!(matching, expected.into_iter().collect::<Vec<_>>());
+            assert!(!matching.contains(&iterated));
+        }
+    }
+}

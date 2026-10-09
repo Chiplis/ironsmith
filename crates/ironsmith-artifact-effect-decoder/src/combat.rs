@@ -74,6 +74,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RemoveFromCombatEffect" => {
             decode_as::<ironsmith_core::RemoveFromCombatEffect>(payload).map(Some)
         }
+        "ReselectAttackTargetEffect" => {
+            decode_as::<ironsmith_core::ReselectAttackTargetEffect>(payload).map(Some)
+        }
         "ReplaceNextDamageToTargetEffect" => {
             decode_as::<ironsmith_core::ReplaceNextDamageToTargetEffect<wire::WireEffect>>(payload)
                 .map(Some)
@@ -185,6 +188,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "RemoveFromCombatEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RemoveFromCombatEffect,
+        >(payload, context)
+        .map(Some),
+        "ReselectAttackTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ReselectAttackTargetEffect,
         >(payload, context)
         .map(Some),
         "ReplaceNextDamageToTargetEffect" => super::card_graph::map_payload_as::<

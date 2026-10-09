@@ -4443,6 +4443,18 @@ pub fn player_filter_matches_with_context(
                     defending_player,
                 )
         }),
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_filter_matches_with_context(
+                    base,
+                    other.id,
+                    controller,
+                    game,
+                    defending_player,
+                )
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player)
+        }),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store
             .turn_history

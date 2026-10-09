@@ -11,6 +11,21 @@ pub fn rows(cluster: &str) -> Vec<serde_json::Value> {
     all.into_iter().filter(|row| row["cluster"] == cluster).collect()
 }
 
+/// Rows of other packages' cards that need a p05-owned mechanism.
+pub fn dependant_rows(cluster: &str) -> Vec<serde_json::Value> {
+    let all: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../../../fixtures/cf8_p05_dependants.json.fixture"))
+            .unwrap();
+    all.into_iter().filter(|row| row["cluster"] == cluster).collect()
+}
+
+pub fn dependant_row(cluster: &str, name: &str) -> serde_json::Value {
+    dependant_rows(cluster)
+        .into_iter()
+        .find(|row| row["name"] == name)
+        .unwrap_or_else(|| panic!("{name} missing from {cluster}"))
+}
+
 pub fn row(cluster: &str, name: &str) -> serde_json::Value {
     rows(cluster)
         .into_iter()
@@ -81,4 +96,40 @@ pub fn definitions(row: &serde_json::Value) -> [CardDefinition; 2] {
 /// Structural view of a lowered definition for typed-name assertions.
 pub fn debug(definition: &CardDefinition) -> String {
     format!("{definition:?}")
+}
+
+fn collect_effect(effect: &ironsmith::effect::Effect, all: &mut Vec<ironsmith::effect::Effect>) {
+    all.push(effect.clone());
+    effect.visit_child_effects(&mut |child| collect_effect(child, all));
+}
+
+/// Every effect reachable from the spell body and the activated/triggered
+/// abilities, children included.
+pub fn all_effects(definition: &CardDefinition) -> Vec<ironsmith::effect::Effect> {
+    use ironsmith::ability::AbilityKind;
+    let mut all = Vec::new();
+    if let Some(spell) = definition.spell_effect.as_ref() {
+        for effect in spell.all_effects() {
+            collect_effect(effect, &mut all);
+        }
+    }
+    for ability in &definition.abilities {
+        let program = match &ability.kind {
+            AbilityKind::Activated(ability) => &ability.effects,
+            AbilityKind::Triggered(ability) => &ability.effects,
+            _ => continue,
+        };
+        for effect in program.all_effects() {
+            collect_effect(effect, &mut all);
+        }
+    }
+    all
+}
+
+/// Every reachable effect of type `T`.
+pub fn effects_of<T: Clone + 'static>(definition: &CardDefinition) -> Vec<T> {
+    all_effects(definition)
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<T>().cloned())
+        .collect()
 }

@@ -247,6 +247,7 @@ pub fn normalize_activate_only_restriction(
             | ActivationTiming::AnyTimeByEnchantedCreatureController
             | ActivationTiming::AnyTimeByOpponents
             | ActivationTiming::SorcerySpeedByOpponents
+            | ActivationTiming::DeclareAttackersStepByAttackedPlayer
     ) {
         return None;
     }

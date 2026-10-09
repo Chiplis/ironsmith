@@ -18,6 +18,8 @@
 
 #[path = "looked_procedure/conditionals.rs"]
 mod conditionals;
+#[path = "looked_procedure/face_down.rs"]
+mod face_down;
 #[path = "looked_procedure/partitions.rs"]
 mod partitions;
 #[path = "looked_procedure/revealed.rs"]
@@ -132,6 +134,7 @@ fn continues(
         || partitions::exile_selection_shape(next).is_some()
         || partitions::exact_one_to_graveyard_shape(next, revealed, owner).is_some()
         || partitions::optional_reveal_top_shape(next).is_some()
+        || (!revealed && face_down::face_down_selection_shape(next).is_some())
         || matches!(
             selections::cast_from_among_shape(next, owner),
             Ok(Some(_))
@@ -272,6 +275,13 @@ pub(super) fn continue_with(
             group.consumed += 1;
             return Ok(true);
         }
+    }
+    if group.selected.is_none()
+        && group.effects.is_empty()
+        && face_down::face_down_selection(group, sentence)
+    {
+        group.consumed += 1;
+        return Ok(true);
     }
     if group.selected.is_none() && group.effects.is_empty() {
         if partitions::first_statement(group, sentence) {

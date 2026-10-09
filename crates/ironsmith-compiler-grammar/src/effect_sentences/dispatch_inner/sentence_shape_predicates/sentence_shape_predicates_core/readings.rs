@@ -315,6 +315,12 @@ const SENTENCE_READINGS: &[Reading] = &[
         },
     },
     Reading {
+        id: RuleId::new("face-down-pile-sentence"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(part_2::read_face_down_pile_sentence(input)),
+    },
+    Reading {
         id: RuleId::new("coordinated-cant-restrictions"),
         head: HeadDiscriminator::Any,
         admits: |input| {

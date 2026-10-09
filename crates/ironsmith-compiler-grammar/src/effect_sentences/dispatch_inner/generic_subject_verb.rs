@@ -3113,7 +3113,8 @@ pub fn parse_for_each_type_slot_choice_clause(
     }
 
     let choice_tokens = trim_commas(&tokens[choose_idx + 1..]);
-    if find_from_among(&choice_tokens) != Some(0)
+    let from_among = find_from_among(&choice_tokens);
+    if from_among.is_none()
         || !choice_tokens.iter().any(|token| token.is_word("and"))
         || choice_tokens
             .iter()
@@ -3121,11 +3122,28 @@ pub fn parse_for_each_type_slot_choice_clause(
     {
         return Ok(None);
     }
-    let Some(list_start) = find_list_start(&choice_tokens[2..]).map(|idx| idx + 2) else {
-        return Ok(None);
+    let pool_first = from_among == Some(0);
+    let (base_tokens, list_tokens) = if pool_first {
+        let Some(list_start) = find_list_start(&choice_tokens[2..]).map(|idx| idx + 2) else {
+            return Ok(None);
+        };
+        (
+            trim_commas(choice_tokens.get(2..list_start).unwrap_or_default()),
+            trim_commas(choice_tokens.get(list_start..).unwrap_or_default()),
+        )
+    } else {
+        // "chooses an artifact, a creature, and a land from among the
+        // permanents controlled by the player to their left": the type slots
+        // come first and the shared pool after them.
+        let from_among = from_among.unwrap_or_default();
+        if find_list_start(&choice_tokens[..from_among]) != Some(0) {
+            return Ok(None);
+        }
+        (
+            trim_commas(choice_tokens.get(from_among + 2..).unwrap_or_default()),
+            trim_commas(choice_tokens.get(..from_among).unwrap_or_default()),
+        )
     };
-    let base_tokens = trim_commas(choice_tokens.get(2..list_start).unwrap_or_default());
-    let list_tokens = trim_commas(choice_tokens.get(list_start..).unwrap_or_default());
     if base_tokens.is_empty() || list_tokens.is_empty() {
         return Ok(None);
     }
@@ -3134,7 +3152,14 @@ pub fn parse_for_each_type_slot_choice_clause(
     if base_filter.controller.is_none() {
         base_filter.controller = Some(PlayerFilter::IteratedPlayer);
     }
-    let keep_tag = crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind();
+    // The pool-first form feeds a complement ("sacrifices the rest"); the
+    // slots-first form feeds "each permanent chosen this way", the shared
+    // chosen set of every player's choices.
+    let keep_tag = if pool_first {
+        crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind()
+    } else {
+        crate::tag::CompilerReferenceTag::ChosenObjects.bind()
+    };
     let mut choices = Vec::new();
     for segment in split_choose_list(&list_tokens) {
         let segment = strip_leading_articles(&segment);
