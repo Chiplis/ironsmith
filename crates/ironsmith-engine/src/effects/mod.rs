@@ -209,6 +209,7 @@ pub use permanents::{
     TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
     UnlockRoomDoorEffect, UntapEffect,
 };
+pub use player::{KeepGreatestManaValuePlayersEffect, TagPlayersEffect};
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,

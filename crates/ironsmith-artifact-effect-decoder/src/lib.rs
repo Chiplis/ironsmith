@@ -219,6 +219,8 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "OpenAttractionEffect" => Some(EffectFamily::CompositionMZ),
         "PayAnyEnergyEffect" => Some(EffectFamily::Player),
         "PayAnyLifeEffect" => Some(EffectFamily::Player),
+        "TagPlayersEffect" => Some(EffectFamily::Player),
+        "KeepGreatestManaValuePlayersEffect" => Some(EffectFamily::Player),
         "PayEnergyEffect" => Some(EffectFamily::Player),
         "PayLifeEffect" => Some(EffectFamily::Resources),
         "PayManaEffect" => Some(EffectFamily::Resources),

@@ -131,6 +131,7 @@ IfEffect	ironsmith_core::IfEffect<wire::WireEffect>	composition-a-l
 IncreaseSpeedEffect	ironsmith_core::IncreaseSpeedEffect	player
 IncubateEffect	ironsmith_core::IncubateEffect	permanent
 InvestigateEffect	ironsmith_core::InvestigateEffect	permanent
+KeepGreatestManaValuePlayersEffect	ironsmith_core::KeepGreatestManaValuePlayersEffect	player
 LearnEffect	ironsmith_core::LearnEffect	zone-library
 LocalRewriteEffect	ironsmith_core::LocalRewriteEffect<wire::WireEffect>	composition-a-l
 LookAtHandEffect	ironsmith_core::LookAtHandEffect	zone-library
@@ -266,6 +267,7 @@ SurveilEffect	ironsmith_core::SurveilEffect	zone-library
 SuspectEffect	ironsmith_core::SuspectEffect	permanent
 TagAttachedToSourceEffect	ironsmith_core::TagAttachedToSourceEffect	composition-m-z
 TagMatchingObjectsEffect	ironsmith_core::TagMatchingObjectsEffect	composition-m-z
+TagPlayersEffect	ironsmith_core::TagPlayersEffect	player
 TagOtherBlockParticipantEffect	ironsmith_core::TagOtherBlockParticipantEffect	composition-m-z
 TagTriggeringAttackerEffect	ironsmith_core::TagTriggeringAttackerEffect	composition-m-z
 TagTriggeringBlockersEffect	ironsmith_core::TagTriggeringBlockersEffect	composition-m-z
