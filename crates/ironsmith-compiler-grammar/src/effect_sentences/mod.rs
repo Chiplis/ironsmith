@@ -14,6 +14,7 @@ mod graveyard_self_cast;
 mod temporary_mana_clause;
 pub(crate) mod guessed_free_cast;
 pub(crate) mod counted_number;
+pub(crate) mod copied_cards_cast;
 mod loyalty_activation_allowance;
 pub(crate) mod attack_player_requirement;
 pub(crate) mod turn_scoped_enter_replacement;

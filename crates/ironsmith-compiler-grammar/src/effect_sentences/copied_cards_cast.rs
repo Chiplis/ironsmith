@@ -1,0 +1,145 @@
+//! "Copy that card three times. You may cast the copies without paying their
+//! mana costs." (Mnemonic Deluge) / "Then copy each card exiled with this
+//! enchantment. You may cast any number of the copies without paying their
+//! mana costs." (Arcane Bombardment) / "Copy them. You may cast any number of
+//! the copies." (The Tale of Tamiyo).
+//! Copying a card makes a copy that exists only to be cast (CR 707.12): each
+//! copy is cast through the tagged-cast copy mode, once per copy made, and
+//! each cast is optional. The single-copy form ("You may cast the copy") stays
+//! with the copy-cast procedure; this reader owns the plural "copies".
+use crate::cards::builders::{
+    CardTextError, EffectAst, ForEachEffectAst, OwnedLexToken, PermissionEffectAst, PlayerAst,
+};
+use crate::lexer::parser_token_word_refs;
+use crate::tag::{CompilerReferenceTag, TagRef};
+
+/// The copied cards and how many copies each gets.
+fn copy_statement(sentence: &[OwnedLexToken]) -> Option<(TagRef, u32)> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    let words = parser_token_word_refs(sentence);
+    let words = words.strip_prefix(&["then"]).unwrap_or(&words);
+    let rest = words.strip_prefix(&["copy"])?;
+    let (tag, rest) = if let Some(rest) = rest
+        .strip_prefix(&["that", "card"])
+        .or_else(|| rest.strip_prefix(&["it"]))
+        .or_else(|| rest.strip_prefix(&["them"]))
+        .or_else(|| rest.strip_prefix(&["those", "cards"]))
+        .or_else(|| rest.strip_prefix(&["those", "exiled", "cards"]))
+    {
+        (CompilerReferenceTag::It.bind(), rest)
+    } else {
+        let source = rest.strip_prefix(&["each", "card", "exiled", "with"])?;
+        if !crate::util::is_source_reference_words(source) {
+            return None;
+        }
+        (CompilerReferenceTag::SourceExiled.bind(), &[][..])
+    };
+    let times = match rest {
+        [] => 1,
+        ["twice"] => 2,
+        [count, "times"] => crate::util::parse_number_word_u32(count)?,
+        _ => return None,
+    };
+    (1..=8).contains(&times).then_some((tag, times))
+}
+
+/// "You may cast [any number of] the copies [without paying their mana
+/// costs]" → whether the casts are free.
+fn cast_statement(sentence: &[OwnedLexToken]) -> Option<bool> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    let words = parser_token_word_refs(sentence);
+    let rest = words.strip_prefix(&["you", "may", "cast"])?;
+    let rest = rest.strip_prefix(&["any", "number", "of"]).unwrap_or(rest);
+    let rest = rest.strip_prefix(&["the", "copies"])?;
+    match rest {
+        [] => Some(false),
+        ["without", "paying", "their", "mana", "costs"] => Some(true),
+        _ => None,
+    }
+}
+
+/// "Choose an instant or sorcery card exiled this way and copy it three
+/// times." (Chandra, Pyromaster): one card chosen from the cards just exiled.
+fn choose_then_copy(
+    sentence: &[OwnedLexToken],
+) -> Result<Option<(EffectAst, TagRef, u32)>, CardTextError> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    if !sentence.first().is_some_and(|token| token.is_word("choose")) {
+        return Ok(None);
+    }
+    let Some(and) = (1..sentence.len().saturating_sub(1))
+        .find(|&index| sentence[index].is_word("and") && sentence[index + 1].is_word("copy"))
+    else {
+        return Ok(None);
+    };
+    let Some((_, times)) = copy_statement(&sentence[and + 1..]) else {
+        return Ok(None);
+    };
+    let described = &sentence[1..and];
+    let words = parser_token_word_refs(described);
+    let Some(noun_words) = words.len().checked_sub(3).filter(|_| {
+        words.ends_with(&["exiled", "this", "way"])
+    }) else {
+        return Ok(None);
+    };
+    let noun_tokens = &described[..described.len() - 3];
+    let noun_tokens = match noun_tokens.first() {
+        Some(token) if token.is_any_word(&["a", "an"]) => &noun_tokens[1..],
+        _ => noun_tokens,
+    };
+    if noun_words == 0 || noun_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = crate::object_filters::parse_object_filter(noun_tokens, false)?;
+    filter.zone = Some(crate::zone::Zone::Exile);
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: CompilerReferenceTag::It.bind().into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Exiled));
+    let chosen = crate::util::helper_tag_for_tokens(sentence, "copied_choice");
+    Ok(Some((
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: crate::effect::ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: chosen.clone(),
+        }),
+        chosen,
+        times,
+    )))
+}
+
+pub(crate) fn read(
+    copy: &[OwnedLexToken],
+    cast: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (choice, (tag, times)) = if let Some((choice, tag, times)) = choose_then_copy(copy)? {
+        (Some(choice), (tag, times))
+    } else {
+        let Some(statement) = copy_statement(copy) else {
+            return Ok(None);
+        };
+        (None, statement)
+    };
+    let Some(free) = cast_statement(cast) else {
+        return Ok(None);
+    };
+    let one_cast = EffectAst::Permissions(PermissionEffectAst::May {
+        effects: vec![EffectAst::subject_verb_cast_tagged(
+            CompilerReferenceTag::It.bind(),
+            PlayerAst::You,
+            false,
+            true,
+            free,
+            None,
+        )],
+    });
+    let mut effects: Vec<EffectAst> = choice.into_iter().collect();
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag,
+        effects: vec![one_cast; times as usize],
+    }));
+    Ok(Some(effects))
+}

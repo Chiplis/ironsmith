@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Mnemonic Deluge",
+    "oracle_id": "56de4cdc-4db0-48ec-8a16-f66086507233",
+    "mana_cost": "{6}{U}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exile target instant or sorcery card from a graveyard. Copy that card three times. You may cast the copies without paying their mana costs. Exile Mnemonic Deluge.",
+    "text": "Mana cost: {6}{U}{U}{U}\nType: Sorcery\nExile target instant or sorcery card from a graveyard. Copy that card three times. You may cast the copies without paying their mana costs. Exile Mnemonic Deluge."
+  },
+  {
+    "name": "Arcane Bombardment",
+    "oracle_id": "1e36a42f-58e2-49bc-8c14-7f75e1d8ef98",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you cast your first instant or sorcery spell each turn, exile an instant or sorcery card at random from your graveyard. Then copy each card exiled with this enchantment. You may cast any number of the copies without paying their mana costs.",
+    "text": "Mana cost: {4}{R}{R}\nType: Enchantment\nWhenever you cast your first instant or sorcery spell each turn, exile an instant or sorcery card at random from your graveyard. Then copy each card exiled with this enchantment. You may cast any number of the copies without paying their mana costs."
+  },
+  {
+    "name": "Chandra, Pyromaster",
+    "oracle_id": "68e12748-9a7b-4e99-a6de-be097a269342",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Legendary Planeswalker — Chandra",
+    "oracle_text": "+1: Chandra deals 1 damage to target player or planeswalker and 1 damage to up to one target creature that player or that planeswalker's controller controls. That creature can't block this turn.\n0: Exile the top card of your library. You may play it this turn.\n−7: Exile the top ten cards of your library. Choose an instant or sorcery card exiled this way and copy it three times. You may cast the copies without paying their mana costs.",
+    "loyalty": "4",
+    "text": "Mana cost: {2}{R}{R}\nType: Legendary Planeswalker — Chandra\nLoyalty: 4\n+1: Chandra deals 1 damage to target player or planeswalker and 1 damage to up to one target creature that player or that planeswalker's controller controls. That creature can't block this turn.\n0: Exile the top card of your library. You may play it this turn.\n−7: Exile the top ten cards of your library. Choose an instant or sorcery card exiled this way and copy it three times. You may cast the copies without paying their mana costs."
+  }
+]

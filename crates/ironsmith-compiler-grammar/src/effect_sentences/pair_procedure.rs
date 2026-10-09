@@ -924,6 +924,20 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("copied-cards-cast"),
+        head: HeadDiscriminator::words(&["copy", "then"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            let effects = match (sentences.get(sentence_idx), sentences.get(sentence_idx + 1)) {
+                (Some(copy), Some(cast)) => {
+                    super::copied_cards_cast::read(copy.lowered(), cast.lowered())
+                }
+                _ => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
         id: RuleId::new("guessed-wrong-free-cast"),
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 4,
