@@ -13,7 +13,9 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
     }
     let mut zones = base_trigger_functional_zones(trigger);
 
-    if let Some(explicit_zone) = &facts.explicit_zone {
+    if let Some(explicit_zone) = &facts.explicit_zone
+        && !ironsmith_compiler_semantic::model::trigger_zones::explicit_zone_belongs_to_branch(trigger, *explicit_zone)
+    {
         zones = vec![*explicit_zone];
         if facts.explicit_zone_or_battlefield && *explicit_zone != Zone::Battlefield {
             zones.push(Zone::Battlefield);
@@ -34,37 +36,7 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
 /// from its zones; an "A or B" trigger functions wherever either arm does
 /// ("When you cast or cycle this card", CR 603.2 + CR 702.29c).
 pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
-    match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => base_trigger_functional_zones(trigger),
-        TriggerSpec::Either(left, right) => {
-            let mut zones = base_trigger_functional_zones(left);
-            for zone in base_trigger_functional_zones(right) {
-                if !zones.contains(&zone) {
-                    zones.push(zone);
-                }
-            }
-            zones
-        }
-        TriggerSpec::ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger {
-            this: true,
-            from: Some(origin),
-            ..
-        }) => vec![*origin],
-        TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
-        TriggerSpec::CounterRemovedFrom { filter, .. } if filter.source && filter.zone.is_some() => {
-            vec![filter.zone.expect("guarded source zone")]
-        }
-        TriggerSpec::KeywordActionFromSource {
-            action: crate::events::KeywordActionKind::Cycle,
-            ..
-        } => {
-            // CR 702.29c: "when you cycle this card" triggers from whatever
-            // zone the card winds up in after it's cycled (the graveyard, or
-            // exile under Rest in Peace / madness).
-            vec![Zone::Graveyard, Zone::Exile]
-        }
-        _ => vec![Zone::Battlefield],
-    }
+    ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(trigger)
 }
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {

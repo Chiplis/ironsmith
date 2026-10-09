@@ -13,7 +13,7 @@ fn compile_source(name: &str, text: &str) -> CompiledCardArtifact {
     let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, text, false));
     let (artifact, _) = result.unwrap_or_else(|error| panic!("{name}: {error}"));
     assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
-    assert_eq!(FORMAT_VERSION, 17);
+    assert_eq!(FORMAT_VERSION, 18);
     assert_eq!(artifact.format_version, FORMAT_VERSION);
     assert_eq!(artifact.engine_schema_hash, ENGINE_SCHEMA_HASH);
     artifact.validate().unwrap();

@@ -1851,6 +1851,7 @@ impl PlayerFilter {
             | Self::LowestLifeTied
             | Self::MostCardsInHand
             | Self::CastCardTypeThisTurn(_)
+            | Self::TurnHistory(_)
             | Self::AttackedBySourceThisTurn
             | Self::ChosenPlayer
             | Self::TaggedPlayer(_)
@@ -1864,6 +1865,7 @@ impl PlayerFilter {
 
     pub fn description(&self) -> String {
         match self {
+            Self::TurnHistory(history) => format!("a player {}", history.relative_clause()),
             Self::Any => "a player".to_string(),
             Self::You => "you".to_string(),
             Self::NotYou => "a player other than you".to_string(),

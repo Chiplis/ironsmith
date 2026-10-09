@@ -132,6 +132,8 @@ fn parse_next_time(
         factor,
         combat_only,
         noncombat_only: false,
+        minimum: None,
+        amount_override: None,
         mode: ironsmith_core::ReplacementApplyMode::OneShot,
     })
 }

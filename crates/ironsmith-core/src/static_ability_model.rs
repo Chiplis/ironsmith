@@ -1570,25 +1570,6 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         pair: Option<crate::LinkedExilePair>,
         source: SourceReferenceSurface,
     },
-    /// An amount-modifying replacement over one watched event (CR 614.1a).
-    pub fn event_amount_replacement(
-        event: crate::AmountEventSpec,
-        modifier: crate::AmountModifierSpec,
-        optional: bool,
-        display: impl Into<String>,
-    ) -> Self {
-        let display = display.into();
-        Self {
-            id: Some(StaticAbilityId::EventAmountReplacement),
-            label: display.clone(),
-            payload: StaticAbilityPayload::EventAmountReplacement {
-                event,
-                modifier,
-                optional,
-                display,
-            },
-        }
-    }
     /// "If <event> would happen, <effects> instead." (Tainted Remedy, Lich,
     /// Delaying Shield): a replacement whose program runs in place of the
     /// event with the replaced event as context (CR 614.1a, 614.6).
@@ -7367,6 +7348,25 @@ impl<
                 filter,
                 keyword,
                 set_quantifier_surface,
+            },
+        }
+    }
+    /// An amount-modifying replacement over one watched event (CR 614.1a).
+    pub fn event_amount_replacement(
+        event: crate::AmountEventSpec,
+        modifier: crate::AmountModifierSpec,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EventAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EventAmountReplacement {
+                event,
+                modifier,
+                optional,
+                display,
             },
         }
     }

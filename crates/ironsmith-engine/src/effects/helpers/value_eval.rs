@@ -109,6 +109,14 @@ pub(crate) fn resolve_wide(
         return Err(error);
     }
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility) => {
+                context.require_execution(value, "activation samples require an execution context")
+                    .activation_values.iter().find(|(expression, _)| expression == value)
+                    .and_then(|(_, sampled)| *sampled).map(i64::from)
+                    .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                        "activation-time expression has no announced sample".into()))
+            }
         Value::SurfaceHinted { value, .. } => resolve_wide(value, context),
         Value::Fixed(n) => Ok(i64::from(*n)),
         Value::Add(left, right) => resolve_wide(left, context)?

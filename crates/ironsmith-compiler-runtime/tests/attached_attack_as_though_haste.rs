@@ -47,6 +47,8 @@ fn instill_energy_lets_only_the_enchanted_creature_attack_while_summoning_sick()
             .build();
         let enchanted = game.create_object_from_definition(&creature_card, A, Zone::Battlefield);
         let other = game.create_object_from_definition(&creature_card, A, Zone::Battlefield);
+        game.set_summoning_sick(enchanted);
+        game.set_summoning_sick(other);
         assert!(game.is_summoning_sick(enchanted));
         let aura = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         assert!(game.attach_object_to_target(aura, AttachmentTarget::Object(enchanted)));

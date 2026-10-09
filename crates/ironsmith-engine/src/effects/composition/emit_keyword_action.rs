@@ -181,6 +181,11 @@ impl EffectExecutor for KeywordActionCompletion {
                 .with_x_value(x_value),
             ctx.provenance,
         );
+        let event = if config.action == KeywordActionKind::Cycle {
+            event.with_lookback_source_snapshots(ctx.source_snapshot.iter()
+                .filter(|snapshot| snapshot.zone == crate::zone::Zone::Hand)
+                .cloned().collect())
+        } else { event };
         PublishKeywordActionCompletion(event).execute_child_with_outputs(game, ctx)
     }
 }

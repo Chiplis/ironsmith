@@ -55,6 +55,11 @@ fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
 }
 
 pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
+    // A spell's eventual resolution destination is a future zone event,
+    // including the "that card" reference used by cast-trigger bodies.
+    if super::is_resolving_spell_exile_instead_shape(tokens) {
+        return InsteadSemantics::FutureReplacement;
+    }
     if super::super::lowering_surfaces::parse_statement_replacement_surface_tokens(tokens).is_some()
     {
         return InsteadSemantics::SelfReplacement;

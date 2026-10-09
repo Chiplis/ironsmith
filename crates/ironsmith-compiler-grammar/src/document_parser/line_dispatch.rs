@@ -65,7 +65,7 @@ struct LineFamilyRuleDef {
 
 const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
     LineFamilyRuleDef {
-        id: RuleId::new("continuous-control-exception"),
+        id: RuleId::new("ignore-effect-object-exception"),
         head: HeadDiscriminator::words(&[]),
         run: run_continuous_control_exception_line_family,
     },
@@ -237,91 +237,106 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
     },
 ];
 
-/// The most recent earlier line that names a player names the active player
-/// ("Creatures the active player controls attack this turn if able."), so a
-/// later bare "that player" refers to the active player.
-fn previous_player_antecedent_is_active_player(ctx: &LineDispatchContext<'_>) -> bool {
-    let earlier = ctx.preprocessed.items.get(..ctx.idx).unwrap_or(&[]);
-    for item in earlier.iter().rev() {
-        let PreprocessedItem::Line(line) = item else {
-            continue;
-        };
-        let words = crate::lexer::parser_token_word_refs(&line.tokens);
-        if !words.iter().any(|word| matches!(*word, "player" | "players")) {
-            continue;
+/// Resolve a preceding instruction's explicitly named controller through its
+/// parsed filter. Do not manufacture words or infer a player from card names.
+fn previous_player_antecedent(ctx: &LineDispatchContext<'_>) -> Option<crate::target::PlayerFilter> {
+    use crate::model::visit::{SemanticVisitor, visit_effect_tree};
+    struct PlayerReference(Option<crate::target::PlayerFilter>, bool);
+    impl SemanticVisitor for PlayerReference {
+        type Break = ();
+        fn visit_filter(&mut self, filter: &crate::target::ObjectFilter) -> std::ops::ControlFlow<()> {
+            if let Some(player) = &filter.controller {
+                if self.0.as_ref().is_some_and(|previous| previous != player) {
+                    self.1 = true;
+                }
+                self.0 = Some(player.clone());
+            }
+            std::ops::ControlFlow::Continue(())
         }
-        return words.windows(2).any(|pair| pair == ["active", "player"]);
     }
-    false
+    for item in ctx.preprocessed.items.get(..ctx.idx)?.iter().rev() {
+        let PreprocessedItem::Line(line) = item else { continue };
+        let Ok(effects) = crate::effect_sentences::parse_effect_sentence_lexed(&line.tokens) else { continue };
+        let mut reference = PlayerReference(None, false);
+        for effect in &effects { let _ = visit_effect_tree(&mut reference, effect); }
+        if reference.1 { return None; }
+        if reference.0.is_some() { return reference.0; }
+    }
+    None
 }
 
-/// "At the beginning of the next end step, destroy all non-Wall creatures
-/// that player controls that didn't attack this turn. Ignore this effect for
-/// each creature the player didn't control continuously since the beginning
-/// of the turn." (Siren's Call)
-///
-/// The trailing exception narrows the preceding instruction's object set to
-/// what that player has controlled continuously since the turn began; the
-/// filter grammar already owns that predicate ("the active player has
-/// controlled continuously since the beginning of the turn", Nettling Imp).
-/// "That player" is bound to its antecedent, the active player named by the
-/// card's previous player-naming line; any other antecedent is not claimed.
+/// A trailing "Ignore this effect for each <object filter>" is an authored
+/// set exception. Parse its actual filter, then narrow the preceding mass
+/// instruction through the same exclusion mechanism as "except for ...".
 fn run_continuous_control_exception_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
-    let tokens = &ctx.line.tokens;
-    let mut end = tokens.len();
-    while end > 0 && tokens[end - 1].is_period() {
-        end -= 1;
+    use crate::cards::builders::{SubjectVerbActionAst, ZoneMoveActionAst};
+    use crate::model::visit::for_each_nested_effects_mut;
+    use crate::target::{ObjectFilter, PlayerFilter};
+    fn narrow(
+        effects: &mut [crate::cards::builders::EffectAst],
+        exception: &ObjectFilter,
+        antecedent: Option<&PlayerFilter>,
+    ) -> Result<usize, crate::cards::builders::CardTextError> {
+        let mut count = 0;
+        for effect in effects {
+            if let crate::cards::builders::EffectAst::SubjectVerb(subject) = effect {
+                let filter = match &mut subject.action {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
+                    SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter }
+                        | PermanentStateActionAst::UntapAll { filter }) => Some(filter),
+                    _ => None,
+                };
+                if let Some(filter) = filter {
+                    crate::effect_sentences::apply_except_filter_exclusions(filter, exception)?;
+                    if filter.controller == Some(PlayerFilter::IteratedPlayer) {
+                        if let Some(player) = antecedent { filter.controller = Some(player.clone()); }
+                    }
+                    count += 1;
+                }
+            }
+            let mut child_result = Ok(0);
+            for_each_nested_effects_mut(effect, true, |children| {
+                if child_result.is_ok() {
+                    child_result = narrow(children, exception, antecedent).map(|n| n + child_result.as_ref().copied().unwrap_or(0));
+                }
+            });
+            count += child_result?;
+        }
+        Ok(count)
     }
-    let Some(boundary) = tokens[..end].iter().rposition(|token| token.is_period()) else {
-        return ParseOutcome::NoMatch;
-    };
-    let exception_words = crate::lexer::parser_token_word_refs(&tokens[boundary + 1..end]);
-    let is_exception = matches!(
-        exception_words.as_slice(),
-        [
-            "ignore", "this", "effect", "for", "each", "creature" | "permanent", "the", "player",
-            "didn't" | "didnt", "control", "continuously", "since", "the", "beginning", "of",
-            "the", "turn",
-        ]
-    );
-    if !is_exception {
-        return ParseOutcome::NoMatch;
-    }
-    let head = &tokens[..=boundary];
-    let positions = (0..head.len().saturating_sub(2))
-        .filter(|&idx| {
-            head[idx].is_word("that")
-                && head[idx + 1].is_word("player")
-                && head[idx + 2].is_any_word(&["controls", "control"])
-        })
-        .collect::<Vec<_>>();
-    let [position] = positions.as_slice() else {
-        return ParseOutcome::NoMatch;
-    };
-    if !previous_player_antecedent_is_active_player(ctx) {
-        return ParseOutcome::NoMatch;
-    }
-    let mut rewritten = head[..*position].to_vec();
-    for word in [
-        "the", "active", "player", "has", "controlled", "continuously", "since", "the",
-        "beginning", "of", "the", "turn",
-    ] {
-        rewritten.push(OwnedLexToken::word(word, crate::TextSpan::synthetic()));
-    }
-    rewritten.extend_from_slice(&head[*position + 3..]);
-    let rewritten_line = rewrite_line_tokens(ctx.line, &rewritten);
-    let rewritten_ctx = LineDispatchContext {
-        parse: ctx.parse,
-        preprocessed: ctx.preprocessed,
-        idx: ctx.idx,
-        line: &rewritten_line,
-        allow_unsupported: ctx.allow_unsupported,
-    };
-    match dispatch_line_family_registry(&rewritten_ctx) {
-        ParseOutcome::Match(matched) => ParseOutcome::matched(matched.value, span_from_tokens(tokens)),
-        other => other,
+    let tokens = crate::util::trim_edge_punctuation_tokens(&ctx.line.tokens);
+    let Some(boundary) = tokens.iter().rposition(|token| token.is_period()) else { return ParseOutcome::NoMatch };
+    let tail = &tokens[boundary + 1..];
+    let Some(((), exception_tokens)) = crate::grammar::primitives::parse_prefix(
+        tail, crate::grammar::primitives::phrase(&["ignore", "this", "effect", "for", "each"]),
+    ) else { return ParseOutcome::NoMatch };
+    let span = span_from_tokens(&ctx.line.tokens);
+    let parsed = (|| {
+        let exception = crate::object_filters::parse_object_filter_lexed(exception_tokens, false)?;
+        let mut effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens[..=boundary])?;
+        let antecedent = previous_player_antecedent(ctx);
+        if narrow(&mut effects, &exception, antecedent.as_ref())? != 1 {
+            return Err(crate::cards::builders::CardTextError::ParseError(
+                "Ignore this effect requires one supported mass instruction".into(),
+            ));
+        }
+        Ok(effects)
+    })();
+    match parsed {
+        Ok(effects) => ParseOutcome::matched(LineDispatchResult::single(
+            RecognizedLine::Statement(RecognizedStatementLine {
+                info: ctx.line.info.clone(),
+                text: ctx.line.info.raw_line.clone(),
+                parse_tokens: ctx.line.tokens.clone(),
+                parse_groups: vec![ctx.line.tokens.clone()],
+                parsed_effects: Some(effects),
+            }), ctx.idx + 1,
+        ), span),
+        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(
+            RuleId::new("ignore-effect-object-exception"), span, error,
+        )),
     }
 }
 

@@ -28,7 +28,7 @@ fn phylactery_lich_marks_a_chosen_artifact_as_it_enters() {
             })
             .expect("as-enters counter program");
         assert!(program.contains("PutCountersEffect"), "{program}");
-        assert!(program.contains("Phylactery"), "{program}");
+        assert!(program.contains("Named(\"phylactery\")"), "{program}");
         assert!(program.contains("Artifact"), "{program}");
         assert!(!program.contains("Target("), "not a targeted choice: {program}");
     }

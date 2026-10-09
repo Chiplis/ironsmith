@@ -411,6 +411,7 @@ const CLAUSE_READINGS: &[Reading] = &[
         id: RuleId::new("copular-base-pt-animation"),
         head: HeadDiscriminator::Any,
         admits: |input| {
+            if input.read_by("counter-linked-land-subtype-followup") { return false; }
             let tokens = input.tokens;
             let clause_word_view = ClauseDispatchCompatWords::new(tokens);
             let clause_words = clause_word_view.to_word_refs();

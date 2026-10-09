@@ -116,7 +116,7 @@ mod tests {
         TagPlayersEffect::new(PlayerFilter::Any, "contenders")
             .execute(&mut game, &mut ctx)
             .expect("seed contenders");
-        assert_eq!(ctx.tagged_players.get(&"contenders".into()).map(Vec::len), Some(3));
+        assert_eq!(ctx.tagged_players.get("contenders").map(Vec::len), Some(3));
 
         let card = |id: u32, cost: crate::mana::ManaCost| {
             CardBuilder::new(CardId::from_raw(id), "Exiled")
@@ -135,7 +135,7 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("narrow contenders");
         assert_eq!(outcome.as_count(), Some(2), "Alice and Bob are tied");
-        assert_eq!(ctx.tagged_players.get(&"contenders".into()), Some(&vec![alice, bob]));
+        assert_eq!(ctx.tagged_players.get("contenders"), Some(&vec![alice, bob]));
         assert!(ctx.get_tagged_all("round").is_none(), "the next round starts empty");
     }
 }

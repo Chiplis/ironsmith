@@ -3547,7 +3547,7 @@ pub(crate) fn restore_authored_damage_source_surface(
 /// Token index where a trailing "chosen at random" begins on a target phrase.
 fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let view = TokenWordView::new(tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
     let suffix_start = words.len().checked_sub(3)?;
     if words.get(suffix_start..) != Some(&["chosen", "at", "random"][..])

@@ -150,6 +150,8 @@ fn is_unbounded_x_payment(effect: &EffectAst) -> bool {
                 cost,
                 x_value: None,
                 x_maximum: None,
+                independent_x_choice: false,
+
             }),
             ..
         }) if cost.has_x()

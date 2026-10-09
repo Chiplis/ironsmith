@@ -355,7 +355,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 }
                 _ => None,
             };
-            let trigger = Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect());
+            let zones: Vec<_> = branches.iter().map(crate::lower::base_trigger_functional_zones).collect();
+            let same_zones = zones.windows(2).all(|pair| pair[0].len() == pair[1].len()
+                && pair[0].iter().all(|zone| pair[1].contains(zone)));
+            let trigger = Trigger::any_of(branches.into_iter().zip(zones).map(|(branch, zones)| {
+                let trigger = compile_trigger_spec(branch);
+                if same_zones { trigger } else { Trigger::zone_gated(trigger, zones) }
+            }).collect());
             if let Some(description) = play_description {
                 trigger.with_display_label(description)
             } else {

@@ -3067,6 +3067,7 @@ fn parse_each_opponent_controls_more_cant_line(
                 player: Box::new(PlayerFilter::You),
                 filter: Box::new(ObjectFilter::default().with_type(card_type)),
                 fewer: false,
+                as_you_activate: false,
             };
             let restriction = if plays_lands {
                 crate::effect::Restriction::PlayLandsMatching(player, ObjectFilter::default())

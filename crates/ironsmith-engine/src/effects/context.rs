@@ -398,6 +398,7 @@ pub struct ExecutionContext<'a> {
     pub announced_target_assignments: Vec<TargetAssignment>,
     /// X value (for spells with X in cost).
     pub x_value: Option<u32>,
+    pub activation_values: Vec<(crate::effect::Value, Option<i32>)>,
     /// False when some announced target became illegal before resolution
     /// ("if both targets are still legal as this ability resolves").
     pub all_targets_legal: bool,
@@ -602,6 +603,7 @@ execution_context_checkpoint! {
     target_distributions: Vec<TargetDistribution>,
     announced_target_assignments: Vec<TargetAssignment>,
     x_value: Option<u32>,
+    activation_values: Vec<(crate::effect::Value, Option<i32>)>,
     all_targets_legal: bool,
     effect_outcomes: HashMap<EffectId, EffectOutcome>,
     vote_results: HashMap<ObjectId, VoteResult>,
@@ -687,6 +689,7 @@ payment_execution_inputs! {
         tagged_players: HashMap<TagKey, Vec<PlayerId>>,
         face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
         triggering_event: Option<crate::triggers::TriggerEvent>,
+        activation_values: Vec<(crate::effect::Value, Option<i32>)>,
         event_value_amount: Option<i32>,
         last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
         trigger_identity: Option<crate::triggers::TriggerIdentity>,
@@ -791,6 +794,7 @@ impl<'a> ExecutionContext<'a> {
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
             x_value: None,
+            activation_values: Vec::new(),
             all_targets_legal: true,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
@@ -860,6 +864,7 @@ impl<'a> ExecutionContext<'a> {
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
             x_value: None,
+            activation_values: Vec::new(),
             all_targets_legal: true,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
@@ -919,6 +924,7 @@ impl<'a> ExecutionContext<'a> {
             target_distributions: self.target_distributions,
             announced_target_assignments: self.announced_target_assignments,
             x_value: self.x_value,
+            activation_values: self.activation_values.clone(),
             all_targets_legal: self.all_targets_legal,
             effect_outcomes: self.effect_outcomes,
             vote_results: self.vote_results,

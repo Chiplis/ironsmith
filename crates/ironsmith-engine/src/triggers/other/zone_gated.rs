@@ -18,9 +18,9 @@ impl ZoneGatedTrigger {
     }
 
     fn source_in_gate(&self, ctx: &TriggerContext) -> bool {
-        ctx.game
-            .object(ctx.source_id)
-            .is_some_and(|source| self.zones.contains(&source.zone))
+        ctx.filter_ctx.source_snapshot.as_ref().map(|source| source.zone)
+            .or_else(|| ctx.game.object(ctx.source_id).map(|source| source.zone))
+            .is_some_and(|zone| self.zones.contains(&zone))
     }
 }
 

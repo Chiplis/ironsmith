@@ -2580,6 +2580,8 @@ pub(super) fn compile_subject_verb_late(
             cost,
             x_value,
             x_maximum,
+            independent_x_choice,
+
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let x_value = x_value
@@ -2598,6 +2600,9 @@ pub(super) fn compile_subject_verb_late(
                         cost.clone(),
                         ChooseSpec::Player(PlayerFilter::You),
                     );
+                    if *independent_x_choice {
+                        effect = effect.with_independent_x_choice();
+                    }
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
                     }
@@ -2611,6 +2616,9 @@ pub(super) fn compile_subject_verb_late(
                         cost.clone(),
                         ChooseSpec::Player(filter),
                     );
+                    if *independent_x_choice {
+                        effect = effect.with_independent_x_choice();
+                    }
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
                     }

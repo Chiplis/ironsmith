@@ -24,6 +24,10 @@ pub struct LinkedExilePair {
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ResolutionProgram<E> {
     pub segments: Vec<ResolutionSegment<E>>,
+    /// Expressions explicitly sampled when an ability is activated. Authored
+    /// programs contain None; announced stack programs retain the exact sample.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub activation_values: Vec<(crate::Value, Option<i32>)>,
     /// Explicit provenance of this ability's linked exile producer/consumer.
     /// Absence does not authorize reading another ability's source-wide links.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -100,6 +104,7 @@ impl<E> Default for ResolutionProgram<E> {
     fn default() -> Self {
         Self {
             segments: Vec::new(),
+            activation_values: Vec::new(),
             linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
@@ -115,7 +120,7 @@ impl<E: Clone> ResolutionProgram<E> {
     pub fn new(segments: Vec<ResolutionSegment<E>>) -> Self {
         let mut program = Self {
             segments,
-            linked_exile_pair: None,
+            activation_values: Vec::new(),            linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
             source_number_pair: None,
@@ -258,6 +263,9 @@ impl<E: Clone> ResolutionProgram<E> {
         {
             self.activation_definition = None;
         }
+        for sample in other.activation_values {
+            if !self.activation_values.contains(&sample) { self.activation_values.push(sample); }
+        }
         for segment in other.segments {
             self.push_segment(segment);
         }
@@ -309,6 +317,7 @@ impl<E> ResolutionProgram<E> {
             segments.push(segment.try_map_effects(&mut f)?);
         }
         let mut mapped = ResolutionProgram::new(segments);
+        mapped.activation_values = self.activation_values;
         mapped.linked_exile_pair = self.linked_exile_pair;
         mapped.trigger_definition = self.trigger_definition;
         mapped.unavailable_trigger_definition = self.unavailable_trigger_definition;

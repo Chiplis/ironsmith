@@ -58,9 +58,9 @@ const SHINING_SHOAL: &str = "Mana cost: {X}{W}{W}\nType: Instant — Arcane\nYou
 
 #[test]
 fn chosen_source_bounded_redirection_protects_you_and_your_permanents() {
-    for (name, text, amount, noun) in [
-        ("Harm's Way", HARMS_WAY, "Fixed(2)", "Permanent"),
-        ("Shining Shoal", SHINING_SHOAL, "X", "Creature"),
+    for (name, text, amount, card_types) in [
+        ("Harm's Way", HARMS_WAY, "Fixed(2)", Vec::new()),
+        ("Shining Shoal", SHINING_SHOAL, "X", vec![ironsmith::CardType::Creature]),
     ] {
         for definition in routes(name, text) {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
@@ -70,7 +70,19 @@ fn chosen_source_bounded_redirection_protects_you_and_your_permanents() {
             assert!(text.contains("protect_you_and_permanents: Some("), "{name}: {text}");
             assert!(text.contains("protected_target: None"), "{name}: the protected set is not a target");
             assert!(text.contains(amount), "{name}: {text}");
-            assert!(text.contains(noun), "{name}: {text}");
+            fn recipients(effect: &ironsmith::effect::Effect) -> Option<ironsmith::target::ObjectFilter> {
+                if let Some(redirect) = effect.downcast_ref::<ironsmith::effects::RedirectNextDamageToTargetEffect>() {
+                    return redirect.protect_you_and_permanents.clone();
+                }
+                let mut found = None;
+                effect.visit_child_effects(&mut |child| { if found.is_none() { found = recipients(child); } });
+                found
+            }
+            let filter = definition.spell_effect.as_ref().unwrap().all_effects().iter()
+                .find_map(|effect| recipients(effect)).expect("protected permanent set");
+            assert_eq!(filter.card_types, card_types);
+            assert_eq!(filter.zone, Some(ironsmith::Zone::Battlefield));
+            assert_eq!(filter.controller, Some(ironsmith::target::PlayerFilter::You));
             let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
             assert!(rendered.contains("source of your choice"), "{rendered}");
         }

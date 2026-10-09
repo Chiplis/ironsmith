@@ -2363,6 +2363,10 @@ pub fn complete_characteristic_subject(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if !tokens.iter().all(|token| token.as_word().is_some()) { return Ok(None); }
     let words = parser_token_word_refs(tokens);
+    if words.first().is_some_and(|word| matches!(*word, "and" | "or" | "and/or"))
+        || words.windows(2).any(|pair| pair.iter().all(|word| matches!(*word, "and" | "or" | "and/or"))) {
+        return Ok(None);
+    }
     if words.contains(&"instead") || words.last().is_some_and(|word| matches!(*word, "and" | "or" | "and/or")) {
         return Ok(None);
     }

@@ -1,14 +1,12 @@
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::{CardId, CardType, CounterType, GameState, PlayerId, Zone};
+use ironsmith::{CardId, CardType, GameState, PlayerId, Zone};
 
 #[test]
 fn artists_talent_static_abilities_require_their_class_levels() {
-    let asset: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../web/ui/public/cards/artist-s-talent.json"
-    ))
-    .unwrap();
-    let artifact = serde_json::from_value(asset["artifacts"][0].clone()).unwrap();
+    let (artifact, _) = ironsmith_compiler_runtime::compile_to_artifact(
+        "Artist's Talent", "Mana cost: {1}{R}\nType: Enchantment — Class\n(Gain the next level as a sorcery to add its ability.)\nWhenever you cast a noncreature spell, you may discard a card. If you do, draw a card.\n{2}{R}: Level 2\nNoncreature spells you cast cost {1} less to cast.\n{2}{R}: Level 3\nIf a source you control would deal noncombat damage to an opponent or a permanent an opponent controls, it deals that much damage plus 2 instead.", false,
+    ).unwrap();
     let talent =
         ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&artifact).unwrap();
     let alice = PlayerId::from_index(0);
@@ -24,7 +22,7 @@ fn artists_talent_static_abilities_require_their_class_levels() {
 
     for (counters, expected_cost, expected_damage) in [(0, 3, 1), (1, 2, 1), (2, 2, 3)] {
         if counters > 0 {
-            game.add_counters(source, CounterType::Level, 1);
+            game.set_class_level(source, counters + 1);
         }
         let cost = ironsmith::decision::calculate_effective_mana_cost(
             &game,

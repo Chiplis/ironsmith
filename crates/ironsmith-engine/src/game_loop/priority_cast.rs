@@ -7339,6 +7339,26 @@ pub(super) fn continue_activation(
             );
         }
 
+        // Sample once targets and modes are announced, before any cost is paid.
+        // The pending program carries these samples into the stack and checkpoints.
+        if matches!(pending.stage, ActivationStage::ChoosingNextCost | ActivationStage::ProcessingCosts | ActivationStage::PayingMana | ActivationStage::ReadyToFinalize)
+            && pending.effects.activation_values.iter().any(|(_, sample)| sample.is_none()) {
+            let mut ctx = crate::effects::ExecutionContext::new(pending.source, pending.activator, decision_maker);
+            ctx.source_snapshot = Some(pending.source_snapshot.clone());
+            ctx.x_value = pending.x_value.map(|x| x as u32);
+            ctx.targets = pending.chosen_targets.iter().map(|target| match target {
+                Target::Object(object) => crate::effects::ResolvedTarget::Object(*object),
+                Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+            }).collect();
+            ctx.tagged_objects = pending.tagged_objects.clone();
+            for (expression, sample) in &mut pending.effects.activation_values {
+                if sample.is_none() {
+                    *sample = Some(crate::effects::helpers::resolve_value(game, expression.unhinted(), &ctx)
+                        .map_err(|error| GameLoopError::InvalidState(format!("activation sample: {error}")))?);
+                }
+            }
+        }
+
         if pending.targeting_announcement.is_none()
             && matches!(
                 pending.stage,

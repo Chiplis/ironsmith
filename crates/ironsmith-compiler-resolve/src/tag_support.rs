@@ -1968,6 +1968,13 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     if target_references {
         return true;
     }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
+            portion: ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount), ..
+        }), ..
+    }) = effect {
+        return value_references_event_derived_amount(amount);
+    }
     match effect {
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) => {
             value_references_event_derived_amount(count)

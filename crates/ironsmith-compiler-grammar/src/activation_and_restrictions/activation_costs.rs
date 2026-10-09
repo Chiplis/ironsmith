@@ -793,6 +793,12 @@ mod cant_clause_readings;
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A mixed serial predicate owns the entire subject and every member.
+    // A later "can't" must not make this reader reinterpret its first verb
+    // as part of a target filter. The compound reader guards its recursion.
+    if matches!(crate::keyword_static::parse_compound_self_predicate_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     Ok(parse_cant_clauses_unbound(tokens)?.map(|abilities| {
         abilities
             .into_iter()
@@ -839,6 +845,16 @@ fn bind_static_restriction_pronoun_to_source(mut ability: StaticAbility) -> Stat
 fn parse_cant_clauses_unbound(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A shared source subject followed by a positive predicate is owned by
+    // the compound static reader, even when a later member is negated.
+    let first_predicate = tokens.iter().position(|token| token.is_any_word(&["attacks", "blocks", "has", "gets", "is", "can", "can\'t", "cant"]));
+    if let Some(index) = first_predicate {
+        if !tokens[index].is_any_word(&["can\'t", "cant"])
+            && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..index]))
+            && tokens[index + 1..].iter().any(|token| token.is_any_word(&["can\'t", "cant"])) {
+            return Ok(None);
+        }
+    }
     // An imperative action may carry a later negated followup. Its verb is
     // owned by the effect sequence, not a static subject ending at "doesn't".
     if matches!(

@@ -4011,6 +4011,9 @@ pub struct PayManaEffect {
     /// An inclusive upper bound for printed X. The paying player chooses X
     /// from the affordable values between zero and this resolved maximum.
     pub x_maximum: Option<Value>,
+    /// Choose a new payment amount, independently of the enclosing spell's X.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub independent_x_choice: bool,
 }
 
 impl PayManaEffect {
@@ -4020,11 +4023,17 @@ impl PayManaEffect {
             player,
             x_value: None,
             x_maximum: None,
+            independent_x_choice: false,
         }
     }
 
     pub fn with_x_value(mut self, x_value: Value) -> Self {
         self.x_value = Some(x_value);
+        self
+    }
+
+    pub fn with_independent_x_choice(mut self) -> Self {
+        self.independent_x_choice = true;
         self
     }
 

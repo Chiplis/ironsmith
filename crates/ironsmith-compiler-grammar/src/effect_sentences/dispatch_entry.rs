@@ -2023,6 +2023,9 @@ pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Valu
 
 pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexToken]) -> Value {
     let words = crate::lexer::token_word_refs(binding_tokens);
+    if crate::word_primitives::sequence_occurs(&words, &["as", "you", "activate", "this", "ability"]) {
+        value = value.with_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility);
+    }
     let has_word = |word| crate::word_primitives::sequence_occurs(&words, &[word]);
     let explicit_count_surface = has_word("number")
         && words.iter().any(|word| {
@@ -2787,6 +2790,13 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             }
         }
 
+        if let Some(mut group_effects) = super::dispatch_inner::parse_friend_or_foe_sentence(sentence)? {
+            effects.append(&mut group_effects);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         // A leading "for each participant" scopes the entire action program,
         // including comma/then actions and their payment alternatives.
         // Splitting it first would execute every first action before any
@@ -3203,7 +3213,8 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             }
         };
         parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
-        let sentence_where_x = where_x_value_from_tokens(&parse_plan.tokens);
+        let sentence_where_x = where_x_value_from_tokens(sentences[sentence_idx].lexed())
+            .or_else(|| where_x_value_from_tokens(&parse_plan.tokens));
 
         let mut sentence_effects = if let Some(direct_effects) = parse_plan.direct_effects.take() {
             parse_trace::event(format!(
@@ -8158,8 +8169,8 @@ fn apply_mana_usage_restriction_to_previous_effect(
 }
 
 fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => matches!(
+    let direct = if let EffectAst::SubjectVerb(subject_verb) = effect {
+        matches!(
             &subject_verb.action,
             SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
@@ -8172,21 +8183,14 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
-        ),
-        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            if_true, if_false, ..
-        })
-        | EffectAst::SelfReplacement {
-            if_true, if_false, ..
-        } => {
-            (!if_true.is_empty() && if_true.iter().all(effect_ast_can_produce_mana))
-                || (!if_false.is_empty() && if_false.iter().all(effect_ast_can_produce_mana))
-        }
-        EffectAst::ManaRestricted { effects, .. } => {
-            !effects.is_empty() && effects.iter().all(effect_ast_can_produce_mana)
-        }
-        _ => false,
-    }
+        )
+    } else { false };
+    if direct { return true; }
+    let mut found = false;
+    ironsmith_compiler_semantic::model_impl::visit::for_each_nested_effects(effect, true, |children| {
+        found |= children.iter().any(effect_ast_can_produce_mana);
+    });
+    found
 }
 
 fn parse_next_batch_enter_with_counters(
@@ -12593,6 +12597,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 cost,
                 x_value,
                 x_maximum,
+                ..
+
             }) => {
                 if cost.has_x() && x_value.is_none() && x_maximum.is_none() {
                     *x_value = Some(replacement.clone());

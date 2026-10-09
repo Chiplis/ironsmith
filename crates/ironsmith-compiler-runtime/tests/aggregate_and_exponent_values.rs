@@ -23,7 +23,7 @@ fn april_oneil_counts_card_types_among_spells_cast() {
         let debug = format!("{definition:?}");
         assert!(debug.contains("CardTypesAmongSpellsCastThisTurn"), "{debug}");
         let text = support::rendered(&definition);
-        assert!(text.contains("card type among spells you've cast this turn"), "{text}");
+        assert!(text.contains("card types among spells you've cast this turn"), "{text}");
     }
 }
 

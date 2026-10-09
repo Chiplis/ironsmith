@@ -1217,6 +1217,7 @@ pub(super) fn stack_entry_execution_context<'a>(
         ctx = ctx.with_x(x);
     }
     ctx.effect_outcomes = entry.effect_outcomes.clone();
+    ctx.activation_values = entry.ability_effects.as_ref().map(|program| program.activation_values.clone()).unwrap_or_default();
     ctx.ninjutsu_attack_target = entry.ninjutsu_attack_target.clone();
     ctx.combat.defending_player = entry.defending_player;
     ctx.combat.defending_player_reference = entry.defending_player_reference;

@@ -20,9 +20,24 @@ const FAMISHED_WORLDSIRE: &str = "Mana cost: {5}{G}{G}{G}\nType: Creature — Le
 const THROMOK: &str = "Mana cost: {3}{R}{G}\nType: Legendary Creature — Hellion\nPower/Toughness: 0/0\nDevour X, where X is the number of creatures devoured this way (As this creature enters, you may sacrifice any number of creatures. It enters with X +1/+1 counters on it for each of those creatures.)";
 
 fn devour_effect(definition: &CardDefinition) -> DevourEffect {
-    definition
-        .abilities
-        .iter()
+    fn find(effect: &ironsmith::effect::Effect) -> Option<DevourEffect> {
+        if let Some(devour) = effect.downcast_ref::<DevourEffect>() { return Some(devour.clone()); }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| { if found.is_none() { found = find(child); } });
+        found
+    }
+    let mut abilities = definition.abilities.clone();
+    for ability in &definition.abilities {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            if let Some(model) = static_ability.compiled_model() {
+                if let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &model.payload {
+                    abilities.push(ironsmith::static_abilities::StaticAbilityModelInterpreter::ability_from_model(&grant.ability));
+                    abilities.extend(grant.additional_abilities.iter().map(ironsmith::static_abilities::StaticAbilityModelInterpreter::ability_from_model));
+                }
+            }
+        }
+    }
+    abilities.iter()
         .find_map(|ability| {
             let AbilityKind::Static(static_ability) = &ability.kind else {
                 return None;
@@ -35,9 +50,9 @@ fn devour_effect(definition: &CardDefinition) -> DevourEffect {
             program
                 .flattened_default_effects()
                 .into_iter()
-                .find_map(|effect| effect.downcast_ref::<DevourEffect>().cloned())
+                .find_map(find)
         })
-        .expect("devour must lower to an as-enters devour program")
+        .unwrap_or_else(|| panic!("{}: devour must lower to an as-enters devour program", definition.card.name))
 }
 
 #[test]

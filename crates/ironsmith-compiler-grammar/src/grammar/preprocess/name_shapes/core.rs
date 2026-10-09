@@ -70,6 +70,7 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
             | "if"
             | "unless"
             | "then"
+            | "also"
             | "at"
             | "for"
             | "from"

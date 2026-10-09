@@ -2967,7 +2967,8 @@ fn lookback_source_filter_context(
     source_snapshot: &ObjectSnapshot,
 ) -> crate::target::FilterContext {
     let mut filter_ctx =
-        game.filter_context_for(source_snapshot.controller, Some(source_snapshot.object_id));
+        game.filter_context_for(source_snapshot.controller, Some(source_snapshot.object_id))
+            .with_source_snapshot(Some(source_snapshot.clone()));
     let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
     else {
         return filter_ctx;

@@ -6086,6 +6086,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
 
     match value {
         Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility) => {
+                format!("{} as you activate this ability", describe_value(&value.clone().without_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility)))
+            }
+        Value::SurfaceHinted { hints, .. }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatMany) =>
         {
             "that many".to_string()
@@ -7411,7 +7416,10 @@ pub(crate) fn describe_spells_cast_this_turn_phrase(
     let base = if *filter == ObjectFilter::default() {
         "spells".to_string()
     } else {
-        pluralize_noun_phrase(&describe_for_each_filter(filter))
+        let mut spells = filter.clone();
+        spells.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        spells.zone = Some(Zone::Stack);
+        pluralize_noun_phrase(&describe_for_each_filter(&spells))
     };
     let cast_surface = match player {
         PlayerFilter::You => "you've cast this turn".to_string(),

@@ -1342,7 +1342,8 @@ fn parse_card_types_among_spells_cast_value(filter_tokens: &[OwnedLexToken]) -> 
         return None;
     }
     let (player, filter) = match value.unhinted() {
-        Value::SpellsCastThisTurnMatching { player, filter, .. } => (player.clone(), filter.clone()),
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast { player, filter, .. })
+        | Value::SpellsCastThisTurnMatching { player, filter, .. } => (player.clone(), filter.clone()),
         Value::SpellsCastThisTurn(player) => (player.clone(), ObjectFilter::default()),
         _ => return None,
     };

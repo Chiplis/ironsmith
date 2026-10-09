@@ -1881,6 +1881,10 @@ fn parse_heterogeneous_granted_tail_remaining(
                     "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
                     "they", "didn't", "have", "those", "abilities",
                 ]),
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "did", "not", "have", "those", "abilities",
+                ]),
             )),
             "blocker landwalk permission",
         )
@@ -3989,6 +3993,10 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The complete numeric absorb reader owns its prevention payload.
+    if matches!(parse_absorb_keyword_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 

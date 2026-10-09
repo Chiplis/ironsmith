@@ -2726,18 +2726,31 @@ impl GameState {
                         choices.chosen_named_option = Some(canonical_name);
                     }
                 }
-                // "You and an opponent each choose a card name" (Null
-                // Chamber): the next opponent in turn order names a second
-                // card; both names are recorded on the permanent.
-                if spec.opponent_also_chooses
-                    && let Some(opponent) = self
-                        .team_apnap_player_order()
-                        .into_iter()
-                        .find(|player| {
-                            *player != prospective_controller
-                                && self.are_opponents(prospective_controller, *player)
-                        })
-                {
+                // The controller chooses which opponent participates, before
+                // that opponent names their card (CR 101.4, 608.2d).
+                let naming_opponent = if spec.opponent_also_chooses {
+                    let opponents = self.team_apnap_player_order().into_iter()
+                        .filter(|player| self.are_opponents(prospective_controller, *player))
+                        .collect::<Vec<_>>();
+                    if opponents.len() <= 1 {
+                        opponents.first().copied()
+                    } else {
+                        let options = opponents.iter().enumerate().map(|(index, player)| {
+                            crate::decisions::context::SelectableOption::new(index,
+                                self.player(*player).map(|p| p.name.clone())
+                                    .unwrap_or_else(|| format!("Player {}", player.0)))
+                        }).collect();
+                        let context = crate::decisions::context::SelectOptionsContext::new(
+                            prospective_controller, Some(old_id), "Choose an opponent to name a card",
+                            options, 1, 1,
+                        );
+                        let selected = decision_maker.decide_options(self, &context).into_iter()
+                            .find_map(|index| opponents.get(index).copied());
+                        if decision_maker.awaiting_choice() { return Ok(None); }
+                        selected
+                    }
+                } else { None };
+                if let Some(opponent) = naming_opponent {
                     let choice_ctx = crate::decisions::context::TextInputContext::new(
                         opponent,
                         Some(old_id),

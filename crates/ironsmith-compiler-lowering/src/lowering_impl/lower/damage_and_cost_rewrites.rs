@@ -523,6 +523,11 @@ pub fn lower_normalized_card_ast_with_facts(
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
     let mut definition = builder.build();
+    for ability in &mut definition.abilities {
+        if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
+            crate::lowering_support::bind_activation_value_samples(&mut activated.effects);
+        }
+    }
     super::linked_exile::bind_scalar_linked_exile(&mut definition);
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);

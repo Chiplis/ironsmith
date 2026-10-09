@@ -50,7 +50,7 @@ fn astral_drift_other_cycle_arm_never_functions_from_the_graveyard() {
             .find(|ability| matches!(ability.kind, AbilityKind::Triggered(_)))
             .unwrap();
         assert!(trigger.functional_zones.contains(&Zone::Battlefield));
-        assert!(trigger.functional_zones.contains(&Zone::Graveyard));
+        assert!(trigger.functional_zones.contains(&Zone::Hand));
         let other = compile_to_runtime_definition("Cycler", "Type: Creature\nPower/Toughness: 1/1", false).unwrap();
 
         // Negative: Astral Drift in the graveyard, another card is cycled.
@@ -65,9 +65,18 @@ fn astral_drift_other_cycle_arm_never_functions_from_the_graveyard() {
         let card = g.create_object_from_definition(&other, A, Zone::Graveyard);
         assert_eq!(fired(&g, drift, &cycled(&g, card)), 1);
 
-        // The self-cycle arm still fires for the cycled Astral Drift itself.
-        let mut g = game();
-        let drift = g.create_object_from_definition(&definition, A, Zone::Graveyard);
-        assert_eq!(fired(&g, drift, &cycled(&g, drift)), 1);
+        // The self-cycle arm looks back to the hand for every discard destination.
+        for destination in [Zone::Graveyard, Zone::Exile, Zone::Library] {
+            let mut g = game();
+            let drift = g.create_object_from_definition(&definition, A, Zone::Hand);
+            let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object_id(&g, drift).unwrap();
+            g.move_object(drift, destination, ironsmith::events::cause::EventCause::from_game_rule()).unwrap();
+            use ironsmith::effects::{EffectContext, EffectExecutor, EmitKeywordActionEffect};
+            let mut ctx = EffectContext::new_default(drift, A).with_source_snapshot(snapshot);
+            let outcome = EmitKeywordActionEffect::new(KeywordActionKind::Cycle, 1)
+                .execute(&mut g, &mut ctx).unwrap();
+            let event = outcome.events.first().unwrap();
+            assert_eq!(fired(&g, drift, event), 1);
+        }
     }
 }

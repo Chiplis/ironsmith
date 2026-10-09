@@ -2592,11 +2592,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 cost,
                 x_value,
                 x_maximum,
+                independent_x_choice,
+
             }) => f
                 .debug_struct("PayMana")
                 .field("cost", cost)
                 .field("x_value", x_value)
                 .field("x_maximum", x_maximum)
+                .field("independent_x_choice", independent_x_choice)
                 .finish(),
             Self::Mana(ManaActionAst::DoubleManaPool) => f.write_str("DoubleManaPool"),
             Self::Mana(ManaActionAst::EmptyManaPool) => f.write_str("EmptyManaPool"),

@@ -218,5 +218,6 @@ pub use zone_counter_helpers::{
     parse_starting_life_total_value,
 };
 pub use zone_handlers::parse_destroy;
+pub(crate) use zone_handlers::apply_except_filter_exclusions;
 
 pub(crate) use bundle_rules::parse_consult_then_put_matches_battlefield_rest_bottom_bundle;

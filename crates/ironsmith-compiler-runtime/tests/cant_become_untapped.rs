@@ -47,6 +47,8 @@ fn untap_effects_and_the_untap_step_both_fail_while_prohibited() {
     )
     .unwrap();
     game.update_cant_effects();
+    assert!(game.object(target).is_some(), "untap recipient still exists");
+    ctx.targets = vec![ironsmith::effects::ResolvedTarget::Object(target)];
     execute_effect(&mut game, &Effect::untap(ChooseSpec::Object(ObjectFilter::specific(target))), &mut ctx).unwrap();
     assert!(game.is_tapped(target), "an untap effect can't untap it");
     assert!(!game.can_untap(target));

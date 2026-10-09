@@ -45,7 +45,7 @@ fn grant_payload(
         payload => payload,
     };
     match payload {
-        ironsmith_core::StaticAbilityPayload::GrantSpellKeyword { filter, keyword } => {
+        ironsmith_core::StaticAbilityPayload::GrantSpellKeyword { filter, keyword, .. } => {
             Some((filter, keyword))
         }
         _ => None,

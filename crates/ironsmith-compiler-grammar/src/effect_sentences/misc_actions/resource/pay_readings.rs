@@ -274,6 +274,8 @@ fn read_any_amount_of_mana(input: &PayClause<'_>) -> Result<Option<EffectAst>, C
             cost,
             x_value: None,
             x_maximum: None,
+            independent_x_choice: true,
+
         }),
     )))
 }
@@ -356,6 +358,8 @@ fn read_mana_for_each_count(input: &PayClause<'_>) -> Result<Option<EffectAst>, 
                     cost: ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]),
                     x_value: Some(count),
                     x_maximum: None,
+                    independent_x_choice: false,
+
                 }),
             )));
         }

@@ -1,3 +1,4 @@
+use crate::filter::ObjectFilterExt as _;
 use super::*;
 use crate::derived_view::DerivedGameView;
 

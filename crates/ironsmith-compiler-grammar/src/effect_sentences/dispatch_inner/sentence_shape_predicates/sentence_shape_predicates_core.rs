@@ -211,7 +211,7 @@ fn parse_for_any_number_of_opponents_target_expansion(
 /// ..." instructions that follow it (Battlebond). The groups are tagged by
 /// the choice; each group instruction is the ordinary "Each player ..."
 /// reading restricted to that tagged group.
-fn parse_friend_or_foe_sentence(
+pub(crate) fn parse_friend_or_foe_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     use crate::grammar::primitives;
@@ -366,6 +366,9 @@ fn parse_effect_sentence_lexed_uncached_inner(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = parse_friend_or_foe_sentence(tokens)? {
         return Ok(effects);
+    }
+    if let Some(effect) = crate::effect_sentences::clause_pattern_helpers::parse_prevent_next_damage_clause(tokens)? {
+        return Ok(vec![effect]);
     }
     if let Some(effects) = parse_gain_all_basic_land_types_sentence(tokens)? {
         return Ok(effects);

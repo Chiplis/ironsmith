@@ -163,7 +163,8 @@ fn parse_face_down_then_face_up_exile(
         let (count, used) =
             crate::grammar::leaf::parse_leaf_number_prefix_words(words)?.into_fixed()?;
         *words = words.get(used..)?.strip_prefix(&["cards", "of", "your", "library", "in", "a", "face"])?;
-        *words = words.strip_prefix(&[face, "pile"])?;
+        if words.get(0) != Some(&face) || words.get(1) != Some(&"pile") { return None; }
+        *words = &words[2..];
         i32::try_from(count).ok()
     }
     let first_count = read_pile(&mut words, "down")?;

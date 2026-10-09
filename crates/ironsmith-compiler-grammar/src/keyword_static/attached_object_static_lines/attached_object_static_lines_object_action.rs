@@ -58,6 +58,13 @@ pub fn parse_attached_gets_and_has_ability_line(
     let anthem = build_anthem_static_ability(&clause);
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
 
+    if ability_tokens.first().is_some_and(|token| token.is_word("can"))
+        && let Some(tail) = parse_heterogeneous_granted_tail(&ability_tokens, &crate::lexer::token_word_refs(tokens), true)? {
+        let mut out = vec![anthem.into()];
+        out.extend(lower_granted_tail_for_anthem_subject(&clause.subject, &clause.condition, tail));
+        return Ok(Some(out));
+    }
+
     if let anthem_grant_grammar::ContinuingSegmentShape::Lose {
         ability_tokens: loss_tokens,
     } = anthem_grant_grammar::parse_continuing_segment_shape(&ability_tokens)

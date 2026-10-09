@@ -227,9 +227,15 @@ pub fn parse_attached_gets_and_has_tokens(
     let get_token = find_get(tokens)?;
     let relative_and = find_and(tokens.get(get_token + 1..)?)?;
     let and_token = get_token + 1 + relative_and;
-    let relative_has = find_has(tokens.get(and_token + 1..)?)?;
-    let has_token = and_token + 1 + relative_has;
-    let ability_tokens = trim_lexed_commas(tokens.get(has_token + 1..)?);
+    let tail = tokens.get(and_token + 1..)?;
+    // Modal permissions are abilities in their own right, without "has".
+    let (has_token, ability_tokens) = if tail.first().is_some_and(|token| token.is_word("can")) {
+        (and_token, trim_lexed_commas(tail))
+    } else {
+        let relative_has = find_has(tail)?;
+        let has_token = and_token + 1 + relative_has;
+        (has_token, trim_lexed_commas(tokens.get(has_token + 1..)?))
+    };
     if ability_tokens.is_empty() {
         return None;
     }

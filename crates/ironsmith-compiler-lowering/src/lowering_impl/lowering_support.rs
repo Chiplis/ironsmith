@@ -5542,6 +5542,8 @@ pub(crate) fn lower_compiler_static_ability_core(
             // Keyword-action replacements bind "it" to the object performing
             // the replaced action, independently of the replacement's source.
             ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            ctx.allow_life_event_value = matches!(action,
+                crate::events::KeywordActionKind::Scry | crate::events::KeywordActionKind::Surveil);
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
             if !choices.is_empty() {
@@ -6001,12 +6003,28 @@ pub(crate) fn resolve_trigger_intervening_if(
     )
 }
 
+pub(crate) fn bind_activation_value_samples(effects: &mut crate::resolution::ResolutionProgram) {
+    fn collect(effect: &Effect, samples: &mut Vec<(Value, Option<i32>)>) {
+        crate::compile_support::visit_direct_nested_effect_values(effect, &mut |value| {
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility)
+                && !samples.iter().any(|(existing, _)| existing == value) {
+                samples.push((value.clone(), None));
+            }
+        });
+        effect.visit_child_effects(&mut |child| collect(child, samples));
+    }
+    let mut samples = Vec::new();
+    for effect in effects.all_effects() { collect(effect, &mut samples); }
+    effects.activation_values = samples;
+ }
+
 fn lower_compiler_activated_ability_core(
     activated: crate::model::CompilerActivatedAbilityCore,
 ) -> Result<crate::ability::ActivatedAbility, CardTextError> {
     let has_announced_x = crate::model::costs::cost_has_announced_x(&activated.mana_cost);
-    let (effects, derived_choices) =
+    let (mut effects, derived_choices) =
         lower_compiler_resolution_program_with(activated.effects, None, has_announced_x)?;
+    bind_activation_value_samples(&mut effects);
     let mut choices = activated.choices;
     for choice in derived_choices {
         if !choices.contains(&choice) {

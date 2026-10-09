@@ -41,6 +41,8 @@ fn leyline_tyrant_pays_red_only_x_and_its_reflexive_trigger_deals_that_much() {
         assert!(payment.cost.has_x(), "{:?}", payment.cost);
         assert!(payment.cost.has_x_spending_restriction(), "red only: {:?}", payment.cost);
         assert!(payment.x_value.is_none() && payment.x_maximum.is_none());
+        assert!(payment.independent_x_choice);
+        assert!(support::rendered(&definition).contains("pay any amount of {R}"));
         let reflexive = support::find_all::<ReflexiveTriggerEffect>(&definition);
         assert_eq!(reflexive.len(), 1, "When you do");
         let damage = support::find_all::<DealDamageEffect>(&definition);
@@ -136,5 +138,56 @@ fn karn_pays_any_amount_and_looks_at_that_many() {
         assert!(!payments[0].cost.has_x_spending_restriction());
         let debug = format!("{:?}", definition.abilities);
         assert!(debug.contains("EffectValue") || debug.contains("ManaPaid"), "{debug}");
+    }
+}
+
+
+#[test]
+fn liege_creates_all_payers_tokens_in_one_simultaneous_batch() {
+    use ironsmith::ability::AbilityKind;
+    for definition in support::definitions("Liege of the Hollows", LIEGE_OF_THE_HOLLOWS) {
+        let effects = definition.abilities.iter().find_map(|ability| {
+            if let AbilityKind::Triggered(triggered) = &ability.kind {
+                Some(triggered.effects.clone())
+            } else { None }
+        }).unwrap();
+        let mut game = play::game();
+        let source = game.create_object_from_definition(&definition, play::A, Zone::Battlefield);
+        for (player, amount) in [(play::A, 1), (play::B, 2), (play::C, 3)] {
+            play::give_mana(&mut game, player, ironsmith::mana::ManaSymbol::Green, amount);
+        }
+        let mut dm = play::Script { numbers: vec![1, 2, 3], ..Default::default() };
+        let outcome = play::apply_with(&mut game, source,
+            Effect::new(ironsmith::effects::SequenceEffect::new(effects.to_vec())), &mut dm);
+        for (player, amount) in [(play::A, 1), (play::B, 2), (play::C, 3)] {
+            let tokens = game.battlefield.iter().filter(|id| {
+                game.object(**id).is_some_and(|object| matches!(object.kind, ironsmith::object::ObjectKind::Token) && game.current_controller(**id) == Some(player))
+            }).count();
+            assert_eq!(tokens, amount);
+        }
+        let entries: Vec<_> = outcome.events.iter().filter(|event|
+            event.kind() == ironsmith::events::EventKind::EnterBattlefield).collect();
+        assert_eq!(entries.len(), 6);
+        let batch = entries[0].simultaneous_batch().expect("one simultaneous creation");
+        assert!(entries.iter().all(|event| event.simultaneous_batch() == Some(batch)));
+    }
+}
+
+#[test]
+fn any_amount_payment_chooses_independently_of_the_spell_x() {
+    use ironsmith::effects::{EffectExecutor, EffectContext};
+    for definition in support::definitions("Leyline Tyrant", LEYLINE_TYRANT) {
+        let payment = support::find_all::<PayManaEffect>(&definition).remove(0);
+        let mut game = play::game();
+        let source = game.create_object_from_definition(&definition, play::A, Zone::Battlefield);
+        play::give_mana(&mut game, play::A, ironsmith::mana::ManaSymbol::Red, 5);
+        let mut dm = play::Script { numbers: vec![2], ..Default::default() };
+        let mut ctx = EffectContext::new(source, play::A, &mut dm);
+        ctx.x_value = Some(9);
+        let outcome = payment.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.value, ironsmith::effect::OutcomeValue::Count(2));
+        assert_eq!(ctx.x_value, Some(9));
+        assert_eq!(game.player(play::A).unwrap().mana_pool.red, 3);
+        assert_eq!(dm.number_prompts.len(), 1);
     }
 }

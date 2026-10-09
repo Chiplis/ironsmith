@@ -55,12 +55,12 @@ fn chosen_recipient(definition: &CardDefinition, counter: CounterType) -> (PutCo
 fn every_bare_type_noun_recipient_is_one_chosen_permanent_you_control() {
     for definition in support::definitions("Settle the Score", SETTLE_THE_SCORE) {
         let (put, filter) = chosen_recipient(&definition, CounterType::Loyalty);
-        assert_eq!(put.amount, Value::Fixed(2));
+        assert_eq!(put.amount.unhinted(), &Value::Fixed(2));
         assert_eq!(filter.card_types, vec![CardType::Planeswalker]);
     }
     for definition in support::definitions("Liliana's Scrounger", LILIANAS_SCROUNGER) {
         let (put, filter) = chosen_recipient(&definition, CounterType::Loyalty);
-        assert_eq!(put.amount, Value::Fixed(1));
+        assert_eq!(put.amount.unhinted(), &Value::Fixed(1));
         assert_eq!(filter.card_types, vec![CardType::Planeswalker]);
         assert_eq!(filter.subtypes, vec![Subtype::Liliana]);
         assert!(support::all_effects(&definition)
@@ -69,12 +69,12 @@ fn every_bare_type_noun_recipient_is_one_chosen_permanent_you_control() {
     }
     for definition in support::definitions("Cosmium Confluence", COSMIUM_CONFLUENCE) {
         let (put, filter) = chosen_recipient(&definition, CounterType::PlusOnePlusOne);
-        assert_eq!(put.amount, Value::Fixed(3));
+        assert_eq!(put.amount.unhinted(), &Value::Fixed(3));
         assert_eq!(filter.subtypes, vec![Subtype::Cave]);
     }
     for definition in support::definitions("Wick, the Whorled Mind", WICK) {
         let (put, filter) = chosen_recipient(&definition, CounterType::PlusOnePlusOne);
-        assert_eq!(put.amount, Value::Fixed(1));
+        assert_eq!(put.amount.unhinted(), &Value::Fixed(1));
         assert_eq!(filter.subtypes, vec![Subtype::Snail]);
     }
     for definition in support::definitions("Astarion's Thirst", ASTARIONS_THIRST) {

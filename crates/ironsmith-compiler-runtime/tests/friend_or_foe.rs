@@ -46,10 +46,10 @@ fn friend_or_foe_spells_choose_groups_then_iterate_them() {
         for definition in routes(name, text) {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
             let text = format!("{:?}", definition.spell_effect);
-            assert!(text.contains("ChooseFriendsOrFoesEffect"), "{name}: {text}");
-            assert!(text.contains("\"friends\""), "{name}: {text}");
-            assert!(text.contains("\"foes\""), "{name}: {text}");
-            assert!(text.matches("ForEachTaggedPlayerEffect").count() >= 2, "{name}: {text}");
+            assert!(text.contains("ChoosePlayerOptionEffect"), "{name}: {text}");
+            assert!(text.contains("__player_option_choice__:friend"), "{name}: {text}");
+            assert!(text.contains("__player_option_choice__:foe"), "{name}: {text}");
+            assert!(text.matches("ForPlayersEffect").count() >= 2, "{name}: {text}");
         }
     }
 }
@@ -57,6 +57,10 @@ fn friend_or_foe_spells_choose_groups_then_iterate_them() {
 /// Alice is a friend, Bob is a foe.
 struct AliceFriend;
 impl DecisionMaker for AliceFriend {
+    fn decide_options(&mut self, _game: &GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+        vec![if ctx.description.contains("Alice") { 0 } else { 1 }]
+    }
+
     fn decide_boolean(&mut self, _game: &GameState, ctx: &BooleanContext) -> bool {
         ctx.description.contains("Alice")
     }
@@ -100,8 +104,8 @@ fn khorvath_and_regna_iterate_both_tagged_groups() {
         for definition in routes(name, text) {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
             let text = format!("{:?}", definition.spell_effect);
-            assert!(text.contains("ChooseFriendsOrFoesEffect"), "{name}: {text}");
-            assert!(text.matches("ForEachTaggedPlayerEffect").count() >= 2, "{name}: {text}");
+            assert!(text.contains("ChoosePlayerOptionEffect"), "{name}: {text}");
+            assert!(text.matches("ForPlayersEffect").count() >= 2, "{name}: {text}");
         }
     }
     for definition in routes("Khorvath's Fury", KHORVATHS_FURY) {

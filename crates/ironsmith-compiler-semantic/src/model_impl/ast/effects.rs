@@ -6302,6 +6302,8 @@ impl EffectAst {
                 cost,
                 x_value: None,
                 x_maximum: None,
+                independent_x_choice: false,
+
             }),
         )
     }
@@ -6318,6 +6320,8 @@ impl EffectAst {
                 cost,
                 x_value: None,
                 x_maximum: Some(x_maximum),
+                independent_x_choice: false,
+
             }),
         )
     }

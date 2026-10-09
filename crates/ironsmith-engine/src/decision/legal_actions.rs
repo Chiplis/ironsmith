@@ -1,3 +1,4 @@
+use crate::filter::ObjectFilterExt as _;
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::grant_registry::grant_usage_limit_allows;

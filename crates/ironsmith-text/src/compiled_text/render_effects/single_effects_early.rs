@@ -3175,6 +3175,24 @@ pub(in crate::compiled_text) fn describe_declined_may_mill_then_damage(
 
 pub(super) fn describe_pay_mana_cost(pay_mana: &crate::effects::PayManaEffect) -> String {
     let cost = pay_mana.cost.to_oracle();
+    if pay_mana.independent_x_choice && cost == "{X}"
+        && pay_mana.x_value.is_none() && pay_mana.x_maximum.is_none()
+    {
+        let colors = pay_mana.cost.spending_restrictions().iter().find_map(|restriction| {
+            if let ironsmith_core::mana::ManaSpendingRestriction::OnX { colors, .. } = restriction {
+                Some(*colors)
+            } else { None }
+        });
+        if let Some(colors) = colors {
+            if colors.count() == 1 {
+                for (color, symbol) in [(crate::color::Color::White, "{W}"),
+                    (crate::color::Color::Blue, "{U}"), (crate::color::Color::Black, "{B}"),
+                    (crate::color::Color::Red, "{R}"), (crate::color::Color::Green, "{G}")] {
+                    if colors.contains(color) { return format!("any amount of {symbol}"); }
+                }
+            }
+        } else { return "any amount of mana".to_string(); }
+    }
     if let Some(maximum) = pay_mana.x_maximum.as_ref() {
         let maximum = match maximum.unhinted() {
             Value::EventValue(EventValueSpec::LifeAmount) => {

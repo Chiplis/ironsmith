@@ -12,16 +12,25 @@ const YURIKO: &str = "Mana cost: {1}{U}{B}\nType: Legendary Creature — Human N
 #[test]
 fn yuriko_ninjutsu_functions_from_hand_and_command_zone() {
     for definition in compile::compile_both("Yuriko, the Tiger's Shadow", YURIKO) {
-        let ninjutsu = definition
-            .abilities
-            .iter()
+        let mut abilities = definition.abilities.clone();
+        for ability in &definition.abilities {
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                if let Some(model) = static_ability.compiled_model() {
+                    if let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &model.payload {
+                        abilities.push(ironsmith::static_abilities::StaticAbilityModelInterpreter::ability_from_model(&grant.ability));
+                        abilities.extend(grant.additional_abilities.iter().map(ironsmith::static_abilities::StaticAbilityModelInterpreter::ability_from_model));
+                    }
+                }
+            }
+        }
+        let ninjutsu = abilities.iter()
             .find(|ability| match &ability.kind {
                 AbilityKind::Activated(activated) => {
                     activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu)
                 }
                 _ => false,
             })
-            .expect("commander ninjutsu activated ability");
+            .unwrap_or_else(|| panic!("commander ninjutsu activated ability: {:?}", definition.abilities));
         assert!(ninjutsu.functional_zones.contains(&Zone::Hand));
         assert!(ninjutsu.functional_zones.contains(&Zone::Command));
         let debug = format!("{ninjutsu:?}");

@@ -12,6 +12,10 @@ fn simple_negated_object_restriction(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
+    if matches!(words, ["have", "counters", "put", "on", "them" | "it"]) {
+        return Some(Restriction::have_counters_placed(filter.clone()));
+    }
+
     // "[objects] can't have [kind] counters put on them/it" (Melira).
     if let [
         "have",

@@ -1527,7 +1527,8 @@ fn resolved_target_bounds(
         let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
         let mut ctx = crate::effects::ExecutionContext::new(source_id, caster, &mut decision_maker);
         ctx.x_value = game.object(source_id).and_then(|source| source.x_value);
-        match crate::effects::helpers::resolve_value(game, count_value, &ctx) {
+        // This reader prices the announcement, before costs or responses.
+        match crate::effects::helpers::resolve_value(game, count_value.unhinted(), &ctx) {
             Ok(value) => value.max(0) as usize,
             Err(_) => return (profile.min_targets, profile.max_targets),
         }
@@ -5047,6 +5048,7 @@ fn stack_entry_current_assignment_legal_targets(
         let mut ctx =
             crate::effects::ExecutionContext::new_default(entry.object_id, entry.controller);
         ctx.x_value = entry.x_value;
+    ctx.activation_values = entry.ability_effects.as_ref().map(|program| program.activation_values.clone()).unwrap_or_default();
         ctx.effect_outcomes = entry.effect_outcomes.clone();
         // Relative references bind earlier target groups; including this
         // assignment would make "another" exclude its own retained target.
@@ -5142,6 +5144,7 @@ fn assignment_aggregate_still_legal(
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(entry.object_id, entry.controller, &mut dm);
     ctx.x_value = entry.x_value;
+    ctx.activation_values = entry.ability_effects.as_ref().map(|program| program.activation_values.clone()).unwrap_or_default();
     if let Some(snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(snapshot);
     }
