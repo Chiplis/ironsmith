@@ -275,7 +275,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                                     &mut ctx.decision_maker,
                                     player,
                                     ctx.source,
-                                    "Pay the alternative cost rather than the echo cost?".into(),
+                                    "Pay the alternative cost rather than the echo cost?",
                                     FallbackStrategy::Accept,
                                 );
                         if ctx.decision_maker.awaiting_choice() {

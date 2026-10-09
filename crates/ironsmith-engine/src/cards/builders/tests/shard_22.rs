@@ -1393,8 +1393,8 @@ pub(super) fn bruenor_battlehammer_equip_cost_alternative_parses_as_static() {
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("FirstEquipCostAlternative"),
-        "expected FirstEquipCostAlternative static ability, got {abilities_debug}"
+        abilities_debug.contains("FirstKeywordAbilityThisTurn"),
+        "expected a first-equip activation price, got {abilities_debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
@@ -1419,8 +1419,8 @@ pub(super) fn first_equip_cost_alternative_parses_for_during_each_of_your_turns_
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("FirstEquipCostAlternative"),
-        "expected FirstEquipCostAlternative static ability for Forge Anew variant, got {abilities_debug}"
+        abilities_debug.contains("FirstKeywordAbilityThisTurn"),
+        "expected a first-equip activation price for Forge Anew variant, got {abilities_debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
