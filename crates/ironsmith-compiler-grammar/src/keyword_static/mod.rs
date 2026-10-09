@@ -1649,6 +1649,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(
             parse_anthem_color_and_quoted_activated_grant_line
         ),
+        multi_static_ability_ast_passthrough_rule!(parse_quoted_activated_ability_grant_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_controlled_creatures_may_assign_as_unblocked_line
         ),
@@ -4489,6 +4490,8 @@ pub fn parse_composed_anthem_effects_line(
             } else if let Some(abilities) = parse_granted_keyword_static_line(&segment)? {
                 abilities
             } else if let Some(abilities) = parse_filter_has_granted_ability_line(&segment)? {
+                abilities
+            } else if let Some(abilities) = parse_quoted_activated_ability_grant_line(&segment)? {
                 abilities
             } else if let Some(ability) = parse_anthem_line(&segment)? {
                 vec![ability.into()]

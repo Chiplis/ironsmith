@@ -158,6 +158,37 @@ pub fn parse_carried_conditional_anthem_grant_line(
     Ok(Some(result))
 }
 
+/// A quoted activated ability granted to a complete static subject. Reuse
+/// the ordinary subject and activated-ability owners for composed statics.
+pub fn parse_quoted_activated_ability_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let mut quoted = false;
+    let Some(has) = tokens.iter().position(|token| {
+        if token.is_quote() { quoted = !quoted; false }
+        else { !quoted && token.is_any_word(&["has", "have"]) }
+    }) else { return Ok(None); };
+    let mut tail = &tokens[has + 1..];
+    while tail.last().is_some_and(|token| matches!(token.kind,
+        crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) {
+        tail = &tail[..tail.len() - 1];
+    }
+    if tail.len() < 2 || !tail[0].is_quote() || !tail[tail.len() - 1].is_quote() {
+        return Ok(None);
+    }
+    let body = &tail[1..tail.len() - 1];
+    if body.iter().any(OwnedLexToken::is_quote)
+        || anthem_grant_grammar::parse_colon_tail_split(body).is_none() {
+        return Ok(None);
+    }
+    let Ok(subject) = parse_anthem_subject(&tokens[..has]) else { return Ok(None); };
+    let Some(ability) = parse_activated_line(body)? else { return Ok(None); };
+    let scope = fixed_anthem_clause(subject, 0, 0, None);
+    Ok(Some(vec![grant_object_ability_for_anthem_subject(
+        &scope, ability, display_text_for_tokens(body, false),
+    )]))
+}
+
 /// "[As long as ...,] this creature gets +1/+1, is black, and has
 /// \"{2}{B}, {T}: Destroy target blue creature.\"" (Possessed cycle): a pump,
 /// a color-setting effect (layer 5, CR 613.1e) and a quoted activated-ability
