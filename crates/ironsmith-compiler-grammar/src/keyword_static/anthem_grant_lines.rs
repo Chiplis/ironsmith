@@ -2784,7 +2784,11 @@ pub fn parse_source_counter_threshold_keyword_and_subtype_line(
     };
 
     let subject_tokens = trim_commas(&tokens[subject_start..have_token_idx]);
-    if subject_tokens.is_empty() {
+    if subject_tokens.is_empty()
+        || subject_tokens.iter().any(|token| token.is_any_word(&["get", "gets", "is", "are"]))
+    {
+        // A coordinated pump or color change before "has" belongs to its
+        // complete compound reader, rather than to this grant-only subject.
         return Ok(None);
     }
     let subject = parse_anthem_subject(&subject_tokens)?;

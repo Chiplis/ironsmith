@@ -1277,18 +1277,22 @@ pub fn attach_mixed_pronoun_token_rules_to_last_create(
 /// Recover the authored casing of a copy-exception name ("Mishra's Warform")
 /// from the clause tokens, given its lowercase parser words.
 fn copy_exception_name_surface(tokens: &[OwnedLexToken], name_words: &[String]) -> Option<String> {
-    let view = crate::grammar::primitives::TokenWordView::new(tokens);
-    let words = view.word_refs();
+    // The modifier reader consumes lexical words. The grammar's word view
+    // expands possessives, so it cannot locate names such as "Mishra's Warform"
+    // by the lexical word count. Keep the exact source-token boundaries.
+    let words: Vec<_> = tokens.iter().enumerate()
+        .filter_map(|(index, token)| token.as_word().map(|word| (index, word)))
+        .collect();
     let start = (0..words.len().checked_sub(name_words.len())? + 1)
         .rev()
         .find(|&start| {
             words[start..start + name_words.len()]
                 .iter()
                 .zip(name_words)
-                .all(|(word, expected)| *word == expected.as_str())
+                .all(|((_, word), expected)| *word == expected.as_str())
         })?;
-    let first = *view.token_start_indices().get(start)?;
-    let end = view.token_index_after_words(start + name_words.len())?;
+    let first = words.get(start)?.0;
+    let end = words.get(start + name_words.len() - 1)?.0 + 1;
     let surface = crate::lexer::render_literal_token_slice(&tokens[first..end])
         .trim()
         .to_string();

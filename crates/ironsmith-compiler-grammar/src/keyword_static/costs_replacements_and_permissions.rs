@@ -4600,6 +4600,11 @@ pub fn parse_fixed_mana_cost_instead_of_mana_cost_grant_line(
 pub fn parse_grant_flash_to_noncreature_spells_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The complete free-cast rule already includes the flash grant; reading
+    // only its timing suffix would discard its payment and beneficiary.
+    if matches!(parse_player_may_cast_spells_free_and_flash_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     match parse_permission_clause_spec(tokens)? {
         Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player,
