@@ -5399,6 +5399,8 @@ pub(crate) fn damage_multiplier_parts_from_shape(
         combat_only: spec.combat_only,
         noncombat_only: spec.noncombat_only,
         mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+        amount_override: None,
+        minimum: None,
     }))
 }
 

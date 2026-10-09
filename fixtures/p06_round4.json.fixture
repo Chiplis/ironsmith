@@ -208,5 +208,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "Damage can't be prevented this turn. If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead.\nFlashback {4}{R}{R}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+ },
+ {
+  "name": "Equal Treatment",
+  "oracle_id": "beef71f4-f607-4718-9fde-98e8d7871ce9",
+  "mana_cost": "{1}{W}",
+  "type_line": "Instant",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "If any source would deal 1 or more damage to a permanent or player this turn, it deals 2 damage to that permanent or player instead.\nDraw a card."
  }
 ]

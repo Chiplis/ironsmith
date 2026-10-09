@@ -248,3 +248,16 @@ fn this_turn_multipliers_read_sources_you_control_and_late_recipients() {
         &["RegisterDamageMultiplierEffect", "UntilEndOfTurn", "factor: 3", "Opponent"],
     )]);
 }
+
+#[test]
+fn equal_treatment_registers_a_set_amount_for_the_turn() {
+    assert_cluster(&[(
+        "Equal Treatment",
+        &[
+            "RegisterDamageMultiplierEffect",
+            "UntilEndOfTurn",
+            "amount_override: Some(SetTo(2))",
+            "minimum: Some(1)",
+        ],
+    )]);
+}

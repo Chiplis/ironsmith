@@ -74,6 +74,29 @@ impl EffectExecutor for RegisterDamageMultiplierEffect {
             .as_ref()
             .map(|filter| freeze_object_reference(game, ctx, filter))
             .transpose()?;
+        if let Some(modifier) = self.amount_override {
+            // A set or halved amount, through the shared amount-modifier
+            // replacement (CR 616.1 ordering with any other modifiers).
+            let replacement = crate::static_abilities::EventAmountReplacement::new(
+                ironsmith_core::AmountEventSpec::Damage {
+                    source_filter: Some(source_filter),
+                    player: target_player_filter,
+                    object: target_object_filter,
+                    combat_only: self.combat_only,
+                    minimum: self.minimum,
+                },
+                modifier,
+                false,
+                "Resolved damage amount replacement",
+            )
+            .generate_replacement_effect(ctx.source, ctx.controller)
+            .expect("an amount replacement always creates a replacement");
+            return ApplyReplacementEffect {
+                effect: replacement,
+                mode: self.mode,
+            }
+            .execute_child(game, ctx);
+        }
         let mut ability = crate::static_abilities::DoubleDamageAmountReplacement::new(
             source_filter,
             target_player_filter,

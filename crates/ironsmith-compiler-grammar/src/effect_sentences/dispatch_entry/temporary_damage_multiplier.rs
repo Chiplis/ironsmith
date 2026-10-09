@@ -4,6 +4,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if let Some(effect) = parse_until_your_next_turn(tokens) {
         return Ok(Some(effect));
     }
+    if let Some(effect) = parse_this_turn_amount_change(tokens)? {
+        return Ok(Some(effect));
+    }
     let Some(shape) = crate::grammar::keyword_static_lines::parse_damage_multiplier_tokens(tokens)
     else {
         return Ok(None);
@@ -131,9 +134,70 @@ fn parse_until_your_next_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
                 combat_only: shape.combat_only,
                 noncombat_only: shape.noncombat_only,
                 mode: ironsmith_core::ReplacementApplyMode::UntilYourNextTurn,
+                amount_override: None,
+                minimum: None,
             },
         }),
     ))
+}
+
+/// "If any source would deal 1 or more damage to a permanent or player this
+/// turn, it deals 2 damage to that permanent or player instead." (Equal
+/// Treatment): the static amount-change reading with a resolving duration
+/// (CR 611.2a, 614.1a). The words before "this turn" are read exactly as the
+/// static ability; the duration makes it a registration until end of turn.
+fn parse_this_turn_amount_change(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    if comma < 3
+        || !tokens[comma - 2].is_word("this")
+        || !tokens[comma - 1].is_word("turn")
+    {
+        return Ok(None);
+    }
+    let mut without_duration = tokens[..comma - 2].to_vec();
+    without_duration.extend(tokens[comma..].iter().cloned());
+    let Some(ability) =
+        crate::keyword_static::parse_if_event_would_happen_amount_line(&without_duration)?
+    else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::EventAmountReplacement {
+        event:
+            ironsmith_core::AmountEventSpec::Damage {
+                source_filter,
+                player,
+                object,
+                combat_only,
+                minimum,
+            },
+        modifier,
+        optional: false,
+        ..
+    } = ability.payload
+    else {
+        return Ok(None);
+    };
+    Ok(Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
+            spec: ironsmith_core::RegisterDamageMultiplierEffect {
+                source_filter: source_filter.unwrap_or_default(),
+                target_player_filter: player,
+                target_object_filter: object,
+                factor: 1,
+                combat_only,
+                noncombat_only: false,
+                mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+                amount_override: Some(modifier),
+                minimum,
+            },
+        }),
+    )))
 }
 
 #[cfg(test)]
