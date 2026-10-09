@@ -85,6 +85,31 @@ mechanics), so the package splits into many small clusters rather than one.
 - Still blocked here: Siren's Call (exception sentence + delayed "that player" binding), Camouflage (pile-based
   random block assignment).
 
+## Round 5
+- Offspring instances are separate (CR 702.175b): printed offspring now carries its own `printed-N` discriminator
+  (lowering `materialize_optional_cost`), so its ETB trigger checks only its own payment; a granted instance
+  already had its own. Test: printed offspring + Zinnia paying 0, 1 or 2 costs creates 0, 1 or 2 tokens.
+- Verified by reading: referenced-creature restrictions resolve `It` through `resolve_restriction_it_tag`
+  (MustAttack, MustBlock, AttackPlayerOrPlaneswalkersControlledBy) against the lowering reference env, whose last
+  object tag comes from RemoveFromCombat/untap (Illusionist's Gambit) or ChooseObjects (Berserker's Frenzy); the
+  engine collapses the tagged filter to exactly those creatures.
+- Siren's Call: new line family `continuous-control-exception` folds "Ignore this effect for each creature the
+  player didn't control continuously since the beginning of the turn" into the preceding instruction's filter via
+  the existing continuous-control predicate and binds "that player" to the active player when the card's previous
+  player-naming line names the active player (claimed only then).
+- Final-Word Phantom: new `Condition::OpponentsEndStep` (appended) and a "During each opponent's end step," leading
+  condition over a complete static.
+- Nahiri, Storm of Stone: the leading-condition wrapper reads two complete statics joined by "and" (only when the
+  whole remainder isn't one static, exactly one split reads, and the right half isn't a bare keyword list).
+- Magnigoth Treefolk: domain landwalk as five land-type-conditioned landwalk statics.
+- Taunt (round 4 tail): next-turn requirement "attack you" plus targeted-controller binding for MustAttackPlayer.
+
+### Round 5 risk notes
+- `LINE_FAMILY_RULES` grew to 33 entries; the new continuous-control rule runs first and re-dispatches a rewritten
+  line (synthetic tokens "the active player has controlled continuously since the beginning of the turn").
+- `Condition::OpponentsEndStep` arms: condition_eval, dependency, text_change_predicates, condition_rendering.
+- Engine-side dead (cfg ironsmith_runtime_parser_tests) offspring tests still expect the plain "Offspring" label.
+
 ## Source-proposed clusters
 ### absorb-keyword (1): Lymph Sliver
 - Fix: Absorb had no grammar. New registry rule lowers 'Absorb N' and '<subject> have absorb N' to the existing PreventMatchingDamage self-prevention (amount N, target = this object) that the spelled-out CR 702.64a sentence already compiles to (probe), granted via GrantStaticAbility.
