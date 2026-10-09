@@ -1100,6 +1100,13 @@
         }
         return "Open an Attraction".to_string();
     }
+    if let Some(roll) = effect.downcast_ref::<crate::effects::RollToVisitAttractionsEffect>() {
+        return if roll.player == crate::filter::PlayerFilter::You {
+            "Roll to visit your Attractions".to_string()
+        } else {
+            format!("{} rolls to visit their Attractions", describe_player_filter(&roll.player))
+        };
+    }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestDreadEffect>() {
         return if manifest.player == crate::filter::PlayerFilter::You {
             "Manifest dread".to_string()

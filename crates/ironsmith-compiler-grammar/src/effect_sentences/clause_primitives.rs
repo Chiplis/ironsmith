@@ -369,7 +369,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "choose-card-name-clause",
-            &["choose"],
+            &["choose", "that", "target"],
             parse_choose_card_name_clause,
         ),
         specific_primitive!(
@@ -697,6 +697,9 @@ pub fn parse_repeat_this_process_clause(
             }
             clause_shapes::RepeatProcessShape::Additional(count) => {
                 EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count })
+            }
+            clause_shapes::RepeatProcessShape::ExcludingPriorChoices => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
             }
         }),
     )

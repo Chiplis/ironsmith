@@ -222,6 +222,12 @@ pub(crate) fn advance_player_dungeon(
     player_id: PlayerId,
     undercity_if_no_active: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
+    // "can't venture into the dungeon more than once each turn" (Keen-Eared
+    // Sentry): a second venture this turn does nothing, whether instructed
+    // directly or through the initiative (CR 701.49).
+    if !game.can_venture_into_dungeon(player_id) {
+        return Ok(EffectOutcome::count(0));
+    }
     crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
         let mut outcome = EffectOutcome::resolved();
         let (dungeon_name, room_name) =

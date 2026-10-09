@@ -88,6 +88,8 @@ pub enum KeywordActionAst {
     OpenAttraction {
         reminder: bool,
     },
+    /// "Roll to visit your Attractions" (CR 701.52).
+    RollToVisitAttractions,
     ManifestCardFromHand,
     ManifestDread,
     Earthbend {

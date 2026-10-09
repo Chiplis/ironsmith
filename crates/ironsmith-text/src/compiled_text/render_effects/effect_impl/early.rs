@@ -7065,6 +7065,21 @@
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return describe_effect(&with_id.effect);
     }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>()
+        && !repeat.choice_history.is_empty()
+    {
+        // Later rounds exclude earlier rounds' choices.
+        let body = describe_effect_list(&repeat.effects);
+        let body = body.trim().trim_end_matches('.');
+        let gate = if repeat.predicate == EffectPredicate::Happened {
+            "If you do, repeat"
+        } else {
+            "Repeat"
+        };
+        return format!(
+            "{body}. {gate} this process except that a card already chosen this way can't be chosen"
+        );
+    }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
         let mut gate = repeat.effects.last();
         while let Some(inner) = gate.and_then(|effect| effect.transparent_child_effect()) {

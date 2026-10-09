@@ -3793,6 +3793,31 @@ impl ObjectFilterExt for ObjectFilter {
                 continue;
             }
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
+                // "that card" naming the top card of your library (Crown of
+                // Convergence, Conspicuous Snoop): read the live library top
+                // of the filter's "you" (CR 401.1).
+                if constraint.tag.as_str() == crate::tag::TOP_OF_YOUR_LIBRARY_TAG {
+                    let top = ctx
+                        .you
+                        .and_then(|you| game.player(you))
+                        .and_then(|player| player.library.last().copied())
+                        .and_then(|id| game.object(id))
+                        .map(|top| {
+                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                                top, game,
+                            )
+                        });
+                    let snapshots: Vec<crate::snapshot::ObjectSnapshot> = top.into_iter().collect();
+                    if !tagged_constraint_matches_subject(
+                        subject,
+                        &snapshots,
+                        constraint.relation,
+                        game,
+                    ) {
+                        return false;
+                    }
+                    continue;
+                }
                 // "cards you exiled" (Haldan): exiled cards linked to a source
                 // whose controller is the filter's "you".
                 if constraint.tag.as_str() == crate::tag::EXILED_BY_YOU_TAG

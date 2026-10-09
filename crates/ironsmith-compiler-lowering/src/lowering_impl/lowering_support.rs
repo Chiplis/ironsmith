@@ -2728,6 +2728,7 @@ fn source_sentence_boundary_continues_repeat_process(
         match effect {
             EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess
                 | ForEachEffectAst::RepeatThisProcessOnce
+                | ForEachEffectAst::RepeatThisProcessExcludingPriorChoices
                 | ForEachEffectAst::RepeatThisProcessAdditional { .. }
                 | ForEachEffectAst::RepeatThisProcessMay) => true,
             EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) =>
@@ -6482,6 +6483,29 @@ fn validate_effect_for_iterated_player(
             validate_effects_for_iterated_player(payload.effects(), bound, context)?;
         }
         return Ok(());
+    }
+    if let Some(regenerate) = effect.downcast_ref::<crate::effects::RegenerateEffect>() {
+        if !iterated_player_bound {
+            validate_unbound_iterated_player(
+                choose_spec_mentions_iterated_player(&regenerate.target),
+                &regenerate.target,
+                context,
+            )?;
+            if let Some(player) = &regenerate.follow_up_player {
+                validate_unbound_iterated_player(
+                    player.mentions_iterated_player(),
+                    player,
+                    context,
+                )?;
+            }
+        }
+        // A carried follow-up player is bound as the iterated player of the
+        // one-player loop the shield wraps around its follow-ups.
+        return validate_effects_for_iterated_player(
+            &regenerate.follow_up_effects,
+            iterated_player_bound || regenerate.follow_up_player.is_some(),
+            context,
+        );
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
         // Reflexive abilities retain the enclosing trigger's event context.

@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Erg Raiders",
+    "oracle_id": "7feba745-7d27-4225-bc9d-9b7a8692872d",
+    "text": "Mana cost: {1}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/3\nAt the beginning of your end step, if this creature didn't attack this turn, it deals 2 damage to you unless it came under your control this turn."
+  }
+]

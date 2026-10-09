@@ -1770,6 +1770,20 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::VentureMoreThanOnceEachTurn(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cant_venture_more_than_once_each_turn.insert(player.id);
+                    }
+                }
+            }
+            Restriction::BlockWithMoreThan { player: filter, maximum } => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.limit_blocking_creatures(player.id, *maximum);
+                    }
+                }
+            }
             Restriction::PreventDamageFrom {
                 sources,
                 combat_only,

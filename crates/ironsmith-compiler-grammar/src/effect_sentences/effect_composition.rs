@@ -1044,6 +1044,32 @@ pub(super) fn parse_reveal_from_outside_game_to_hand(
 pub(super) fn parse_put_from_outside_game(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(shape) = bundle_grammar::parse_outside_game_shuffle_shape(tokens) {
+        let mut filter = parse_object_filter_lexed(&shape.filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported outside-game shuffle filter in clause '{}'",
+                words(&trim_commas(tokens)).join(" ")
+            ))
+        })?;
+        filter.owner = Some(PlayerFilter::You);
+        filter.zone = Some(Zone::OutsideGame);
+        let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
+        return Ok(Some(vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count: ChoiceCount::up_to(shape.maximum as usize),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+                zones: vec![Zone::OutsideGame],
+                search_mode: None,
+            }),
+            EffectAst::subject_verb_shuffle_objects_into_library(
+                PlayerAst::You,
+                TargetAst::Tagged(tag, span_from_tokens(tokens)),
+            ),
+        ]));
+    }
     let Some(shape) = bundle_grammar::parse_outside_game_put_shape(tokens) else {
         return Ok(None);
     };
@@ -1953,7 +1979,10 @@ use bundle_rules_reference_programs::{
 };
 #[path = "effect_composition/composition_object_action.rs"]
 mod bundle_rules_object_action_programs;
-use bundle_rules_object_action_programs::parse_regenerate_then_gain_control_if_regenerates_bundle;
+use bundle_rules_object_action_programs::{
+    parse_regenerate_then_gain_control_if_regenerates_bundle,
+    parse_regenerate_then_when_regenerates_bundle,
+};
 #[path = "effect_composition/composition_resource.rs"]
 mod bundle_rules_resource_programs;
 use bundle_rules_resource_programs::{

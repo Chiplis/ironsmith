@@ -338,6 +338,32 @@ pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideG
     })
 }
 
+/// "Shuffle up to four cards you own from outside the game into your
+/// library" (Research): a bounded owned choice from outside the game.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutsideGameShuffleShape {
+    pub maximum: u32,
+    pub filter_tokens: Vec<OwnedLexToken>,
+}
+
+pub fn parse_outside_game_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGameShuffleShape> {
+    let tokens = trim_lexed_commas(tokens);
+    let words = parser_token_word_refs(tokens);
+    let ["shuffle", "up", "to", count, ..] = words.as_slice() else {
+        return None;
+    };
+    let maximum = crate::util::parse_number_word_u32(count)?;
+    let own_word = sequence_offset(&words, &["you", "own", "from", "outside", "the", "game"])?;
+    if own_word <= 4 || words[own_word + 6..] != ["into", "your", "library"] {
+        return None;
+    }
+    let filter_tokens = token_slice_for_words(tokens, 4..own_word)?.to_vec();
+    Some(OutsideGameShuffleShape {
+        maximum,
+        filter_tokens,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForEachChosenShape<'a> {
     pub body: &'a [OwnedLexToken],

@@ -2033,6 +2033,14 @@ pub struct CantEffectTracker {
     /// Players who can't become the monarch.
     pub cant_become_monarch: HashSet<PlayerId>,
 
+    /// Players who can't venture into the dungeon more than once each turn
+    /// (Keen-Eared Sentry).
+    pub cant_venture_more_than_once_each_turn: HashSet<PlayerId>,
+
+    /// The most creatures each player may declare as blockers (Mirri,
+    /// Weatherlight Duelist: "can't block with more than one creature").
+    pub max_blocking_creatures_by_player: HashMap<PlayerId, usize>,
+
     /// Permanents that can't be targeted.
     /// Example: Hexproof/Shroud (tracked separately), but also effects like
     /// "can't be the target of spells or abilities"
@@ -2782,6 +2790,11 @@ impl CantEffectTracker {
             .extend(other.cant_lose_game_for_zero_life);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
+        self.cant_venture_more_than_once_each_turn
+            .extend(other.cant_venture_more_than_once_each_turn);
+        for (player, maximum) in other.max_blocking_creatures_by_player {
+            self.limit_blocking_creatures(player, maximum);
+        }
         self.cant_be_targeted.extend(other.cant_be_targeted);
         self.cant_be_targeted_from
             .extend(other.cant_be_targeted_from.clone());
@@ -2865,6 +2878,8 @@ impl CantEffectTracker {
         self.cant_lose_game_for_zero_life.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
+        self.cant_venture_more_than_once_each_turn.clear();
+        self.max_blocking_creatures_by_player.clear();
         self.cant_be_targeted.clear();
         self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
@@ -3049,6 +3064,25 @@ impl CantEffectTracker {
     /// Check if a player can become the monarch.
     pub fn can_become_monarch(&self, player: PlayerId) -> bool {
         !self.cant_become_monarch.contains(&player)
+    }
+
+    /// Record a "can't block with more than N creatures" cap; the most
+    /// restrictive cap applies.
+    pub fn limit_blocking_creatures(&mut self, player: PlayerId, maximum: usize) {
+        self.max_blocking_creatures_by_player
+            .entry(player)
+            .and_modify(|current| *current = (*current).min(maximum))
+            .or_insert(maximum);
+    }
+
+    /// The most creatures this player may block with, if capped.
+    pub fn max_blocking_creatures_for_player(&self, player: PlayerId) -> Option<usize> {
+        self.max_blocking_creatures_by_player.get(&player).copied()
+    }
+
+    /// Whether this player is limited to one venture each turn.
+    pub fn venture_limited_to_once_each_turn(&self, player: PlayerId) -> bool {
+        self.cant_venture_more_than_once_each_turn.contains(&player)
     }
 
     /// Check if a player can draw cards at all.
@@ -8262,6 +8296,40 @@ impl GameState {
     /// Can the player become the monarch?
     pub fn can_become_monarch(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_become_monarch(player)
+    }
+
+    /// The most creatures this player may declare as blockers this combat,
+    /// from "can't block with more than N creatures" (CR 509.1c).
+    pub fn max_blocking_creatures_for_player(&self, player: PlayerId) -> Option<usize> {
+        self.effect_store
+            .cant_effects
+            .max_blocking_creatures_for_player(player)
+    }
+
+    /// Whether this player may venture into the dungeon now: a player limited
+    /// to one venture each turn can't once a venture of theirs completed this
+    /// turn (Keen-Eared Sentry, CR 701.49).
+    pub fn can_venture_into_dungeon(&self, player: PlayerId) -> bool {
+        !self
+            .effect_store
+            .cant_effects
+            .venture_limited_to_once_each_turn(player)
+            || self.player_venture_count_this_turn(player) == 0
+    }
+
+    /// How many times this player ventured into the dungeon this turn.
+    pub fn player_venture_count_this_turn(&self, player: PlayerId) -> usize {
+        self.turn_store
+            .turn_history
+            .event_records
+            .iter()
+            .chain(self.turn_store.turn_history.staged_event_records.iter())
+            .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|event| {
+                event.action == crate::events::KeywordActionKind::VentureIntoDungeon
+                    && event.player == player
+            })
+            .count()
     }
 
     /// Can the player cast spells?

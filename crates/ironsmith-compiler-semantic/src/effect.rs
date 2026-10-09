@@ -1300,6 +1300,10 @@ impl Effect {
         Self::new(crate::effects::OpenAttractionEffect::new())
     }
 
+    pub fn roll_to_visit_attractions(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::RollToVisitAttractionsEffect::new(player))
+    }
+
     pub fn open_attraction_with_reminder(reminder: bool) -> Self {
         Self::new(crate::effects::OpenAttractionEffect::new().with_reminder(reminder))
     }

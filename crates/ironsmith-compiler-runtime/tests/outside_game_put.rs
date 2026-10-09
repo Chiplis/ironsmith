@@ -71,3 +71,13 @@ fn put_from_outside_the_game_moves_only_an_owned_sideboard_card() {
         let _ = mine;
     }
 }
+
+#[test]
+fn research_shuffles_up_to_four_owned_outside_game_cards() {
+    let text = "Type: Instant\nShuffle up to four cards you own from outside the game into your library.";
+    for definition in definitions("Research probe", text) {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("OutsideGame"), "{debug}");
+        assert!(debug.contains("max: Some(4)"), "{debug}");
+    }
+}

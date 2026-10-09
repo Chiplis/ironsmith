@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Zoyowa Lava-Tongue",
+    "oracle_id": "e90f298f-c54b-4fe8-82db-5b9153a57712",
+    "text": "Mana cost: {B}{R}\nType: Legendary Creature — Goblin Warlock\nPower/Toughness: 2/2\nDeathtouch\nAt the beginning of your end step, if you descended this turn, each opponent may discard a card or sacrifice a permanent of their choice. Zoyowa deals 3 damage to each opponent who didn't. (You descended if a permanent card was put into your graveyard from anywhere.)"
+  }
+]

@@ -1,6 +1,6 @@
 # p11-other — card-failure campaign cf8 summary
 
-158 cards: **33 source-proposed**, **125 blocked**, 0 already-on-main, 0 untriaged.
+158 cards: **49 source-proposed**, **109 blocked**, 0 already-on-main, 0 untriaged (after round 4).
 
 All work is source-only and UNBUILT (per brief). The prebuilt `compile_oracle_text` was used for probing until it disappeared mid-session (main checkout rebuilding); clusters fixed after that point (blocker-count, block-alone, without-either-keyword, possessive switch) are verified by code reading only. A probe run at session start showed none of the 158 cards compiled on the binary, so none are already-on-main.
 
@@ -50,6 +50,43 @@ Second-pass tests (unrun): `top_of_library_conditions.rs`, `source_damage_histor
 
 Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive match (condition_eval, text_change_predicates, condition_rendering::describe_condition) was updated, and the other sites use wildcards. (2) `BattlefieldFlags` gains a `HashSet` field (Default; the struct is not serialized). (3) Every first damage dealt by a permanent now runs `mark_source_designation_changed` (once per object lifetime).
 
+## Round 3 (on cf8/integration)
+
+| Mechanism | Cards | Implementation |
+|---|---|---|
+| regeneration reflexive trigger (CR 701.19, 603.12) | Matopi Golem, Skeleton Scavengers | Bundle reading 'Regenerate X. When it regenerates this way, Y' -> `Regenerate{follow_up:[WhenResult(Y)]}`. Lowering emits `ReflexiveTriggerEffect` keyed to `RegenerateEffect::SHIELD_USED_ID`, and the engine tags the shield's damage removal with that id. Replacement programs already run with the replacement's own source and controller (`execute_replacement_payload_with_outputs`), so the trigger belongs to the shield's controller and sees the regenerated permanent as 'it'. |
+| library-top card reference (filter-reference, no new ObjectFilter field) | Conspicuous Snoop, Skill Borrower, Crown of Convergence | A reserved runtime tag `TOP_OF_YOUR_LIBRARY_TAG` / `CompilerReferenceTag::TopOfYourLibrary`. The engine filter matcher resolves it from the live library top of the context player (next to `EXILED_BY_YOU_TAG`). Static lines headed 'as long as the top card of your library is …' that say 'that card' rebind their it-tags to it (`keyword_static::bind_that_card_to_library_top`). |
+| repeat-process cumulative count | Demonlord Belzenlok | New prior-effect action 'put into your hand' -> `PutIntoHand`. The damage multiplier reads the `RepeatProcess` aggregate, since `RepeatProcess` itself produces the prior-effect memory and spans all iterations. |
+| 'with' keyword lists > 2 | Mwonvuli Beast Tracker | `FilterTailDecoration::WithAnyKeyword([Option<_>; 8])` (stays Copy) -> `any_of`. |
+| outside-the-game shuffle | Research // Development | 'shuffle up to N cards you own from outside the game into your library'. |
+
+Repeat-process ownership: the bounded loop is the existing core `RepeatProcessEffect` (+ `ForEachEffectAst::RepeatProcess` and resolve's `rewrite_repeat_process*`). No `repeat_process.rs` duplicate was created, so p05 should reuse that type. Crooked Scales still needs a trace; Forgotten Lore and Shrouded Lore need a set of choices that accumulates across loop iterations.
+
+Not done this round:
+- **Owned by other packages:** player 'during their next turn' restrictions (p10), and play-from-another-player permissions (p05).
+- **Dice/Attractions:** need an effect form of the roll-to-visit action. The turn-runner version takes the trigger queue directly.
+
+## Round 4
+
+| Mechanism | Cards | Implementation |
+|---|---|---|
+| repeat-process choice history | Forgotten Lore, Shrouded Lore | Marker `ForEachEffectAst::RepeatThisProcessExcludingPriorChoices` from "repeat this process except that <player> can't choose a card already chosen for <this>". Resolve adds `IsNotTaggedObject(PriorProcessChoices)` to the body's object choices. Lowering then sets the additive core field `RepeatProcessEffect.choice_history: Vec<RepeatProcessChoiceHistory{chosen, previously_chosen}>` (serde default). Before each later round, the engine moves the finished round's choice into `__prior_process_choices__` and clears the choice tag, so "the last chosen card" (now read as the It tag) is the final round's card. |
+| Crooked Scales root cause | Crooked Scales | The grouped-coin document is a registered multi-sentence program whose sentences reparse identically, so it returns one `SourceSentence` per sentence. `rewrite_repeat_process_result` only looked for a direct trailing `IfResult`. It now peels one-effect sentence wrappers and also accepts the payment+marker pair as a two-member `Coordination`. |
+| activation player into a shield | Soldevi Sentry | A 3-sentence bundle (choose-target prelude + regenerate + when-regenerates). Lowering compiles the trigger with "that player" = IteratedPlayer and records `RegenerateEffect.follow_up_player` (additive, serde default). The engine resolves it when the shield is created and wraps the follow-ups in `ForPlayers(Specific(p))`. The pending reflexive trigger keeps the iteration (CR 701.19, 603.12). |
+| per-player limits | Mirri, Weatherlight Duelist; Keen-Eared Sentry | `Restriction::BlockWithMoreThan{player, maximum}` (tracker keeps the smallest cap per player; declare-blockers and the requirement search enforce it, CR 509.1c) and `Restriction::VentureMoreThanOnceEachTurn(player)` (`advance_player_dungeon`, which venture and the initiative share, stops after a venture in this turn's history, CR 701.49). |
+| roll to visit (CR 701.52) | Line Cutter; Six-Sided Die | Core `RollToVisitAttractionsEffect` via `KeywordActionAst::RollToVisitAttractions`. `effects::player::roll_to_visit_attractions::roll_to_visit_attractions_for_player` is now the single owner of the visit d6 and the lit-Attraction batch. The turn runner (CR 505.5b) calls it, and the effect publishes each VisitAttraction keyword action. Six-Sided Die: preprocess no longer treats the card name after "roll a/an" as a self-reference. |
+
+Re-checked against the merged tree: Willie Lumpkin, Sen Triplets and Xanathar still need p10's player-subject restrictions and p05's play-from-another-player permissions. Neither is in the tree yet, so they stay blocked. Command Performance still needs ticket gain ({TK}) and a sticker mode.
+
+Round 4 tests (unrun): `repeat_process_choice_history.rs`, `regeneration_follow_up_player.rs`, `per_player_action_limits.rs`, `attraction_visit_rolls.rs`.
+
+Round 4 risks:
+- `RepeatProcessEffect` gained `choice_history`, and p05 is extending the same struct, so a textual merge conflict is likely in `mana_damage_and_control.rs`, `artifact_text_program_codec.rs` (struct literal) and `effect_model_interpreter.rs`. Keep both sets of fields.
+- New enum variants: `ForEachEffectAst::RepeatThisProcessExcludingPriorChoices`, `RepeatProcessShape::ExcludingPriorChoices`, `KeywordActionAst::RollToVisitAttractions`, `Restriction::{BlockWithMoreThan, VentureMoreThanOnceEachTurn}`, `PlayerActivationRestrictionTailFact::{BlockWithMoreThan, VentureMoreThanOnceEachTurn}` and `CompilerReferenceTag::PriorProcessChoices`. Arms were added at every site that lists a sibling variant.
+- `CantEffectTracker` gained two fields. They are merged and cleared alongside the others.
+- Soldevi: if resolve rewrites `PlayerAst::That` before lowering, the IteratedPlayer binding is not used. The shield then carries no player, and the trigger would fail validation instead of miscompiling.
+- The "the last chosen card" reading was added to `try_apply_leading_tagged_reference_prefix`. It only matches "last chosen <object noun>".
+
 ## Blocked, grouped by missing mechanic
 
 - **ability-copy**: Gogo, Master of Mimicry
@@ -74,7 +111,7 @@ Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive ma
 - **curse-attach-player**: Lynde, Cheerful Tormentor
 - **damage-history-restriction**: Runesword
 - **delayed-zone-move**: Three Wishes
-- **dice-attractions**: Bamboozling Beeble, Centaur of Attention, Command Performance, Delina, Wild Mage, Ferris Wheel, Fractured Powerstone, Ichor Elixir, Line Cutter, Six-Sided Die
+- **dice-attractions**: Bamboozling Beeble, Centaur of Attention, Command Performance (tickets/stickers), Delina, Wild Mage, Ferris Wheel, Fractured Powerstone, Ichor Elixir
 - **draft-matters**: Archdemon of Paliano
 - **each-of-them**: The War in Heaven
 - **each-of-x-targets**: Batroc the Leaper
@@ -106,22 +143,19 @@ Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive ma
 - **opponent-who-didnt**: Hollow Marauder, Zoyowa Lava-Tongue
 - **opponents-discard**: Everything Pizza
 - **otherwise-branch**: Stolen Vitality
-- **outside-game-wish**: Research // Development
 - **player-chooses-name**: Petra Sphinx, Vexing Arcanix
-- **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin, Keen-Eared Sentry, Mirri, Weatherlight Duelist
+- **player-restriction**: Sen Triplets, Willie Lumpkin, Postman, Xanathar, Guild Kingpin (needs p10/p05 mechanisms)
 - **player-restriction-unless**: Antagonism
 - **power-parity-condition**: Kianne, Corrupted Memory
 - **rad-counters**: Vexing Radgull
 - **redirect-damage**: Nova Pentacle
-- **regeneration-trigger**: Matopi Golem, Skeleton Scavengers, Soldevi Sentry
-- **repeat-process**: Crooked Scales, Forgotten Lore, Shrouded Lore, Demonlord Belzenlok
 - **reveal-conditional**: Omnath, Locus of All
 - **reveal-hand-and-top**: Psychotic Episode
 - **reveal-hand-count**: Blood Oath, Thought Hemorrhage
 - **reveal-reference**: Keen Duelist, Parker Luck
 - **same-action**: The Wedding of River Song
 - **same-name-play-trigger**: Search the City
-- **search-filter**: Light-Paws, Emperor's Voice, Mimeofacture, Monument to Perfection, Mwonvuli Beast Tracker, The Masters of Evil
+- **search-filter**: Light-Paws, Emperor's Voice, Mimeofacture, Monument to Perfection, The Masters of Evil
 - **shared-color-condition**: Common Cause
 - **shuffle-zones**: Sway of the Stars, The Great Aurora
 - **skip-replacement**: Fasting, Island Sanctuary
@@ -130,7 +164,7 @@ Risk notes, second pass: (1) `Condition` gains two variants; every exhaustive ma
 - **surveil-count**: Starving Revenant
 - **target-change-contest**: Psychic Battle
 - **token-followups**: Phantom Steed, Preston Garvey, Minuteman
-- **top-of-library-static**: Conspicuous Snoop, Crown of Convergence, Skill Borrower, Volrath's Shapeshifter
+- **top-of-library-static**: Volrath's Shapeshifter
 - **trigger-suppression**: Hushbringer
 - **triggered-ability-counter**: Strict Proctor
 - **turn-history-zone-move-count**: Anzrag's Rampage, Structural Assault

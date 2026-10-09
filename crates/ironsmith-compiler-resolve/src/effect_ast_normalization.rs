@@ -2901,17 +2901,27 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
     }
 
     let last_index = effects.len() - 1;
+    // A registered multi-sentence program (for example a grouped coin flip)
+    // keeps each authored sentence in its own one-effect SourceSentence. The
+    // result consumer that ends the process is then wrapped; peel it so the
+    // continuation is found at the same index it will occupy in the body.
+    let last_effect = peel_single_source_sentence(&effects[last_index]);
     let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate,
         effects: tail_effects,
-    }) = &effects[last_index]
+    }) = last_effect
     else {
         return None;
     };
-    let marker_is_direct = matches!(
+    let excludes_prior_choices = matches!(
         tail_effects.last(),
-        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
+        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices))
     );
+    let marker_is_direct = excludes_prior_choices
+        || matches!(
+            tail_effects.last(),
+            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
+        );
     let marker_is_coordinated = matches!(
         tail_effects.last(),
         Some(EffectAst::Coordinated { effects, .. })
@@ -2943,6 +2953,15 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
                 effects.as_slice(),
                 [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. }), EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)]
             )
+    ) || matches!(
+        tail_effects.last(),
+        Some(EffectAst::Coordination(coordination))
+            if matches!(
+                coordination.members.as_slice(),
+                [payment, repeat]
+                    if matches!(payment.effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })])
+                        && matches!(repeat.effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)])
+            )
     );
     let continue_effect_index = if repeat_follows_unless_payment {
         last_index
@@ -2955,6 +2974,7 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
         predicate.clone()
     };
     let mut body = effects.to_vec();
+    body[last_index] = last_effect.clone();
     let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) =
         &mut body[last_index]
     else {
@@ -2977,12 +2997,55 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
     if effects.is_empty() {
         body.pop();
     }
+    // "except that <player> can't choose a card already chosen for <this>":
+    // every object choice of the process excludes the objects the process
+    // chose in its earlier rounds. Without a choice to constrain, the
+    // exception has no meaning, so the reading is refused.
+    if excludes_prior_choices
+        && exclude_prior_process_choices(&mut body[..continue_effect_index]) == 0
+    {
+        return None;
+    }
 
     Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: body,
         continue_effect_index,
         continue_predicate,
     })])
+}
+
+/// Constrain every object choice in a repeated process body to objects not
+/// chosen in an earlier round (`PriorProcessChoices`). Returns how many
+/// choices were constrained.
+fn exclude_prior_process_choices(effects: &mut [EffectAst]) -> usize {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let mut constrained = 0;
+    for effect in effects.iter_mut() {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) =
+            effect
+        {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::PriorProcessChoices.bind().into(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            constrained += 1;
+            continue;
+        }
+        super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+            constrained += exclude_prior_process_choices(nested);
+        });
+    }
+    constrained
+}
+
+/// The single effect of a one-effect authored sentence wrapper (recursively).
+fn peel_single_source_sentence(effect: &EffectAst) -> &EffectAst {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => {
+            peel_single_source_sentence(&effects[0])
+        }
+        _ => effect,
+    }
 }
 
 fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {

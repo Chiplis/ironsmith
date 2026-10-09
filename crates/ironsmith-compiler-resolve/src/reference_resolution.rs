@@ -3662,6 +3662,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })
@@ -6842,6 +6843,13 @@ fn resolve_effect_result_values_in_fields(
                 Ok(())
             }
         Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
+            Ok(())
+        }
+        Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)
                 || local_random_result_bindings::Family::Reveal.query(query) => {
             let family = if local_random_result_bindings::Family::Number.query(query) {
@@ -7085,6 +7093,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -7912,6 +7921,12 @@ fn resolve_effect_result_value(
             };
         }
         Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
+        }
+        Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)
                 || local_random_result_bindings::Family::Reveal.query(query) => {
             let family = if local_random_result_bindings::Family::Number.query(query) {
@@ -8329,6 +8344,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -9539,7 +9555,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         ) => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
-        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => 0,
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices) => 0,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count }) =>
             bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {

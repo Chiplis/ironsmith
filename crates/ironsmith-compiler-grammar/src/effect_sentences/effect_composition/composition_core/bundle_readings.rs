@@ -266,6 +266,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_regenerate_then_gain_control(input)),
     },
     Reading {
+        id: RuleId::new("regenerate-then-when-regenerates"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_regenerate_then_when_regenerates(input)),
+    },
+    Reading {
         id: RuleId::new("consult-then-put-matches-battlefield-rest-bottom"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -769,6 +775,31 @@ fn read_regenerate_then_gain_control(
         && let Some(effects) =
             parse_regenerate_then_gain_control_if_regenerates_bundle(sentences[0], sentences[1])
     {
+        return Ok(Some(effects));
+    }
+    Ok(None)
+}
+fn read_regenerate_then_when_regenerates(
+    input: &Bundle<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &input.sentences;
+    if sentences.len() == 2 {
+        return parse_regenerate_then_when_regenerates_bundle(sentences[0], sentences[1]);
+    }
+    // "Choose target opponent. Regenerate this creature. When it regenerates
+    // this way, that player may draw a card." (Soldevi Sentry): a leading
+    // target declaration names the trigger's "that player".
+    if sentences.len() == 3
+        && crate::lexer::token_word_refs(sentences[0]).first() == Some(&"choose")
+        && crate::lexer::token_word_refs(sentences[0]).contains(&"target")
+        && let Some(bundle) =
+            parse_regenerate_then_when_regenerates_bundle(sentences[1], sentences[2])?
+    {
+        let mut effects = effect_sentences::parse_effect_sentence_lexed(sentences[0])?;
+        if effects.is_empty() {
+            return Ok(None);
+        }
+        effects.extend(bundle);
         return Ok(Some(effects));
     }
     Ok(None)

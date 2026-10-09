@@ -4376,6 +4376,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_roll_to_visit_attractions(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions),
+        )
+    }
+
     pub fn subject_verb_open_attraction(player: PlayerAst, reminder: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

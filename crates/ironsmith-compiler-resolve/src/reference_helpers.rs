@@ -1612,6 +1612,13 @@ pub fn resolve_restriction_it_tag(
         Restriction::BecomeMonarch(player) => {
             Restriction::BecomeMonarch(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::VentureMoreThanOnceEachTurn(player) => {
+            Restriction::VentureMoreThanOnceEachTurn(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::BlockWithMoreThan { player, maximum } => Restriction::BlockWithMoreThan {
+            player: resolve_contextual_player_filter(player, refs)?,
+            maximum: *maximum,
+        },
         Restriction::Attack(filter) => {
             Restriction::attack(resolve_combat_actor_it_tag(filter, refs)?)
         }

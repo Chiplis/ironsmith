@@ -63,6 +63,8 @@ pub use granted_spell_keywords::{
 };
 mod leading_condition_wrapper;
 pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
+mod compound_self_predicates;
+pub use compound_self_predicates::parse_compound_self_predicate_line;
 mod filtered_lure;
 pub use filtered_lure::parse_filtered_creatures_able_to_block_source_line;
 mod each_player_land_plays;
@@ -509,6 +511,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
         "parse_characteristic_defining_pt_line"
+        | "parse_compound_self_predicate_line"
         | "parse_combat_requirement_static_line"
         | "parse_source_owned_flying_block_limit_line" => Vec::new(),
         // The complete assignment suffix proves its grammar; its source,
@@ -1949,6 +1952,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_base_toughness_only_line),
         multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
+        multi_static_ability_ast_passthrough_rule!(parse_compound_self_predicate_line),
     ];
     RULES
 }
@@ -2254,12 +2258,42 @@ pub fn parse_static_ability_ast_line_lexed(
     // static abilities, and drop them when it declines or errors, so an
     // abandoned static probe cannot taint the trigger/activated/effect
     // reading that actually owns the line.
-    let (result, loss) =
+    let (mut result, loss) =
         crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed_committed(tokens));
     if matches!(result, Ok(Some(_))) {
         crate::parse_loss::replay(loss.diagnostics());
     }
+    if let Ok(Some(abilities)) = &mut result {
+        bind_that_card_to_library_top(tokens, abilities);
+    }
     result
+}
+
+/// "As long as the top card of your library is a Goblin card, this creature
+/// has all activated abilities of that card" (Conspicuous Snoop, Crown of
+/// Convergence): "that card" is the library-top card the condition named,
+/// not a prior object. Rebind the line's `it` references to the live
+/// library-top reference the engine evaluates.
+fn bind_that_card_to_library_top(tokens: &[OwnedLexToken], abilities: &mut [StaticAbilityAst]) {
+    use ironsmith_core::tag::TagKeyWalk as _;
+    let words = crate::lexer::token_word_refs(tokens);
+    let condition_head = [
+        "as", "long", "as", "the", "top", "card", "of", "your", "library", "is",
+    ];
+    if !words.starts_with(&condition_head)
+        || !crate::word_primitives::sequence_occurs(&words, &["that", "card"])
+    {
+        return;
+    }
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    let top = crate::tag::CompilerReferenceTag::TopOfYourLibrary.bind();
+    for ability in abilities.iter_mut() {
+        ability.map_tag_keys(&mut |key| {
+            if key.as_str() == it || key.as_str() == "it" {
+                *key = top.clone().into();
+            }
+        });
+    }
 }
 
 fn parse_static_ability_ast_line_lexed_committed(

@@ -1025,6 +1025,23 @@ fn declare_blockers_internal(
             provided: blocking_creature_count,
         });
     }
+    // "[player] can't block with more than N creatures" (Mirri, Weatherlight
+    // Duelist) caps that player's own blocking creatures (CR 509.1c).
+    if blocking_creature_count > 0 {
+        let mut by_controller = std::collections::HashMap::<PlayerId, usize>::new();
+        for &blocker in &own_blockers {
+            if let Some(object) = game.object(blocker) {
+                *by_controller.entry(game.controller_of(object)).or_default() += 1;
+            }
+        }
+        for (player, provided) in by_controller {
+            if let Some(maximum) = game.max_blocking_creatures_for_player(player)
+                && provided > maximum
+            {
+                return Err(CombatError::TooManyBlockingCreatures { maximum, provided });
+            }
+        }
+    }
 
     // Second pass: validate minimum/maximum blockers.
     for (attacker_id, blocker_list) in &blockers_by_attacker {
@@ -1529,7 +1546,22 @@ fn block_declaration_obeying_more_requirements_exists(
         let distinct_blockers = attackers_by_blocker.len();
         let introduces_blocker = !attackers_by_blocker.contains_key(&blocker);
         let within_global_cap = max_creatures_can_block_each_combat(game)
-            .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum);
+            .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum)
+            && (!introduces_blocker
+                || game.object(blocker).is_none_or(|object| {
+                    let controller = game.controller_of(object);
+                    game.max_blocking_creatures_for_player(controller).is_none_or(|maximum| {
+                        let declared = attackers_by_blocker
+                            .keys()
+                            .filter(|declared| {
+                                game.object(**declared).is_some_and(|declared| {
+                                    game.controller_of(declared) == controller
+                                })
+                            })
+                            .count();
+                        declared < maximum
+                    })
+                }));
         let within_blocker_capacity =
             blocker_count < max_attackers_this_blocker_can_block(game, blocker, effects);
         let within_attacker_capacity = game

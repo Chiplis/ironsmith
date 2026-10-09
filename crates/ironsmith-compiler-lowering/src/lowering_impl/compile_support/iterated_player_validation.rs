@@ -567,6 +567,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | LoseGameForZeroLife(player)
         | WinGame(player)
         | BecomeMonarch(player)
+        | VentureMoreThanOnceEachTurn(player)
+        | BlockWithMoreThan { player, .. }
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
         PlayLandsMatching(player, filter)

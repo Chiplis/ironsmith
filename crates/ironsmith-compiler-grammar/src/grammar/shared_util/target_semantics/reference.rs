@@ -523,6 +523,29 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    // "target opponent previously dealt damage by it" (Diseased Vermin): a
+    // player this object has dealt damage to earlier this game, object-
+    // instance relative (CR 400.7).
+    if let [noun @ ("opponent" | "player"), "previously", "dealt", "damage", "by", source_words @ ..] =
+        remaining_words.as_slice()
+        && (source_words == ["it"] || crate::util::is_source_reference_words(source_words))
+    {
+        let base = if *noun == "opponent" {
+            PlayerFilter::Opponent
+        } else {
+            PlayerFilter::Any
+        };
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::WasDealtDamageBySourceThisGame {
+                    base: Box::new(base),
+                },
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
     // "target player who was dealt combat damage by this creature this turn".
     // A restriction sentence ("... this turn can't cast ...") has already
     // consumed the trailing turn window before the subject reaches here.

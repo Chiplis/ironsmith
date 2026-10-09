@@ -1151,9 +1151,11 @@ impl StaticAbilityModelInterpreter {
                 // A rule-modifying leaf ("This ability costs {2} less to
                 // activate if you have one or fewer cards in hand") carries
                 // the condition natively when it supports one.
-                if !converted.may_generate_continuous_effects() {
-                    return Some(converted.with_condition(combined.clone()).unwrap_or(converted));
-                }
+                // A rule-modifying leaf without a native condition ("As long
+                // as Mirri is tapped, no more than one creature can attack you
+                // each combat") must still function only while its condition
+                // holds (CR 604.2): it falls through to the conditional source
+                // grant below rather than becoming unconditional.
                 converted.with_condition(combined.clone()).unwrap_or_else(|| {
                     StaticAbility::new(
                         crate::static_abilities::GrantAbility::source(converted)

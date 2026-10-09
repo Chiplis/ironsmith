@@ -711,6 +711,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)

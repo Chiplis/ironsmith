@@ -406,6 +406,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "NinjutsuEffect" => decode_as::<T, ironsmith_core::NinjutsuEffect>(effect),
         "NoteLifeTotalEffect" => decode_as::<T, ironsmith_core::NoteLifeTotalEffect>(effect),
         "OpenAttractionEffect" => decode_as::<T, ironsmith_core::OpenAttractionEffect>(effect),
+        "RollToVisitAttractionsEffect" => {
+            decode_as::<T, ironsmith_core::RollToVisitAttractionsEffect>(effect)
+        }
         "PayAnyEnergyEffect" => decode_as::<T, ironsmith_core::PayAnyEnergyEffect>(effect),
         "PayAnyLifeEffect" => decode_as::<T, ironsmith_core::PayAnyLifeEffect>(effect),
         "TagPlayersEffect" => decode_as::<T, ironsmith_core::TagPlayersEffect>(effect),

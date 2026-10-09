@@ -720,7 +720,8 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::DrawCards(player) | R::DrawExtraCards(player) | R::PoisonCounters(player)
         | R::LoseLife(player) | R::DamageCauseLifeLoss(player) | R::DamageReduceLifeBelowOne(player)
         | R::ChangeLifeTotal(player) | R::LoseGame(player) | R::LoseGameForZeroLife(player)
-        | R::WinGame(player) | R::BecomeMonarch(player) | R::BeTargetedPlayer(player) => {
+        | R::WinGame(player) | R::BecomeMonarch(player) | R::BeTargetedPlayer(player)
+        | R::VentureMoreThanOnceEachTurn(player) | R::BlockWithMoreThan { player, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         R::CastSpellsMatching(player, filter) | R::CastMoreThanOneSpellEachTurn(player, filter)

@@ -120,6 +120,26 @@ pub(super) fn parse_effect_clause_unstacked(
     if let Some(effect) = parse_each_player_with_life_clause(tokens)? {
         return Ok(effect);
     }
+    // "it deals 2 damage to you unless it came under your control this turn"
+    // (Erg Raiders): a resolution-time state exception, not a payment.
+    if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
+        && unless > 0
+        && crate::lexer::token_word_refs(&tokens[unless + 1..]).as_slice()
+            == ["it", "came", "under", "your", "control", "this", "turn"]
+    {
+        let effect = parse_effect_clause_unstacked(&tokens[..unless])?;
+        return Ok(EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::Not(Box::new(
+                    crate::cards::builders::PredicateAst::Source(
+                        crate::cards::builders::SourcePredicateAst::SourceCameUnderYourControlThisTurn,
+                    ),
+                )),
+                if_true: vec![effect],
+                if_false: Vec::new(),
+            },
+        ));
+    }
     if let Some(effect) = crate::effect_sentences::clause_pattern_helpers::parse_can_attack_as_though_no_defender_clause(tokens)? {
         return Ok(effect);
     }

@@ -110,6 +110,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })
             | SubjectVerbActionAst::DamagePrevention(
@@ -1079,6 +1080,14 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { reminder }) => {
             Ok((
                 vec![Effect::open_attraction_with_reminder(*reminder)],
+                Vec::new(),
+            ))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions) => {
+            // CR 701.52a: the player rolls and visits their own Attractions.
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            Ok((
+                vec![Effect::roll_to_visit_attractions(subject.clone_player_filter())],
                 Vec::new(),
             ))
         }

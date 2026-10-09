@@ -53,6 +53,17 @@ pub const COST_EXILED_TAG: &str = "__cost_exiled__";
 /// Evaluated directly from the exile links rather than captured.
 pub const EXILED_BY_YOU_TAG: &str = "__exiled_by_you__";
 
+/// Runtime tag for the card on top of the filter context player's library
+/// ("that card" after "as long as the top card of your library is ...").
+/// Evaluated from the live library (CR 401.1), never captured.
+pub const TOP_OF_YOUR_LIBRARY_TAG: &str = "__top_of_your_library__";
+
+/// Runtime tag for the objects chosen in earlier rounds of the enclosing
+/// repeated process ("can't choose a card already chosen for <this>"). The
+/// process owns it: after each completed round it appends that round's choice
+/// before the next round chooses (Forgotten Lore).
+pub const PRIOR_PROCESS_CHOICES_TAG: &str = "__prior_process_choices__";
+
 /// The exact new object created by a zone-change replacement before its
 /// replacement follow-up effects execute.
 pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";

@@ -189,6 +189,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
     if let Some(model) = effect.downcast_ref::<RepeatProcessEffect>() {
         return encoded("RepeatProcessEffect", ironsmith_core::RepeatProcessEffect {
             effects: children(&model.effects)?, condition: model.condition, predicate: model.predicate.clone(),
+            choice_history: model.choice_history.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<RepeatEffectsEffect>() {

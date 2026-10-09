@@ -1275,6 +1275,18 @@ pub enum Restriction {
         attackers: ObjectFilter,
         permanents: ObjectFilter,
     },
+    /// "[players] can't block with more than N creatures [this combat]"
+    /// (Mirri, Weatherlight Duelist): caps the number of creatures each
+    /// matching player declares as blockers (CR 509.1b-c). Appended.
+    BlockWithMoreThan {
+        player: PlayerFilter,
+        maximum: usize,
+    },
+    /// "[players] can't venture into the dungeon more than once each turn"
+    /// (Keen-Eared Sentry): a matching player who already ventured this turn
+    /// can't venture again, including through the initiative (CR 701.49).
+    /// Appended.
+    VentureMoreThanOnceEachTurn(PlayerFilter),
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -1754,6 +1766,14 @@ impl Restriction {
             spells,
             maximum,
         }
+    }
+
+    pub fn block_with_more_than(player: PlayerFilter, maximum: usize) -> Self {
+        Self::BlockWithMoreThan { player, maximum }
+    }
+
+    pub fn venture_more_than_once_each_turn(player: PlayerFilter) -> Self {
+        Self::VentureMoreThanOnceEachTurn(player)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {

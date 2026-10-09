@@ -234,7 +234,7 @@ pub use player::{
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
     RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RevealChosenSubtypeEffect,
     ReverseTurnOrderEffect, RingTemptsYouEffect, RippleEffect, RollDiceChooseResultEffect,
-    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
+    RollDieEffect, RollToVisitAttractionsEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
     SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipScheduledEffect,
     SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect,
     WinTheGameEffect,

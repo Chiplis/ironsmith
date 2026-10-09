@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Reaper's Scythe",
+    "oracle_id": "b0f7c2a9-914a-48c1-871c-6f72946d61d8",
+    "text": "Mana cost: {2}{B}\nType: Artifact — Equipment\nJob select\nAt the beginning of your end step, put a soul counter on this Equipment for each player who lost life this turn.\nEquipped creature gets +1/+1 for each soul counter on this Equipment and is an Assassin in addition to its other types.\nDeath Sickle — Equip {2}"
+  }
+]

@@ -165,6 +165,7 @@ NinjutsuCostEffect	ironsmith_core::NinjutsuCostEffect	permanent
 NinjutsuEffect	ironsmith_core::NinjutsuEffect	permanent
 NoteLifeTotalEffect	ironsmith_core::NoteLifeTotalEffect	resources
 OpenAttractionEffect	ironsmith_core::OpenAttractionEffect	composition-m-z
+RollToVisitAttractionsEffect	ironsmith_core::RollToVisitAttractionsEffect	composition-m-z
 PayAnyEnergyEffect	ironsmith_core::PayAnyEnergyEffect	player
 PayAnyLifeEffect	ironsmith_core::PayAnyLifeEffect	player
 PayEnergyEffect	ironsmith_core::PayEnergyEffect	player

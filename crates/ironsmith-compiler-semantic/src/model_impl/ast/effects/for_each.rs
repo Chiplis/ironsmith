@@ -8,6 +8,10 @@ pub enum ForEachEffectAst {
     RepeatThisProcess,
     RepeatThisProcessMay,
     RepeatThisProcessOnce,
+    /// "repeat this process except that <chooser> can't choose a card already
+    /// chosen for <this>": a required repeat whose later rounds exclude every
+    /// object chosen in an earlier round of the same process.
+    RepeatThisProcessExcludingPriorChoices,
     /// A finite number of additional executions of the preceding program.
     RepeatThisProcessAdditional { count: Value },
     RepeatEffects {

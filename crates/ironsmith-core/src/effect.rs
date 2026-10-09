@@ -22,6 +22,8 @@ mod player_option_choice;
 mod reselect_attack;
 mod friend_or_foe;
 mod tie_break;
+mod attraction_visits;
+pub use attraction_visits::*;
 pub use ascend::*;
 pub use friend_or_foe::*;
 pub use chosen_counter_kind::*;

@@ -1685,14 +1685,29 @@ pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
     pub follow_up_effects: Vec<E>,
+    /// The player a follow-up's "that player" names, resolved when the shield
+    /// is created ("Choose target opponent. Regenerate this creature. When it
+    /// regenerates this way, that player may draw a card."). The follow-up
+    /// runs later in the shield's replacement program, which has none of the
+    /// creating resolution's targets, so it reads that player as the iterated
+    /// player of a one-player loop.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub follow_up_player: Option<PlayerFilter>,
 }
 
 impl<E> RegenerateEffect<E> {
+    /// Result id of the regeneration replacement's own instruction (the
+    /// damage removal). A follow-up "When it regenerates this way, ..."
+    /// is a reflexive trigger keyed to it (CR 701.19, 603.12): it triggers
+    /// only when this shield actually replaced a destruction.
+    pub const SHIELD_USED_ID: crate::effect::EffectId = crate::effect::EffectId(0xFFFF_FE00);
+
     pub fn new(target: ChooseSpec, duration: Until) -> Self {
         Self {
             target,
             duration,
             follow_up_effects: Vec::new(),
+            follow_up_player: None,
         }
     }
 
@@ -1706,6 +1721,11 @@ impl<E> RegenerateEffect<E> {
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_follow_up_player(mut self, player: Option<PlayerFilter>) -> Self {
+        self.follow_up_player = player;
         self
     }
 }
@@ -4984,6 +5004,36 @@ pub struct RepeatProcessEffect<E> {
     pub effects: Vec<E>,
     pub condition: EffectId,
     pub predicate: EffectPredicate,
+    /// Choices whose earlier rounds the process accumulates ("repeat this
+    /// process except that opponent can't choose a card already chosen").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub choice_history: Vec<RepeatProcessChoiceHistory>,
+}
+
+/// One choice accumulated across the rounds of a repeated process.
+///
+/// Before each later round the process moves the objects tagged `chosen` by
+/// the round that just finished into `previously_chosen`, and clears
+/// `chosen`. A round's choice can then exclude `previously_chosen`, while
+/// `chosen` keeps naming only the latest round's choice ("the last chosen
+/// card").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct RepeatProcessChoiceHistory {
+    pub chosen: crate::tag::TagKey,
+    pub previously_chosen: crate::tag::TagKey,
+}
+
+impl RepeatProcessChoiceHistory {
+    pub fn new(
+        chosen: impl Into<crate::tag::TagKey>,
+        previously_chosen: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self {
+            chosen: chosen.into(),
+            previously_chosen: previously_chosen.into(),
+        }
+    }
 }
 
 /// "You may pay [cost] to end this effect." (Licids): offers the player a
@@ -5027,7 +5077,13 @@ impl<E> RepeatProcessEffect<E> {
             effects,
             condition,
             predicate,
+            choice_history: Vec::new(),
         }
+    }
+
+    pub fn with_choice_history(mut self, choice_history: Vec<RepeatProcessChoiceHistory>) -> Self {
+        self.choice_history = choice_history;
+        self
     }
 }
 

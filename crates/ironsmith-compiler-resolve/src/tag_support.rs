@@ -1571,6 +1571,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
         | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
         | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)

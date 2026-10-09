@@ -705,7 +705,8 @@ where
         let follow_up_effects = convert_effects(payload.follow_up_effects.clone(), hooks)?;
         return Ok(Effect::new(
             crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone())
-                .with_follow_up_effects(follow_up_effects),
+                .with_follow_up_effects(follow_up_effects)
+                .with_follow_up_player(payload.follow_up_player.clone()),
         ));
     }
     if let Some(converted) =
@@ -1313,11 +1314,14 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RepeatProcessEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::RepeatProcessEffect::new(
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-            payload.condition,
-            payload.predicate.clone(),
-        )));
+        return Ok(Effect::new(
+            crate::effects::RepeatProcessEffect::new(
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+                payload.condition,
+                payload.predicate.clone(),
+            )
+            .with_choice_history(payload.choice_history.clone()),
+        ));
     }
     if let Some(payload) = M::downcast_ref::<
         ironsmith_core::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<M::Effect>,
@@ -1857,6 +1861,11 @@ where
             payload.max_count.clone(),
             payload.target.clone(),
         )));
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RollToVisitAttractionsEffect>(&effect)
+    {
+        return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::OpenAttractionEffect>(&effect) {
         return Ok(Effect::new(

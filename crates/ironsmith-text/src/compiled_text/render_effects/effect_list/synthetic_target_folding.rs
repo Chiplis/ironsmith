@@ -272,6 +272,8 @@ fn restriction_references_identity(
         | Restriction::LoseGameForZeroLife(player)
         | Restriction::WinGame(player)
         | Restriction::BecomeMonarch(player)
+        | Restriction::VentureMoreThanOnceEachTurn(player)
+        | Restriction::BlockWithMoreThan { player, .. }
         | Restriction::LoseUnspentMana(player, _)
         | Restriction::BeTargetedPlayer(player) => {
             player_filter_references_identity(player, identity)

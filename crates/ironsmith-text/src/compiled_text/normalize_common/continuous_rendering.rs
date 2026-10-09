@@ -5709,6 +5709,20 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::WinGame(filter) => {
             format!("{} can't win the game", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::VentureMoreThanOnceEachTurn(filter) => {
+            format!(
+                "{} can't venture into the dungeon more than once each turn",
+                describe_player_set_filter(filter)
+            )
+        }
+        crate::effect::Restriction::BlockWithMoreThan { player, maximum } => {
+            let noun = if *maximum == 1 { "creature" } else { "creatures" };
+            let count = if *maximum == 1 { "one".to_string() } else { maximum.to_string() };
+            format!(
+                "{} can't block with more than {count} {noun}",
+                describe_player_set_filter(player),
+            )
+        }
         crate::effect::Restriction::BecomeMonarch(filter) => {
             format!(
                 "{} can't become the monarch",

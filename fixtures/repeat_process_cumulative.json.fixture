@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Demonlord Belzenlok",
+    "oracle_id": "667ece0e-a474-4e11-8ac4-6c8fc354457c",
+    "text": "Mana cost: {4}{B}{B}\nType: Legendary Creature — Elder Demon\nPower/Toughness: 6/6\nFlying, trample\nWhen Demonlord Belzenlok enters, exile cards from the top of your library until you exile a nonland card, then put that card into your hand. If the card's mana value is 4 or greater, repeat this process. Demonlord Belzenlok deals 1 damage to you for each card put into your hand this way."
+  }
+]

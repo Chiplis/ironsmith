@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Petra Sphinx",
+    "oracle_id": "f1ae89ff-b23b-44b2-a30c-6f2ae3216189",
+    "text": "Mana cost: {2}{W}{W}{W}\nType: Creature — Sphinx\nPower/Toughness: 3/4\n{T}: Target player chooses a card name, then reveals the top card of their library. If that card has the chosen name, that player puts it into their hand. If it doesn't, the player puts it into their graveyard."
+  },
+  {
+    "name": "Vexing Arcanix",
+    "oracle_id": "2fd5b7e5-496c-4f6d-85e0-256afb7544d1",
+    "text": "Mana cost: {4}\nType: Artifact\n{3}, {T}: Target player chooses a card name, then reveals the top card of their library. If that card has the chosen name, that player puts it into their hand. Otherwise, they put it into their graveyard and this artifact deals 2 damage to them."
+  }
+]

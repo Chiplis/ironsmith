@@ -1810,6 +1810,14 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     if let Some(effects) = parse_mana_gated_restriction_pair(tokens)? {
         return Ok(Some(effects));
     }
+    // "Ferocious — If you control a creature with power 4 or greater, those
+    // creatures don't untap during their controllers' next untap steps."
+    // (Icy Blast, Send to Sleep): a leading state condition over a restriction
+    // on objects an earlier instruction named. The condition is checked as the
+    // instruction resolves, so it gates the restriction effect itself.
+    if let Some(conditional) = parse_leading_condition_anaphoric_cant_sentence(tokens)? {
+        return Ok(Some(conditional));
+    }
 
     if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
@@ -2058,6 +2066,38 @@ fn parse_mana_gated_restriction_pair(
     let mut effects = vec![EffectAst::subject_verb_target_only(target)];
     effects.extend(gated);
     Ok(Some(effects))
+}
+
+fn parse_leading_condition_anaphoric_cant_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
+    let Some(comma) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    let condition_tokens = &tokens[1..comma];
+    let body = trim_lexed_commas(&tokens[comma + 1..]);
+    // Only an anaphoric subject ("those creatures", "that creature", "they")
+    // is claimed; result intros and self restrictions keep their owners.
+    if condition_tokens.is_empty()
+        || !body
+            .first()
+            .is_some_and(|token| token.is_any_word(&["those", "that", "they"]))
+        || split_leading_result_prefix_lexed(tokens).is_some()
+    {
+        return Ok(None);
+    }
+    let Some(effects) = parse_cant_effect_sentence_with_grammar_entrypoint_lexed(body)? else {
+        return Ok(None);
+    };
+    let predicate = super::filters::parse_condition_predicate_lexed(condition_tokens)?;
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: effects,
+        if_false: Vec::new(),
+    })]))
 }
 
 pub fn parse_cant_effect_sentence(

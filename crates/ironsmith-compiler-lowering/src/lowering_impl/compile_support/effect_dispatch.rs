@@ -1922,6 +1922,7 @@ fn compile_effect_inner(
         effect,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
             | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+            | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
             | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
     ) {
         return Err(CardTextError::ParseError(

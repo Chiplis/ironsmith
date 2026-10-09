@@ -250,6 +250,17 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             &["put", "into", "their", "graveyards"],
             PriorEffectAction::PutIntoGraveyard,
         ),
+        // "for each card put into your hand this way" (Demonlord
+        // Belzenlok): cards that actually arrived in a hand.
+        (
+            &["put", "into", "your", "hand"],
+            PriorEffectAction::PutIntoHand,
+        ),
+        (&["put", "into", "hand"], PriorEffectAction::PutIntoHand),
+        (
+            &["put", "into", "their", "hand"],
+            PriorEffectAction::PutIntoHand,
+        ),
         (&["dealt", "damage"], PriorEffectAction::DealtDamage),
         (
             &["counters", "put", "on", "it"],
