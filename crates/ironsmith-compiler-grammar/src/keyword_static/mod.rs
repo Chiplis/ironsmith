@@ -46,6 +46,8 @@ pub use granted_casting_keywords::{
     parse_granted_madness_line,
 };
 mod granted_spell_keywords;
+mod domain_landwalk;
+pub use domain_landwalk::parse_domain_landwalk_line;
 pub use granted_spell_keywords::{
     granted_intrinsic_spell_keyword_ability, parse_granted_spell_keyword_line,
 };
@@ -1887,6 +1889,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_granted_spell_keyword_line),
         single_static_ability_ast_rule!(parse_cast_from_zone_using_keyword_abilities_line),
         single_static_ability_ast_rule!(parse_granted_madness_line),
+        multi_static_ability_ast_rule!(parse_domain_landwalk_line),
         single_static_ability_ast_rule!(parse_base_toughness_only_line),
         multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),
