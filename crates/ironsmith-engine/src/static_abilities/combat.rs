@@ -1117,6 +1117,42 @@ impl StaticAbilityKind for MaxCreaturesCanAttackYouEachCombat {
     }
 }
 
+/// "No more than N creatures can attack this planeswalker each combat"
+/// (The Eternal Wanderer, Tomik's grant): a cap on the attackers declared
+/// against this permanent (CR 508.1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaxCreaturesCanAttackSourceEachCombat {
+    pub maximum: usize,
+}
+
+impl MaxCreaturesCanAttackSourceEachCombat {
+    pub const fn new(maximum: usize) -> Self {
+        Self { maximum }
+    }
+}
+
+impl StaticAbilityKind for MaxCreaturesCanAttackSourceEachCombat {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MaxCreaturesCanAttackSourceEachCombat
+    }
+
+    fn display(&self) -> String {
+        let noun = if self.maximum == 1 {
+            "creature"
+        } else {
+            "creatures"
+        };
+        format!(
+            "No more than {} {} can attack this planeswalker each combat",
+            self.maximum, noun
+        )
+    }
+
+    fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
+        Some(self.maximum)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaxCreaturesCanBlockEachCombat {
     pub maximum: usize,

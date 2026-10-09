@@ -6509,6 +6509,9 @@ pub fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
         keyword_static_lines::CombatMaximumKind::Block => {
             StaticAbility::max_blockers_each_combat(maximum as usize)
         }
+        keyword_static_lines::CombatMaximumKind::AttackThis => {
+            StaticAbility::max_attackers_can_attack_source_each_combat(maximum as usize)
+        }
     };
     Ok(Some(ability))
 }

@@ -400,6 +400,9 @@ pub enum StaticAbilityId {
     LookAtSourceExiledCards,
     /// Generic "<event> instead" replacement; appended for wire compatibility.
     EventReplacementWithEffects,
+    /// "No more than N creatures can attack this planeswalker each combat";
+    /// appended for wire compatibility.
+    MaxCreaturesCanAttackSourceEachCombat,
 }
 
 impl StaticAbilityId {
@@ -483,6 +486,7 @@ impl StaticAbilityId {
             | CanBlockAdditionalForEach
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
+            | MaxCreaturesCanAttackSourceEachCombat
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater

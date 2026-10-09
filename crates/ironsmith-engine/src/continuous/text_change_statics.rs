@@ -563,6 +563,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::MayChooseNotToUntapDuringUntapStep(_) | P::PreventAllDamageToYou
         | P::ControlAttachedPermanent(_) | P::CountAsCardNamedForSpellEffect { .. }
         | P::MaxCreaturesCanAttackEachCombat(_) | P::MaxCreaturesCanAttackYouEachCombat(_)
+        | P::MaxCreaturesCanAttackSourceEachCombat(_)
         | P::MaxCreaturesCanBlockEachCombat(_) | P::ChooseBasicLandTypeAsEnters(_)
         | P::ChooseLandTypeAsEnters(_) | P::EnchantedLandIsChosenType(_)
         | P::SourceLandIsChosenType(_) | P::SoulbondSharedPowerToughness { .. }

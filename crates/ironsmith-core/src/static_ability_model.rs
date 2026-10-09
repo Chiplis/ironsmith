@@ -873,6 +873,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanAttackEachCombat(usize),
     MaxCreaturesCanAttackYouEachCombat(usize),
     MaxCreaturesCanBlockEachCombat(usize),
+    /// "No more than N creatures can attack this planeswalker each combat."
+    MaxCreaturesCanAttackSourceEachCombat(usize),
     ChooseBasicLandTypeAsEnters(String),
     ChooseLandTypeAsEnters(String),
     Enchant(crate::AuraAttachmentFilter),
@@ -2353,6 +2355,9 @@ where
             }
             StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum)
+            }
+            StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum) => {
+                StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum)
             }
             StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display)
@@ -6132,6 +6137,14 @@ impl<
             id: Some(StaticAbilityId::MaxCreaturesCanAttackYouEachCombat),
             label: format!("no more than {n} creatures can attack you each combat"),
             payload: StaticAbilityPayload::MaxCreaturesCanAttackYouEachCombat(n),
+        }
+    }
+    pub fn max_attackers_can_attack_source_each_combat(n: usize) -> Self {
+        let noun = if n == 1 { "creature" } else { "creatures" };
+        Self {
+            id: Some(StaticAbilityId::MaxCreaturesCanAttackSourceEachCombat),
+            label: format!("no more than {n} {noun} can attack this planeswalker each combat"),
+            payload: StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(n),
         }
     }
     pub fn max_blockers_each_combat(n: usize) -> Self {
