@@ -25,6 +25,7 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         // Regeneration is its own destruction replacement (CR 701.19).
         ReplacedEventSpec::Destroy { .. } => &["regenerate"],
         ReplacedEventSpec::ZoneChange { .. } => &[],
+        ReplacedEventSpec::DrawInstruction { .. } => &[],
     }
 }
 
@@ -134,6 +135,15 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 player,
                 source_filter: Some(source_filter),
                 combat_only,
+            })
+        }
+        // "If an opponent would draw two or more cards" (CR 121.2): the whole
+        // draw instruction.
+        ["draw", count, "or", "more", "cards"] => {
+            let minimum = crate::util::parse_number_word_u32(count)?;
+            (minimum >= 2).then_some(ReplacedEventSpec::DrawInstruction {
+                player: player_subject(subject)?,
+                minimum,
             })
         }
         // "If an opponent would gain life".

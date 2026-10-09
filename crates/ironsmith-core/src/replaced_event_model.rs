@@ -39,4 +39,9 @@ pub enum ReplacedEventSpec {
         from: Option<Zone>,
         to: Option<Zone>,
     },
+    /// "If an opponent would draw two or more cards" (Alms Collector): one
+    /// whole draw instruction of at least `minimum` cards by a matching
+    /// player. The instruction is proposed before its cards are drawn one at
+    /// a time (CR 121.2), so the replacement replaces all of them.
+    DrawInstruction { player: PlayerFilter, minimum: u32 },
 }

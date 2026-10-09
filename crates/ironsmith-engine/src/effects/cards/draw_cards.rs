@@ -751,7 +751,55 @@ fn execute_draw_instruction(
     let prepared = prepare_draw_instruction(effect, game, ctx)?;
     execute_prepared_draw_instruction(prepared, game, ctx)
 }
+/// A draw instruction of two or more cards is first proposed as one action,
+/// so a replacement that watches the whole instruction ("If an opponent would
+/// draw two or more cards, instead ...", Alms Collector) sees its number and
+/// may modify or replace it (CR 121.2, 614.1a). Each card is still drawn as
+/// its own event; single draws are unchanged and skip the proposal.
 pub(crate) fn execute_prepared_draw_instruction(
+    prepared: PreparedDrawInstruction,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+    if prepared.requested_count < 2
+        || !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game)
+    {
+        return execute_prepared_draw_cards(prepared, game, ctx);
+    }
+    let player = prepared.player;
+    crate::effects::composition::execute_keyword_action_with_outputs(
+        game,
+        ctx,
+        crate::events::Event::new_with_provenance(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::DrawCards,
+                player,
+                ctx.source,
+                prepared.requested_count,
+            ),
+            ctx.provenance,
+        ),
+        crate::effects::composition::KeywordActionOutput::Body,
+        crate::effects::composition::KeywordActionAmount::BodyMagnitude,
+        |game, ctx, action| {
+            execute_prepared_draw_cards(
+                PreparedDrawInstruction {
+                    player: action.player,
+                    requested_count: action.amount,
+                },
+                game,
+                ctx,
+            )
+            .map(crate::effects::CompletedEffectOutputs::aggregate_only)
+        },
+    )
+    .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+fn execute_prepared_draw_cards(
     prepared: PreparedDrawInstruction,
     game: &mut GameState,
     ctx: &mut ExecutionContext,

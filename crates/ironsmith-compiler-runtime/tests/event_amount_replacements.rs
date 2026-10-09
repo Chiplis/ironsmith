@@ -261,3 +261,31 @@ fn equal_treatment_registers_a_set_amount_for_the_turn() {
         ],
     )]);
 }
+
+#[test]
+fn alms_collector_replaces_a_whole_multi_card_draw() {
+    for definition in definitions("Alms Collector") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("DrawInstruction"), "{debug}");
+        assert!(debug.contains("minimum: 2"), "{debug}");
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        add_library_cards(&mut game, A, 5);
+        add_library_cards(&mut game, B, 5);
+        let source = game.create_object_from_definition(&definition, B, Zone::Hand);
+        let (a_hand, b_hand) = (
+            game.player(A).unwrap().hand.len(),
+            game.player(B).unwrap().hand.len(),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, B, &mut dm);
+        execute_effect(&mut game, &Effect::draw(3), &mut ctx).unwrap();
+        // CR 614.1a: instead of drawing three, each of them draws one.
+        assert_eq!(game.player(A).unwrap().hand.len(), a_hand + 1);
+        assert_eq!(game.player(B).unwrap().hand.len(), b_hand + 1);
+        // A single draw is not "two or more cards".
+        let mut ctx = ExecutionContext::new(source, B, &mut dm);
+        execute_effect(&mut game, &Effect::draw(1), &mut ctx).unwrap();
+        assert_eq!(game.player(B).unwrap().hand.len(), b_hand + 2);
+    }
+}

@@ -72,7 +72,8 @@ impl StaticAbilityKind for EventReplacementWithEffects {
         let replacement = match &self.event {
             ReplacedEventSpec::DamageToPlayer { .. }
             | ReplacedEventSpec::DamageToObject { .. }
-            | ReplacedEventSpec::LifeGain { .. } => ReplacementEffect::with_matcher(
+            | ReplacedEventSpec::LifeGain { .. }
+            | ReplacedEventSpec::DrawInstruction { .. } => ReplacementEffect::with_matcher(
                 source,
                 controller,
                 ReplacedEventMatcher {
@@ -152,6 +153,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 kind == EventKind::Damage
             }
             ReplacedEventSpec::LifeGain { .. } => kind == EventKind::LifeGain,
+            ReplacedEventSpec::DrawInstruction { .. } => kind == EventKind::KeywordAction,
             // Installed through their dedicated matchers instead.
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
@@ -209,6 +211,16 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 };
                 player.matches_player(gain.player, &ctx.filter_ctx)
             }
+            ReplacedEventSpec::DrawInstruction { player, minimum } => {
+                let Some(action) =
+                    downcast_event::<crate::events::KeywordActionEvent>(event)
+                else {
+                    return false;
+                };
+                action.action == crate::events::KeywordActionKind::DrawCards
+                    && action.amount >= *minimum
+                    && player.matches_player(action.player, &ctx.filter_ctx)
+            }
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
             | ReplacedEventSpec::ZoneChange { .. } => false,
@@ -234,6 +246,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::ZoneChange { .. } => {
                 "When a matching object would change zones".to_string()
+            }
+            ReplacedEventSpec::DrawInstruction { minimum, .. } => {
+                format!("When a matching player would draw {minimum} or more cards")
             }
         }
     }

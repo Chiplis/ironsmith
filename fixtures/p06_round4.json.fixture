@@ -218,5 +218,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "If any source would deal 1 or more damage to a permanent or player this turn, it deals 2 damage to that permanent or player instead.\nDraw a card."
+ },
+ {
+  "name": "Alms Collector",
+  "oracle_id": "278e51fe-3cd9-4c82-bd81-2164771f8611",
+  "mana_cost": "{3}{W}",
+  "type_line": "Creature — Cat Cleric",
+  "power": "3",
+  "toughness": "4",
+  "loyalty": null,
+  "oracle_text": "Flash\nIf an opponent would draw two or more cards, instead you and that player each draw a card."
  }
 ]
