@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Shay Cormac",
+    "oracle_id": "95892392-2ed3-4c1a-bbaa-4083f526769c",
+    "mana_cost": "{W}{B}",
+    "type_line": "Legendary Creature — Human Knight Rogue",
+    "oracle_text": "{1}: Permanents your opponents control lose hexproof, indestructible, protection, shroud, and ward until end of turn.\nWhenever a creature an opponent controls becomes the target of a spell or ability you control, put a bounty counter on that creature.\nWhenever a creature with a bounty counter on it dies, put two +1/+1 counters on Shay Cormac.",
+    "power": "1",
+    "toughness": "1",
+    "text": "Mana cost: {W}{B}\nType: Legendary Creature — Human Knight Rogue\nPower/Toughness: 1/1\n{1}: Permanents your opponents control lose hexproof, indestructible, protection, shroud, and ward until end of turn.\nWhenever a creature an opponent controls becomes the target of a spell or ability you control, put a bounty counter on that creature.\nWhenever a creature with a bounty counter on it dies, put two +1/+1 counters on Shay Cormac."
+  }
+]

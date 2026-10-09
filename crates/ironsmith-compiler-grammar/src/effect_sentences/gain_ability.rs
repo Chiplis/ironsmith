@@ -1852,6 +1852,62 @@ fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<
 /// ordinary "loses all abilities" reader over the same subject and tail, so
 /// its target and duration ownership stay identical; the subtype half
 /// reuses that target.
+/// "lose hexproof, indestructible, protection, shroud, and ward" (Shay
+/// Cormac): a bare "protection" or "ward" in a lost-ability list names every
+/// instance of that keyword, whatever its quality or cost (CR 702.16, 702.21),
+/// so it removes the whole static family; the other items are ordinary.
+fn lose_bare_ability_families(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<(Vec<GrantedAbilityAst>, bool)>, CardTextError> {
+    use crate::static_abilities::StaticAbilityId;
+    let mut families = Vec::new();
+    let mut rest: Vec<OwnedLexToken> = Vec::new();
+    let mut item: Vec<OwnedLexToken> = Vec::new();
+    let mut flush = |item: &mut Vec<OwnedLexToken>,
+                     rest: &mut Vec<OwnedLexToken>,
+                     families: &mut Vec<GrantedAbilityAst>| {
+        let words = crate::lexer::parser_token_word_refs(item);
+        match words.as_slice() {
+            ["protection"] => families.push(GrantedAbilityAst::StaticAbilityFamily(
+                StaticAbilityId::Protection,
+            )),
+            ["ward"] => families.push(GrantedAbilityAst::StaticAbilityFamily(StaticAbilityId::Ward)),
+            [] => {}
+            _ => {
+                if !rest.is_empty() {
+                    rest.push(OwnedLexToken::comma(TextSpan::synthetic()));
+                }
+                rest.extend(item.iter().cloned());
+            }
+        }
+        item.clear();
+    };
+    for token in ability_tokens {
+        if token.is_comma() || token.is_word("and") {
+            flush(&mut item, &mut rest, &mut families);
+        } else {
+            item.push(token.clone());
+        }
+    }
+    flush(&mut item, &mut rest, &mut families);
+    if families.is_empty() {
+        return Ok(None);
+    }
+    let mut abilities = if rest.is_empty() {
+        Vec::new()
+    } else {
+        let (parsed, is_choice) =
+            parse_granted_abilities_for_gain_clause(&rest, clause_words, false)?;
+        if is_choice || parsed.is_empty() {
+            return Ok(None);
+        }
+        parsed
+    };
+    abilities.extend(families);
+    Ok(Some((abilities, false)))
+}
+
 fn parse_lose_family_types_and_abilities(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -2078,6 +2134,8 @@ fn parse_simple_ability_modifier_clause_lexed(
                 )],
                 false,
             )
+        } else if losing && let Some(parsed) = lose_bare_ability_families(&ability_tokens, &clause_words)? {
+            parsed
         } else {
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, !losing)?
         };
