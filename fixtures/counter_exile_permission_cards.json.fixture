@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Thranduil's Decree",
+    "oracle_id": "d7cba934-02ad-4677-bb4d-50808b01b4f9",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+    "text": "Mana cost: {4}{U}{U}\nType: Instant\nCounter target spell. If a permanent spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled."
+  },
+  {
+    "name": "Kheru Spellsnatcher",
+    "oracle_id": "c01411e0-77b2-4e65-a369-5dbe13745769",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Snake Wizard",
+    "oracle_text": "Morph {4}{U}{U}\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {3}{U}\nType: Creature — Snake Wizard\nPower/Toughness: 3/3\nMorph {4}{U}{U}\nWhen this creature is turned face up, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard. You may cast that card without paying its mana cost for as long as it remains exiled."
+  }
+]
