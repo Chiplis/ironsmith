@@ -2614,6 +2614,11 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     {
         return Ok(Some(abilities));
     }
+    // An attached stat bonus and an ability share one affected object. Read
+    // that complete compound before the broad characteristic-only routes.
+    if let Some(abilities) = parse_attached_gets_and_has_ability_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     // Independent static sentences must be read before a permissive anthem
     // tail can absorb the next sentence into its keyword or subject filter.
     let sentences = split_lexed_sentences(tokens);

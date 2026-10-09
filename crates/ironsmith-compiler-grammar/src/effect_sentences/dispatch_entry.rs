@@ -6280,6 +6280,24 @@ pub fn parse_effect_sentences_lexed(
         std::panic::Location::caller(),
         || {
             let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
+            // Complete document readers can bypass the sentence loop's value
+            // binding. Bind a single, outer where-X clause after either route.
+            let mut inside_quote = false;
+            let mut outer_where = 0usize;
+            let mut all_where = 0usize;
+            for token in tokens {
+                if token.is_quote() { inside_quote = !inside_quote; }
+                if token.is_word("where") {
+                    all_where += 1;
+                    if !inside_quote { outer_where += 1; }
+                }
+            }
+            if split_lexed_sentences(tokens).len() == 1 && outer_where == 1 && all_where == 1
+                && let Some(value) = where_x_value_from_tokens(tokens) {
+                replace_unbound_x_in_effects_anywhere(
+                    &mut effects, &value, &crate::lexer::render_token_slice(tokens),
+                )?;
+            }
             if tokens.iter().any(|token| token.is_word("instead"))
                 && matches!(effects.as_slice(), [EffectAst::SubjectVerb(subject)]
                     if matches!(subject.action, crate::cards::builders::SubjectVerbActionAst::LifeResources(
@@ -12603,10 +12621,11 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 cost,
                 x_value,
                 x_maximum,
-                ..
-
+                independent_x_choice,
             }) => {
-                if cost.has_x() && x_value.is_none() && x_maximum.is_none() {
+                // This payment chooses its own amount. A later where-X clause
+                // may consume its result, but cannot define the payment itself.
+                if !independent_x_choice && cost.has_x() && x_value.is_none() && x_maximum.is_none() {
                     *x_value = Some(replacement.clone());
                 } else {
                     if let Some(x_value) = x_value.as_mut() {
