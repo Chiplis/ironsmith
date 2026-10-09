@@ -852,17 +852,31 @@ fn parse_counter_if_same_mana_value(
     } else {
         return Ok(None);
     };
-    let target = parse_counter_target_phrase(&tokens[..if_index])?;
+    let spell_tokens = &tokens[..if_index];
+    let targeted = spell_tokens.first().is_some_and(|token| token.is_word("target"));
+    let triggering = grammar::probe_all(
+        spell_tokens,
+        grammar::phrase(&["that", "spell"]),
+        "triggering spell",
+    )
+    .is_some();
+    if !targeted && !triggering {
+        return Ok(None);
+    }
+    let target = parse_counter_target_phrase(spell_tokens)?;
     let mut filter = ObjectFilter::default();
     filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
         tag: tag.into(),
         relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
     });
-    let predicate = match &target {
-        TargetAst::Tagged(spell, _) => {
-            crate::cards::builders::PredicateAst::TaggedMatches(spell.clone(), filter)
-        }
-        _ => crate::cards::builders::PredicateAst::TargetMatches(filter),
+    // "that spell" in a cast trigger is the triggering spell (CR 603.7c).
+    let predicate = if targeted {
+        crate::cards::builders::PredicateAst::TargetMatches(filter)
+    } else {
+        crate::cards::builders::PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            filter,
+        )
     };
     Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate,
