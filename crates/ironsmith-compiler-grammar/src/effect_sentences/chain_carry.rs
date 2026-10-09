@@ -1476,6 +1476,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A complete anchored turn instruction owns its internal comma before
+    // generic coordination constructs sibling clauses.
+    if let Some(effect) = super::dispatch_inner::parse_take_extra_turn_sentence(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(expanded) = expand_shared_life_equal_to_amount(tokens) {
         return parse_effect_chain_inner_lexed_unstacked(&expanded, recognize_control_flow);
     }

@@ -23,7 +23,7 @@ fn aluren_preserves_its_permission() {
         let text = support::rendered(&definition);
         assert!(text.contains("without paying"), "{text}");
         assert!(definition.spell_effect.is_none(), "permanent permission must be static");
-        assert_eq!(definition.abilities.iter().filter(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Static(_))).count(), 2);
+        assert_eq!(definition.abilities.iter().filter(|ability| matches!(&ability.kind, ironsmith::ability::AbilityKind::Static(ability) if ability.id() == ironsmith::static_abilities::StaticAbilityId::Grants)).count(), 2);
     }
 }
 
@@ -56,7 +56,7 @@ fn aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_ph
         ] {
             let card = ironsmith_compiler_runtime::compile_to_runtime_definition(name, text, false).unwrap();
             let id = game.create_object_from_definition(&card, bob, Zone::Hand);
-            let has_free_cast = compute_legal_actions(&game, bob).unwrap().iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == id && casting_method.is_alternative()));
+            let has_free_cast = compute_legal_actions(&game, bob).unwrap().iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == id && (casting_method.is_alternative() || matches!(casting_method.origin_method(), ironsmith::alternative_cast::CastingMethod::PlayFrom { use_alternative: Some(_), .. }))));
             assert_eq!(has_free_cast, expected, "{name}: empty mana pool, opponent's upkeep");
         }
     }
