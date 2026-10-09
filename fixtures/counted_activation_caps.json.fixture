@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Withering Wisps",
+    "oracle_id": "ce65c6ed-e5d4-48d8-b569-4e2774b2912c",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of the end step, if no creatures are on the battlefield, sacrifice this enchantment.\n{B}: This enchantment deals 1 damage to each creature and each player. Activate no more times each turn than the number of snow Swamps you control.",
+    "text": "Mana cost: {1}{B}{B}\nType: Enchantment\nAt the beginning of the end step, if no creatures are on the battlefield, sacrifice this enchantment.\n{B}: This enchantment deals 1 damage to each creature and each player. Activate no more times each turn than the number of snow Swamps you control."
+  }
+]

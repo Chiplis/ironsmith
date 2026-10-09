@@ -2074,7 +2074,9 @@ pub(crate) fn condition_could_be_affected_by(
         }
         C::CreatureDealtDamageBySourceDiedThisTurn { victim, .. } => filters_affected(&[victim]),
         C::AttachmentCount { attachment, .. } => filters_affected(&[attachment]),
-        C::CountComparison { count, .. } | C::CountParity { count, .. } => {
+        C::CountComparison { count, .. }
+        | C::CountParity { count, .. }
+        | C::MaxActivationsPerTurnCount(count) => {
             anthem_count_could_be_affected_by(count, modification)
         }
         C::ValueComparison { left, right, .. } => {

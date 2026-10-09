@@ -163,6 +163,8 @@ pub enum PredicateAst {
     MaxActivationsPerTurn(u32),
     /// Lifetime activation cap for the current object instance and ability.
     MaxActivationsPerObject(u32),
+    /// "Activate no more times each turn than the number of <objects>."
+    MaxActivationsPerTurnCount(crate::static_abilities::AnthemCountExpression),
     /// "if that turn is an extra turn"
     CurrentTurnIsExtra,
     /// How often the ability may fire, as the text states it — "only once each

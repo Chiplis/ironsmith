@@ -5609,6 +5609,25 @@ fn evaluate_condition_in_context(
                 game.ability_activation_count_this_turn(ctx.source, ability_index) < limit
             })
         }
+        Condition::MaxActivationsPerTurnCount(count) => {
+            let Some(external) = ctx.external() else {
+                return Ok(false);
+            };
+            if external.options.ignore_activation_limits {
+                return Ok(true);
+            }
+            let Some(ability_index) = external.ability_index else {
+                return Ok(false);
+            };
+            let limit = crate::static_abilities::resolve_anthem_count_expression_checked(
+                count,
+                game,
+                ctx.source,
+                ctx.controller,
+            )?;
+            Ok(i64::from(game.ability_activation_count_this_turn(ctx.source, ability_index))
+                < i64::from(limit))
+        }
         Condition::MaxActivationsPerObject(limit) => {
             let Some(ctx) = ctx.external() else {
                 return Ok(false);

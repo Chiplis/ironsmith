@@ -2309,6 +2309,10 @@ pub enum Condition {
     /// Combat participant identities come from the triggering declaration;
     /// current combat roles, life and poison are checked again on resolution.
     CombatParticipant(CombatParticipantCondition),
+    /// "Activate no more times each turn than the number of snow Swamps you
+    /// control." (Withering Wisps): a per-turn activation cap read when the
+    /// ability is activated (CR 602.5b). Appended for wire stability.
+    MaxActivationsPerTurnCount(AnthemCountExpression),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
