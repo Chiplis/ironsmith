@@ -179,6 +179,14 @@ fn read_special_shape(
             anthem_grant_grammar::ForEachSpecialShape::TotalUnspentManaYouHave => {
                 return Ok(Some(AnthemCountExpression::TotalUnspentMana(PlayerFilter::You)));
             }
+            anthem_grant_grammar::ForEachSpecialShape::PlayersLostGame => {
+                return Ok(Some(AnthemCountExpression::PlayersLostGame));
+            }
+            anthem_grant_grammar::ForEachSpecialShape::ManaSymbolsOfColorInAffectedCost(color) => {
+                return Ok(Some(AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(
+                    color,
+                )));
+            }
             anthem_grant_grammar::ForEachSpecialShape::UnspentGreenManaYouHave => {
                 return Ok(Some(AnthemCountExpression::UnspentMana {
                     player: PlayerFilter::You,

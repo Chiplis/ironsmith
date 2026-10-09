@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Rampant Frogantua",
+  "oracle_id": "a08393b5-603b-41c4-aa03-2ae9c74884a7",
+  "oracle_text": "Trample\nThis creature gets +10/+10 for each player who has lost the game.\nWhenever this creature deals combat damage to a player, you may mill that many cards. Put any number of land cards from among them onto the battlefield tapped.",
+  "text": "Mana cost: {2}{G}\nType: Creature — Frog\nPower/Toughness: 3/3\nTrample\nThis creature gets +10/+10 for each player who has lost the game.\nWhenever this creature deals combat damage to a player, you may mill that many cards. Put any number of land cards from among them onto the battlefield tapped."
+ },
+ {
+  "name": "Light from Within",
+  "oracle_id": "4d6ad734-b8b5-4d91-9b7b-1fa0c55bfa4f",
+  "oracle_text": "Chroma — Each creature you control gets +1/+1 for each white mana symbol in its mana cost.",
+  "text": "Mana cost: {2}{W}{W}\nType: Enchantment\nChroma — Each creature you control gets +1/+1 for each white mana symbol in its mana cost."
+ }
+]

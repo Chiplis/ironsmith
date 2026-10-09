@@ -33,6 +33,10 @@ pub enum ForEachSpecialShape<'a> {
     AttachedToSource { filter_tokens: &'a [OwnedLexToken] },
     UnspentGreenManaYouHave,
     TotalUnspentManaYouHave,
+    /// "player who has lost the game" (Rampant Frogantua).
+    PlayersLostGame,
+    /// "white mana symbol in its mana cost" (chroma, Light from Within).
+    ManaSymbolsOfColorInAffectedCost(crate::color::Color),
 }
 
 pub fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -113,6 +117,29 @@ pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachS
         });
     if let Some(shape) = alternation {
         return Some(shape);
+    }
+    if parse_complete_any_phrase(
+        tokens,
+        &[
+            &["player", "who", "has", "lost", "the", "game"],
+            &["player", "that", "has", "lost", "the", "game"],
+        ],
+    ) {
+        return Some(ForEachSpecialShape::PlayersLostGame);
+    }
+    if let [color, rest @ ..] = tokens
+        && let Some(color) = color
+            .as_word()
+            .and_then(crate::color::Color::from_name)
+        && parse_complete_any_phrase(
+            rest,
+            &[
+                &["mana", "symbol", "in", "its", "mana", "cost"],
+                &["mana", "symbol", "in", "their", "mana", "costs"],
+            ],
+        )
+    {
+        return Some(ForEachSpecialShape::ManaSymbolsOfColorInAffectedCost(color));
     }
     let (filter_tokens, tail) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("attached").void())?;

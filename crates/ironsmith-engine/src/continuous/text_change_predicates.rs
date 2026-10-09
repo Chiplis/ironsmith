@@ -386,7 +386,9 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
         | AnthemCountExpression::CountersOnSourceWithSurface { .. }
         | AnthemCountExpression::CountersOnSourceWithPronoun { .. }
         | AnthemCountExpression::StickersOnSource { .. } | AnthemCountExpression::CountersOnAffected(_)
-        | AnthemCountExpression::BlockingSource => {}
+        | AnthemCountExpression::BlockingSource
+        | AnthemCountExpression::PlayersLostGame
+        | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_) => {}
     }
     Ok(rewritten)
 }
