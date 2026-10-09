@@ -193,6 +193,21 @@ pub fn parse_become_copy_exception_shape(
         &[&["it", "has"], &["he", "has"], &["she", "has"]],
     ) {
         let ability_tokens = trim_lexed_commas(ability_tokens);
+        // "it has this ability and \"Whenever ...\"" (Aurora Shifter): the
+        // copy keeps the ability that made it a copy and gains the quoted one
+        // (CR 707.9a).
+        if let Some((_, rest)) =
+            primitives::strip_lexed_prefix_phrases(ability_tokens, &[&["this", "ability", "and"]])
+        {
+            let rest = trim_lexed_commas(rest);
+            if !rest.is_empty() {
+                return Some(BecomeCopyExceptionShape {
+                    preserve_source_abilities: true,
+                    granted_ability_tokens: Some(rest.to_vec()),
+                    ..Default::default()
+                });
+            }
+        }
         if !ability_tokens.is_empty() {
             return Some(BecomeCopyExceptionShape {
                 granted_ability_tokens: Some(ability_tokens.to_vec()),
