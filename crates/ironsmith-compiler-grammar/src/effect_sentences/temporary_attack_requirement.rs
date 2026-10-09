@@ -107,12 +107,15 @@ fn parse_during_target_players_next_turn(
     };
     let target_tokens = &after_during[..after_during.len() - after_player.len()];
     let body = crate::util::trim_edge_punctuation_tokens(after_player);
-    let Some((index, (), rest)) = primitives::find_prefix(body, || {
+    // "... attack you if able" (Taunt) names the player they must attack
+    // (CR 508.1d); without it any defender satisfies the requirement.
+    let Some((index, attacks_you, rest)) = primitives::find_prefix(body, || {
         (
             alt((primitives::kw("attack"), primitives::kw("attacks"))),
+            winnow::combinator::opt(primitives::kw("you")),
             primitives::phrase(&["if", "able"]),
         )
-            .void()
+            .map(|(_, you, ())| you.is_some())
     }) else {
         return Ok(None);
     };
@@ -152,7 +155,11 @@ fn parse_during_target_players_next_turn(
                 crate::util::span_from_tokens(target_tokens),
             )),
             EffectAst::subject_verb_cant_starting(
-                Restriction::must_attack(filter),
+                if attacks_you {
+                    Restriction::must_attack_player(filter, PlayerFilter::You)
+                } else {
+                    Restriction::must_attack(filter)
+                },
                 Until::EndOfTurn,
                 RestrictionStart::NextTurn(targeted_player),
                 None,

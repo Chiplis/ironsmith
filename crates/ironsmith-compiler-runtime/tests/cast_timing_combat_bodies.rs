@@ -33,3 +33,15 @@ fn berserkers_frenzy_keeps_the_higher_d20_and_has_both_block_rows() {
         assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
     }
 }
+
+const TAUNT: &str = "Mana cost: {U}\nType: Sorcery\nDuring target player's next turn, creatures that player controls attack you if able.";
+
+#[test]
+fn taunt_requires_the_target_players_creatures_to_attack_you_next_turn() {
+    for definition in compile::compile_both("Taunt", TAUNT) {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("MustAttackPlayer"), "{debug}");
+        assert!(debug.contains("NextTurn"), "{debug}");
+        assert!(debug.contains("player: You"), "{debug}");
+    }
+}
