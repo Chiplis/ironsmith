@@ -920,7 +920,12 @@ fn execute_untap_step_inner(
 
     for effect in &mut game.effect_store.restriction_effects {
         if consumed_untap_restrictions.contains(&effect.timestamp) {
-            effect.consumed_next_untap = true;
+            // "next two untap steps": each consumed step uses one up.
+            if effect.additional_untap_steps > 0 {
+                effect.additional_untap_steps -= 1;
+            } else {
+                effect.consumed_next_untap = true;
+            }
         }
     }
     let current_turn = game.turn.turn_number;

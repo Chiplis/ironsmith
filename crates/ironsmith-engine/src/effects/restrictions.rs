@@ -613,6 +613,11 @@ impl EffectExecutor for CantEffect {
                 if matches!(duration, Until::ControllersNextUntapStep) {
                     game.effect_store.restriction_effects.last_mut().unwrap().untap_step_object = Some(object_id);
                 }
+                game.effect_store
+                    .restriction_effects
+                    .last_mut()
+                    .unwrap()
+                    .additional_untap_steps = self.duration_surface.additional_untap_steps();
             }
             // A known empty affected set cannot become a future broad rule.
         } else {

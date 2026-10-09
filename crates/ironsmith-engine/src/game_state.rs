@@ -2245,6 +2245,9 @@ pub struct RestrictionEffectInstance {
     /// Exact affected incarnation whose current controller owns the next step.
     /// None preserves fixed-player native owners such as exert.
     pub untap_step_object: Option<ObjectId>,
+    /// Further untap steps of the same player a next-untap-step restriction
+    /// still covers after the next one ("next two untap steps").
+    pub additional_untap_steps: u32,
     /// Creation timestamp, for rule modifications that must be applied in
     /// timestamp order (maximum hand size, CR 613.11 / 402.2).
     pub timestamp: u64,
@@ -6699,6 +6702,7 @@ impl GameState {
                 expires_end_of_turn,
                 consumed_next_untap: false,
                 untap_step_object: None,
+                additional_untap_steps: 0,
                 timestamp,
             });
     }
