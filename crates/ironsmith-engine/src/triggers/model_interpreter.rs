@@ -1136,6 +1136,9 @@ impl super::Trigger {
                 Self::deals_damage_to(source, target)
             }
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
+            ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay { source_filter } => {
+                Self::new(crate::triggers::DamagePreventedThisWayTrigger { source_filter })
+            }
         }
     }
 

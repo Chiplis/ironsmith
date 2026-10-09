@@ -66,26 +66,86 @@ fn comeuppance_branches_on_the_prevented_sources_type() {
 }
 
 #[test]
-fn judgment_of_alexander_has_commanders_hit_the_prevented_creature() {
+fn judgment_of_alexander_registers_a_shield_linked_delayed_trigger() {
     for definition in routes("Judgment of Alexander", JUDGMENT_OF_ALEXANDER) {
         let text = spell_debug(&definition);
         assert!(text.contains("PreventAllDamageEffect"), "{text}");
         assert!(text.contains("controller: Some(Opponent)"), "{text}");
+        assert!(text.contains("ScheduleDelayedTriggerEffect"), "{text}");
+        assert!(text.contains("DamagePreventedThisWay"), "{text}");
+        assert!(text.contains("event_value_from_prior_prevention: true"), "{text}");
         assert!(text.contains("DealDamageBySourcesEffect"), "{text}");
         assert!(text.contains("is_commander: true"), "{text}");
         assert!(text.contains("SourcePower"), "{text}");
-        assert!(text.contains("triggering_source"), "{text}");
+    }
+}
+
+/// CR 603.7: each prevention by the shield triggers the delayed ability,
+/// which is put on the stack rather than resolving inline.
+#[test]
+fn judgment_of_alexander_prevention_puts_its_trigger_on_the_stack() {
+    use ironsmith::card::PowerToughness;
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decision::SelectFirstDecisionMaker;
+    use ironsmith::effects::{EffectContext, execute_effect};
+    use ironsmith::events::DamageTarget;
+    use ironsmith::events::cause::EventCause;
+    use ironsmith::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts;
+    use ironsmith::game_loop::put_triggers_on_stack_with_dm;
+    use ironsmith::triggers::{TriggerQueue, check_delayed_triggers};
+    use ironsmith::{CardId, CardType, GameState, PlayerId, Zone};
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for definition in routes("Judgment of Alexander", JUDGMENT_OF_ALEXANDER) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let bear = CardDefinitionBuilder::new(CardId::new(), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attacker = game.create_object_from_definition(&bear, bob, Zone::Battlefield);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let mut dm = SelectFirstDecisionMaker;
+        {
+            let mut ctx = EffectContext::new(source, alice, &mut dm);
+            for effect in definition.spell_effect.as_ref().unwrap().all_effects_owned() {
+                execute_effect(&mut game, &effect, &mut ctx).unwrap();
+            }
+        }
+        game.take_pending_trigger_events();
+        let result = process_damage_assignments_with_event_with_source_snapshot_opts(
+            &mut game,
+            attacker,
+            DamageTarget::Player(alice),
+            2,
+            true,
+            false,
+            EventCause::effect(),
+            None,
+        )
+        .unwrap();
+        assert!(result.assignments.is_empty(), "the shield prevents the damage");
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        let mut queue = TriggerQueue::new();
+        for event in game.take_pending_trigger_events() {
+            for entry in check_delayed_triggers(&mut game, &event) {
+                queue.add(entry);
+            }
+        }
+        put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        assert_eq!(game.stack.len(), 1, "the delayed ability goes on the stack");
     }
 }
 
 #[test]
-fn samite_ministration_gains_life_only_for_black_or_red_sources() {
+fn samite_ministration_registers_a_quality_gated_delayed_trigger() {
     for definition in routes("Samite Ministration", SAMITE_MINISTRATION) {
         let text = spell_debug(&definition);
         assert!(text.contains("PreventAllDamageEffect"), "{text}");
         assert!(text.contains("source_of_your_choice: true"), "{text}");
+        assert!(text.contains("ScheduleDelayedTriggerEffect"), "{text}");
+        assert!(text.contains("DamagePreventedThisWay"), "{text}");
+        assert!(text.contains("event_value_from_prior_prevention: true"), "{text}");
         assert!(text.contains("GainLifeEffect"), "{text}");
-        assert!(text.contains("TaggedObjectMatches"), "quality gate: {text}");
     }
 }
 

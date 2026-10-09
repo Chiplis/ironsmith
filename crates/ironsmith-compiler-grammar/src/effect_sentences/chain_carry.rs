@@ -2901,7 +2901,16 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
         if let Some(slot) = slot
             && let Ok(Some(rider)) = super::prevention_source_riders::parse(sentence)
         {
-            slot.push(rider);
+            match rider {
+                super::prevention_source_riders::PreventionRider::Inline(rider) => {
+                    slot.push(rider);
+                }
+                // The delayed trigger is registered right after the shield it
+                // links to (CR 603.7).
+                super::prevention_source_riders::PreventionRider::Delayed(delayed) => {
+                    effects.push(delayed);
+                }
+            }
             return true;
         }
     }

@@ -78,6 +78,8 @@ pub use wins_clash::WinsClashTrigger;
 
 mod qualified_die_roll;
 pub use qualified_die_roll::QualifiedDieRollTrigger;
+mod damage_prevented_this_way;
+pub use damage_prevented_this_way::DamagePreventedThisWayTrigger;
 
 mod player_becomes_monarch;
 pub use player_becomes_monarch::PlayerBecomesMonarchTrigger;

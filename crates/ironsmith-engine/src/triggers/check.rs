@@ -3975,6 +3975,15 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                     .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
                     .cloned()
                     .unwrap_or_default();
+                // A delayed ability linked to a prevention shield ("prevented
+                // this way") sees only that shield's prevention events.
+                if let (Some(shield), Some(prevented)) = (
+                    delayed.prevention_shield,
+                    trigger_event.downcast::<crate::events::DamagePreventedEvent>(),
+                ) && prevented.prevention_shield != Some(shield)
+                {
+                    continue;
+                }
                 let range_source = delayed.ability_source.unwrap_or(source);
                 if !trigger_event_is_in_range(
                     game,
@@ -4038,7 +4047,13 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         })
                         .unwrap_or_else(|| "Delayed Trigger".to_string());
 
-                    let event_value_amount = delayed
+                    // A shield-linked prevention event carries its own
+                    // prevented amount; other delayed events read the total.
+                    let per_event_prevented = trigger_event
+                        .downcast::<crate::events::DamagePreventedEvent>()
+                        .filter(|_| delayed.prevention_shield.is_some())
+                        .map(|prevented| prevented.amount as i32);
+                    let event_value_amount = per_event_prevented.or_else(|| delayed
                         .prevention_shield
                         .map(|shield_id| {
                             game.effect_store
@@ -4046,7 +4061,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                 .prevented_by_shield(shield_id)
                                 as i32
                         })
-                        .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
+                        .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx)));
                     let entry = TriggeredAbilityEntry {
                         linked_exile_owner: delayed.linked_exile_owner.clone(),
                         source_number_owner: delayed.source_number_owner.clone(),

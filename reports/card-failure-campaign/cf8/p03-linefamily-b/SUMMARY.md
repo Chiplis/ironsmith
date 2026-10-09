@@ -213,7 +213,7 @@ Warhammer bodies.
 | Blocker-side landwalk permission | Street Savvy | New static `CanBlockAsThoughNoLandwalk` (id appended) recognized in the heterogeneous granted tail; `can_block_with_view` skips landwalk evasion for that blocker | `blocker_landwalk_permission.rs` |
 
 Round 4 risk notes:
-- **Timing nuance (Samite Ministration, Judgment of Alexander):** "Whenever ... is prevented this way" runs as the shield's immediate additional part, not as a delayed trigger on the stack (CR 603.7). Recorded in `gameplay_gap`.
+- **Delayed prevention triggers (Samite Ministration, Judgment of Alexander):** "Whenever ... is prevented this way" is now a delayed triggered ability (CR 603.7). It is registered right after the shield and linked to that shield's id through `DelayedTriggerSpec::DamagePreventedThisWay` and `with_prior_prevention_event_value`. Each matching `DamagePreventedEvent` puts it on the stack with that event's prevented amount. Simultaneous damage merged into one prevention event triggers once.
 - **Channel Harm's target** is announced with the spell through the missing-target prelude. The rider then reads it from the shield's stored targets and target assignments.
 - **Engine schema hash:** three new `StaticAbilityId`/payload variants (appended) and `PreventAllDamageToTargetFromSourceFilter.follow_up_effects` change the schema. `append_target_distribution_requirements` gained an `optional_costs_paid` parameter (3 callers updated).
 - **Apostrophes:** new phrases accept both "didnt"/"didn't" and "source's"/"sources".

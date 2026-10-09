@@ -24,16 +24,29 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use winnow::Parser;
 use winnow::combinator::{alt, opt};
 
+/// How a prevention rider attaches to its shield.
+pub(super) enum PreventionRider {
+    /// "If damage is prevented this way, ...": the additional part of the
+    /// prevention effect, run as each damage event is prevented (CR 615.5).
+    Inline(EffectAst),
+    /// "Whenever damage is prevented this way, ...": a delayed triggered
+    /// ability linked to the shield, put on the stack each time it triggers
+    /// (CR 603.7).
+    Delayed(EffectAst),
+}
+
 /// Returns the rider, gated on the prevented source's quality when the
 /// opening names one. `None` when the sentence is not such a rider.
-pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<PreventionRider>, CardTextError> {
     let clean = crate::util::trim_edge_punctuation_tokens(sentence);
     let Some((opening_end, (), after_opening)) = primitives::find_prefix(clean, || {
         primitives::phrase(&["is", "prevented", "this", "way"])
     }) else {
         return Ok(None);
     };
-    let Some(quality) = parse_opening(&clean[..opening_end]) else {
+    let opening = &clean[..opening_end];
+    let triggered = opening.first().is_some_and(|token| token.is_word("whenever"));
+    let Some(quality) = parse_opening(opening) else {
         return Ok(None);
     };
     let after_opening = primitives::parse_prefix(after_opening, primitives::phrase(&["this", "turn"]))
@@ -45,7 +58,22 @@ pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<EffectAst>, Car
     let Some(body) = parse_body(body)? else {
         return Ok(None);
     };
-    Ok(Some(match quality {
+    if triggered {
+        // The source quality is part of the trigger event, not a resolution
+        // check (CR 603.4 does not apply; this is no intervening "if").
+        return Ok(Some(PreventionRider::Delayed(EffectAst::Delayed(
+            crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+                trigger: crate::cards::builders::TriggerSpec::DamagePreventedThisWay {
+                    source_filter: quality,
+                },
+                effects: vec![body],
+                one_shot: false,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            },
+        ))));
+    }
+    Ok(Some(PreventionRider::Inline(match quality {
         None => body,
         Some(filter) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
@@ -55,7 +83,7 @@ pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<EffectAst>, Car
             if_true: vec![body],
             if_false: Vec::new(),
         }),
-    }))
+    })))
 }
 
 /// "If damage" / "Whenever damage" [from a/an <quality> [source]].
@@ -305,7 +333,9 @@ mod tests {
     use super::*;
 
     fn rider(text: &str) -> Option<EffectAst> {
-        parse(&crate::lexer::lex_line(text, 0).unwrap()).unwrap()
+        match parse(&crate::lexer::lex_line(text, 0).unwrap()).unwrap()? {
+            PreventionRider::Inline(effect) | PreventionRider::Delayed(effect) => Some(effect),
+        }
     }
 
     #[test]
@@ -315,10 +345,22 @@ mod tests {
             Some(EffectAst::Permissions(PermissionEffectAst::May { .. }))
         ));
         for text in [
-            "If damage from a creature source is prevented this way, this spell deals that much damage to that creature.",
-            "If damage from a noncreature source is prevented this way, this spell deals that much damage to the source's controller.",
             "Whenever damage from a black or red source is prevented this way this turn, you gain that much life.",
             "Whenever damage from a creature is prevented this way, each commander creature you control deals damage equal to its power to that creature.",
+        ] {
+            assert!(
+                matches!(
+                    rider(text),
+                    Some(EffectAst::Delayed(
+                        crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn { .. }
+                    ))
+                ),
+                "{text}"
+            );
+        }
+        for text in [
+            "If damage from a creature source is prevented this way, this spell deals that much damage to that creature.",
+            "If damage from a noncreature source is prevented this way, this spell deals that much damage to the source's controller.",
         ] {
             assert!(
                 matches!(
