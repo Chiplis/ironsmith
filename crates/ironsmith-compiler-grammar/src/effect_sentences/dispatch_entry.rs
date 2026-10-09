@@ -12625,7 +12625,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             }) => {
                 // This payment chooses its own amount. A later where-X clause
                 // may consume its result, but cannot define the payment itself.
-                if !independent_x_choice && cost.has_x() && x_value.is_none() && x_maximum.is_none() {
+                if !*independent_x_choice && cost.has_x() && x_value.is_none() && x_maximum.is_none() {
                     *x_value = Some(replacement.clone());
                 } else {
                     if let Some(x_value) = x_value.as_mut() {
