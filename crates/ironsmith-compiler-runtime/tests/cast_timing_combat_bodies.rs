@@ -45,3 +45,23 @@ fn taunt_requires_the_target_players_creatures_to_attack_you_next_turn() {
         assert!(debug.contains("player: You"), "{debug}");
     }
 }
+
+const SIRENS_CALL: &str = "Mana cost: {U}\nType: Instant\nCast this spell only during an opponent's turn, before attackers are declared.\nCreatures the active player controls attack this turn if able.\nAt the beginning of the next end step, destroy all non-Wall creatures that player controls that didn't attack this turn. Ignore this effect for each creature the player didn't control continuously since the beginning of the turn.";
+
+#[test]
+fn sirens_call_binds_that_player_to_the_active_player_and_spares_newcomers() {
+    for definition in compile::compile_both("Siren's Call", SIRENS_CALL) {
+        let debug = format!("{definition:?}");
+        // Line 2: the requirement covers the active player's creatures only.
+        assert!(debug.contains("MustAttack"), "{debug}");
+        assert!(debug.contains("Active"), "{debug}");
+        // Line 3: the delayed destroy is limited to creatures the active
+        // player has controlled continuously since the turn began.
+        assert!(
+            debug.contains("controlled_continuously_since_turn_began: Some(true)"),
+            "{debug}"
+        );
+        assert!(debug.contains("Wall"), "{debug}");
+        assert!(!debug.contains("IteratedPlayer"), "'that player' is bound: {debug}");
+    }
+}

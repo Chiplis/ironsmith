@@ -63,7 +63,12 @@ struct LineFamilyRuleDef {
     run: StructuredLineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
+    LineFamilyRuleDef {
+        id: RuleId::new("continuous-control-exception"),
+        head: HeadDiscriminator::words(&[]),
+        run: run_continuous_control_exception_line_family,
+    },
     LineFamilyRuleDef {
         id: RuleId::new("trailing-keyword-activation"),
         head: HeadDiscriminator::words(&[]),
@@ -231,6 +236,94 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
         run: run_colon_nonactivation_statement_line_family,
     },
 ];
+
+/// The most recent earlier line that names a player names the active player
+/// ("Creatures the active player controls attack this turn if able."), so a
+/// later bare "that player" refers to the active player.
+fn previous_player_antecedent_is_active_player(ctx: &LineDispatchContext<'_>) -> bool {
+    let earlier = ctx.preprocessed.items.get(..ctx.idx).unwrap_or(&[]);
+    for item in earlier.iter().rev() {
+        let PreprocessedItem::Line(line) = item else {
+            continue;
+        };
+        let words = crate::lexer::parser_token_word_refs(&line.tokens);
+        if !words.iter().any(|word| matches!(*word, "player" | "players")) {
+            continue;
+        }
+        return words.windows(2).any(|pair| pair == ["active", "player"]);
+    }
+    false
+}
+
+/// "At the beginning of the next end step, destroy all non-Wall creatures
+/// that player controls that didn't attack this turn. Ignore this effect for
+/// each creature the player didn't control continuously since the beginning
+/// of the turn." (Siren's Call)
+///
+/// The trailing exception narrows the preceding instruction's object set to
+/// what that player has controlled continuously since the turn began; the
+/// filter grammar already owns that predicate ("the active player has
+/// controlled continuously since the beginning of the turn", Nettling Imp).
+/// "That player" is bound to its antecedent, the active player named by the
+/// card's previous player-naming line; any other antecedent is not claimed.
+fn run_continuous_control_exception_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> ParseOutcome<LineDispatchResult> {
+    let tokens = &ctx.line.tokens;
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].is_period() {
+        end -= 1;
+    }
+    let Some(boundary) = tokens[..end].iter().rposition(|token| token.is_period()) else {
+        return ParseOutcome::NoMatch;
+    };
+    let exception_words = crate::lexer::parser_token_word_refs(&tokens[boundary + 1..end]);
+    let is_exception = matches!(
+        exception_words.as_slice(),
+        [
+            "ignore", "this", "effect", "for", "each", "creature" | "permanent", "the", "player",
+            "didn't" | "didnt", "control", "continuously", "since", "the", "beginning", "of",
+            "the", "turn",
+        ]
+    );
+    if !is_exception {
+        return ParseOutcome::NoMatch;
+    }
+    let head = &tokens[..=boundary];
+    let positions = (0..head.len().saturating_sub(2))
+        .filter(|&idx| {
+            head[idx].is_word("that")
+                && head[idx + 1].is_word("player")
+                && head[idx + 2].is_any_word(&["controls", "control"])
+        })
+        .collect::<Vec<_>>();
+    let [position] = positions.as_slice() else {
+        return ParseOutcome::NoMatch;
+    };
+    if !previous_player_antecedent_is_active_player(ctx) {
+        return ParseOutcome::NoMatch;
+    }
+    let mut rewritten = head[..*position].to_vec();
+    for word in [
+        "the", "active", "player", "has", "controlled", "continuously", "since", "the",
+        "beginning", "of", "the", "turn",
+    ] {
+        rewritten.push(OwnedLexToken::word(word, crate::TextSpan::synthetic()));
+    }
+    rewritten.extend_from_slice(&head[*position + 3..]);
+    let rewritten_line = rewrite_line_tokens(ctx.line, &rewritten);
+    let rewritten_ctx = LineDispatchContext {
+        parse: ctx.parse,
+        preprocessed: ctx.preprocessed,
+        idx: ctx.idx,
+        line: &rewritten_line,
+        allow_unsupported: ctx.allow_unsupported,
+    };
+    match dispatch_line_family_registry(&rewritten_ctx) {
+        ParseOutcome::Match(matched) => ParseOutcome::matched(matched.value, span_from_tokens(tokens)),
+        other => other,
+    }
+}
 
 fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
     dispatch
