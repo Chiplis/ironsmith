@@ -1399,6 +1399,10 @@ pub struct RevealFromHandAsEntersSpec {
 pub struct ChooseCardNameAsEntersSpec {
     pub reveal_opponents_hands: bool,
     pub require_nonland_from_revealed_opponents: bool,
+    /// An opponent also names a card ("you and an opponent each choose").
+    pub opponent_also_chooses: bool,
+    /// Basic land card names can't be chosen.
+    pub exclude_basic_land_names: bool,
 }
 
 /// Spec for "as this enters, choose a basic land type" abilities.
@@ -3966,6 +3970,7 @@ impl StaticAbility {
             ChooseCardNameAsEntersSpec {
                 reveal_opponents_hands: true,
                 require_nonland_from_revealed_opponents: true,
+                ..ChooseCardNameAsEntersSpec::default()
             },
         )
     }

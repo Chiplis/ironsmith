@@ -2637,8 +2637,51 @@ impl GameState {
                                 !object.is_land()
                                     && object.name.eq_ignore_ascii_case(&canonical_name)
                             });
+                    let legal = legal
+                        && !(spec.exclude_basic_land_names
+                            && is_basic_land_card_name(&canonical_name));
                     if legal {
                         choices.chosen_named_option = Some(canonical_name);
+                    }
+                }
+                // "You and an opponent each choose a card name" (Null
+                // Chamber): the next opponent in turn order names a second
+                // card; both names are recorded on the permanent.
+                if spec.opponent_also_chooses
+                    && let Some(opponent) = self
+                        .team_apnap_player_order()
+                        .into_iter()
+                        .find(|player| {
+                            *player != prospective_controller
+                                && self.are_opponents(prospective_controller, *player)
+                        })
+                {
+                    let choice_ctx = crate::decisions::context::TextInputContext::new(
+                        opponent,
+                        Some(old_id),
+                        "Choose a card name",
+                    )
+                    .with_placeholder("Enter a card name")
+                    .require_known_value(true);
+                    let opponent_name = decision_maker.decide_text(self, &choice_ctx);
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let opponent_name = opponent_name.trim();
+                    if !opponent_name.is_empty() {
+                        let mut registry = CardRegistry::new();
+                        registry.ensure_cards_loaded([opponent_name]);
+                        let canonical = registry
+                            .get(opponent_name)
+                            .map(|definition| definition.name().to_string())
+                            .unwrap_or_else(|| opponent_name.to_string());
+                        if !(spec.exclude_basic_land_names && is_basic_land_card_name(&canonical)) {
+                            choices.chosen_named_option = Some(match choices.chosen_named_option.take() {
+                                Some(mine) if mine != canonical => format!("{mine}\n{canonical}"),
+                                Some(mine) => mine,
+                                None => canonical,
+                            });
+                        }
                     }
                 }
             }
@@ -6784,4 +6827,11 @@ mod player_removal_notification_public_contract_tests {
             "actual removal outcome and notification must agree"
         );
     }
+}
+
+/// CR 205.4c: the basic land card names (including snow-covered and Wastes).
+fn is_basic_land_card_name(name: &str) -> bool {
+    let name = name.trim();
+    let base = name.strip_prefix("Snow-Covered ").unwrap_or(name);
+    matches!(base, "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" | "Wastes")
 }

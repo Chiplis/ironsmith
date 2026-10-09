@@ -1566,8 +1566,31 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::PlayLandsMatching(player_filter, land_filter) => {
+                // "lands with the chosen names can't be played" (Null
+                // Chamber): one prohibition per name recorded on the source.
+                let land_filters: Vec<crate::target::ObjectFilter> =
+                    if land_filter.name.as_deref() == Some("{chosen name}") {
+                        source
+                            .and_then(|source| game.chosen_named_option(source))
+                            .map(|names| {
+                                names
+                                    .lines()
+                                    .map(str::trim)
+                                    .filter(|name| !name.is_empty())
+                                    .map(|name| {
+                                        let mut resolved = land_filter.clone();
+                                        resolved.name = Some(name.to_string());
+                                        resolved
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        vec![land_filter.clone()]
+                    };
+                for land_filter in land_filters {
                 let restriction = crate::game_state::LandPlayRestrictionFilter {
-                    filter: land_filter.clone(),
+                    filter: land_filter,
                     source,
                     controller,
                     iterated_player,
@@ -1587,6 +1610,7 @@ impl RestrictionExt for Restriction {
                             .or_default()
                             .push(restriction.clone());
                     }
+                }
                 }
             }
             Restriction::ActivateLoyaltyAbilitiesOf(filter) => {

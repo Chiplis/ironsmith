@@ -1082,6 +1082,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         display: String,
         reveal_opponents_hands: bool,
         require_nonland_from_revealed_opponents: bool,
+        /// "you and an opponent each choose a card name" (Null Chamber): an
+        /// opponent names a second card after you (CR 607.2b-style shared
+        /// choice record). Appended with a serde default.
+        #[cfg_attr(feature = "serde", serde(default))]
+        opponent_also_chooses: bool,
+        /// "other than a basic land card name".
+        #[cfg_attr(feature = "serde", serde(default))]
+        exclude_basic_land_names: bool,
     },
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
@@ -2665,10 +2673,14 @@ where
                 display,
                 reveal_opponents_hands,
                 require_nonland_from_revealed_opponents,
+                opponent_also_chooses,
+                exclude_basic_land_names,
             } => StaticAbilityPayload::ChooseCardNameAsEnters {
                 display,
                 reveal_opponents_hands,
                 require_nonland_from_revealed_opponents,
+                opponent_also_chooses,
+                exclude_basic_land_names,
             },
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
@@ -6129,6 +6141,8 @@ impl<
                 display,
                 reveal_opponents_hands: false,
                 require_nonland_from_revealed_opponents: false,
+                opponent_also_chooses: false,
+                exclude_basic_land_names: false,
             },
         }
     }
@@ -6141,6 +6155,26 @@ impl<
                 display,
                 reveal_opponents_hands: true,
                 require_nonland_from_revealed_opponents: true,
+                opponent_also_chooses: false,
+                exclude_basic_land_names: false,
+            },
+        }
+    }
+    /// "As this enters, you and an opponent each choose a card name other than
+    /// a basic land card name." (Null Chamber)
+    pub fn you_and_an_opponent_choose_nonbasic_card_names_as_enters(
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: false,
+                require_nonland_from_revealed_opponents: false,
+                opponent_also_chooses: true,
+                exclude_basic_land_names: true,
             },
         }
     }

@@ -1689,11 +1689,15 @@ impl StaticAbilityModelInterpreter {
                 display,
                 reveal_opponents_hands,
                 require_nonland_from_revealed_opponents,
+                opponent_also_chooses,
+                exclude_basic_land_names,
             } => StaticAbility::choose_card_name_as_enters_with_spec(
                 display.clone(),
                 super::ChooseCardNameAsEntersSpec {
                     reveal_opponents_hands: *reveal_opponents_hands,
                     require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+                    opponent_also_chooses: *opponent_also_chooses,
+                    exclude_basic_land_names: *exclude_basic_land_names,
                 },
             ),
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
@@ -3320,6 +3324,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         let ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
             reveal_opponents_hands,
             require_nonland_from_revealed_opponents,
+            opponent_also_chooses,
+            exclude_basic_land_names,
             ..
         } = self.payload()
         else {
@@ -3328,6 +3334,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         Some(super::ChooseCardNameAsEntersSpec {
             reveal_opponents_hands: *reveal_opponents_hands,
             require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+            opponent_also_chooses: *opponent_also_chooses,
+            exclude_basic_land_names: *exclude_basic_land_names,
         })
     }
 

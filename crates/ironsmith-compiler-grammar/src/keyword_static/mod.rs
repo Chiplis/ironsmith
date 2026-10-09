@@ -1638,6 +1638,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
         single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
         multi_static_ability_ast_rule!(parse_each_opponent_controls_more_cant_line),
+        multi_static_ability_ast_rule!(parse_spells_and_lands_with_chosen_names_cant_line),
         single_static_ability_ast_rule!(parse_each_opponent_who_did_this_turn_cant_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
@@ -2832,6 +2833,41 @@ fn parse_each_opponent_who_did_this_turn_cant_line(
         restriction,
         crate::lexer::render_token_slice(&clean).trim().to_string(),
     )))
+}
+
+/// "Spells with the chosen names can't be cast and lands with the chosen
+/// names can't be played." (Null Chamber): cast and land-play prohibitions for
+/// every name recorded as the permanent entered (CR 601.3, 305.2).
+fn parse_spells_and_lands_with_chosen_names_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    if !matches!(
+        words.as_slice(),
+        [
+            "spells", "with", "the", "chosen", "names" | "name", "can't" | "cant", "be", "cast",
+            "and", "lands", "with", "the", "chosen", "names" | "name", "can't" | "cant", "be",
+            "played",
+        ]
+    ) {
+        return Ok(None);
+    }
+    let display = crate::lexer::render_token_slice(&clean).trim().to_string();
+    let named = ObjectFilter {
+        name: Some("{chosen name}".to_string()),
+        ..ObjectFilter::default()
+    };
+    Ok(Some(vec![
+        StaticAbility::restriction(
+            crate::effect::Restriction::cast_spells_matching(PlayerFilter::Any, named.clone()),
+            display.clone(),
+        ),
+        StaticAbility::restriction(
+            crate::effect::Restriction::PlayLandsMatching(PlayerFilter::Any, named),
+            display,
+        ),
+    ]))
 }
 
 fn plural_card_type_word(word: &str) -> Option<crate::types::CardType> {
@@ -4821,6 +4857,18 @@ pub fn parse_choose_card_name_as_enters_line(
     else {
         return Ok(None);
     };
+    if crate::lexer::token_word_refs(tail_tokens)
+        == [
+            "you", "and", "an", "opponent", "each", "choose", "a", "card", "name", "other",
+            "than", "a", "basic", "land", "card", "name",
+        ]
+    {
+        return Ok(Some(
+            StaticAbility::you_and_an_opponent_choose_nonbasic_card_names_as_enters(format!(
+                "As {display_subject} enters, you and an opponent each choose a card name other than a basic land card name."
+            )),
+        ));
+    }
     if early_static_facts::parse_choose_card_name_tail_tokens(tail_tokens).is_none() {
         return Ok(None);
     }

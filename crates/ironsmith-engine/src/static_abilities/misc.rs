@@ -2712,6 +2712,8 @@ pub struct ChooseCardNameAsEnters {
     pub display: String,
     pub reveal_opponents_hands: bool,
     pub require_nonland_from_revealed_opponents: bool,
+    pub opponent_also_chooses: bool,
+    pub exclude_basic_land_names: bool,
 }
 
 impl ChooseCardNameAsEnters {
@@ -2724,6 +2726,8 @@ impl ChooseCardNameAsEnters {
             display,
             reveal_opponents_hands: spec.reveal_opponents_hands,
             require_nonland_from_revealed_opponents: spec.require_nonland_from_revealed_opponents,
+            opponent_also_chooses: spec.opponent_also_chooses,
+            exclude_basic_land_names: spec.exclude_basic_land_names,
         }
     }
 }
@@ -2741,6 +2745,8 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
         Some(ChooseCardNameAsEntersSpec {
             reveal_opponents_hands: self.reveal_opponents_hands,
             require_nonland_from_revealed_opponents: self.require_nonland_from_revealed_opponents,
+            opponent_also_chooses: self.opponent_also_chooses,
+            exclude_basic_land_names: self.exclude_basic_land_names,
         })
     }
 }
