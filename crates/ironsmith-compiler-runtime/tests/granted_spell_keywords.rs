@@ -296,3 +296,83 @@ fn silverquill_lecturer_demonstrate_triggers_for_creature_spells_only() {
         }
     }
 }
+
+/// Pays the first `count` legal offspring options.
+struct PayOffspring {
+    count: usize,
+    offered: usize,
+}
+
+impl DecisionMaker for PayOffspring {
+    fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+        true
+    }
+    fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+        if ctx.description.starts_with("Choose optional costs") {
+            let offspring: Vec<usize> = ctx
+                .options
+                .iter()
+                .filter(|option| option.legal && option.description.to_ascii_lowercase().contains("offspring"))
+                .map(|option| option.index)
+                .collect();
+            self.offered = offspring.len();
+            return offspring.into_iter().take(self.count).collect();
+        }
+        SelectFirstDecisionMaker.decide_options(game, ctx)
+    }
+}
+
+#[test]
+fn printed_and_granted_offspring_each_trigger_only_for_their_own_payment() {
+    for zinnia in compile::compile_both("Zinnia, Valley's Voice", ZINNIA) {
+        for paid in [0usize, 1, 2] {
+            let mut game = game();
+            game.create_object_from_definition(&zinnia, A, Zone::Battlefield);
+            let bear = fixture(
+                "Printed offspring bear",
+                "Mana cost: {1}{G}\nType: Creature — Bear\nPower/Toughness: 3/3\nOffspring {1}",
+            );
+            mana(&mut game, ManaSymbol::Green, 1);
+            mana(&mut game, ManaSymbol::Colorless, 4);
+            let spell = game.create_object_from_definition(&bear, A, Zone::Hand);
+            let action = compute_legal_actions(&game, A)
+                .unwrap()
+                .into_iter()
+                .find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
+                .unwrap();
+            let mut dm = PayOffspring { count: paid, offered: 0 };
+            let mut queue = TriggerQueue::new();
+            let mut state = PriorityLoopState::new(2);
+            let mut progress = apply_priority_response_with_dm(
+                &mut game,
+                &mut queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(action),
+                &mut dm,
+            )
+            .unwrap();
+            while state.has_pending_action() {
+                let GameProgress::NeedsDecisionCtx(ctx) = progress else { panic!("{progress:?}") };
+                progress =
+                    apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap();
+            }
+            assert_eq!(dm.offered, 2, "printed and granted offspring are separate costs");
+            while !game.stack.is_empty() {
+                resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+                let mut queue = TriggerQueue::new();
+                ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+            }
+            let tokens = game
+                .battlefield
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .filter(|object| {
+                    object.name == "Printed offspring bear"
+                        && matches!(object.kind, ironsmith::object::ObjectKind::Token)
+                })
+                .count();
+            // CR 702.175b: one token per paid instance, never per payment seen.
+            assert_eq!(tokens, paid);
+        }
+    }
+}
