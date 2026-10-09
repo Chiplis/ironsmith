@@ -88,6 +88,11 @@ impl EffectExecutor for SurveilEffect {
                 // CR 614.1a, 616.1: the surveil is proposed before any card is
                 // looked at, so "look at an additional two cards each time you
                 // surveil" (Enhanced Surveillance) modifies its number.
+                // Nothing could replace or modify it: skip the replacement
+                // pass (and its state copy) and perform the action directly.
+                if !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game) {
+                    return execute_surveil_body(game, ctx, player_id, count);
+                }
                 crate::effects::composition::execute_keyword_action_with_outputs(
                     game,
                     ctx,

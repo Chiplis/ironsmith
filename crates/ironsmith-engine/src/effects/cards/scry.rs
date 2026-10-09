@@ -227,6 +227,11 @@ impl EffectExecutor for ScryEffect {
                 // looked at, so "scry that many cards plus one instead"
                 // (Kenessos) modifies it and "draw that many cards instead"
                 // (Eligeth) replaces it.
+                // Nothing could replace or modify it: skip the replacement
+                // pass (and its state copy) and perform the action directly.
+                if !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game) {
+                    return execute_scry_body(game, ctx, player_id, count);
+                }
                 crate::effects::composition::execute_keyword_action_with_outputs(
                     game,
                     ctx,
