@@ -95,6 +95,22 @@ impl StaticAbilityKind for EventReplacementWithEffects {
                 WouldBeDestroyedMatcher::new(target.clone()),
                 action,
             ),
+            // Regeneration is its own destruction replacement (CR 701.19a);
+            // its matcher is the regeneration-shield matcher, so "can't be
+            // regenerated" suspends it (CR 701.19c).
+            ReplacedEventSpec::SourceDestructionRegenerates => ReplacementEffect::with_matcher(
+                source,
+                controller,
+                crate::events::permanents::matchers::RegenerationShieldMatcher::new(source),
+                ReplacementAction::Instead(vec![
+                    Effect::tap(crate::target::ChooseSpec::SpecificObject(source))
+                        .tag(crate::tag::TagKey::from("__it__")),
+                    Effect::clear_damage(crate::target::ChooseSpec::SpecificObject(source)),
+                    Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
+                        crate::target::ChooseSpec::SpecificObject(source),
+                    )),
+                ]),
+            ),
             // Zone-change owners bind the moving object as "it".
             ReplacedEventSpec::ZoneChange { object, from, to } => ReplacementEffect::with_matcher(
                 source,
@@ -157,7 +173,8 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             // Installed through their dedicated matchers instead.
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
-            | ReplacedEventSpec::ZoneChange { .. } => false,
+            | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
 
@@ -223,7 +240,8 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
-            | ReplacedEventSpec::ZoneChange { .. } => false,
+            | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
 
@@ -246,6 +264,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::ZoneChange { .. } => {
                 "When a matching object would change zones".to_string()
+            }
+            ReplacedEventSpec::SourceDestructionRegenerates => {
+                "When this permanent would be destroyed".to_string()
             }
             ReplacedEventSpec::DrawInstruction { minimum, .. } => {
                 format!("When a matching player would draw {minimum} or more cards")

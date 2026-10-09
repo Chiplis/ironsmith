@@ -26,6 +26,7 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         ReplacedEventSpec::Destroy { .. } => &["regenerate"],
         ReplacedEventSpec::ZoneChange { .. } => &[],
         ReplacedEventSpec::DrawInstruction { .. } => &[],
+        ReplacedEventSpec::SourceDestructionRegenerates => &[],
     }
 }
 
@@ -197,6 +198,20 @@ pub fn parse_if_event_would_happen_instead_line(
     let Some(event) = replaced_event(header) else {
         return Ok(None);
     };
+    // "If this creature would be destroyed, regenerate it.": regeneration is
+    // the destruction replacement itself (CR 701.19a), not a shield created
+    // after the destruction was replaced.
+    if let ReplacedEventSpec::Destroy { target } = &event
+        && target.source
+        && words_of(crate::util::trim_edge_punctuation_tokens(&tokens[comma + 1..]))
+            == ["regenerate", "it"]
+    {
+        return Ok(Some(StaticAbility::event_replacement_with_effects(
+            ReplacedEventSpec::SourceDestructionRegenerates,
+            Vec::new(),
+            crate::lexer::render_token_slice(tokens),
+        )));
+    }
     let mut body: Vec<OwnedLexToken> = tokens[comma + 1..].to_vec();
     // Exactly one "instead": leading the program, or closing its first
     // sentence ("..., exile that many cards from your graveyard instead. If

@@ -268,5 +268,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "Each time target permanent would deal damage to a permanent or player this turn, it deals double that damage to that permanent or player instead.\nSplice onto Arcane {2}{R}{R} (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)"
+ },
+ {
+  "name": "Clergy of the Holy Nimbus",
+  "oracle_id": "66566999-f70a-4f14-9bf0-23325295a977",
+  "mana_cost": "{W}",
+  "type_line": "Creature — Human Cleric",
+  "power": "1",
+  "toughness": "1",
+  "loyalty": null,
+  "oracle_text": "If this creature would be destroyed, regenerate it.\n{1}: This creature can't be regenerated this turn. Only your opponents may activate this ability."
  }
 ]

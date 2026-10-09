@@ -69,3 +69,28 @@ fn entries_under_an_opponents_control_this_turn_enter_under_yours() {
         }
     }
 }
+
+#[test]
+fn would_be_destroyed_regenerate_it_is_the_regeneration_replacement() {
+    use ironsmith::decision::SelectFirstDecisionMaker;
+    use ironsmith::effect::Effect;
+    use ironsmith::effects::{EffectContext as ExecutionContext, execute_effect};
+    use ironsmith::{GameState, PlayerId, Zone};
+    for definition in definitions("Clergy of the Holy Nimbus") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("SourceDestructionRegenerates"), "{debug}");
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let clergy =
+            game.create_object_from_definition(&definition, PlayerId::from_index(0), Zone::Battlefield);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(clergy, PlayerId::from_index(1), &mut dm);
+        execute_effect(
+            &mut game,
+            &Effect::destroy(ironsmith::target::ChooseSpec::SpecificObject(clergy)),
+            &mut ctx,
+        )
+        .unwrap();
+        // CR 701.19a: regenerated, not destroyed; it stays and is tapped.
+        assert_eq!(game.object(clergy).map(|object| object.zone), Some(Zone::Battlefield));
+    }
+}

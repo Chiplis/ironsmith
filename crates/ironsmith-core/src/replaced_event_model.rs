@@ -44,4 +44,10 @@ pub enum ReplacedEventSpec {
     /// player. The instruction is proposed before its cards are drawn one at
     /// a time (CR 121.2), so the replacement replaces all of them.
     DrawInstruction { player: PlayerFilter, minimum: u32 },
+    /// "If this creature would be destroyed, regenerate it." (Clergy of the
+    /// Holy Nimbus): the source's own destruction is replaced by
+    /// regeneration itself (CR 701.19a) — tap it, remove all damage from it,
+    /// remove it from combat — every time, and "can't be regenerated" turns it
+    /// off (CR 701.19c). The program is the engine's regeneration.
+    SourceDestructionRegenerates,
 }
