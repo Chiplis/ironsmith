@@ -2821,6 +2821,51 @@ fn parse_skip_untap_steps_line(
 /// grant functioning from the graveyard, checked when the card is cast,
 /// CR 601.3). Both the permission and the condition are read by their shared
 /// grammars; an unreadable condition declines the line.
+/// "You may cast this card from your graveyard, but not from anywhere else."
+/// (Haakon, Stromgald Scourge): the graveyard cast permission plus a cast
+/// restriction checked where the card is when it is proposed (CR 601.3e) —
+/// castable only from the graveyard, whatever other permission applies.
+fn parse_source_graveyard_cast_only_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    const PERMISSION: &[&str] = &["you", "may", "cast", "this", "card", "from", "your", "graveyard"];
+    let clean = trim_edge_punctuation(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(&clean, primitives::phrase(PERMISSION)) else {
+        return Ok(None);
+    };
+    let rest = crate::lexer::trim_lexed_commas(rest);
+    let Some(((), tail)) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["but", "not", "from", "anywhere", "else"]),
+    ) else {
+        return Ok(None);
+    };
+    if !tail.is_empty() {
+        return Ok(None);
+    }
+    let permission_len = clean.len() - rest.len();
+    let permission_tokens = trim_edge_punctuation(&clean[..permission_len]);
+    let Some(mut abilities) =
+        parse_static_ability_ast_line_lexed_single_without_leading_condition(&permission_tokens)?
+    else {
+        return Ok(None);
+    };
+    if abilities.is_empty() {
+        return Ok(None);
+    }
+    abilities.push(
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::only_if(
+                ironsmith_core::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
+            ),
+            "You can cast this card only from your graveyard".to_string(),
+        )
+        .into(),
+    );
+    Ok(Some(abilities))
+}
+
 fn parse_source_graveyard_cast_trailing_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -2897,6 +2942,9 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![StaticAbilityAst::Static(
             ability.with_condition(condition),
         )]));
+    }
+    if let Some(abilities) = parse_source_graveyard_cast_only_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_source_graveyard_cast_trailing_condition_line(tokens)? {
         return Ok(Some(abilities));

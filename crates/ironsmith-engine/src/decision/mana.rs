@@ -2138,6 +2138,19 @@ pub(crate) fn spell_cast_restrictions_allow(
             let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
                 return true;
             };
+            // "You may cast this card from your graveyard, but not from
+            // anywhere else" (Haakon): where the card is cast from is checked
+            // at the proposal, against the zone the card is in (CR 601.3e),
+            // never against the stack it is moving to.
+            if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(
+                ironsmith_core::Condition::SourceIsInZone(zone),
+            )) = &kind.condition
+            {
+                return kind
+                    .timing
+                    .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing))
+                    && spell.zone == *zone;
+            }
             // A typed condition reads the spell itself as its source.
             if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) =
                 &kind.condition
