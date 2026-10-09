@@ -48,3 +48,12 @@ fn the_restriction_survives_into_the_next_turn_and_ends_after_it() {
     assert!(instance.is_active(&game, turn + 1));
     assert!(!instance.is_active(&game, turn + 2));
 }
+
+#[test]
+fn peace_talks_renders_its_printed_two_turn_duration() {
+    for definition in support::definitions("Peace Talks", PEACE_TALKS) {
+        let rendered = ironsmith_text::canonical_compiled_lines(&definition).join("\n");
+        assert!(rendered.contains("This turn and next turn, "), "{rendered}");
+        assert!(!rendered.contains("until end of turn"), "{rendered}");
+    }
+}
