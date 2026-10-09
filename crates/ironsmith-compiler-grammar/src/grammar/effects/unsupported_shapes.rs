@@ -263,10 +263,17 @@ pub fn has_power_vs_count_constraint_sentence_lexed(tokens: &[OwnedLexToken]) ->
 pub fn has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    word_stream_has_phrase(
-        &crate::lexer::token_word_refs(tokens),
-        PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_PHRASE,
-    )
+    let words = crate::lexer::token_word_refs(tokens);
+    // "the number of <permanents> that were put into graveyards from the
+    // battlefield this turn" is a supported turn-history count.
+    let counted = words.windows(PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_PHRASE.len() + 2)
+        .any(|window| {
+            window[..2] == ["that", "were"]
+                && window[2..] == *PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_PHRASE
+        })
+        && word_stream_has_phrase(&words, &["the", "number", "of"]);
+    !counted
+        && word_stream_has_phrase(&words, PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_PHRASE)
 }
 
 pub fn has_phase_out_until_leaves_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
