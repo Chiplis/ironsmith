@@ -3997,6 +3997,11 @@ pub fn parse_filter_has_granted_ability_line(
     if matches!(parse_absorb_keyword_line(tokens), Ok(Some(_))) {
         return Ok(None);
     }
+    // A descriptor's "has" qualifies the entrants rather than granting an
+    // ability when the complete entry-counter rule owns this line.
+    if matches!(parse_enters_with_additional_counter_for_filter_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 

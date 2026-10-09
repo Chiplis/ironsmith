@@ -974,7 +974,8 @@ pub(crate) fn choose_spec_dynamic_count_value_where_clause(spec: &ChooseSpec) ->
             let basis = if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult) {
                 "the result".to_string()
             } else {
-                describe_value(value)
+                describe_where_x_basis(value)
+                    .unwrap_or_else(|| describe_value(value))
             };
             Some(format!(", where X is {basis}"))
         }

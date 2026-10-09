@@ -689,7 +689,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // and the singular self subject ("This spell").  Deriving only the
         // word `spells` from its function name made the latter unreachable
         // through the migrated registry.
-        "parse_spells_cost_modifier_line" => vec![
+        "parse_spells_cost_modifier_line"
+        | "parse_double_conditional_this_spell_cost_reduction_line" => vec![
             StaticAbilityLineHeadHint::Single("spells"),
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "spell"),

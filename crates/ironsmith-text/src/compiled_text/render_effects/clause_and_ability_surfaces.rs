@@ -1663,7 +1663,9 @@ fn coordinated_apply_prefers_where_x(apply: &crate::effects::ApplyContinuousEffe
             _ => false,
         };
 
-    apply
+    apply.target_spec.as_ref().is_some_and(|spec|
+        choose_spec_dynamic_count_value_where_clause(spec).is_some())
+        || apply
         .modification
         .as_ref()
         .is_some_and(modification_prefers_where_x)

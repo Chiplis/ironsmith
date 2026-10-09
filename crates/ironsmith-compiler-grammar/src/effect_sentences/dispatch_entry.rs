@@ -6515,6 +6515,22 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // The complete restriction plus affirmative stat change owns its sentence.
+    // Whole-document readers must not recover only the base-stat suffix.
+    let statements = split_lexed_sentences(tokens);
+    if statements.iter().any(|sentence|
+        effect_grammar::parse_cant_blocked_base_power_toughness_tokens(sentence).is_some())
+    {
+        let mut effects = Vec::new();
+        for sentence in statements {
+            if let Some(compound) = super::dispatch_inner::parse_cant_blocked_then_base_pt_subject_verb(sentence)? {
+                effects.extend(compound);
+            } else {
+                effects.extend(parse_effect_sentences_lexed(sentence)?);
+            }
+        }
+        return Ok(effects);
+    }
     if let Some(effects) =
         subject_verb_followups::parse_animation_size_replacement_document(tokens)?
     {

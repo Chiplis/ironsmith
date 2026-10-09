@@ -1756,6 +1756,11 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
 pub fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // A permission plus its "if you cast this way" entry rider is scoped
+    // to that permission. It must not also become an unrestricted ETB rule.
+    if matches!(parse_play_from_permission_with_enter_tapped_this_way_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     // Both complete readers describe the same unfiltered replacement. Keep
     // one canonical payload instead of competing AllPermanents/Filter forms.
     if is_permanents_enter_tapped_line_lexed(tokens) {

@@ -1809,7 +1809,7 @@ pub fn parse_target_gets_unblockable_subject_verb(
     ]))
 }
 
-fn parse_cant_blocked_then_base_pt_subject_verb(
+pub(super) fn parse_cant_blocked_then_base_pt_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_cant_blocked_base_power_toughness_tokens(tokens) else {

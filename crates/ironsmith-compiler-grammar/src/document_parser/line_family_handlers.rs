@@ -2165,7 +2165,10 @@ pub(super) fn run_statement_probe_line_family(
     // read it as "if <condition>, it gains ...", a resolution effect that
     // never changes the cost, so the static cost-modifier family owns the
     // line and reports its own error when it can't read it.
-    if is_this_spell_cost_modifier_line(ctx) {
+    if is_this_spell_cost_modifier_line(ctx)
+        || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
+            &ctx.line.tokens), Ok(Some(_)))
+    {
         crate::parse_trace::event("statement-probe: declined for this-spell cost modifier");
         return ParseOutcome::NoMatch;
     }
@@ -2461,7 +2464,10 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("statement-line");
-    if is_this_spell_cost_modifier_line(ctx) {
+    if is_this_spell_cost_modifier_line(ctx)
+        || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
+            &ctx.line.tokens), Ok(Some(_)))
+    {
         return ParseOutcome::NoMatch;
     }
     if line_family_claimed!(rule, run_keyword_line_family(ctx))
