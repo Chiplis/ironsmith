@@ -49,3 +49,15 @@ fn dream_harvest_grants_free_casts_of_every_card_exiled_this_way_until_end_of_tu
         assert!(debug.contains("UntilEndOfTurn") || debug.contains("EndOfTurn"), "{debug}");
     }
 }
+
+const PLARGG_AND_NASSARI: &str = "Mana cost: {3}{R}{R}\nType: Legendary Creature — Demon Goblin\nPower/Toughness: 5/5\nAt the beginning of your upkeep, each player exiles cards from the top of their library until they exile a nonland card. An opponent chooses a nonland card exiled this way. You may cast up to two spells from among the other cards exiled this way without paying their mana costs.";
+
+#[test]
+fn plargg_and_nassari_lets_an_opponent_exclude_one_card_then_casts_up_to_two_others() {
+    for definition in support::definitions("Plargg and Nassari", PLARGG_AND_NASSARI) {
+        let debug = format!("{:?}", definition.abilities);
+        assert!(debug.contains("IsNotTaggedObject"), "the opponent's pick is excluded: {debug}");
+        assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
+    }
+}
