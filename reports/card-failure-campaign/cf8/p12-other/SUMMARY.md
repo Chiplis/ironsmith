@@ -300,3 +300,116 @@ These dependants stay blocked, with the gaps named:
   `parse_copy_activated_abilities_line`.
 - **`EffectStore.next_combat_attack_requirements`** is a new field. Any checkpoint or serialization
   code that lists EffectStore fields explicitly needs it; none was found by grep.
+
+## Round 5 (coordinator: finish the remaining blocked owned items and the copy dependants)
+
+**Package counts (123 cards):** 52 source-proposed / 2 already-on-main / 69 blocked.
+
+**Other rows:**
+- 2 `semantic-fix-collateral` rows.
+- 16 `dependant-proposed` rows for other packages' cards: 8 from round 4 and 8 from round 5.
+
+### Owned items (one commit each)
+- **Light Up the Night:**
+  - Mechanism: a new field, `AlternativeCastingMethod::Flashback.x_minimum` (serde default). Every
+    construction and match site across all crates was updated (patterns use `{ total_cost, .. }`;
+    constructions use `x_minimum: 0`).
+  - Grammar: "If you cast this spell this way, X can't be 0" sets the field.
+  - Engine: `compute_spell_cast_x_bounds_with_reduction` applies it only for that alternative
+    method.
+  - Text renders the sentence.
+- **Icingdeath:**
+  - Root cause: `parse_granted_abilities_for_gain_clause` split the ability list with
+    `split_lexed_slices_on_comma`, which ignores quotes. That cut `"Whenever equipped creature
+    attacks, tap ...,"` at its inner comma.
+  - Fix: list items now split only at top-level commas and between adjacent quoted rules.
+  - Unit tests cover that list and a keyword + quoted-trigger + quoted-activation list.
+- **Moonlit Meditation:**
+  - "The first time you would create one or more tokens each turn" wraps `TokenCreationTemplates`
+    in a ValueComparison condition: TokensCreated(You) this turn == 0 (CR 614.1).
+  - The "tokens that are copies of enchanted permanent" template is a `CreateTokenCopy`. The
+    replacement application resolves it from the replacement source: the attached host for
+    enchanted/equipped/fortified, otherwise a unique battlefield match. It captures that object's
+    copiable values when the replacement applies.
+- **Mr. House:**
+  - "If <cond>, instead create that token and <more>" becomes a SelfReplacement of the prior
+    creation.
+  - "a six-sided die plus an additional six-sided die for each mana from Treasures spent to
+    activate this ability" becomes one roll plus
+    `RepeatEffects(ManaFromSourceSpentToCastThisSpell{ThisAbility})`.
+
+### Dependant mechanisms, biggest shared mechanism first
+
+**1. Copy-cards-then-cast procedure** — `copy_cast_procedure.rs`:
+- "Copy each <filter>" / "Copy the <filter>" opens a group: `TagMatchingObjects`, then
+  `ForEachTagged` with a may-cast of a copy, or a single cast.
+- "For each card exiled this way, copy it, and you may cast the copy" iterates the exiled cards.
+- This covers Arcane Bombardment (p04), Zethi (p04) and Mizzix's Mastery (p07).
+
+**2. Characteristic-list modes:**
+- New Wild Shape template (p04): "Until end of turn, <subject> has that base power and toughness,
+  becomes that creature type, and gains that ability".
+- Each bullet is read as "becomes a <Type> with base power and toughness P/T and gains <ability>".
+
+**3. Become-copy exception "it has this ability and "...""** — Aurora Shifter (p07). The copy
+preserves the source ability and gains the quoted one.
+
+**4. "tapped and attacking"** — chain splitting no longer cuts this token entry at its "and".
+Calamity (p07); its "Repeat this process once" depends on p11.
+
+**5. Casualty X copy** — Ob Nixilis (p07). The existing engine effect lacked a text renderer, so it
+compiled to an "Unsupported effect" marker. It is now rendered.
+
+**6. "has the loyalty abilities of <this>"** — Kasmina (p02). A granted `CopyActivatedAbilities`
+with the source as donor and `only_loyalty`. The engine excludes only the recipient's own id, so the
+donor is kept.
+
+### Still blocked dependants (gaps)
+- **Koh:** needs a persistent "last chosen card" designation per source, plus copying triggered
+  abilities from an exiled card.
+- **Vesuvan Doppelganger:**
+  - needs the color-exclusion copy exception ("doesn't copy that creature's color");
+  - needs a granted quoted ability whose own "this ability" refers to itself (recursive grant)
+    inside an enter-as-copy replacement.
+- **Garth One-Eye:** needs runtime card-registry lookup to create a copy of a named card from
+  outside the game.
+- **Esoteric Duplicator:** "If you do, at the beginning of the next end step, create a token that's
+  a copy of that artifact" fails the if-clause split. The delayed body needs an LKI copy of a
+  sacrificed object; not isolated without a probe.
+- **Spellweaver Volute:**
+  - "copy the enchanted instant card": an Aura on a graveyard card has no zone in the filter, so
+    the filtered copy opener declines it;
+  - re-attaching the Aura to a graveyard card is unverified.
+- **Bloodthirsty Adversary:** "exile ... and copy them" sits inside a reflexive "when you pay"
+  trigger body. The document-level copy procedure does not run there.
+- **Baron Helmut Zemo:**
+  - "up to three of the copies" needs a choose-up-to-N step;
+  - the activation cost "with fifteen or more black mana symbols among their mana costs" is an
+    aggregate exile-cost constraint.
+- **Myra the Magnificent:** the visit-attraction copy is tied to a chosen Attraction.
+- **Reversal of Fortune:** "You may copy an instant or sorcery card in it", where "it" is the
+  revealed hand of the target opponent. Binding the owner to the announced target opponent is
+  unverified.
+
+### New tests (unrun)
+- `p12_flashback_x_minimum.rs`
+- `p12_multi_quote_token.rs`, plus unit tests in `gain_ability.rs`
+- `p12_first_time_token_copy_replacement.rs`
+- `p12_instead_that_token_and_dice_per_mana.rs`
+- `p12_copy_filtered_cards_then_cast.rs`
+- `p12_become_copy_keeps_this_ability.rs`
+- `p12_tapped_and_attacking_copy.rs`
+- `p12_casualty_x_planeswalker_copy.rs`
+- `p12_shared_loyalty_abilities.rs`
+- extended `p12_characteristic_token_modes.rs` (Wild Shape)
+
+### Round 5 merge risks
+- **`Flashback.x_minimum`** touches 18 files, including test literals in engine, text,
+  artifact-baker and compiler-runtime. Any branch adding a `Flashback { total_cost }` pattern or
+  construction needs `..` or `x_minimum`.
+- **The granted-ability item split** changes how any quoted list with inner commas is read. Lists
+  without quotes behave as before.
+- **`TokenTemplateReplacement`** gains `first_time_each_turn`. Its header now also accepts "the
+  first time ... each turn".
+- **`copy_cast_procedure::open`** now tries a filter-named copy opener before parsing the sentence.
+  It only fires when the next sentence is a matching cast statement.
