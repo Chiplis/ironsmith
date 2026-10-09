@@ -925,7 +925,7 @@ const PAIR_SHAPES: &[Shape] = &[
     },
     Shape {
         id: RuleId::new("copied-cards-cast"),
-        head: HeadDiscriminator::words(&["copy", "then"]),
+        head: HeadDiscriminator::words(&["copy", "then", "when", "exile"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
             let effects = match (sentences.get(sentence_idx), sentences.get(sentence_idx + 1)) {

@@ -60,3 +60,14 @@ fn chandra_ultimate_chooses_an_exiled_spell_card_and_casts_three_copies() {
         assert!(debug.contains("ChooseObjects"), "{debug}");
     }
 }
+
+#[test]
+fn bloodthirsty_adversary_casts_copies_inside_its_reflexive_payment_result() {
+    for definition in definitions(3) {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+        let debug = format!("{definition:?}");
+        assert!(copy_casts(&debug) >= 1, "{debug}");
+        assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+        assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+    }
+}

@@ -115,6 +115,33 @@ pub(crate) fn read(
     copy: &[OwnedLexToken],
     cast: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "..., then exile up to that many target instant and/or sorcery cards
+    // ... and copy them." (Bloodthirsty Adversary): the copy closes a longer
+    // instruction. The lead is read as its own sentence; when it is a result
+    // conditional ("When you pay this cost one or more times, ..."), the copy
+    // casts belong inside that result.
+    if copy_statement(copy).is_none()
+        && choose_then_copy(copy)?.is_none()
+        && let Some(and) = (1..copy.len()).rev().find(|&index| {
+            copy[index].is_word("and")
+                && copy.get(index + 1).is_some_and(|token| token.is_word("copy"))
+        })
+        && copy_statement(&copy[and + 1..]).is_some()
+    {
+        let Some(pair) = read(&copy[and + 1..], cast)? else {
+            return Ok(None);
+        };
+        let lead = crate::util::trim_commas(&copy[..and]);
+        let mut effects = super::parse_effect_sentence_lexed(&lead)?;
+        match effects.last_mut() {
+            Some(EffectAst::Conditionals(
+                crate::cards::builders::ConditionalEffectAst::WhenResult { effects: inner, .. }
+                | crate::cards::builders::ConditionalEffectAst::IfResult { effects: inner, .. },
+            )) => inner.extend(pair),
+            _ => effects.extend(pair),
+        }
+        return Ok(Some(effects));
+    }
     let (choice, (tag, times)) = if let Some((choice, tag, times)) = choose_then_copy(copy)? {
         (Some(choice), (tag, times))
     } else {
