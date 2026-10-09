@@ -73,3 +73,5 @@ card_reader!(spirit_sisters_call,"Spirit-Sister's Call","Mana cost: {3}{W}{B}\nT
 card_reader!(tishanas_tidebinder,"Tishana's Tidebinder","Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 3/2\nFlash\nWhen this creature enters, counter up to one target activated or triggered ability. If an ability of an artifact, creature, or planeswalker is countered this way, that permanent loses all abilities for as long as this creature remains on the battlefield. (Mana abilities can't be targeted.)");
 
 card_reader!(transcendent_dragon,"Transcendent Dragon","Mana cost: {4}{U}{U}\nType: Creature — Dragon\nPower/Toughness: 4/3\nFlash\nFlying\nWhen this creature enters, if you cast it, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard, then you may cast it without paying its mana cost.");
+
+card_reader!(flaring_flame_kin,"Flaring Flame-Kin","Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"");

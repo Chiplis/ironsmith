@@ -4390,6 +4390,15 @@ pub fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<iro
 pub fn parse_composed_anthem_effects_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens) {
+        let Some(abilities) = parse_composed_anthem_effects_line(split.remainder_tokens)? else {
+            return Ok(None);
+        };
+        let condition = parse_static_condition_clause(split.condition_tokens)?;
+        return abilities.into_iter()
+            .map(|ability| add_static_ability_ast_condition(ability, condition.clone()))
+            .collect::<Result<Vec<_>, _>>().map(Some);
+    }
     let anthem_head = static_keyword_line_shapes::parse_composed_anthem_head(tokens);
     if matches!(
         anthem_head,

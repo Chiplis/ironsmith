@@ -178,7 +178,14 @@ pub fn parse_anthem_color_and_quoted_activated_grant_line(
     else {
         return Ok(None);
     };
-    let ability_tokens_storage = trim_edge_punctuation(&tokens[line_shape.have_token + 1..]);
+    // Keep the delimiters: they establish that this is an authored ability
+    // grant, rather than an unquoted continuation of the anthem.
+    let mut ability_tokens_storage = &tokens[line_shape.have_token + 1..];
+    while ability_tokens_storage.last().is_some_and(|token| matches!(token.kind,
+        crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) {
+        ability_tokens_storage = &ability_tokens_storage[..ability_tokens_storage.len() - 1];
+    }
+
     if !ability_tokens_storage
         .first()
         .is_some_and(|token| token.is_quote())
