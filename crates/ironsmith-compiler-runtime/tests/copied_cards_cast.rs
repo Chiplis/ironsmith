@@ -71,3 +71,14 @@ fn bloodthirsty_adversary_casts_copies_inside_its_reflexive_payment_result() {
         assert!(debug.contains("PlusOnePlusOne"), "{debug}");
     }
 }
+
+#[test]
+fn zethi_casts_copies_of_exiled_cards_with_kick_counters() {
+    for definition in definitions(4) {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+        let debug = format!("{definition:?}");
+        assert!(copy_casts(&debug) >= 1, "{debug}");
+        assert!(debug.contains("kick"), "{debug}");
+        assert!(debug.contains("Exile"), "{debug}");
+    }
+}

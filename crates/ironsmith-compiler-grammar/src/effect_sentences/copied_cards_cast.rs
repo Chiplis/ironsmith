@@ -111,6 +111,35 @@ fn choose_then_copy(
     )))
 }
 
+fn copy_cast(free: bool) -> EffectAst {
+    EffectAst::Permissions(PermissionEffectAst::May {
+        effects: vec![EffectAst::subject_verb_cast_tagged(
+            CompilerReferenceTag::It.bind(),
+            PlayerAst::You,
+            false,
+            true,
+            free,
+            None,
+        )],
+    })
+}
+
+/// "copy each exiled card [you own] <qualifier>" → the exiled-card filter.
+fn described_exiled_pool(
+    sentence: &[OwnedLexToken],
+) -> Result<Option<crate::target::ObjectFilter>, CardTextError> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    let words = parser_token_word_refs(sentence);
+    if !words.starts_with(&["copy", "each", "exiled", "card"]) || words.len() < 5 {
+        return Ok(None);
+    }
+    // Tokens after "copy each exiled": "card you own with a kick counter on it".
+    let described = &sentence[3..];
+    let mut filter = crate::object_filters::parse_object_filter(described, false)?;
+    filter.zone = Some(crate::zone::Zone::Exile);
+    Ok(Some(filter))
+}
+
 pub(crate) fn read(
     copy: &[OwnedLexToken],
     cast: &[OwnedLexToken],
@@ -142,6 +171,17 @@ pub(crate) fn read(
         }
         return Ok(Some(effects));
     }
+    // "Copy each exiled card you own with a kick counter on it." (Zethi): a
+    // described pool of exiled cards, iterated by filter.
+    if let Some(filter) = described_exiled_pool(copy)? {
+        let Some(free) = cast_statement(cast) else {
+            return Ok(None);
+        };
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+            filter,
+            effects: vec![copy_cast(free)],
+        })]));
+    }
     let (choice, (tag, times)) = if let Some((choice, tag, times)) = choose_then_copy(copy)? {
         (Some(choice), (tag, times))
     } else {
@@ -153,16 +193,7 @@ pub(crate) fn read(
     let Some(free) = cast_statement(cast) else {
         return Ok(None);
     };
-    let one_cast = EffectAst::Permissions(PermissionEffectAst::May {
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            CompilerReferenceTag::It.bind(),
-            PlayerAst::You,
-            false,
-            true,
-            free,
-            None,
-        )],
-    });
+    let one_cast = copy_cast(free);
     let mut effects: Vec<EffectAst> = choice.into_iter().collect();
     let casts = vec![one_cast; times as usize];
     if tag.as_str() == CompilerReferenceTag::SourceExiled.as_str() {
