@@ -674,6 +674,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn followed_stack_replacement_survives_runtime_checkpoint_before_and_after_cast() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = create_creature(&mut game, alice, Zone::Exile);
+        let stable_id = game.object(card).unwrap().stable_id;
+        register_library_bottom_for_exiled_card(&mut game, alice, card);
+        let checkpoint = game.clone();
+        game.move_object(card, Zone::Hand, crate::events::cause::EventCause::from_game_rule()).unwrap();
+        game = checkpoint;
+        let spell = game.move_object(card, Zone::Stack, crate::events::cause::EventCause::from_game_rule()).unwrap();
+        let checkpoint = game.clone();
+        game.move_object(spell, Zone::Exile, crate::events::cause::EventCause::from_game_rule()).unwrap();
+        game = checkpoint;
+        game.effect_store.replacement_effects.clear_one_shot_effects();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(spell, alice, &mut dm);
+        execute_effect(&mut game, &crate::effect::Effect::move_to_zone(
+            ChooseSpec::SpecificObject(spell), Zone::Graveyard, false,
+        ), &mut ctx).unwrap();
+        let moved = game.find_object_by_stable_id(stable_id).unwrap();
+        assert_eq!(game.object(moved).unwrap().zone, Zone::Library);
+        assert!(game.effect_store.replacement_effects.effects().is_empty());
+    }
+
     /// Gandalf of the Secret Fire: the replacement exiles with time counters
     /// and only then grants suspend to the exiled card (CR 400.7, 702.62a).
     #[test]

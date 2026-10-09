@@ -263,3 +263,7 @@ Round-5 risk notes:
   exhaustive matches found by scanning (dependency.rs x2, text_change_predicates.rs, value_eval.rs)
   were updated, but a build must confirm no other exhaustive match exists. The lexer regex change
   (superscripts, '=') affects every card's lexing.
+
+## Integration review: runtime checkpoint ownership
+
+The checkpoint warning above refers to the retired wire checkpoint codec. Current runtime savepoints retain `GameState` by clone, including the complete replacement manager and `followed_objects`. No additional serialization field is needed. Added a regression restoring before cast and after cast, then applying the replacement across cleanup. Public claim snapshots cannot restore gameplay. Validation pending integration.
