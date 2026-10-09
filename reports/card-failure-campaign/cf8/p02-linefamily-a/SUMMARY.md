@@ -93,10 +93,15 @@ mechanics), so the package splits into many small clusters rather than one.
   (MustAttack, MustBlock, AttackPlayerOrPlaneswalkersControlledBy) against the lowering reference env, whose last
   object tag comes from RemoveFromCombat/untap (Illusionist's Gambit) or ChooseObjects (Berserker's Frenzy); the
   engine collapses the tagged filter to exactly those creatures.
-- Siren's Call: new line family `continuous-control-exception` folds "Ignore this effect for each creature the
-  player didn't control continuously since the beginning of the turn" into the preceding instruction's filter via
-  the existing continuous-control predicate and binds "that player" to the active player when the card's previous
-  player-naming line names the active player (claimed only then).
+- Siren's Call (reworked; the one-card `continuous-control-exception` line-family rewrite is deleted), two general
+  pieces: (a) reference resolution publishes an object filter's `Active` controller/owner ("creatures the active
+  player controls") as the player antecedent itself, so a later "that player" in the spell binds to it through
+  ordinary cross-line resolution; (b) a trailing "Ignore this effect for each <object filter>." sentence
+  (`effect_sentences/ignore_effect_exclusion.rs`, split at `parse_effect_sentences_lexed`) folds an exclusion into
+  the immediately preceding set instruction (destroy/exile/return/sacrifice all, damage each, tap/untap all, pump
+  all, grant all; descending through wrappers such as delayed triggers). Exclusions reuse the shared except-for
+  transport (continuous control, CR 302.6, as Nettling Imp); a restated-noun "you control" becomes controller
+  NotYou; anything else is refused. Generality test with synthetic destroy and damage-each bodies.
 - Final-Word Phantom: new `Condition::OpponentsEndStep` (appended) and a "During each opponent's end step," leading
   condition over a complete static.
 - Nahiri, Storm of Stone: the leading-condition wrapper reads two complete statics joined by "and" (only when the
