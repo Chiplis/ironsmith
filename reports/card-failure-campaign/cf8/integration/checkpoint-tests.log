@@ -1,0 +1,3150 @@
+    Blocking waiting for file lock on build directory
+   Compiling ironsmith-core v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-core)
+   Compiling ironsmith-engine v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-engine)
+warning: unused import: `pay_mana_cost_with_choices_in_context`
+  --> crates/ironsmith-engine/src/costs/mod.rs:66:5
+   |
+66 |     pay_mana_cost_with_choices_in_context,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Subtype`
+  --> crates/ironsmith-engine/src/effect.rs:35:30
+   |
+35 | use crate::types::{CardType, Subtype};
+   |                              ^^^^^^^
+
+warning: unused import: `context::ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/clash.rs:8:42
+  |
+8 |     ChoiceSpec, DisplayOption, ScrySpec, context::ViewCardsContext, make_decision,
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ObjectSnapshot`
+ --> crates/ironsmith-engine/src/effects/cards/discard_hand.rs:3:36
+  |
+3 | use crate::effect::{EffectOutcome, ObjectSnapshot};
+  |                                    ^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::CardRevealedEvent`
+  --> crates/ironsmith-engine/src/effects/cards/draw_cards.rs:10:5
+   |
+10 | use crate::events::CardRevealedEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `CostExecutableEffect`
+    --> crates/ironsmith-engine/src/effects/cards/draw_cards.rs:1963:26
+     |
+1963 |     use crate::effects::{CostExecutableEffect, CostValidationError, SequenceEffect, execute_effect};
+     |                          ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/exile_top.rs:8:5
+  |
+8 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/cards/imprint.rs:12:5
+   |
+12 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+ --> crates/ironsmith-engine/src/effects/cards/learn.rs:8:33
+  |
+8 | use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+  |                                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::decisions::context::ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/look_at_hand.rs:4:5
+  |
+4 | use crate::decisions::context::ViewCardsContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `view_hidden_candidate_objects`
+ --> crates/ironsmith-engine/src/effects/cards/look_at_hand.rs:7:58
+  |
+7 | use crate::effects::helpers::{resolve_players_from_spec, view_hidden_candidate_objects};
+  |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:5:5
+  |
+5 | use crate::effects::zones::apply_zone_change_with_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:6:5
+  |
+6 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SimultaneousEffectCompletion`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:8:93
+  |
+8 |     CompletedEffectOutputs, CostExecutableEffect, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+  |                                                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/reveal_from_hand.rs:4:56
+  |
+4 | use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
+  |                                                        ^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/cards/shuffle_hand_and_graveyard_into_library.rs:10:5
+   |
+10 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `reveal_objects`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:84:52
+   |
+84 |     public_reveal_observation, public_reveal_view, reveal_objects, reveal_objects_with_outputs,
+   |                                                    ^^^^^^^^^^^^^^
+
+warning: unused import: `execute_library_instruction_atomically`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:94:5
+   |
+94 |     execute_library_instruction_atomically, order_library_cards_top_to_bottom,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `look_at_cards`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:96:23
+   |
+96 | pub(crate) use look::{look_at_cards, look_at_cards_with_outputs};
+   |                       ^^^^^^^^^^^^^
+
+warning: unused import: `shuffle_library`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:99:29
+   |
+99 |     commit_library_shuffle, shuffle_library, shuffle_library_action, shuffle_library_with_outputs,
+   |                             ^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::execute_effect`
+ --> crates/ironsmith-engine/src/effects/composition/may.rs:6:5
+  |
+6 | use crate::effects::execute_effect;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:16:5
+   |
+16 | use crate::effects::zones::apply_zone_change;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `move_to_battlefield_batch_with_options`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:19:55
+   |
+19 |     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::permanents::SacrificeEvent`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:24:5
+   |
+24 | use crate::events::permanents::SacrificeEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:26:19
+   |
+26 |     EventOutcome, TraitEventResult, process_trait_event_with_execution_context,
+   |                   ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `CardRevealedEvent`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:29:21
+   |
+29 | use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+   |                     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/consult_helpers.rs:1:47
+  |
+1 | use crate::decisions::context::{OrderContext, ViewCardsContext};
+  |                                               ^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::ControlChangedEvent`
+   --> crates/ironsmith-engine/src/effects/control/gain_control.rs:111:9
+    |
+111 |     use crate::events::ControlChangedEvent;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+ --> crates/ironsmith-engine/src/effects/counters/proliferate.rs:9:33
+  |
+9 | use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+  |                                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::*`
+    --> crates/ironsmith-engine/src/effects/counters/remove_counters.rs:1446:9
+     |
+1446 |     use super::*;
+     |         ^^^^^^^^
+
+warning: unused import: `execute_scoped_counter_placements`
+   --> crates/ironsmith-engine/src/effects/counters/mod.rs:130:61
+    |
+130 |     commit_scoped_counter_placement_originals_with_outputs, execute_scoped_counter_placements,
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `execute_counter_removal_cost` and `prepare_counter_removal_cost`
+   --> crates/ironsmith-engine/src/effects/counters/mod.rs:138:5
+    |
+138 |     execute_counter_removal_cost, execute_counter_removal_cost_with_outputs,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+139 |     execute_counter_removal_with_outputs, execute_player_counter_removal_with_outputs,
+140 |     prepare_counter_removal_cost,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/damage/deal_damage.rs:26:5
+   |
+26 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effect::Effect`
+ --> crates/ironsmith-engine/src/effects/damage/heal_damage.rs:4:5
+  |
+4 | use crate::effect::Effect;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around function argument
+   --> crates/ironsmith-engine/src/effects/helpers/value_eval.rs:712:16
+    |
+712 |             Ok(((i64::from(player.life) + 1).div_euclid(2)))
+    |                ^                                          ^
+    |
+    = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+    |
+712 -             Ok(((i64::from(player.life) + 1).div_euclid(2)))
+712 +             Ok((i64::from(player.life) + 1).div_euclid(2))
+    |
+
+warning: unnecessary parentheses around function argument
+   --> crates/ironsmith-engine/src/effects/helpers/value_eval.rs:720:16
+    |
+720 |             Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
+    |                ^                                                   ^
+    |
+help: remove these parentheses
+    |
+720 -             Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
+720 +             Ok((i64::from(player.starting_life) + 1).div_euclid(2))
+    |
+
+warning: unused import: `EventContext`
+  --> crates/ironsmith-engine/src/effects/life/replacement_choice_tests.rs:10:21
+   |
+10 | use crate::events::{EventContext, GameEventType, ReplacementMatcher};
+   |                     ^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::EffectExecutor`
+   --> crates/ironsmith-engine/src/effects/mana/mana_loss.rs:481:9
+    |
+481 |     use crate::effects::EffectExecutor;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/conspire.rs:19:5
+   |
+19 | use crate::events::PermanentTappedEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/conspire.rs:22:5
+   |
+22 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/crew.rs:17:60
+   |
+17 | use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
+   |                                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/saddle.rs:24:60
+   |
+24 | use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
+   |                                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashSet`
+   --> crates/ironsmith-engine/src/effects/player/grant_play_tagged.rs:636:9
+    |
+636 |     use std::collections::HashSet;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `effect_driven_cast_options_for_card_with_payment`
+  --> crates/ironsmith-engine/src/effects/player/may_cast_matching_spell.rs:14:5
+   |
+14 |     effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_event_expansion_with_targets`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:43:5
+   |
+43 |     execute_event_expansion_with_targets, execute_replacement_payload,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `complete_deferred_replacement_programs_with_targets` and `execute_deferred_replacement_programs_with_bindings`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:51:5
+   |
+51 |     complete_deferred_replacement_programs_with_targets,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+52 |     complete_replacement_programs_with_original_outputs,
+53 |     execute_deferred_replacement_programs_with_bindings, execute_event_expansion_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `prepare_scoped_draw_continuation_with_outputs` and `prepare_scoped_draw_continuation`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:82:5
+   |
+82 |     prepare_scoped_draw_continuation, prepare_scoped_draw_continuation_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `prepare_zone_draw_tail`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:86:33
+   |
+86 | pub(crate) use zone_draw_tail::{prepare_zone_draw_tail, prepare_zone_draw_tail_with_outputs};
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `counter_stack_entry_at`
+  --> crates/ironsmith-engine/src/effects/stack/mod.rs:20:26
+   |
+20 | pub(crate) use counter::{counter_stack_entry_at, counter_stack_entry_at_with_outputs};
+   |                          ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PlayerFilter`
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1975:39
+     |
+1975 |     use crate::target::{ObjectFilter, PlayerFilter};
+     |                                       ^^^^^^^^^^^^
+
+warning: unused import: `resolve_objects_for_effect`
+ --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:9:31
+  |
+9 | use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_token_instruction_atomically`
+  --> crates/ironsmith-engine/src/effects/tokens/mod.rs:29:46
+   |
+29 |     execute_resource_transaction_atomically, execute_token_instruction_atomically,
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `commit_zone_moves`, `complete_movement_batch`, `execute_battlefield_entries`, and `execute_zone_moves`
+  --> crates/ironsmith-engine/src/effects/zones/mod.rs:29:23
+   |
+29 |     PreparedZoneMove, commit_zone_moves, commit_zone_moves_with_completion,
+   |                       ^^^^^^^^^^^^^^^^^
+30 |     complete_movement_batch, execute_battlefield_entries, execute_battlefield_entries_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |     execute_zone_moves, execute_zone_moves_with_outputs, group_zone_move_observations,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/zones/exile_until_source_leaves.rs:7:5
+  |
+7 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/zones/haunt_exile.rs:8:5
+  |
+8 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/zones/move_to_library_nth_from_top.rs:15:5
+   |
+15 |     apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/zones/move_to_library_top_or_bottom_choice.rs:17:5
+   |
+17 |     apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt as _`
+ --> crates/ironsmith-engine/src/effects/zones/movement_prepared_boundary_tests.rs:7:5
+  |
+7 | use crate::filter::ObjectFilterExt as _;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `resolve_objects_for_effect`
+ --> crates/ironsmith-engine/src/effects/zones/put_onto_battlefield.rs:8:31
+  |
+8 | use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt as _`
+   --> crates/ironsmith-engine/src/effects/zones/put_onto_battlefield.rs:581:9
+    |
+581 |     use crate::filter::ObjectFilterExt as _;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `finish_battlefield_entry_receipts`
+    --> crates/ironsmith-engine/src/effects/zones/mod.rs:1129:36
+     |
+1129 |     PreparedBattlefieldEntryBatch, finish_battlefield_entry_receipts,
+     |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ObjectId`
+   --> crates/ironsmith-engine/src/effects/zones/zone_entry_carrier_tests.rs:180:30
+    |
+180 |     use crate::ids::{CardId, ObjectId, PlayerId};
+    |                              ^^^^^^^^
+
+warning: unused imports: `ForPlayersDrawContinuation` and `ForPlayersDrawProgress`
+   --> crates/ironsmith-engine/src/effects/mod.rs:286:30
+    |
+286 | pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::*`
+    --> crates/ironsmith-engine/src/events/processing/application.rs:2309:9
+     |
+2309 |     use super::*;
+     |         ^^^^^^^^
+
+warning: unused import: `OutcomeStatus`
+    --> crates/ironsmith-engine/src/events/processing/mod.rs:9683:40
+     |
+9683 |     use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
+     |                                        ^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+   --> crates/ironsmith-engine/src/events/mana.rs:312:9
+    |
+312 |     use crate::events::context::EventContext;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/tokens/matchers.rs:4:5
+  |
+4 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/other/player_loses_game.rs:5:5
+  |
+5 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around block return value
+    --> crates/ironsmith-engine/src/game_loop/priority_cast.rs:3184:17
+     |
+3184 |                 (component.mana_cost_ref().is_some_and(|mana| mana.has_x())
+     |                 ^
+3185 |                     || cost_references_x(component))
+     |                                                    ^
+     |
+help: remove these parentheses
+     |
+3184 ~                 component.mana_cost_ref().is_some_and(|mana| mana.has_x())
+3185 ~                     || cost_references_x(component)
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/ironsmith-engine/src/game_loop/targeting.rs:5078:15
+     |
+5078 |     } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+     |               ^                                                                              ^
+     |
+help: remove these parentheses
+     |
+5078 -     } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+5078 +     } else if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/ironsmith-engine/src/game_loop/targeting.rs:5428:16
+     |
+5428 |             if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+     |                ^                                                                              ^
+     |
+help: remove these parentheses
+     |
+5428 -             if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+5428 +             if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
+     |
+
+warning: unused import: `EffectSourceType`
+  --> crates/ironsmith-engine/src/game_state.rs:18:5
+   |
+18 |     EffectSourceType, EffectTarget, Modification,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::hash_map::DefaultHasher`
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:4447:9
+     |
+4447 |     use std::collections::hash_map::DefaultHasher;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_mana_payment_plan_in_context`
+  --> crates/ironsmith-engine/src/mana_payment/mod.rs:36:5
+   |
+36 |     execute_mana_payment_plan_in_context, execute_mana_payment_plan_in_context_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `pay_mana_interactively_in_context` and `pay_mana_interactively`
+  --> crates/ironsmith-engine/src/mana_payment/mod.rs:48:35
+   |
+48 |     activate_mana_during_payment, pay_mana_interactively, pay_mana_interactively_in_context,
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt as _`
+  --> crates/ironsmith-engine/src/rules/combat.rs:11:5
+   |
+11 | use crate::filter::ObjectFilterExt as _;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::types::CardType`
+  --> crates/ironsmith-engine/src/rules/damage.rs:14:5
+   |
+14 | use crate::types::CardType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `resolve_anthem_count_expression`
+  --> crates/ironsmith-engine/src/static_abilities/mod.rs:77:29
+   |
+77 | pub(crate) use continuous::{resolve_anthem_count_expression, resolve_anthem_count_expression_checked};
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PlayerFilterExt as _`
+ --> crates/ironsmith-engine/src/triggers/cards/you_discard_card.rs:5:43
+  |
+5 | use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+  |                                           ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::PlayerFilterExt`
+ --> crates/ironsmith-engine/src/triggers/life_damage/is_dealt_damage.rs:6:5
+  |
+6 | use crate::filter::PlayerFilterExt;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `check::verify_intervening_if_at_resolution`
+    --> crates/ironsmith-engine/src/triggers/mod.rs:2397:16
+     |
+2397 | pub(crate) use check::verify_intervening_if_at_resolution;
+     |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PreventionEffectManager`
+ --> crates/ironsmith-engine/src/turn_runner_combat_prevention_tests.rs:4:5
+  |
+4 |     PreventionEffectManager, PreventionShield, PreventionShieldId, PreventionTarget,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ObjectFilterExt`
+    --> crates/ironsmith-engine/src/condition_eval.rs:6469:54
+     |
+6469 |     use crate::filter::{FilterContext, ObjectFilter, ObjectFilterExt as _};
+     |                                                      ^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::traits::ReplacementMatcher`
+  --> crates/ironsmith-engine/src/effects/damage/prevent_next_time_damage.rs:16:5
+   |
+16 | use crate::events::traits::ReplacementMatcher as _;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt`
+   --> crates/ironsmith-engine/src/triggers/other/transforms.rs:127:17
+    |
+127 |             use crate::filter::ObjectFilterExt as _;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt`
+ --> crates/ironsmith-engine/src/triggers/other/player_plays_land.rs:5:5
+  |
+5 | use crate::filter::ObjectFilterExt as _;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::hash::Hash`
+  --> crates/ironsmith-engine/src/mana_payment/witness.rs:24:13
+   |
+24 |         use std::hash::Hash;
+   |             ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::hash::Hash`
+  --> crates/ironsmith-engine/src/mana_payment/replacement_program.rs:29:13
+   |
+29 |         use std::hash::Hash;
+   |             ^^^^^^^^^^^^^^^
+
+warning: unused import: `CostExecutableEffect`
+ --> crates/ironsmith-engine/src/effects/composition/keyword_programs.rs:3:22
+  |
+3 | use crate::effects::{CostExecutableEffect, EffectExecutor, ExecutionContext, ExecutionError};
+  |                      ^^^^^^^^^^^^^^^^^^^^
+
+warning: unreachable pattern
+   --> crates/ironsmith-engine/src/source_numbers.rs:130:9
+    |
+130 |         _ => false,
+    |         ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-engine/src/source_numbers.rs:130:9
+    |
+122 |         AbilityKind::Static(ability) => ability.canonical_model().as_ref().is_some_and(static_requires),
+    |         ---------------------------- matches some of the same values
+123 |         AbilityKind::Triggered(ability) => program_chooses_source_number(&ability.effects)
+    |         ------------------------------- matches some of the same values
+...
+129 |         AbilityKind::Activated(ability) => program_chooses_source_number(&ability.effects),
+    |         ------------------------------- matches some of the same values
+130 |         _ => false,
+    |         ^ collectively making this unreachable
+    = note: `#[warn(unreachable_patterns)]` on by default
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith-0f45e012aab5907e.long-type-4873975272658015040.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unreachable pattern
+   --> crates/ironsmith-engine/src/source_numbers.rs:138:9
+    |
+138 |         _=>None,
+    |         ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-engine/src/source_numbers.rs:138:9
+    |
+135 |         AbilityKind::Triggered(ability)=>ability.effects.source_number_pair,
+    |         ------------------------------- matches some of the same values
+136 |         AbilityKind::Activated(ability)=>ability.effects.source_number_pair,
+    |         ------------------------------- matches some of the same values
+137 |         AbilityKind::Static(ability)=>static_pair(ability),
+    |         ---------------------------- matches some of the same values
+138 |         _=>None,
+    |         ^ collectively making this unreachable
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith-0f45e012aab5907e.long-type-4873975272658015040.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unused variable: `method`
+    --> crates/ironsmith-engine/src/decision/io.rs:2797:13
+     |
+2797 |             method,
+     |             ^^^^^^ help: try ignoring the field: `method: _`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `permanent_id`
+    --> crates/ironsmith-engine/src/decision/io.rs:2815:17
+     |
+2815 |                 permanent_id,
+     |                 ^^^^^^^^^^^^ help: try ignoring the field: `permanent_id: _`
+
+warning: unused variable: `method`
+    --> crates/ironsmith-engine/src/decision/io.rs:2816:17
+     |
+2816 |                 method,
+     |                 ^^^^^^ help: try ignoring the field: `method: _`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/effects/composition/for_players.rs:823:13
+    |
+823 |         let mut players: Vec<PlayerId> = game
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `outcome`
+   --> crates/ironsmith-engine/src/effects/composition/unless_action.rs:999:13
+    |
+999 |         let outcome = effect
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_outcome`
+
+warning: unused variable: `outcome`
+    --> crates/ironsmith-engine/src/effects/composition/unless_action.rs:1162:17
+     |
+1162 |             let outcome =
+     |                 ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_outcome`
+
+warning: variable does not need to be mutable
+    --> crates/ironsmith-engine/src/effects/helpers.rs:3766:5
+     |
+3766 |     mut apply: impl FnMut(
+     |     ----^^^^^
+     |     |
+     |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/effects/mana/choice_helpers.rs:340:17
+    |
+340 |             let mut outcome = crate::effects::replacement::execute_replacement_payload(
+    |                 ----^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `provenance`
+   --> crates/ironsmith-engine/src/effects/permanents/tap.rs:200:13
+    |
+200 |         let provenance = ctx.provenance;
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_provenance`
+
+warning: unused variable: `ctx`
+   --> crates/ironsmith-engine/src/effects/runtime.rs:189:5
+    |
+189 |     ctx: &ExecutionContext,
+    |     ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+
+warning: unused variable: `next`
+   --> crates/ironsmith-engine/src/effects/runtime.rs:190:5
+    |
+190 |     next: Option<&Effect>,
+    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_next`
+
+warning: unused variable: `game`
+  --> crates/ironsmith-engine/src/effects/zones/exile_until_source_leaves.rs:63:50
+   |
+63 |     fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+   |                                                  ^^^^ help: if this is intentional, prefix it with an underscore: `_game`
+
+warning: unused variable: `game`
+   --> crates/ironsmith-engine/src/effects/zones/move_to_zone.rs:576:9
+    |
+576 |         game: &GameState,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_game`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/events/processing/mod.rs:862:5
+    |
+862 |     mut event: Event,
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates/ironsmith-engine/src/events/processing/mod.rs:10219:13
+      |
+10219 |         let mut enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
+      |             ----^^^^^^^^^^^^^^^^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: unused variable: `tagged_objects`
+    --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:1694:9
+     |
+1694 |     let tagged_objects = (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects);
+     |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tagged_objects`
+
+warning: taking a mutable reference to a `const` item
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:5766:48
+     |
+5766 |         let candidates = search.step(&request, &mut usize::MAX).unwrap().unwrap();
+     |                                                ^^^^^^^^^^^^^^^
+     |
+     = note: each usage of a `const` item creates a new temporary
+     = note: the mutable reference will refer to this temporary, not the original `const` item
+note: `const` item defined here
+    --> /Users/chiplis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs:1248:5
+     |
+1248 | /     uint_impl! {
+1249 | |         Self = usize,
+1250 | |         ActualT = u64,
+1251 | |         SignedT = isize,
+...    |
+1265 | |         bound_condition = " on 64-bit targets",
+1266 | |     }
+     | |_____^
+     = note: `#[warn(const_item_mutation)]` on by default
+     = note: this warning originates in the macro `uint_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: taking a mutable reference to a `const` item
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:5829:48
+     |
+5829 |         let candidates = search.step(&request, &mut usize::MAX).unwrap().unwrap();
+     |                                                ^^^^^^^^^^^^^^^
+     |
+     = note: each usage of a `const` item creates a new temporary
+     = note: the mutable reference will refer to this temporary, not the original `const` item
+note: `const` item defined here
+    --> /Users/chiplis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/num/mod.rs:1248:5
+     |
+1248 | /     uint_impl! {
+1249 | |         Self = usize,
+1250 | |         ActualT = u64,
+1251 | |         SignedT = isize,
+...    |
+1265 | |         bound_condition = " on 64-bit targets",
+1266 | |     }
+     | |_____^
+     = note: this warning originates in the macro `uint_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `obj`
+    --> crates/ironsmith-engine/src/targeting/computation.rs:1470:18
+     |
+1470 |         let Some(obj) = game.object(obj_id) else {
+     |                  ^^^ help: if this is intentional, prefix it with an underscore: `_obj`
+
+warning: unused variable: `obj`
+    --> crates/ironsmith-engine/src/targeting/computation.rs:1535:21
+     |
+1535 |         if let Some(obj) = game.object(obj_id) {
+     |                     ^^^ help: if this is intentional, prefix it with an underscore: `_obj`
+
+warning: unreachable pattern
+    --> crates/ironsmith-engine/src/triggers/zone_changes/zone_change_trigger.rs:1295:13
+     |
+1219 |             (_, ZonePattern::Specific(Zone::Library)) => {
+     |             ----------------------------------------- matches all the relevant values
+...
+1295 |             (ZonePattern::Any, ZonePattern::Specific(Zone::Library)) => {
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/combat_state.rs:2344:9
+     |
+2344 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+2344 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/combat_state.rs:2408:9
+     |
+2408 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2408 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/combat_state.rs:2451:9
+     |
+2451 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2451 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/combat_state.rs:2913:9
+     |
+2913 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2913 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/decision/mana.rs:1690:13
+     |
+1690 |             hypothetical.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1690 |             let _ = hypothetical.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/decision/mana.rs:1774:13
+     |
+1774 |             x_game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1774 |             let _ = x_game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/analysis_probe.rs:210:5
+    |
+210 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+210 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/analysis_probe.rs:455:5
+    |
+455 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+455 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/analysis_probe.rs:638:5
+    |
+638 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+638 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/tests.rs:190:5
+    |
+190 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+190 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/tests.rs:246:5
+    |
+246 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+246 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/mana/tests.rs:679:9
+    |
+679 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+679 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:779:5
+    |
+779 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+779 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:818:5
+    |
+818 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+818 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:899:5
+    |
+899 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+899 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:916:5
+    |
+916 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+916 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:947:5
+    |
+947 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+947 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/decision/tests/costs.rs:961:5
+    |
+961 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+961 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:101:9
+    |
+101 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+101 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:109:9
+    |
+109 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+109 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:113:9
+    |
+113 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+113 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:135:9
+    |
+135 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+135 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:140:9
+    |
+140 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+140 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/composition/mana_retained.rs:143:9
+    |
+143 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+143 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/permanents/meld.rs:1494:13
+     |
+1494 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1494 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/permanents/meld.rs:1503:13
+     |
+1503 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1503 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/effects/player/ascend.rs:81:9
+   |
+81 |         game.refresh_continuous_state();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+81 |         let _ = game.refresh_continuous_state();
+   |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/player/cascade.rs:421:9
+    |
+421 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+421 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/player/player_counter_choice_tests.rs:118:5
+    |
+118 |     game.update_replacement_effects();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+118 |     let _ = game.update_replacement_effects();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/player/ring_tempts_you.rs:153:9
+    |
+153 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+153 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/stack/counter.rs:857:9
+    |
+857 |         game.update_replacement_effects();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+857 |         let _ = game.update_replacement_effects();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1183:9
+     |
+1183 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1183 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1189:9
+     |
+1189 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1189 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1198:9
+     |
+1198 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1198 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1272:9
+     |
+1272 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1272 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1280:9
+     |
+1280 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1280 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1322:9
+     |
+1322 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1322 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1355:9
+     |
+1355 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1355 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1377:9
+     |
+1377 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1377 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1420:9
+     |
+1420 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1420 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token.rs:1441:9
+     |
+1441 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1441 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:1029:9
+     |
+1029 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1029 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:1275:9
+     |
+1275 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1275 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:1306:9
+     |
+1306 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1306 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:1357:9
+     |
+1357 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1357 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:1389:9
+     |
+1389 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1389 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/zones/destroy.rs:615:9
+    |
+615 |         game.update_replacement_effects();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+615 |         let _ = game.update_replacement_effects();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/zones/destroy.rs:661:9
+    |
+661 |         game.update_replacement_effects();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+661 |         let _ = game.update_replacement_effects();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/effects/zones/destroy.rs:696:9
+    |
+696 |         game.update_replacement_effects();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+696 |         let _ = game.update_replacement_effects();
+    |         +++++++
+
+warning: unused `Result` that must be used
+     --> crates/ironsmith-engine/src/events/processing/mod.rs:12308:9
+      |
+12308 |         game.refresh_continuous_state();
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+      |
+12308 |         let _ = game.refresh_continuous_state();
+      |         +++++++
+
+warning: unused `Result` that must be used
+     --> crates/ironsmith-engine/src/events/processing/mod.rs:12310:9
+      |
+12310 |         game.refresh_continuous_state();
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+      |
+12310 |         let _ = game.refresh_continuous_state();
+      |         +++++++
+
+warning: unused `Result` that must be used
+     --> crates/ironsmith-engine/src/events/processing/mod.rs:13775:9
+      |
+13775 |         game.refresh_continuous_state();
+      |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+      |
+13775 |         let _ = game.refresh_continuous_state();
+      |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/filter/descriptions.rs:1532:13
+     |
+1532 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1532 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_damage.rs:3357:9
+     |
+3357 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3357 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_damage.rs:4180:9
+     |
+4180 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4180 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:982:9
+    |
+982 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+982 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1114:5
+     |
+1114 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1114 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1210:5
+     |
+1210 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1210 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1926:9
+     |
+1926 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1926 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2197:5
+     |
+2197 |     declaration_view.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2197 |     let _ = declaration_view.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2250:5
+     |
+2250 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2250 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2259:5
+     |
+2259 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2259 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2489:13
+     |
+2489 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2489 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2547:9
+     |
+2547 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2547 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2668:9
+     |
+2668 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2668 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2798:9
+     |
+2798 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2798 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2849:9
+     |
+2849 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2849 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2894:9
+     |
+2894 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2894 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2943:9
+     |
+2943 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2943 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2997:9
+     |
+2997 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2997 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3039:9
+     |
+3039 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3039 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3109:13
+     |
+3109 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3109 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3164:9
+     |
+3164 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3164 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3257:13
+     |
+3257 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3257 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3301:9
+     |
+3301 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3301 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3352:9
+     |
+3352 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3352 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3444:9
+     |
+3444 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3444 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3497:9
+     |
+3497 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3497 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3553:9
+     |
+3553 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3553 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3639:9
+     |
+3639 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3639 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3712:9
+     |
+3712 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3712 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3803:9
+     |
+3803 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3803 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3861:9
+     |
+3861 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3861 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:3953:9
+     |
+3953 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3953 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1167:5
+     |
+1167 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1167 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1748:9
+     |
+1748 |         hypothetical.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1748 |         let _ = hypothetical.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1933:5
+     |
+1933 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1933 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:4634:5
+     |
+4634 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4634 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:4697:5
+     |
+4697 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4697 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/saga.rs:920:13
+    |
+920 |             game.refresh_continuous_state();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+920 |             let _ = game.refresh_continuous_state();
+    |             +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:80:5
+   |
+80 |     game.refresh_continuous_state();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+80 |     let _ = game.refresh_continuous_state();
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:93:13
+   |
+93 |             game.refresh_continuous_state();
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+93 |             let _ = game.refresh_continuous_state();
+   |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:101:9
+    |
+101 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+101 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:335:5
+    |
+335 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+335 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:512:9
+    |
+512 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+512 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/targeting.rs:72:5
+   |
+72 |     game.refresh_continuous_state();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+72 |     let _ = game.refresh_continuous_state();
+   |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/targeting.rs:336:5
+    |
+336 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+336 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/turn_execution.rs:128:5
+    |
+128 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+128 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/turn_execution.rs:559:9
+    |
+559 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+559 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/turn_execution.rs:668:9
+    |
+668 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+668 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state.rs:5303:9
+     |
+5303 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5303 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/monarch.rs:141:9
+    |
+141 |         game.set_current_controller(borrowed, C);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+141 |         let _ = game.set_current_controller(borrowed, C);
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/object_state_and_events.rs:1309:9
+     |
+1309 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1309 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:1684:9
+     |
+1684 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1684 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:3225:9
+     |
+3225 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3225 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:4490:9
+     |
+4490 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4490 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:4503:9
+     |
+4503 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4503 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:4531:9
+     |
+4531 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4531 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:4560:9
+     |
+4560 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4560 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:413:5
+    |
+413 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+413 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:455:5
+    |
+455 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+455 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:517:5
+    |
+517 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+517 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:550:5
+    |
+550 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+550 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:579:5
+    |
+579 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+579 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:615:5
+    |
+615 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+615 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:644:5
+    |
+644 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+644 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:678:5
+    |
+678 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+678 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_state/tests.rs:719:5
+    |
+719 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+719 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/tests.rs:2286:5
+     |
+2286 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2286 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/tests.rs:2606:5
+     |
+2606 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2606 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/tests.rs:2644:5
+     |
+2644 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2644 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/grant_registry.rs:2879:9
+     |
+2879 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2879 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/grant_registry.rs:2884:9
+     |
+2884 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2884 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6084:33
+     |
+6084 | ...                   game.refresh_continuous_state();
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6084 |                                 let _ = game.refresh_continuous_state();
+     |                                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6157:13
+     |
+6157 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6157 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6185:9
+     |
+6185 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6185 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6221:9
+     |
+6221 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6221 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6266:17
+     |
+6266 |                 game.refresh_continuous_state();
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6266 |                 let _ = game.refresh_continuous_state();
+     |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/mana_payment/planner.rs:6518:9
+     |
+6518 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6518 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/replacement_ability_processor.rs:769:17
+    |
+769 |                 game.refresh_continuous_state();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+769 |                 let _ = game.refresh_continuous_state();
+    |                 +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/replacement_ability_processor.rs:908:17
+    |
+908 |                 game.refresh_continuous_state();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+908 |                 let _ = game.refresh_continuous_state();
+    |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1015:9
+     |
+1015 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1015 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1170:21
+     |
+1170 |                     game.refresh_continuous_state();
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1170 |                     let _ = game.refresh_continuous_state();
+     |                     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1222:17
+     |
+1222 |                 game.refresh_continuous_state();
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1222 |                 let _ = game.refresh_continuous_state();
+     |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1354:17
+     |
+1354 |                 game.refresh_continuous_state();
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1354 |                 let _ = game.refresh_continuous_state();
+     |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1381:13
+     |
+1381 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1381 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1401:17
+     |
+1401 |                 game.refresh_continuous_state();
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1401 |                 let _ = game.refresh_continuous_state();
+     |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/replacement_ability_processor.rs:1423:17
+     |
+1423 |                 game.refresh_continuous_state();
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1423 |                 let _ = game.refresh_continuous_state();
+     |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3314:9
+     |
+3314 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3314 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3372:9
+     |
+3372 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3372 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3424:9
+     |
+3424 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3424 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3633:9
+     |
+3633 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3633 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3637:9
+     |
+3637 |         apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3637 |         let _ = apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3683:9
+     |
+3683 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3683 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3688:9
+     |
+3688 |         apply_legend_rule_choice_from_group(&mut game, legends[0], &supplied_group);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3688 |         let _ = apply_legend_rule_choice_from_group(&mut game, legends[0], &supplied_group);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3758:9
+     |
+3758 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3758 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:3760:9
+     |
+3760 |         apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3760 |         let _ = apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/rules/state_based.rs:5110:17
+     |
+5110 | /                 apply_legend_rule_choice_from_group_with_decision_maker(
+5111 | |                     game, legends[0], &legends, dm,
+5112 | |                 );
+     | |_________________^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5110 |                 let _ = apply_legend_rule_choice_from_group_with_decision_maker(
+     |                 +++++++
+
+warning: unused `processing::TraitEventResult` that must be used
+  --> crates/ironsmith-engine/src/snapshot/checked_capture_tests.rs:93:17
+   |
+93 | ...   crate::events::processing::process_zone_change_full(game, self.target, Zone::Battlefield, Zone::Graveyard, ctx.cause.clone())?;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain the resolved event, replacement actions and pending continuation
+help: use `let _ = ...` to ignore the resulting value
+   |
+93 |                 let _ = crate::events::processing::process_zone_change_full(game, self.target, Zone::Battlefield, Zone::Graveyard, ctx.cause.clone())?;
+   |                 +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_abilities/combat.rs:3116:13
+     |
+3116 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3116 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1099:13
+     |
+1099 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1099 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1111:13
+     |
+1111 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1111 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1268:36
+     |
+1268 |                     if refreshed { game.refresh_continuous_state(); }
+     |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1268 |                     if refreshed { let _ = game.refresh_continuous_state(); }
+     |                                    +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1295:9
+     |
+1295 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1295 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1320:32
+     |
+1320 |                 if refreshed { game.refresh_continuous_state(); }
+     |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1320 |                 if refreshed { let _ = game.refresh_continuous_state(); }
+     |                                +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/static_ability_processor.rs:1355:9
+     |
+1355 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1355 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/targeting/computation.rs:2057:9
+     |
+2057 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2057 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5080:9
+     |
+5080 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5080 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5121:9
+     |
+5121 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5121 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5130:9
+     |
+5130 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5130 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5150:9
+     |
+5150 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5150 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5173:9
+     |
+5173 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5173 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5261:9
+     |
+5261 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5261 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:5785:9
+     |
+5785 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5785 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6123:9
+     |
+6123 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6123 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6546:9
+     |
+6546 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6546 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6694:9
+     |
+6694 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6694 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6729:9
+     |
+6729 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6729 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6755:9
+     |
+6755 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6755 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/triggers/check.rs:6775:9
+     |
+6775 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+6775 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/triggers/combat/becomes_blocked.rs:116:9
+    |
+116 |         game.set_current_controller(attacker, b);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+116 |         let _ = game.set_current_controller(attacker, b);
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/triggers/spell_ability/tap_for_mana.rs:238:9
+    |
+238 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+238 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn.rs:1426:5
+     |
+1426 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1426 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn.rs:1651:9
+     |
+1651 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1651 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn.rs:1946:9
+     |
+1946 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1946 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn.rs:1949:9
+     |
+1949 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1949 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:4829:9
+     |
+4829 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4829 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5056:13
+     |
+5056 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5056 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5159:13
+     |
+5159 |             game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5159 |             let _ = game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5258:9
+     |
+5258 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5258 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5327:9
+     |
+5327 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5327 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5393:9
+     |
+5393 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5393 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn_runner.rs:5838:9
+     |
+5838 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5838 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/turn_runner_draw_choice_tests.rs:140:5
+    |
+140 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+140 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/tests/integration_tests.rs:94:5
+   |
+94 |     game.empty_mana_pools();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+94 |     let _ = game.empty_mana_pools();
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/tests/integration_tests.rs:99:5
+   |
+99 |     game.empty_mana_pools();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+99 |     let _ = game.empty_mana_pools();
+   |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:105:5
+    |
+105 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+105 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:112:5
+    |
+112 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+112 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:119:5
+    |
+119 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+119 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:145:5
+    |
+145 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+145 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:188:9
+    |
+188 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+188 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:195:9
+    |
+195 |         game.empty_mana_pools();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+195 |         let _ = game.empty_mana_pools();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:203:5
+    |
+203 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+203 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:210:5
+    |
+210 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+210 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/tests/integration_tests.rs:217:5
+    |
+217 |     game.empty_mana_pools();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+217 |     let _ = game.empty_mana_pools();
+    |     +++++++
+
+warning: `ironsmith-engine` (lib test) generated 307 warnings (run `cargo fix --lib -p ironsmith-engine --tests` to apply 87 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7m 17s
+     Running unittests src/lib.rs (target/debug/deps/ironsmith-0f45e012aab5907e)
+
+running 1 test
+test effects::replacement::register_zone_replacement::tests::followed_stack_replacement_survives_runtime_checkpoint_before_and_after_cast ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5141 filtered out; finished in 0.05s
+

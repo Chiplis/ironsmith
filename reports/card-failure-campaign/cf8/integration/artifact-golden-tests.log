@@ -1,0 +1,34 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (target/debug/deps/ironsmith_compiled_artifact-08466899ab11039f)
+
+running 21 tests
+test tests::current_descriptor_matches_the_declared_schema_fingerprint ... ok
+test tests::preceding_oct8_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::current_format_with_previous_schema_is_rejected_even_with_a_fresh_checksum ... ok
+test tests::pre_prepared_artifacts_require_recompilation_even_with_valid_checksums ... ok
+test tests::preceding_v16_descriptor_keeps_exact_historical_identity ... ok
+test tests::pre_protection_artifacts_require_recompilation_even_with_valid_checksums ... ok
+test tests::compiler_version_is_not_provenance_and_cannot_admit_the_previous_cache ... ok
+test tests::current_golden_matches_the_integrated_source ... ok
+test tests::historical_v3_golden_keeps_original_evidence_and_is_refused ... ok
+test tests::pre_activation_combat_class_artifacts_require_source_regeneration ... ok
+test tests::preceding_v17_descriptor_keeps_exact_historical_identity ... ok
+test tests::published_first_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::published_second_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::published_third_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::published_v12_envelopes_require_regeneration_even_with_a_current_payload ... ok
+test tests::previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata ... ok
+test tests::previous_artifacts_require_source_regeneration_even_with_fresh_checksums ... ok
+test tests::rewritten_format_hash_and_checksum_are_not_artifact_authentication ... ok
+test tests::staged_numeric_counter_schema_without_token_roles_is_rejected ... ok
+test tests::round_trip_validates_checksum ... ok
+test tests::tampering_is_rejected ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+   Doc-tests ironsmith_compiled_artifact
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

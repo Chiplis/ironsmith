@@ -1,0 +1,35 @@
+   Compiling ironsmith-core v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-core)
+   Compiling ironsmith-compiler-ast v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-compiler-ast)
+warning: unused import: `TagKey`
+ --> crates/ironsmith-compiler-ast/src/parse_types.rs:4:35
+  |
+4 | use ironsmith_core::{ChoiceCount, TagKey, Value};
+  |                                   ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `ironsmith-compiler-ast` (lib) generated 1 warning (run `cargo fix --lib -p ironsmith-compiler-ast` to apply 1 suggestion)
+   Compiling ironsmith-compiler-semantic v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-compiler-semantic)
+warning: unused import: `crate::tag::TagRef`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast.rs:13:5
+   |
+13 | use crate::tag::TagRef;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `crate::zone::Zone`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast/queries.rs:15:5
+   |
+15 | use crate::zone::Zone;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: `ironsmith-compiler-semantic` (lib test) generated 2 warnings (run `cargo fix --lib -p ironsmith-compiler-semantic --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.26s
+     Running unittests src/lib.rs (target/debug/deps/ironsmith_compiler_semantic-d584e38ebb84654b)
+
+running 1 test
+test effect::payload_serialization_tests::optional_struct_variant_fields_serialize_through_nested_effect_payloads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+

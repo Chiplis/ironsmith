@@ -1,0 +1,181 @@
+warning: unused import: `TagKey`
+ --> crates/ironsmith-compiler-ast/src/parse_types.rs:4:35
+  |
+4 | use ironsmith_core::{ChoiceCount, TagKey, Value};
+  |                                   ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `ironsmith-compiler-ast` (lib) generated 1 warning (run `cargo fix --lib -p ironsmith-compiler-ast` to apply 1 suggestion)
+warning: unused import: `crate::tag::TagRef`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast.rs:13:5
+   |
+13 | use crate::tag::TagRef;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `crate::zone::Zone`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast/queries.rs:15:5
+   |
+15 | use crate::zone::Zone;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: `ironsmith-compiler-semantic` (lib) generated 2 warnings (run `cargo fix --lib -p ironsmith-compiler-semantic` to apply 2 suggestions)
+warning: unused import: `SerializeMap`
+   --> crates/ironsmith-artifact-effect-decoder/src/lib.rs:529:39
+    |
+529 |     use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    |                                       ^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Serializer`
+   --> crates/ironsmith-artifact-effect-decoder/src/lib.rs:529:58
+    |
+529 |     use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    |                                                          ^^^^^^^^^^
+
+warning: `ironsmith-artifact-effect-decoder` (lib) generated 2 warnings
+warning: unreachable pattern
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:220:17
+    |
+220 |                 _ => false,
+    |                 ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:220:17
+    |
+211 |                 AbilityKind::Triggered(triggered) => {
+    |                 --------------------------------- matches some of the same values
+...
+214 |                 AbilityKind::Static(static_ability) => {
+    |                 ----------------------------------- matches some of the same values
+...
+217 |                 AbilityKind::Activated(activated) => {
+    |                 --------------------------------- matches some of the same values
+...
+220 |                 _ => false,
+    |                 ^ collectively making this unreachable
+    = note: `#[warn(unreachable_patterns)]` on by default
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith_compiler_lowering-d489d8463de43555.long-type-12689830962629454432.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unreachable pattern
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:273:17
+    |
+273 |                 _ => return Vec::new().into_iter(),
+    |                 ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:273:17
+    |
+257 |                 AbilityKind::Triggered(triggered) => {
+    |                 --------------------------------- matches some of the same values
+...
+260 |                 AbilityKind::Activated(activated) => {
+    |                 --------------------------------- matches some of the same values
+...
+263 |                 AbilityKind::Static(static_ability) => {
+    |                 ----------------------------------- matches some of the same values
+...
+273 |                 _ => return Vec::new().into_iter(),
+    |                 ^ collectively making this unreachable
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith_compiler_lowering-d489d8463de43555.long-type-12689830962629454432.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: `ironsmith-compiler-lowering` (lib) generated 2 warnings
+   Compiling ironsmith-compiler-grammar v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-compiler-grammar)
+warning: unnecessary parentheses around `if` condition
+   --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/grouped_coins.rs:136:8
+    |
+136 |     if (words.starts_with(&["if", "they", "lose", "the", "flip"])
+    |        ^
+137 |         || words.starts_with(&["if", "they", "win", "the", "flip"]))
+    |                                                                    ^
+    |
+    = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+    |
+136 ~     if words.starts_with(&["if", "they", "lose", "the", "flip"])
+137 ~         || words.starts_with(&["if", "they", "win", "the", "flip"])
+    |
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases/advanced/predicate_readings/fallback.rs:870:17
+    |
+870 |             let mut filter = filter_from_words(descriptor)?;
+    |                 ----^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unreachable pattern
+  --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/temporary_damage_multiplier.rs:50:15
+   |
+43 |             | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+   |               ------------------------------------------------------------------------ matches all the relevant values
+...
+50 |             | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+   |
+   = note: `#[warn(unreachable_patterns)]` on by default
+
+warning: unused variable: `tag`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:26
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                          ^^^ help: if this is intentional, prefix it with an underscore: `_tag`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `player`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:31
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_player`
+
+warning: unused variable: `until_end_of_turn`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:58
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                                                          ^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_until_end_of_turn`
+
+warning: unreachable pattern
+     --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry.rs:12822:15
+      |
+12550 |             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { amount, .. })
+      |               ----------------------------------------------------------------------------- matches all the relevant values
+...
+12822 |             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
+      |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: variable does not need to be mutable
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability.rs:1927:9
+     |
+1927 |     let mut flush = |item: &mut Vec<OwnedLexToken>,
+     |         ----^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: value assigned to `discard_filter` is never read
+   --> crates/ironsmith-compiler-grammar/src/effect_sentences/sacrifice_discard/library.rs:294:17
+    |
+294 |                 discard_filter = None;
+    |                 ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+   Compiling ironsmith-compiler v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-compiler)
+warning: `ironsmith-compiler-grammar` (lib) generated 9 warnings (run `cargo fix --lib -p ironsmith-compiler-grammar` to apply 3 suggestions)
+warning: `ironsmith-compiler-grammar` (lib test) generated 9 warnings (9 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 47s
+     Running unittests src/lib.rs (target/debug/deps/ironsmith_compiler_grammar-5795dde9868f85f3)
+
+running 1 test
+test effect_sentences::ignore_effect_exclusion::tests::an_exclusion_applies_to_both_conditional_branches ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4740 filtered out; finished in 0.02s
+
