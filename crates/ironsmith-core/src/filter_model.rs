@@ -1648,6 +1648,29 @@ pub enum PlayerFilter {
     ControlsFewestTied {
         filter: Box<ObjectFilter>,
     },
+    /// "who cast a spell this turn" / "who attacked with a creature this
+    /// turn" (Angelic Arbiter): players by this turn's history. Appended to
+    /// preserve existing serialized variant ordinals.
+    TurnHistory(PlayerTurnHistoryFilter),
+}
+
+/// A player's action this turn, for [`PlayerFilter::TurnHistory`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum PlayerTurnHistoryFilter {
+    /// Cast one or more spells this turn.
+    CastSpell,
+    /// Attacked with one or more creatures this turn.
+    AttackedWithCreature,
+}
+
+impl PlayerTurnHistoryFilter {
+    pub fn relative_clause(self) -> &'static str {
+        match self {
+            Self::CastSpell => "who cast a spell this turn",
+            Self::AttackedWithCreature => "who attacked with a creature this turn",
+        }
+    }
 }
 
 impl PlayerFilter {
@@ -4495,6 +4518,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::TurnHistory(history) => {
+                    parts.push(format!("a player {}'s", history.relative_clause()))
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4707,6 +4733,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("a player {} owns", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -7481,6 +7510,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}'s", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
@@ -7595,6 +7625,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }

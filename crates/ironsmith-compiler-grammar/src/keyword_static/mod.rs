@@ -566,7 +566,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         | "parse_you_draw_cards_from_bottom_line" => {
             vec![StaticAbilityLineHeadHint::Single("you")]
         }
-        "parse_each_opponent_controls_more_cant_line" => {
+        "parse_each_opponent_controls_more_cant_line"
+        | "parse_each_opponent_who_did_this_turn_cant_line" => {
             vec![StaticAbilityLineHeadHint::Pair("each", "opponent")]
         }
         "parse_zero_loyalty_state_based_exception_line" => {
@@ -1636,6 +1637,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_you_cast_spells_only_during_your_turn_line),
         single_static_ability_ast_rule!(parse_you_draw_cards_from_bottom_line),
         multi_static_ability_ast_rule!(parse_each_opponent_controls_more_cant_line),
+        single_static_ability_ast_rule!(parse_each_opponent_who_did_this_turn_cant_line),
         single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
@@ -2768,6 +2770,41 @@ fn parse_you_cast_spells_only_during_your_turn_line(
         display,
     ));
     Ok(Some(abilities))
+}
+
+/// "Each opponent who cast a spell this turn can't attack with creatures." /
+/// "Each opponent who attacked with a creature this turn can't cast spells."
+/// (Angelic Arbiter): a prohibition on each opponent with that turn history,
+/// re-evaluated as the history changes (CR 508.1, 601.3).
+fn parse_each_opponent_who_did_this_turn_cant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use ironsmith_core::PlayerTurnHistoryFilter as History;
+    let clean = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&clean);
+    let (history, action) = match words.as_slice() {
+        ["each", "opponent", "who", "cast", "a", "spell", "this", "turn", "can't" | "cant" | "cannot", action @ ..] => {
+            (History::CastSpell, action)
+        }
+        [
+            "each", "opponent", "who", "attacked", "with", "a", "creature", "this", "turn",
+            "can't" | "cant" | "cannot", action @ ..,
+        ] => (History::AttackedWithCreature, action),
+        _ => return Ok(None),
+    };
+    // Opponents with that history: the history set minus your team.
+    let players = PlayerFilter::excluding(PlayerFilter::TurnHistory(history), PlayerFilter::your_team());
+    let restriction = match action {
+        ["attack", "with", "creatures"] | ["attack"] => crate::effect::Restriction::attack(
+            ObjectFilter::creature().controlled_by(players),
+        ),
+        ["cast", "spells"] => crate::effect::Restriction::cast_spells(players),
+        _ => return Ok(None),
+    };
+    Ok(Some(StaticAbility::restriction(
+        restriction,
+        crate::lexer::render_token_slice(&clean).trim().to_string(),
+    )))
 }
 
 fn plural_card_type_word(word: &str) -> Option<crate::types::CardType> {

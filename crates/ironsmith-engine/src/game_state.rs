@@ -6182,6 +6182,7 @@ impl GameState {
             | crate::target::PlayerFilter::Attacking
             | crate::target::PlayerFilter::Defending
             | crate::target::PlayerFilter::CastCardTypeThisTurn(_)
+            | crate::target::PlayerFilter::TurnHistory(_)
             | crate::target::PlayerFilter::AttackedBySourceThisTurn => true,
             crate::target::PlayerFilter::WasDealtDamageBySourceThisGame { .. }
             | crate::target::PlayerFilter::LostLifeThisTurn { .. } => true,
