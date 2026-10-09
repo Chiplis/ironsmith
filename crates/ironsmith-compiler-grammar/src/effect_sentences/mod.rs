@@ -108,6 +108,7 @@ mod hand_procedure;
 mod keyword_choice_procedure;
 mod player_option_choice_procedure;
 mod vote_option_set_procedure;
+mod chosen_counter_kind_procedure;
 mod search_partition_procedure;
 mod lex_chain_helpers;
 mod looked_cards_family;

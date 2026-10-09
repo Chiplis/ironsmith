@@ -237,6 +237,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "PreventNextTimeDamageEffect" => Some(EffectFamily::Combat),
         "ProliferateEffect" => Some(EffectFamily::Resources),
         "PutCounterOfChosenKindEffect" => Some(EffectFamily::Resources),
+        "PutCounterOfKindChosenFromEffect" => Some(EffectFamily::Resources),
         "PutCountersEffect" => Some(EffectFamily::Resources),
         "PutOntoBattlefieldEffect" => Some(EffectFamily::ZoneLibrary),
         "PutStickerEffect" => Some(EffectFamily::Permanent),

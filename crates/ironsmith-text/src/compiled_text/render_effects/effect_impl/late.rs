@@ -5388,6 +5388,33 @@
             "Choose a counter on {target}. Remove that counter from it or put another of those counters on it"
         );
     }
+    if let Some(chosen_from) =
+        effect.downcast_ref::<crate::effects::PutCounterOfKindChosenFromEffect>()
+    {
+        let source = chosen_from.kind_source.description();
+        let source = source
+            .strip_prefix("a ")
+            .or_else(|| source.strip_prefix("an "))
+            .unwrap_or(&source)
+            .to_string();
+        let recipients = if chosen_from.exclude_kind_object
+            && let ChooseSpec::All(filter) = &chosen_from.recipients
+        {
+            let mut filter = filter.clone();
+            filter.other = false;
+            format!("each other {}", filter.description())
+        } else {
+            describe_choose_spec(&chosen_from.recipients)
+        };
+        let absent = if chosen_from.only_if_absent {
+            " if it doesn't have a counter of that kind on it"
+        } else {
+            ""
+        };
+        return format!(
+            "Choose a counter on a {source}. Put a counter of that kind on {recipients}{absent}"
+        );
+    }
     if let Some(chosen_kind) = effect.downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
     {
         if matches!(&chosen_kind.target, ChooseSpec::Target(_)) {

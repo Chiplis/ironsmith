@@ -9,7 +9,7 @@
 use super::dispatch_entry::SentenceInput;
 use super::{
     consult_procedure, copy_cast_procedure, exiled_top_procedure, graveyard_cast_procedure,
-    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, player_option_choice_procedure, vote_option_set_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
+    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, player_option_choice_procedure, vote_option_set_procedure, chosen_counter_kind_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -32,6 +32,7 @@ pub(super) enum Procedure {
     AssignUnblocked(assign_unblocked_procedure::AssignUnblockedGroup),
     PlayerOptionChoice(player_option_choice_procedure::PlayerOptionChoiceGroup),
     VoteOptionSet(vote_option_set_procedure::VoteOptionSetGroup),
+    ChosenCounterKind(chosen_counter_kind_procedure::ChosenCounterKindGroup),
 }
 
 /// A closed procedure: its effects and the sentences it consumed.
@@ -105,6 +106,10 @@ fn open_all(
         vote_option_set_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::VoteOptionSet)),
     );
+    consider(
+        chosen_counter_kind_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::ChosenCounterKind)),
+    );
     match (opened.is_empty(), deferred) {
         (true, Some(error)) => Err(error),
         _ => Ok(opened),
@@ -136,6 +141,9 @@ pub(super) fn continue_with(
             player_option_choice_procedure::continue_with(group, sentence)
         }
         Procedure::VoteOptionSet(group) => vote_option_set_procedure::continue_with(group, sentence),
+        Procedure::ChosenCounterKind(group) => {
+            chosen_counter_kind_procedure::continue_with(group, sentence)
+        }
     }
 }
 
@@ -211,6 +219,11 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             consumed: group.consumed,
             effects: vote_option_set_procedure::finish(group),
         },
+        Procedure::ChosenCounterKind(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: chosen_counter_kind_procedure::finish(group),
+        },
     }
 }
 
@@ -230,6 +243,7 @@ pub(super) fn kind(procedure: &Procedure) -> &'static str {
         Procedure::AssignUnblocked(_) => "assign-unblocked",
         Procedure::PlayerOptionChoice(_) => "player-option-choice",
         Procedure::VoteOptionSet(_) => "vote-option-set",
+        Procedure::ChosenCounterKind(_) => "chosen-counter-kind",
     }
 }
 
@@ -249,6 +263,7 @@ fn name(procedure: &Procedure) -> &'static str {
         Procedure::AssignUnblocked(_) => "assign-unblocked-procedure",
         Procedure::PlayerOptionChoice(_) => "player-option-choice-procedure",
         Procedure::VoteOptionSet(_) => "vote-option-set-procedure",
+        Procedure::ChosenCounterKind(_) => "chosen-counter-kind-procedure",
     }
 }
 

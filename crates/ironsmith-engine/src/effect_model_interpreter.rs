@@ -1640,6 +1640,11 @@ where
         };
         return Ok(Effect::new(effect));
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::PutCounterOfKindChosenFromEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect)
     {
         return Ok(Effect::new(

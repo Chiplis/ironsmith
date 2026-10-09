@@ -316,3 +316,4 @@ RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-
 CollectManaPaymentsEffect	ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>	composition-a-l
 ChoosePlayerOptionEffect	ironsmith_core::ChoosePlayerOptionEffect	player
 ControlVotesThisTurnEffect	ironsmith_core::ControlVotesThisTurnEffect	player
+PutCounterOfKindChosenFromEffect	ironsmith_core::PutCounterOfKindChosenFromEffect	resources

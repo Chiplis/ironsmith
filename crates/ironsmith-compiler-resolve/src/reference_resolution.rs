@@ -2187,6 +2187,12 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                    target: Some(target),
+                    ..
+                }) => {
+                    maybe_tag_target(target, frame, id_gen, "counters")?;
+                }
                 SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                     target,
                     counter_source,
@@ -7137,6 +7143,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
             })
@@ -8579,9 +8586,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             }) => bind_unresolved_it_in_target(target, seed_tag),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: None,
+                ..
+            }) => 0,
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,

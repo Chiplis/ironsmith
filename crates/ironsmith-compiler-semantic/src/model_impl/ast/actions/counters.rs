@@ -78,6 +78,16 @@ pub enum CounterActionAst {
     PutCounterOfChosenKind {
         target: TargetAst,
     },
+    /// "Choose a counter on <kind_source>. Put a counter of that kind on
+    /// <recipients> [if it doesn't have a counter of that kind on it]."
+    /// Exactly one of `target` / `each` names the recipients.
+    PutCounterOfKindChosenFrom {
+        kind_source: ObjectFilter,
+        target: Option<TargetAst>,
+        each: Option<ObjectFilter>,
+        exclude_kind_object: bool,
+        only_if_absent: bool,
+    },
     DoubleCountersOnEach {
         counter_type: Option<CounterType>,
         filter: ObjectFilter,

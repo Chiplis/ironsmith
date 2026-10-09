@@ -431,6 +431,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "PutCounterOfChosenKindEffect" => {
             decode_as::<T, ironsmith_core::PutCounterOfChosenKindEffect>(effect)
         }
+        "PutCounterOfKindChosenFromEffect" => {
+            decode_as::<T, ironsmith_core::PutCounterOfKindChosenFromEffect>(effect)
+        }
         "PutCountersEffect" => decode_as::<T, ironsmith_core::PutCountersEffect>(effect),
         "PutOntoBattlefieldEffect" => {
             decode_as::<T, ironsmith_core::PutOntoBattlefieldEffect>(effect)
@@ -1549,6 +1552,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::SetDayNightEffect,
             crate::effects::ChoosePlayerOptionEffect,
             crate::effects::ControlVotesThisTurnEffect,
+            crate::effects::PutCounterOfKindChosenFromEffect,
             crate::effects::ShuffleLibraryEffect,
             crate::effects::ShuffleObjectsIntoLibraryEffect,
             crate::effects::SneakCostEffect,
