@@ -66,3 +66,13 @@ fn a_player_target_in_a_life_condition_is_declared_and_bound_to_that_player() {
         assert_eq!(debug.matches("TargetOnlyEffect").count(), 1, "{debug}");
     }
 }
+
+#[test]
+fn a_player_counter_condition_declares_its_target_and_gives_the_difference() {
+    for definition in definitions("Vraska, Betrayal's Sting") {
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("PlayerCounters(Target("), "{debug}");
+        assert!(debug.contains("Fixed(9)"), "{debug}");
+        assert!(debug.contains("Scaled("), "{debug}");
+    }
+}

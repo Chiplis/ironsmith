@@ -228,5 +228,15 @@
   "toughness": "4",
   "loyalty": null,
   "oracle_text": "Flash\nIf an opponent would draw two or more cards, instead you and that player each draw a card."
+ },
+ {
+  "name": "Vraska, Betrayal's Sting",
+  "oracle_id": "05d09c55-f551-4cb4-a8d2-4811dccc848d",
+  "mana_cost": "{4}{B}{B/P}",
+  "type_line": "Legendary Planeswalker — Vraska",
+  "power": null,
+  "toughness": null,
+  "loyalty": "6",
+  "oracle_text": "Compleated ({B/P} can be paid with {B} or 2 life. If life was paid, this planeswalker enters with two fewer loyalty counters.)\n0: You draw a card and lose 1 life. Proliferate.\n−2: Target creature becomes a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color\" and loses all other card types and abilities.\n−9: If target player has fewer than nine poison counters, they get a number of poison counters equal to the difference."
  }
 ]

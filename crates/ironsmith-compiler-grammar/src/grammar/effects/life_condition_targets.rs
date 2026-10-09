@@ -15,7 +15,10 @@ pub(super) fn target_prelude(
             Value::LifeTotal(player)
             | Value::StartingLifeTotal(player)
             | Value::MaximumLifeTotal(player)
-            | Value::CountPlayersBelowHalfStartingLifeTotal(player) => {
+            | Value::CountPlayersBelowHalfStartingLifeTotal(player)
+            // "target player has fewer than nine poison counters" (Vraska,
+            // Betrayal's Sting): the same single authored player target.
+            | Value::PlayerCounters(player, _) => {
                 if let PlayerFilter::Target(inner) = player
                     && !found.contains(inner.as_ref())
                 {

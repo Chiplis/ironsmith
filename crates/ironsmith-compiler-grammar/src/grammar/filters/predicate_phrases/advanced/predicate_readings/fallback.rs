@@ -868,7 +868,8 @@ fn target_player_life_total(words: &[&str]) -> Option<PredicateAst> {
         ["target", "opponent", "has", rest @ ..] => (PlayerFilter::target_opponent(), rest),
         _ => return None,
     };
-    if rest.last() != Some(&"life") {
+    // "... has exactly 10 life", "... has fewer than nine poison counters".
+    if !matches!(rest.last(), Some(&("life" | "counters"))) {
         return None;
     }
     let tokens =
@@ -881,11 +882,15 @@ fn target_player_life_total(words: &[&str]) -> Option<PredicateAst> {
     else {
         return None;
     };
-    if left.unhinted() != &Value::LifeTotal(PlayerFilter::You) {
-        return None;
-    }
+    let left = match left.unhinted() {
+        Value::LifeTotal(PlayerFilter::You) => Value::LifeTotal(player),
+        Value::PlayerCounters(PlayerFilter::You, counter_type) => {
+            Value::PlayerCounters(player, *counter_type)
+        }
+        _ => return None,
+    };
     Some(PredicateAst::ValueComparison {
-        left: Value::LifeTotal(player),
+        left,
         operator,
         right,
     })
