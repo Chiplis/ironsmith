@@ -6746,6 +6746,61 @@ pub fn parse_pay_life_or_enter_tapped_line(
     Ok(Some(StaticAbility::pay_life_or_enter_tapped(fact.amount)))
 }
 
+/// "Koh has all activated and triggered abilities of the last chosen card."
+/// (CR 613.1f): two copy grants on this object. "The [last] chosen <noun>"
+/// is the object this source most recently chose and remembered.
+pub fn parse_copy_activated_and_triggered_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    const MARKER: &[&str] = &["all", "activated", "and", "triggered", "abilities", "of"];
+    let Some(has_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return Ok(None);
+    };
+    if has_idx == 0 || words.get(has_idx + 1..has_idx + 1 + MARKER.len()) != Some(MARKER) {
+        return Ok(None);
+    }
+    if crate::util::source_reference_surface_for_words(&words[..has_idx]).is_none() {
+        return Ok(None);
+    }
+    let filter_words = &words[has_idx + 1 + MARKER.len()..];
+    let filter = match filter_words {
+        ["the", "last", "chosen", _] | ["the", "chosen", _] => {
+            let mut filter = ObjectFilter::default();
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+            filter
+        }
+        _ => {
+            let Some(span) = crate::lexer::TokenWordView::new(&tokens)
+                .token_span_for_words(has_idx + 1 + MARKER.len(), words.len())
+            else {
+                return Ok(None);
+            };
+            match parse_object_filter(&tokens[span], false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            }
+        }
+    };
+    let display = words.join(" ");
+    let activated = crate::static_abilities::CopyActivatedAbilities::new(filter.clone())
+        .with_exclude_source_id(true)
+        .with_display(display.clone());
+    let triggered =
+        crate::static_abilities::CopyTriggeredAbilities::new(filter).with_display(display);
+    Ok(Some(vec![
+        StaticAbilityAst::Static(StaticAbility::copy_activated_abilities(activated)),
+        StaticAbilityAst::Static(StaticAbility::copy_triggered_abilities(triggered)),
+    ]))
+}
+
 pub fn parse_copy_activated_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
