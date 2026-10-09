@@ -583,6 +583,23 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             PlayerFilter::Opponent,
         )));
     }
+    // "for each player who lost life this turn" (Reaper's Scythe): every
+    // player, distinct.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["player", "players"],
+            &["who", "that"],
+            &["lost"],
+            &["life"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(
+            PlayerFilter::Any,
+        )));
+    }
 
     if crate::word_primitives::parse_sequence_prefix(
         &words,
