@@ -1710,6 +1710,10 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     }
 
+    if let Some(effects) = parse_mana_gated_restriction_pair(tokens)? {
+        return Ok(Some(effects));
+    }
+
     if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::no_maximum_hand_size(player),
@@ -1880,6 +1884,82 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         effects.insert(0, EffectAst::subject_verb_target_only(target));
     }
 
+    Ok(Some(effects))
+}
+
+/// "Target player can't play lands this turn if {R} was spent to cast this
+/// spell and can't cast creature spells this turn if {W} was spent to cast
+/// this spell." (Moonhold): two restrictions on one target, each applied
+/// only when its own mana-spent condition holds at resolution (CR 601.2h,
+/// 608.2c). Both halves share the subject and its single target.
+fn parse_mana_gated_restriction_pair(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let is_cant = |token: &OwnedLexToken| {
+        token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+    };
+    let Some(split) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("and") && is_cant(&pair[1]))
+    else {
+        return Ok(None);
+    };
+    let first = &tokens[..split];
+    let Some(cant_idx) = first.iter().position(is_cant) else {
+        return Ok(None);
+    };
+    let mut second = first[..cant_idx].to_vec();
+    second.extend_from_slice(&tokens[split + 1..]);
+    let mut target: Option<crate::cards::builders::TargetAst> = None;
+    let mut gated = Vec::new();
+    for segment in [first.to_vec(), second] {
+        let Some(if_idx) = segment.iter().rposition(|token| token.is_word("if")) else {
+            return Ok(None);
+        };
+        let Some(predicate) = crate::grammar::primitives::probe_shape(
+            super::filters::parse_predicate(&segment[if_idx + 1..]),
+        ) else {
+            return Ok(None);
+        };
+        if !matches!(predicate, PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }) {
+            return Ok(None);
+        }
+        let body = &segment[..if_idx];
+        let body_words = token_word_refs(body);
+        let Some(body) = body_words
+            .ends_with(&["this", "turn"])
+            .then(|| &body[..body.len().saturating_sub(2)])
+        else {
+            return Ok(None);
+        };
+        let Some(parsed) =
+            crate::activation_and_restrictions::activation_restriction_clauses::parse_cant_restriction_clause(body)?
+        else {
+            return Ok(None);
+        };
+        if let Some(parsed_target) = parsed.target {
+            match &target {
+                Some(existing) if *existing != parsed_target => return Ok(None),
+                Some(_) => {}
+                None => target = Some(parsed_target),
+            }
+        }
+        gated.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::subject_verb_cant(
+                parsed.restriction,
+                crate::effect::Until::EndOfTurn,
+                None,
+            )],
+            if_false: Vec::new(),
+        }));
+    }
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let mut effects = vec![EffectAst::subject_verb_target_only(target)];
+    effects.extend(gated);
     Ok(Some(effects))
 }
 
