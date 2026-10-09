@@ -1,6 +1,7 @@
 # cf8 p05-noverb-b — "could not find verb in effect clause" (153 cards)
 
-Status (round 3): 47 source-proposed, 5 already-on-main, 101 blocked, 0 untriaged.
+Status (round 4): 60 source-proposed, 5 already-on-main, 88 blocked, 0 untriaged.
+(Round 3: 47 / 5 / 101.)
 (Round 2: 42 / 5 / 106.)
 (Round 1 was 18 / 4 / 131. The prebuilt probe binary was removed mid-session, so all round-2
 work is source-only reasoning.)
@@ -86,3 +87,42 @@ Not done this round, with exact gaps recorded in the ledger:
 - **Prevention/redirection shapes:** listed as owned by p03/p06.
 - **Parameter-substituting repeat (Firemind's Foresight, Kathril, Protection Racket, Timesifter):** p11's `RepeatProcessEffect` is a condition loop, not this.
 - **The 7 "starting with you" cards:** each still needs its choice-pool grammar. The ordering infrastructure from round 2 is in place.
+
+
+## Round 4 — permission, manifest, attack, repeat and ordered-choice mechanisms
+
+| Mechanism | Cards | Change |
+|---|---|---|
+| Colorless-as-any-color exile permission | Abstruse Appropriation | New appended `ManaSpendMode::ColorlessAsAnyColor`. `ManaSpendPolicy::allow_mode` turns it into a per-symbol `{C}` conversion (CR 609.4b). The grant registers a stable-id permission with `any_color_mana_symbol: Colorless`. The suffix grammar reads "and you/they may spend [colorless] mana as though ...". |
+| Permission for another player | Curse of Hospitality | Permission actor "that creature's controller" maps to `TriggeringSourceController`, the source of the trigger event. The until-end-of-turn tagged grant keeps that grantee. |
+| Manifest flag on put-face-down | Write into Being, Jeskai Infiltrator | `ZoneMoveActionAst::PutOntoBattlefield.manifest`, lowering to `ManifestObjectsEffect` without cloak (CR 701.40a). Face-down piles read as a single sentence and accept "the top card" and "then manifest those cards". A new looked-procedure statement handles "Manifest/Cloak N of those cards, then put the other on the top or bottom / the rest on the bottom". |
+| Forced attack onto a target player | Portal Manipulator | `ReselectAttackTargetEffect.attacked_player` (CR 506.4). A creature whose controller can't attack that player keeps its attack. New clause "<creatures> are now attacking <that player/you>". In choose-target preludes, "their/they" binds to the earlier target player, and the engine links `controller: OpponentOf(Target)` creature targets to the prior player target through a target pair constraint. |
+| Repeat with new values | Firemind's Foresight (Kathril: partial) | "[Then] repeat this process for <numbers / keyword list>" re-reads the previous instruction once per value. It substitutes the one number, or every occurrence of the keyword (pair shape, head Any). |
+| Following process per opponent | Protection Racket | "Repeat the following process for each opponent [in turn order]" wraps the rest of the ability. Shapes consume 2–6 sentences, up to the end of the ability. The result is a ForEachOpponent ordered from the controller. |
+| Tie-break repeat | Timesifter | New `TagPlayersEffect` and `KeepGreatestManaValuePlayersEffect` in the player family, plus the AST `GreatestManaValueTieBreakExile`. The lowering is a seed followed by `RepeatProcessEffect{contenders exile top card; keep greatest}` while more than one player is tied. The winner's action runs through ForEachTaggedPlayer. |
+| Ordered per-player choices | The Horus Heresy, The Legend of Yangchen, Grenzo's Rebuttal, Rejoin the Fight, Manifold Insights | The ordering adds "starting with the next opponent in turn order" and a leading "then". New choice pools: "from among them", "from among permanents <relation>" (merged into the filter), "a different", and "that hasn't been chosen". New appended `PlayerFilter::PlayerToLeftOf(base)` for "the player to their left" (CR 101.4a). Type-slot choices may name the slots before the pool. A new normalization binds "those permanents" / "each card chosen this way" after a quantified choice to the accumulating chosen set. A 3-sentence program covers reveal, ordered choice, and the chosen-to-hand/rest-to-bottom split. |
+
+Tests (unrun): `crates/ironsmith-compiler-runtime/tests/{exile_play_mana_spend_permissions,manifest_face_down_selection,forced_attack_reassignment,repeat_process_variants,ordered_player_choices}.rs`. Engine unit tests were added in grant_play_tagged.rs, reselect_attack_target.rs, filter.rs (player_to_left_of_tests) and player/tie_break.rs.
+
+Still blocked after round 4:
+- **Kathril:** the aggregate "for each counter put on a creature this way" across the repetitions.
+- **Thieves' Auction:** needs a per-pick tag plus a durable chosen set to guarantee the loop terminates.
+- **Whims of the Fates:** three-pile separation (p01).
+- **Other packages' p05-tagged permission dependants** (p02/p03/p04/p07 ledgers) are not addressed. Each needs its own permission shape: once-per-turn filtered casts, additional-cost casts, color-to-color conversion, ownership mana scopes.
+
+### Round-4 risk notes
+- **New serialized variants**, all appended to keep ordinals: `ManaSpendMode::ColorlessAsAnyColor` and `PlayerFilter::PlayerToLeftOf`. New fields: `ReselectAttackTargetEffect.attacked_player` (serde default). New effects: `TagPlayersEffect` and `KeepGreatestManaValuePlayersEffect`, registered in the decoder, materializer, interpreter and effect-registry.tsv. The artifact schema descriptor needs a bump.
+- **`ManaSpendMode::combine` is now an explicit lattice instead of `max`.** `allows_any_color()` is false for the colorless mode.
+- **`PlayerToLeftOf` arms** were added next to every `OpponentOf` site in core, engine, resolve, lowering, text and grammar. Any exhaustive `PlayerFilter` match I missed will show as a compile error.
+- **AST changes:**
+  - `PutOntoBattlefield.manifest` and `ReselectAttackTarget.attacked_player`: the fully destructuring sites were updated.
+  - `EffectAst::GreatestManaValueTieBreakExile`: added in visit.rs coverage, reference_resolution and lowering.
+- **Shared hot spots touched:**
+  - `permission_helpers.rs`: an until-end-of-turn guard.
+  - `pair_procedure.rs`: new shapes at the head of `PAIR_SHAPES`.
+  - `effect_ast_normalization.rs`: one new binder in the pipeline.
+  - `choices.rs`: suffixes, "different", and the pool merge.
+  - `targeting.rs`: the opponent-of-target pair link.
+  - `dispatch_entry.rs`: `parse_effect_sentences_from_sentence_inputs` is now `pub(super)`.
+- **Behaviour change in the pronoun binder.** A plural "it/those …" consumer of exile, move or return right after a choice made by each player now takes the union of the choices instead of the last one.
+- **Behaviour change in the suffix grammar.** "and they may spend mana as though ..." is now a permission rider. Before, it was a split clause.
