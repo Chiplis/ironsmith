@@ -756,7 +756,13 @@ fn is_trigger_result_followup_line(line: &PreprocessedLine, owner_tokens: &[Owne
         // N+ is also the printed Station striation syntax. A resolving
         // ability may consume a numeric row only when it owns a local roll;
         // unrelated activations and triggers must leave striations alone.
-        return has_local_die_result_owner(owner_tokens);
+        // A row that only fixes X belongs to a roll followed by the
+        // sentences that read X (Wand of Wonder).
+        return has_local_die_result_owner(owner_tokens)
+            || (crate::effect_sentences::die_x_table::die_x_row(&line.tokens).is_some()
+                && crate::effect_sentences::die_x_table::owner_rolls_before_x_sentences(
+                    owner_tokens,
+                ));
     }
     if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
         return true;

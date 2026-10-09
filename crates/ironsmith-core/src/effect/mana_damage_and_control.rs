@@ -5372,6 +5372,21 @@ impl<E> CollectManaPaymentsEffect<E> {
     }
 }
 
+/// A die-result table row that fixes X ("1—9 | X is one.", Wand of Wonder):
+/// run `effects` with X equal to `value`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BindXValueEffect<E> {
+    pub value: Value,
+    pub effects: Vec<E>,
+}
+
+impl<E> BindXValueEffect<E> {
+    pub fn new(value: Value, effects: Vec<E>) -> Self {
+        Self { value, effects }
+    }
+}
+
 /// "Prevent X of that damage" (Errant Minion, Power Leak; CR 615.1, 615.7):
 /// a prevention shield of `amount` that exists only while the wrapped damage
 /// instruction deals its damage, then ends whether or not it was used up.

@@ -59,6 +59,14 @@
             body.trim_end_matches('.')
         );
     }
+    if let Some(bind) = effect.downcast_ref::<crate::effects::BindXValueEffect>() {
+        let body = bind.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
+        return format!(
+            "{}, where X is {}",
+            body.trim_end_matches('.'),
+            describe_value(&bind.value)
+        );
+    }
     if let Some(portion) = effect.downcast_ref::<crate::effects::PreventDamagePortionEffect>() {
         let body = portion.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
         return format!(

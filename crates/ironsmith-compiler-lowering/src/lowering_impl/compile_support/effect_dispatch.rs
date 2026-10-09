@@ -552,6 +552,7 @@ fn link_unproduced_result_references_in_children(
     relink_lists!(crate::effects::MayEffect<Effect>, effects);
     relink_lists!(crate::effects::CollectManaPaymentsEffect<Effect>, effects);
     relink_lists!(crate::effects::PreventDamagePortionEffect<Effect>, effects);
+    relink_lists!(crate::effects::BindXValueEffect<Effect>, effects);
     relink_lists!(crate::effects::ForPlayersEffect<Effect>, effects);
     relink_lists!(crate::effects::ForEachObject, effects);
     None
@@ -1441,6 +1442,14 @@ fn compile_effect_inner(
         collect.apnap_order = *apnap_order;
         collect.per_payer = *per_payer;
         return Ok((vec![Effect::new(collect)], choices));
+    }
+    if let EffectAst::BindX { value, effects } = effect {
+        let value = resolve_value_it_tag(value, &current_reference_env(ctx))?;
+        let (effects, choices) = compile_effects(effects, ctx)?;
+        return Ok((
+            vec![Effect::new(crate::effects::BindXValueEffect::new(value, effects))],
+            choices,
+        ));
     }
     if let EffectAst::PreventDamagePortion { amount, effects } = effect {
         let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;

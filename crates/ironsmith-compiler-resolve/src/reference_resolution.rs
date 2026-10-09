@@ -1696,7 +1696,7 @@ fn advance_reference_frame_for_effect(
                 advance_reference_frames(effects, id_gen, frame)?;
             }
         }
-        EffectAst::PreventDamagePortion { effects, .. } => {
+        EffectAst::PreventDamagePortion { effects, .. } | EffectAst::BindX { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::PlaySubgame { nonwinner_effects } => {

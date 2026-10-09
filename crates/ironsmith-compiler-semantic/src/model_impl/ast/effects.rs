@@ -212,6 +212,12 @@ pub enum EffectAst {
         amount: Value,
         effects: Vec<EffectAst>,
     },
+    /// A die-result row that fixes X for the program it governs ("1—9 | X is
+    /// one."): run `effects` with X equal to `value`.
+    BindX {
+        value: Value,
+        effects: Vec<EffectAst>,
+    },
 }
 
 impl EffectAst {

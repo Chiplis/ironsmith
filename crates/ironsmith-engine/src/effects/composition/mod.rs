@@ -32,6 +32,7 @@ mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
 mod collect_mana_payments;
 mod prevent_damage_portion;
+mod bind_x_value;
 mod compound;
 mod conditional;
 mod cumulative_upkeep;
@@ -108,6 +109,7 @@ pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use collect_evidence::CollectEvidenceEffect;
 pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub use prevent_damage_portion::PreventDamagePortionEffect;
+pub use bind_x_value::BindXValueEffect;
 pub(crate) use compound::{
     execute_checkpoint_transaction, execute_compound, execute_decision_transaction,
     execute_error_transaction_if, execute_optional_world_transaction,

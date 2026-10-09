@@ -92,6 +92,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::BindX {
+                effects: $effects,
+                ..
+            }
             | EffectAst::Sequence { effects: $effects }
             | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
@@ -282,6 +286,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::CollectManaPayments { .. } => {}
         EffectAst::PreventDamagePortion { .. } => {}
+        EffectAst::BindX { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}

@@ -91,6 +91,7 @@ mod consult_family;
 mod consult_procedure;
 mod copy_cast_procedure;
 pub(crate) mod counter_exile_permission;
+pub(crate) mod die_x_table;
 mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
