@@ -56,7 +56,17 @@ pub fn split_effect_chain_on_and_tokens(
         {
             continue;
         }
-        let remaining_starts_action = find_chain_verb_tokens(remaining).is_some()
+        // "you gain 3 life and that creature fights up to one target creature"
+        // (Tolsimir, Friend to Wolves): a subject + "fights" clause is its own
+        // action (CR 701.14a) even though "fight" isn't a chain verb.
+        let remaining_is_fight = remaining_words
+            .iter()
+            .take(4)
+            .skip(1)
+            .any(|word| matches!(*word, "fights" | "fight"))
+            && !current_words.iter().any(|word| matches!(*word, "fights" | "fight"));
+        let remaining_starts_action = remaining_is_fight
+            || find_chain_verb_tokens(remaining).is_some()
             || has_extended_effect_head_tokens(remaining)
             || starts_with_player_may_tokens(remaining)
             || remaining

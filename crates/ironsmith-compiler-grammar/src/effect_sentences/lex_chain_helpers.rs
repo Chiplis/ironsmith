@@ -33,7 +33,14 @@ pub fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
-    find_verb_lexed(tokens).is_some()
+    // "that creature fights up to one target creature" (CR 701.14a).
+    let fights = crate::lexer::parser_token_word_refs(tokens)
+        .iter()
+        .take(4)
+        .skip(1)
+        .any(|word| matches!(*word, "fights" | "fight"));
+    fights
+        || find_verb_lexed(tokens).is_some()
         || has_effect_head_without_verb_lexed(tokens)
         || super::super::grammar::effects::chain_carry::parse_carry_duration_prefix_tokens(tokens)
             .is_some_and(|shape| segment_has_effect_head_lexed(shape.rest))
