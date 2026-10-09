@@ -855,6 +855,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::ActivationTiming(timing) => Condition::ActivationTiming(*timing),
         PredicateAst::MaxActivationsPerTurn(limit) => Condition::MaxActivationsPerTurn(*limit),
         PredicateAst::MaxActivationsPerObject(limit) => Condition::MaxActivationsPerObject(*limit),
+        PredicateAst::MaxActivationsPerTurnCount(count) => {
+            Condition::MaxActivationsPerTurnCount(count.clone())
+        }
         PredicateAst::CurrentTurnIsExtra => Condition::CurrentTurnIsExtra,
         PredicateAst::TriggerFrequency(frequency) => match frequency {
             TriggerFrequencyPredicateAst::FirstTimeThisTurn => Condition::FirstTimeThisTurn,

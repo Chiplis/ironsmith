@@ -69,6 +69,8 @@ pub(super) fn exiled_permission(sentence: &SentenceInput, exiled: TagKey) -> Opt
             without_paying_mana_cost,
             allow_any_color_for_cast,
             filter,
+            during_turns_counter_put_on_source: None,
+            during_turns_attacked_with: None,
             ..
         }) => Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(

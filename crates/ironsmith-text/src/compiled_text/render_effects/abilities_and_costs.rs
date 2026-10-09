@@ -2781,6 +2781,12 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             if *limit == 1 { "Activate only once".to_string() }
             else { format!("Activate no more than {limit} times") }
         }
+        crate::ConditionExpr::MaxActivationsPerTurnCount(
+            ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        ) => format!(
+            "Activate no more times each turn than the number of {}",
+            filter.description()
+        ),
         crate::ConditionExpr::MaxActivationsPerTurn(limit) => {
             if *limit == 1 {
                 "Activate only once each turn".to_string()

@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Dominaria's Judgment",
+    "oracle_id": "41998d4d-ca01-4a9c-8bd6-399e4c3e25b1",
+    "mana_cost": "{2}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, creatures you control gain protection from white if you control a Plains, from blue if you control an Island, from black if you control a Swamp, from red if you control a Mountain, and from green if you control a Forest.",
+    "text": "Mana cost: {2}{W}\nType: Instant\nUntil end of turn, creatures you control gain protection from white if you control a Plains, from blue if you control an Island, from black if you control a Swamp, from red if you control a Mountain, and from green if you control a Forest."
+  }
+]

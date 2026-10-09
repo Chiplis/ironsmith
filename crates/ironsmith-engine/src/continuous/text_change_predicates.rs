@@ -543,7 +543,9 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
                 AttachmentConditionHost::Source | AttachmentConditionHost::SourceAttachedObject => {}
             }
         }
-        Condition::CountComparison { count, .. } | Condition::CountParity { count, .. } => {
+        Condition::CountComparison { count, .. }
+        | Condition::CountParity { count, .. }
+        | Condition::MaxActivationsPerTurnCount(count) => {
             *count = rewrite_anthem_count_words(count, change)?;
         }
         Condition::TurnHistory(condition) => *condition = rewrite_turn_history_condition_words(condition, change)?,

@@ -1049,6 +1049,12 @@ impl StaticAbilityModelInterpreter {
                 }
             }
             ironsmith_core::StaticAbilityPayload::GoadMatching { filter } => StaticAbility::new(super::combat::GoadMatching { filter: filter.clone() }),
+            ironsmith_core::StaticAbilityPayload::ConditionalAttackRequirement { trigger, required } => {
+                StaticAbility::new(super::combat::ConditionalAttackRequirement {
+                    trigger: trigger.clone(),
+                    required: required.clone(),
+                })
+            }
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
                     Some(filter) => crate::static_abilities::Anthem::new(filter.clone(), 0, 0)
@@ -3195,6 +3201,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::GoadMatching { filter } => Some(filter),
             _ => self.leaf_static_ability()?.goads_matching(),
+        }
+    }
+
+    fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ConditionalAttackRequirement {
+                trigger,
+                required,
+            } => Some((trigger, required)),
+            _ => self.leaf_static_ability()?.conditional_attack_requirement(),
         }
     }
 

@@ -116,12 +116,62 @@ fn bind_restriction_target_players(
             *reference = crate::target::PlayerFilter::Specific(id);
         }
     }
+    // CR 608.2h: a number a resolving instruction reads ("power less than or
+    // or equal to that number", Rumbling Ruin) is determined once, as the
+    // instruction resolves; the affected objects' own power stays live.
+    for comparison in [
+        &mut resolved.power,
+        &mut resolved.toughness,
+        &mut resolved.mana_value,
+    ] {
+        freeze_resolution_comparison(comparison, ctx, game);
+    }
     resolved.any_of = resolved
         .any_of
         .iter()
         .map(|branch| bind_restriction_target_players(branch, ctx, game))
         .collect();
     resolved
+}
+
+/// Replace a game-wide quantity in a comparison with its value now. Only
+/// quantities that never depend on the compared object are frozen.
+fn freeze_resolution_comparison(
+    comparison: &mut Option<crate::filter::Comparison>,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) {
+    use crate::effect::Value;
+    use crate::filter::Comparison;
+    let Some(current) = comparison.as_ref() else {
+        return;
+    };
+    let (value, rebuild): (&Value, fn(i32) -> Comparison) = match current {
+        Comparison::EqualExpr(value) => (value, Comparison::Equal),
+        Comparison::NotEqualExpr(value) => (value, Comparison::NotEqual),
+        Comparison::LessThanExpr(value) => (value, Comparison::LessThan),
+        Comparison::LessThanOrEqualExpr(value) => (value, Comparison::LessThanOrEqual),
+        Comparison::GreaterThanExpr(value) => (value, Comparison::GreaterThan),
+        Comparison::GreaterThanOrEqualExpr(value) => (value, Comparison::GreaterThanOrEqual),
+        _ => return,
+    };
+    if !matches!(
+        value.unhinted(),
+        Value::Count(_)
+            | Value::CountersOn(..)
+            | Value::TotalPower(_)
+            | Value::TotalToughness(_)
+            | Value::GreatestPower(_)
+            | Value::GreatestToughness(_)
+            | Value::GreatestManaValue(_)
+            | Value::EffectValue(_)
+            | Value::X
+    ) {
+        return;
+    }
+    if let Ok(amount) = crate::effects::helpers::resolve_value(game, value, ctx) {
+        *comparison = Some(rebuild(amount));
+    }
 }
 
 fn collapse_filter_to_current_matching_objects(

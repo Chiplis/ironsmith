@@ -52,7 +52,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(None);
     }
     let attacker_words = token_word_refs(attacker_tokens);
-    let filter = if crate::util::is_source_reference_words(&attacker_words) {
+    let attacker_filter = if crate::util::is_source_reference_words(&attacker_words) {
         // "you attacked with this creature": this exact object (CR 400.7).
         if minimum != 1 {
             return Ok(None);
@@ -74,29 +74,49 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         mana_spend_mode = fact.mana_spend_mode;
         permission = trim_lexed_commas(fact.body_tokens);
     }
-    let Some(allow_land) = primitives::probe_all(
-        permission,
-        (
-            primitives::phrase(&["you", "may"]),
-            alt((
-                primitives::kw("play").value(true),
-                primitives::kw("cast").value(false),
-            )),
-            primitives::any_phrase(&[&["that", "card"], &["those", "cards"], &["it"], &["them"]]),
-            primitives::sentence_end(),
-        )
-            .map(|((), allow_land, _, ())| allow_land),
-        "attacked-turn play permission",
-    ) else {
+    // The permission body is the shared tagged play/cast reader (the same
+    // one every exile permission uses: target pools, "without paying its mana
+    // cost", owner narrowing). The turn condition replaces its lifetime, so
+    // the body must not author one of its own.
+    let Some(crate::permission_helpers::PermissionClauseSpec::Tagged {
+        tag,
+        player,
+        allow_land,
+        as_copy: false,
+        max_plays: None,
+        without_paying_mana_cost,
+        lifetime:
+            crate::permission_helpers::PermissionLifetime::Immediate
+            | crate::permission_helpers::PermissionLifetime::ForAsLongAsExiled,
+        filter,
+        surface,
+    }) = crate::permission_helpers::parse_permission_clause_spec(permission)?
+    else {
         return Ok(None);
     };
-    Ok(Some(
-        EffectAst::subject_verb_grant_play_tagged_during_turns_attacked_with(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            PlayerAst::You,
-            allow_land,
-            mana_spend_mode,
-            ironsmith_core::effect::AttackedWithTurnCondition { filter, minimum },
-        ),
-    ))
+    if !matches!(player, PlayerAst::Implicit | PlayerAst::You) {
+        return Ok(None);
+    }
+    let mut effect = EffectAst::subject_verb_grant_play_tagged_during_turns_attacked_with(
+        crate::tag::TagRef::of(tag),
+        PlayerAst::You,
+        allow_land,
+        mana_spend_mode,
+        ironsmith_core::effect::AttackedWithTurnCondition { filter: attacker_filter, minimum },
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let crate::cards::builders::SubjectVerbActionAst::Grants(
+            crate::cards::builders::GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                without_paying_mana_cost: free,
+                filter: pool_filter,
+                surface: grant_surface,
+                ..
+            },
+        ) = &mut subject.action
+    {
+        *free = without_paying_mana_cost;
+        *pool_filter = filter;
+        *grant_surface = surface;
+    }
+    Ok(Some(effect))
 }

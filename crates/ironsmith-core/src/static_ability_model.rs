@@ -1586,6 +1586,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         zone: Zone,
         method: crate::alternative_cast_model::AlternativeCastKeyword,
     },
+    /// "If <trigger> attacks, <required> attack if able." (Viashino Bey,
+    /// War's Toll, Magnetic Web): an attack requirement that exists only for
+    /// declarations in which a creature matching `trigger` attacks
+    /// (CR 508.1d). Both filters are read from this source's perspective.
+    /// Appended to preserve published payload variant ordinals.
+    ConditionalAttackRequirement {
+        trigger: ObjectFilter,
+        required: ObjectFilter,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1990,6 +1999,9 @@ where
                 StaticAbilityPayload::LegendRuleDoesntApplyToController { filter }
             }
             StaticAbilityPayload::GoadMatching { filter } => StaticAbilityPayload::GoadMatching { filter },
+            StaticAbilityPayload::ConditionalAttackRequirement { trigger, required } => {
+                StaticAbilityPayload::ConditionalAttackRequirement { trigger, required }
+            }
             StaticAbilityPayload::Companion(condition) => {
                 StaticAbilityPayload::Companion(condition)
             }
@@ -4045,6 +4057,14 @@ impl<
 
     pub fn must_attack() -> Self {
         Self::identified(StaticAbilityId::MustAttack, "must attack")
+    }
+
+    pub fn conditional_attack_requirement(trigger: ObjectFilter, required: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ConditionalAttackRequirement),
+            label: "conditional attack requirement".into(),
+            payload: StaticAbilityPayload::ConditionalAttackRequirement { trigger, required },
+        }
     }
 
     pub fn goad_matching(filter: ObjectFilter) -> Self {

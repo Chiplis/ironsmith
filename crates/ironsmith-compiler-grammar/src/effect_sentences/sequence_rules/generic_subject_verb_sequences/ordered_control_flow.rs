@@ -1684,6 +1684,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
                 during_turns_counter_put_on_source: None,
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
+                during_turns_attacked_with: None,
                 ..
             }),
         ..

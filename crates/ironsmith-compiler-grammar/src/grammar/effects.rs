@@ -50,6 +50,8 @@ pub use bundle_rules::*;
 pub mod become_shapes;
 #[path = "effects/chain_carry.rs"]
 pub mod chain_carry;
+#[path = "effects/single_target_retarget.rs"]
+pub mod single_target_retarget;
 #[path = "effects/chain_splitting.rs"]
 pub mod chain_splitting;
 #[path = "effects/combat_damage_family_shapes.rs"]
@@ -1539,6 +1541,9 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = single_target_retarget::parse(tokens)? {
+        return Ok(effects);
+    }
     // A condition can introduce a target without making its predicate part of
     // target legality. Declare that target first, then test the chosen type at
     // resolution. The whole consequence remains inside the condition.

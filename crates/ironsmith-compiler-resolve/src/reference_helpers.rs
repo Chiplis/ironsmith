@@ -1086,17 +1086,41 @@ fn resolve_it_tag_inner(
         // is the stable identity needed by the follow-up move.
         resolved.zone = None;
     }
+    let exiled_this_way = refs
+        .snapshot_tag_aliases
+        .iter()
+        .filter(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+        .map(|(_, exiled)| exiled.clone())
+        .collect::<Vec<_>>();
     if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Exiled)
-        && let Some((_, exiled)) = refs
-            .snapshot_tag_aliases
-            .iter()
-            .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+        && let [exiled] = exiled_this_way.as_slice()
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag == crate::tag::CompilerReferenceTag::It.key() {
                 constraint.tag = exiled.clone();
             }
         }
+    } else if filter.prior_effect_action_surface()
+        == Some(ironsmith_core::PriorEffectAction::Exiled)
+        && exiled_this_way.len() > 1
+        && let Some(index) = resolved
+            .tagged_constraints
+            .iter()
+            .position(|constraint| constraint.tag == crate::tag::CompilerReferenceTag::It.key())
+    {
+        // One instruction exiled several groups: the object is any of them.
+        let relation = resolved.tagged_constraints.remove(index).relation;
+        resolved.any_of = exiled_this_way
+            .into_iter()
+            .map(|exiled| {
+                let mut member = ObjectFilter::default();
+                member.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                    tag: exiled,
+                    relation,
+                });
+                member
+            })
+            .collect();
     }
     let revealed_collection_tag = (filter.prior_effect_action_surface()
         == Some(ironsmith_core::PriorEffectAction::Revealed))

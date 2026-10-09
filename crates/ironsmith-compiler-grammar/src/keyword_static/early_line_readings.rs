@@ -411,10 +411,37 @@ fn read_cant_cast_this_during_first_turns(
         .into(),
     ]))
 }
+/// "X can't be greater than the greatest toughness among creatures you
+/// control." (Soul Immolation): the announced X is bounded by a live aggregate
+/// read as the spell is cast (CR 601.2b).
+pub(crate) fn read_aggregate_x_maximum(
+    tokens: &[crate::cards::builders::OwnedLexToken],
+) -> Option<StaticAbilityAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let refs = words.to_word_refs();
+    if !matches!(
+        refs.get(..5),
+        Some(["x", "can't" | "cant", "be", "greater", "than"])
+    ) {
+        return None;
+    }
+    let range = words.token_span_for_words(5, refs.len())?;
+    let value = crate::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
+        &tokens[range],
+    )?
+    .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
+    Some(StaticAbility::this_spell_x_maximum(value, display).into())
+}
+
 fn read_early_static_marker(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(ability) = read_aggregate_x_maximum(tokens) {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(marker) = keyword_static_lines::parse_early_static_marker_tokens(tokens) {
         let ability = match marker {
             keyword_static_lines::EarlyStaticMarkerKind::XMaximumPlayerCount => {

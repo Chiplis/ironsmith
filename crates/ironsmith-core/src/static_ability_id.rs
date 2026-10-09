@@ -417,6 +417,9 @@ pub enum StaticAbilityId {
     /// Blocker-side "can block creatures with landwalk abilities as though
     /// they didn't have those abilities"; appended for wire compatibility.
     CanBlockAsThoughNoLandwalk,
+    /// "If <creature> attacks, <creatures> attack if able"; appended for wire
+    /// compatibility.
+    ConditionalAttackRequirement,
 }
 
 impl StaticAbilityId {
@@ -518,6 +521,7 @@ impl StaticAbilityId {
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
             | GoadMatching
+            | ConditionalAttackRequirement
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
@@ -935,6 +939,7 @@ impl StaticAbilityId {
                 | CanAttackAsThoughHaste
                 | ActivateAbilitiesAsThoughHaste
                 | MustAttack
+                | ConditionalAttackRequirement
                 | MustBlock
                 | CantAttack
                 | CantAttackItsOwner

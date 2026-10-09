@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Sorcerous Squall",
+    "oracle_id": "a986d83d-22f1-45c3-bc2d-f5b210c539fb",
+    "mana_cost": "{6}{U}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Delve\nTarget opponent mills nine cards, then you may cast an instant or sorcery spell from that player's graveyard without paying its mana cost. If that spell would be put into a graveyard, exile it instead.",
+    "text": "Mana cost: {6}{U}{U}{U}\nType: Sorcery\nDelve\nTarget opponent mills nine cards, then you may cast an instant or sorcery spell from that player's graveyard without paying its mana cost. If that spell would be put into a graveyard, exile it instead."
+  }
+]

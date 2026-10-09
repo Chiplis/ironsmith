@@ -175,7 +175,7 @@ fn compound_keyword_costs_split_and_preserve_every_required_component() {
         [
             ActivationCostSegmentCst::Mana(_),
             ActivationCostSegmentCst::Tap,
-            ActivationCostSegmentCst::Blight { count: 1 },
+            ActivationCostSegmentCst::Blight { count: 1, .. },
         ]
     ));
     let life = parse("Pay 1 life, Blight 2");
@@ -183,7 +183,7 @@ fn compound_keyword_costs_split_and_preserve_every_required_component() {
         life.segments.as_slice(),
         [
             ActivationCostSegmentCst::Life(_),
-            ActivationCostSegmentCst::Blight { count: 2 },
+            ActivationCostSegmentCst::Blight { count: 2, .. },
         ]
     ));
     let forage = parse("{T}, Forage");

@@ -384,7 +384,59 @@ pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAs
     if let Some(effects) = super::parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
-    parse_effect_chain_lexed_inner(tokens)
+    let effects = parse_effect_chain_lexed_inner(tokens)?;
+    Ok(group_distributed_exile_instruction(tokens, effects))
+}
+
+/// "Target opponent exiles the top card of their library, a card at random
+/// from their graveyard, and a card at random from their hand"
+/// (Crabomination): one exile verb distributed over an object list is ONE
+/// instruction that lowered into several exile actions. Keep them together
+/// as one coordinated clause so "cards exiled this way" names all of them;
+/// separate sentences (each with its own verb) never merge.
+fn group_distributed_exile_instruction(
+    tokens: &[OwnedLexToken],
+    effects: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    if effects.len() < 2 {
+        return effects;
+    }
+    let exile_verbs = tokens
+        .iter()
+        .filter(|token| token.is_any_word(&["exile", "exiles"]))
+        .count();
+    let one_clause = !tokens.iter().any(|token| {
+        token.is_period() || token.is_any_word(&["then", "if", "unless", "where"])
+    });
+    fn exiles(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+                action,
+                SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Exile { .. } | ZoneMoveActionAst::ExileAll { .. }
+                ) | SubjectVerbActionAst::Library(
+                    crate::cards::builders::LibraryActionAst::ExileTopOfLibrary { .. }
+                )
+            ),
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+                exiles(effect)
+            }
+            EffectAst::Sequence { effects } => effects.iter().any(exiles),
+            _ => false,
+        }
+    }
+    // Only a list whose members are themselves several exiles: other
+    // "exile ... and <action>" chains keep their flat shape for the
+    // specialist bundle readers that match it.
+    if exile_verbs != 1 || !one_clause || effects.iter().filter(|effect| exiles(effect)).count() < 2
+    {
+        return effects;
+    }
+    vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+        result_conjunction: false,
+    }]
 }
 
 /// Parse the typed producer chain `put a counter ..., then create an X/Y
@@ -598,6 +650,18 @@ fn parse_effect_chain_lexed_inner(
     }
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
         return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::temporary_mana_clause::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::conditional_protection_list::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::repeated_doubling::parse(tokens)? {
+        return Ok(effects);
     }
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(vec![effect]);
@@ -1416,6 +1480,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
     }
     if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
         return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::temporary_mana_clause::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::conditional_protection_list::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::repeated_doubling::parse(tokens)? {
+        return Ok(effects);
     }
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(vec![effect]);

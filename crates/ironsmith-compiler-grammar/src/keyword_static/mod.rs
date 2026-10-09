@@ -6,6 +6,8 @@ use crate::cards::builders::TurnEventPredicateAst;
 use characteristic_assertions::parse_supertype_assertion_line;
 mod blocking_permissions;
 mod combat_requirements;
+mod conditional_attack_requirement;
+pub use conditional_attack_requirement::parse_conditional_attack_requirement_line;
 pub use combat_requirements::{
     parse_self_combat_requirement_line, parse_combat_requirement_static_line,
     parse_source_owned_flying_block_limit_line,
@@ -882,6 +884,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_filtered_creatures_able_to_block_source_line" => {
             vec![StaticAbilityLineHeadHint::Single("all")]
         }
+        "parse_conditional_attack_requirement_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
         "parse_leading_condition_wrapped_static_line" => vec![
             StaticAbilityLineHeadHint::Pair("during", "your"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
@@ -1486,6 +1491,7 @@ macro_rules! multi_static_ability_ast_passthrough_rule {
 fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     static RULES: &[StaticAbilityLineRuleDef] = &[
         multi_static_ability_ast_passthrough_rule!(parse_combat_requirement_static_line),
+        single_static_ability_ast_rule!(parse_conditional_attack_requirement_line),
         single_static_ability_ast_passthrough_rule!(parse_source_owned_flying_block_limit_line),
         single_static_ability_ast_passthrough_rule!(parse_enchant_attachment_restriction_line),
         multi_static_ability_ast_passthrough_rule!(parse_soulbond_shared_line),
@@ -2121,6 +2127,7 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
 }
 
 mod early_line_readings;
+pub(crate) use early_line_readings::read_aggregate_x_maximum;
 
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],

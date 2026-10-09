@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Reversal of Fortune",
+    "oracle_id": "938ba053-35f6-4424-a978-bf915709572c",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target opponent reveals their hand. You may copy an instant or sorcery card in it. If you do, you may cast the copy without paying its mana cost.",
+    "text": "Mana cost: {4}{R}{R}\nType: Sorcery\nTarget opponent reveals their hand. You may copy an instant or sorcery card in it. If you do, you may cast the copy without paying its mana cost."
+  }
+]

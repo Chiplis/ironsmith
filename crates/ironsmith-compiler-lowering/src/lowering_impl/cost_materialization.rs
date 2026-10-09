@@ -127,6 +127,7 @@ enum MaterializationCost {
     },
     Blight {
         count: u32,
+        x: bool,
     },
     RemoveCounters {
         counter_type: CounterType,
@@ -450,7 +451,10 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             count: *count,
             filter: filter.clone(),
         },
-        CompilerCost::Blight { count } => MaterializationCost::Blight { count: *count },
+        CompilerCost::Blight { count, x } => MaterializationCost::Blight {
+            count: *count,
+            x: *x,
+        },
         CompilerCost::RemoveCounters {
             counter_type: Some(counter_type),
             count,
@@ -668,14 +672,20 @@ fn lower_materialization_costs(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::behold(*subtype, *count)));
             }
-            MaterializationCost::Blight { count } => {
+            MaterializationCost::Blight { count, x } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 // Keep activation-cost antecedent indices aligned with the grammar.
                 tap_tag_id += 1;
+                // "Blight X" puts the announced X counters (CR 601.2b, 601.2h).
+                let amount = if *x {
+                    crate::effect::Value::X
+                } else {
+                    crate::effect::Value::Fixed(*count as i32)
+                };
                 costs.push(Cost::validated_effect(Effect::new(
                     crate::effects::PutCountersEffect::new(
                         CounterType::MinusOneMinusOne,
-                        *count as i32,
+                        amount,
                         crate::target::ChooseSpec::Object(ObjectFilter::creature().you_control()),
                     )
                     .with_completion_action(crate::events::KeywordActionKind::Blight),

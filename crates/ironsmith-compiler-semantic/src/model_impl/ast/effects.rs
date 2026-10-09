@@ -3458,6 +3458,12 @@ impl EffectAst {
         false
     }
 
+    /// Restrict retargeting to matching objects through the shared restriction.
+    pub fn with_retarget_new_target_restriction(mut self, filter: ObjectFilter) -> Self {
+        self.set_retarget_new_target_restriction(ironsmith_core::NewTargetRestriction::Object(filter));
+        self
+    }
+
     /// Preserve an authored plural copy back-reference ("the copies").
     pub fn with_retarget_plural_copy_reference(mut self, plural: bool) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {

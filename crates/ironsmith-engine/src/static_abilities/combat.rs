@@ -3323,6 +3323,34 @@ impl StaticAbilityKind for GoadMatching {
     }
 }
 
+/// "If <trigger> attacks, <required> attack if able." (Viashino Bey, War's
+/// Toll, Magnetic Web). The requirement exists only for an attack declaration
+/// in which a creature matching `trigger` attacks (CR 508.1d); declaration
+/// validation fixes that set from the proposed declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalAttackRequirement {
+    pub trigger: crate::target::ObjectFilter,
+    pub required: crate::target::ObjectFilter,
+}
+
+impl StaticAbilityKind for ConditionalAttackRequirement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ConditionalAttackRequirement
+    }
+    fn display(&self) -> String {
+        format!(
+            "If {} attacks, {} attack if able",
+            self.trigger.description(),
+            self.required.description()
+        )
+    }
+    fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        Some((&self.trigger, &self.required))
+    }
+}
+
 #[cfg(test)]
 mod replacement_attack_zone_cost_owner_contract_tests {
     use super::*;

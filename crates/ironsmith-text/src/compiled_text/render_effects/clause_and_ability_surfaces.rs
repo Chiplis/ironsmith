@@ -10269,6 +10269,21 @@ pub(crate) fn describe_static_ability_with_subject(
             lowercase_first(&describe_condition(condition))
         );
     }
+    if let Some(ironsmith_core::StaticAbilityPayload::ConditionalAttackRequirement {
+        trigger,
+        required,
+    }) = static_ability.compiled_model().map(|model| &model.payload)
+    {
+        let trigger_text = if trigger.source {
+            "this creature".to_string()
+        } else {
+            with_indefinite_article(&trigger.description())
+        };
+        return format!(
+            "If {trigger_text} attacks, all {} attack if able",
+            required.description()
+        );
+    }
     if let Some(ironsmith_core::StaticAbilityPayload::GoadMatching { filter }) =
         static_ability.compiled_model().map(|model| &model.payload)
     {

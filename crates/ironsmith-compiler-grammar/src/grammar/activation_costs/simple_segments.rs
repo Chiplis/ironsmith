@@ -406,9 +406,13 @@ fn parse_behold_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Activati
 
 fn parse_blight_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
     primitives::kw("blight").parse_next(input)?;
-    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let (count, x) = alt((
+        primitives::kw("x").value((0, true)),
+        leaf::parse_leaf_number_prefix_lexed.map(|count| (count, false)),
+    ))
+    .parse_next(input)?;
     eof.parse_next(input)?;
-    Ok(ActivationCostSegmentCst::Blight { count })
+    Ok(ActivationCostSegmentCst::Blight { count, x })
 }
 
 fn is_energy_symbol_token(token: &OwnedLexToken) -> bool {
@@ -509,7 +513,7 @@ mod tests {
         );
         assert_eq!(
             parse("blight 2"),
-            ActivationCostSegmentCst::Blight { count: 2 }
+            ActivationCostSegmentCst::Blight { count: 2, x: false }
         );
     }
     #[test]

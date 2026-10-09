@@ -287,6 +287,19 @@ pub(super) fn queue_triggers_for_events(
     try_queue_reported_events_with_batch_policy(game, trigger_queue, events, false, true)
 }
 
+/// Like [`queue_triggers_for_events`], but delayed triggers observe the
+/// events too. A mana ability's own production event is observed by
+/// temporary "until end of turn, whenever a player taps ... for mana"
+/// triggers (Bubbling Muck, Chaos Moon) exactly like printed ones; those are
+/// triggered mana abilities and resolve immediately (CR 605.1b).
+pub(super) fn queue_triggers_for_events_including_delayed(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+) -> Result<(), crate::effects::ExecutionError> {
+    try_queue_reported_events_with_batch_policy(game, trigger_queue, events, true, true)
+}
+
 /// Queue trigger matches for events produced by one simultaneous game action.
 ///
 /// Every event is recorded before matching, then trigger checks share a single

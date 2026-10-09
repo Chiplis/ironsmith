@@ -1846,6 +1846,137 @@ fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<
     ))
 }
 
+/// "it loses all land types and abilities" (Ultima, Origin of Oblivion):
+/// one subject loses every subtype of the named family (CR 205.3, layer 4)
+/// and every ability (layer 6, CR 613.1f). The ability half is read by the
+/// ordinary "loses all abilities" reader over the same subject and tail, so
+/// its target and duration ownership stay identical; the subtype half
+/// reuses that target.
+/// "lose hexproof, indestructible, protection, shroud, and ward" (Shay
+/// Cormac): a bare "protection" or "ward" in a lost-ability list names every
+/// instance of that keyword, whatever its quality or cost (CR 702.16, 702.21),
+/// so it removes the whole static family; the other items are ordinary.
+fn lose_bare_ability_families(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<(Vec<GrantedAbilityAst>, bool)>, CardTextError> {
+    use crate::static_abilities::StaticAbilityId;
+    let mut families = Vec::new();
+    let mut rest: Vec<OwnedLexToken> = Vec::new();
+    let mut item: Vec<OwnedLexToken> = Vec::new();
+    let mut flush = |item: &mut Vec<OwnedLexToken>,
+                     rest: &mut Vec<OwnedLexToken>,
+                     families: &mut Vec<GrantedAbilityAst>| {
+        let words = crate::lexer::parser_token_word_refs(item);
+        match words.as_slice() {
+            ["protection"] => families.push(GrantedAbilityAst::StaticAbilityFamily(
+                StaticAbilityId::Protection,
+            )),
+            ["ward"] => families.push(GrantedAbilityAst::StaticAbilityFamily(StaticAbilityId::Ward)),
+            [] => {}
+            _ => {
+                if !rest.is_empty() {
+                    rest.push(OwnedLexToken::comma(TextSpan::synthetic()));
+                }
+                rest.extend(item.iter().cloned());
+            }
+        }
+        item.clear();
+    };
+    for token in ability_tokens {
+        if token.is_comma() || token.is_word("and") {
+            flush(&mut item, &mut rest, &mut families);
+        } else {
+            item.push(token.clone());
+        }
+    }
+    flush(&mut item, &mut rest, &mut families);
+    if families.is_empty() {
+        return Ok(None);
+    }
+    let mut abilities = if rest.is_empty() {
+        Vec::new()
+    } else {
+        let (parsed, is_choice) =
+            parse_granted_abilities_for_gain_clause(&rest, clause_words, false)?;
+        if is_choice || parsed.is_empty() {
+            return Ok(None);
+        }
+        parsed
+    };
+    abilities.extend(families);
+    Ok(Some((abilities, false)))
+}
+
+fn parse_lose_family_types_and_abilities(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::grammar::primitives;
+    use crate::types::SubtypeFamily;
+    use winnow::Parser as _;
+    use winnow::combinator::alt;
+    let Some((start, family, rest)) = primitives::find_prefix(tokens, || {
+        (
+            alt((primitives::kw("lose"), primitives::kw("loses"))),
+            primitives::kw("all"),
+            alt((
+                primitives::kw("land").value(SubtypeFamily::Land),
+                primitives::kw("creature").value(SubtypeFamily::Creature),
+                primitives::kw("artifact").value(SubtypeFamily::Artifact),
+                primitives::kw("enchantment").value(SubtypeFamily::Enchantment),
+                primitives::kw("planeswalker").value(SubtypeFamily::Planeswalker),
+            )),
+            primitives::kw("types"),
+            primitives::kw("and"),
+        )
+            .map(|(_, _, family, _, _)| family)
+    }) else {
+        return Ok(None);
+    };
+    if !rest.first().is_some_and(|token| token.is_word("abilities")) {
+        return Ok(None);
+    }
+    // Subject + "loses all" + "abilities ..." from the authored tokens.
+    let family_index = start + 2;
+    let mut ability_clause = tokens[..family_index].to_vec();
+    ability_clause.extend_from_slice(rest);
+    let Some(remove_abilities) = parse_simple_ability_modifier_clause_lexed(&ability_clause, true)?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = &remove_abilities else {
+        return Ok(None);
+    };
+    let (target, duration) = match action {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+            target,
+            duration,
+            ..
+        }) => (target.clone(), duration.clone()),
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+            filter,
+            duration,
+            condition: None,
+            ..
+        }) => (TargetAst::Object(filter.clone(), None, None), duration.clone()),
+        _ => return Ok(None),
+    };
+    // A chosen target is chosen once; the second instruction names the same
+    // object through the first instruction's result.
+    let alias = match &target {
+        TargetAst::Object(_, Some(_), _) | TargetAst::WithCount(..) => {
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
+        }
+        _ => target.clone(),
+    };
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            remove_abilities,
+            EffectAst::subject_verb_remove_all_subtypes_of_family(alias, family, duration),
+        ],
+    }))
+}
+
 fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
@@ -1864,6 +1995,9 @@ fn parse_simple_ability_modifier_clause_lexed(
             super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
     {
         return Ok(Some(EffectAst::Sequence { effects }));
+    }
+    if losing && let Some(effect) = parse_lose_family_types_and_abilities(tokens)? {
+        return Ok(Some(effect));
     }
 
     let clause_word_view = GainAbilityWordView::new(tokens);
@@ -2000,6 +2134,8 @@ fn parse_simple_ability_modifier_clause_lexed(
                 )],
                 false,
             )
+        } else if losing && let Some(parsed) = lose_bare_ability_families(&ability_tokens, &clause_words)? {
+            parsed
         } else {
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, !losing)?
         };

@@ -770,8 +770,51 @@ pub fn parse_become_clause(
             }
             return Ok(with_subtype_removal(effect));
         }
-        let (descriptor_words, preserve_other_types) =
+        let (mut descriptor_words, mut preserve_other_types) =
             become_grammar::strip_become_addition_tail_words(&become_words[value_word_count..]);
+        // "Each of them is a 1/1 Spirit with flying in addition to its other
+        // types" (Storm of Souls): keywords granted after the implied-creature
+        // subtype (CR 205.3m; the abilities are added in layer 6).
+        let mut implied_creature_grants = Vec::<GrantedAbilityAst>::new();
+        if let Some(with_word) = descriptor_words
+            .iter()
+            .position(|word| *word == "with")
+            .filter(|index| *index > 0)
+        {
+            let Some(with_token) = become_body_tokens.iter().position(|token| token.is_word("with"))
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation suffix (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            };
+            let become_grammar::BecomeAnimationSuffixShape::With {
+                ability_tokens,
+                grants_all_creature_types: false,
+                preserve_other_types: suffix_preserves,
+                ..
+            } = become_grammar::parse_become_animation_suffix_shape(
+                &become_body_tokens[with_token..],
+            )
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation suffix (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            };
+            let ability_words = crate::lexer::parser_token_word_refs(ability_tokens);
+            let (parsed, is_choice) =
+                parse_granted_abilities_for_gain_clause(ability_tokens, &ability_words, false)?;
+            if is_choice || parsed.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation abilities (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            }
+            implied_creature_grants = parsed;
+            descriptor_words = &descriptor_words[..with_word];
+            preserve_other_types = preserve_other_types || suffix_preserves;
+        }
         if preserve_other_types
             && let Some(descriptor) =
                 become_grammar::parse_become_creature_descriptor_words(descriptor_words)
@@ -786,7 +829,7 @@ pub fn parse_become_clause(
                 Vec::new(),
                 descriptor.colors,
                 Vec::new(),
-                Vec::new(),
+                implied_creature_grants,
                 true,
                 Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature),
                 Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),

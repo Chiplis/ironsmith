@@ -2309,7 +2309,11 @@ pub(super) fn execute_pending_mana_ability(
             return Ok(());
         }
         drop(mana_ctx);
-        queue_triggers_for_events(game, trigger_queue, outcome.events)?;
+        super::targeting::queue_triggers_for_events_including_delayed(
+            game,
+            trigger_queue,
+            outcome.events,
+        )?;
 
         // Execute additional effects (for complex mana abilities)
         if !pending.effects.is_empty() {

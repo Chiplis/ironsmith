@@ -3887,6 +3887,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::MaxActivationsPerTurn(limit) => {
             format!("this ability has been activated fewer than {limit} times this turn")
         }
+        Condition::MaxActivationsPerTurnCount(_) => {
+            "this ability has been activated fewer times this turn than the counted number"
+                .to_string()
+        }
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),

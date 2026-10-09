@@ -1674,6 +1674,57 @@ fn advance_reference_frames(
     Ok(())
 }
 
+/// The members of ONE coordinated instruction ("exiles A, B, and C").
+fn advance_coordinated_reference_frames(
+    effects: &[EffectAst],
+    id_gen: &mut IdGenContext,
+    frame: &mut ReferenceFrame,
+) -> Result<(), CardTextError> {
+    // "Target opponent exiles the top card of their library, a card at random
+    // from their graveyard, and a card at random from their hand. You may
+    // cast a spell from among cards exiled this way." (Crabomination): one
+    // instruction exiles several groups, and "this way" names all of them.
+    // Consecutive exile producers among the members of one coordinated
+    // instruction (choice helpers between them do not interrupt it) keep one
+    // "exiled this way" alias per producer; the resolver reads them as a
+    // union. Separate sentences go through `advance_reference_frames`, where
+    // each exile replaces the alias (the most recent exile wins).
+    let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+    let mut exile_group: Vec<TagKey> = Vec::new();
+    for effect in effects {
+        advance_reference_frame_for_effect(effect, id_gen, frame)?;
+        if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
+            if let Some((_, exiled)) = frame
+                .snapshot_tag_aliases
+                .iter()
+                .rev()
+                .find(|(existing, _)| existing == &alias)
+                && !exile_group.contains(exiled)
+            {
+                exile_group.push(exiled.clone());
+            }
+            if exile_group.len() > 1 {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(existing, _)| existing != &alias);
+                for exiled in &exile_group {
+                    frame.snapshot_tag_aliases.push((alias.clone(), exiled.clone()));
+                }
+            }
+        } else if !matches!(
+            effect,
+            EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjects { .. }
+                    | ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }
+                    | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }
+            )
+        ) {
+            exile_group.clear();
+        }
+    }
+    Ok(())
+}
+
 fn advance_reference_frame_for_effect(
     effect: &EffectAst,
     id_gen: &mut IdGenContext,
@@ -1754,9 +1805,26 @@ fn advance_reference_frame_for_effect(
                 let group = crate::tag::CompilerReferenceTag::CoordinatedCreatedResult.key();
                 let mut created = Vec::new();
                 let mut all_members_create = coordination.members.len() > 1;
+                // One conjunctive instruction ("exiles the top card of their
+                // library, a card at random from their graveyard, and a card
+                // at random from their hand"): "exiled this way" names every
+                // member's exile.
+                let exiled_alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                let mut exiled_members: Vec<TagKey> = Vec::new();
                 for member in &coordination.members {
                     let before = frame.last_object_tag.clone();
                     advance_reference_frames(&member.effects, id_gen, frame)?;
+                    if member.effects.iter().any(|effect| {
+                        is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled)
+                    }) && let Some((_, exiled)) = frame
+                        .snapshot_tag_aliases
+                        .iter()
+                        .rev()
+                        .find(|(alias, _)| alias == &exiled_alias)
+                        && !exiled_members.contains(exiled)
+                    {
+                        exiled_members.push(exiled.clone());
+                    }
                     let creates_tokens = !member.effects.is_empty()
                         && member.effects.iter().all(|effect| {
                             matches!(
@@ -1778,6 +1846,16 @@ fn advance_reference_frame_for_effect(
                         _ => all_members_create = false,
                     }
                 }
+                if exiled_members.len() > 1 {
+                    frame
+                        .snapshot_tag_aliases
+                        .retain(|(alias, _)| alias != &exiled_alias);
+                    frame.snapshot_tag_aliases.extend(
+                        exiled_members
+                            .into_iter()
+                            .map(|exiled| (exiled_alias.clone(), exiled)),
+                    );
+                }
                 frame
                     .snapshot_tag_aliases
                     .retain(|(alias, _)| alias != &group);
@@ -1792,10 +1870,12 @@ fn advance_reference_frame_for_effect(
             advance_reference_frames(&iteration.body, id_gen, frame)?;
         }
         EffectAst::Vote(_) => {}
+        EffectAst::Coordinated { effects, .. } => {
+            advance_coordinated_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }

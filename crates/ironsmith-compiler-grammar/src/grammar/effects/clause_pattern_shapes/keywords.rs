@@ -79,8 +79,9 @@ pub enum KeywordMechanicShape<'a> {
         subtype: Subtype,
         count: u32,
     },
+    /// `amount: None` is "blight X": the announced X (CR 601.2b).
     Blight {
-        amount: u32,
+        amount: Option<u32>,
     },
     ManifestDread {
         repeat: KeywordRepeatShape<'a>,
@@ -456,7 +457,11 @@ fn parse_behold<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'
 
 fn parse_blight<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     primitives::kw("blight").parse_next(input)?;
-    let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let amount = alt((
+        primitives::kw("x").value(None),
+        leaf::parse_leaf_number_prefix_lexed.map(Some),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::Blight { amount })
 }

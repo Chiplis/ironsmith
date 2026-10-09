@@ -152,6 +152,10 @@ pub(crate) fn rewrite_static_model_words(
         | P::AlternativeCastFromZoneForFilter { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
+        P::ConditionalAttackRequirement { trigger, required } => {
+            *trigger = rewrite_filter_words(trigger, change)?;
+            *required = rewrite_filter_words(required, change)?;
+        }
         P::LegendRuleDoesntApplyToController { filter } => {
             // This id selects a hardcoded token filter in native materialization.
             if model.id == Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens) {

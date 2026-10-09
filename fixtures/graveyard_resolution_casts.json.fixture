@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Sproutback Trudge",
+    "oracle_id": "d9826660-0f34-4d82-8915-cf2796ab8d9a",
+    "mana_cost": "{7}{G}{G}",
+    "type_line": "Creature — Fungus Beast",
+    "oracle_text": "This spell costs {X} less to cast, where X is the amount of life you gained this turn.\nTrample\nAt the beginning of your end step, if you gained life this turn, you may cast this creature from your graveyard.",
+    "power": "9",
+    "toughness": "7",
+    "text": "Mana cost: {7}{G}{G}\nType: Creature — Fungus Beast\nPower/Toughness: 9/7\nThis spell costs {X} less to cast, where X is the amount of life you gained this turn.\nTrample\nAt the beginning of your end step, if you gained life this turn, you may cast this creature from your graveyard."
+  },
+  {
+    "name": "Syrix, Carrier of the Flame",
+    "oracle_id": "ec97bb0e-0dc8-4b9b-8762-2f1649cc9044",
+    "mana_cost": "{2}{B}{R}",
+    "type_line": "Legendary Creature — Phoenix",
+    "oracle_text": "Flying, haste\nAt the beginning of each end step, if a creature card left your graveyard this turn, target Phoenix you control deals damage equal to its power to any target.\nWhenever another Phoenix you control dies, you may cast this card from your graveyard.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {2}{B}{R}\nType: Legendary Creature — Phoenix\nPower/Toughness: 3/3\nFlying, haste\nAt the beginning of each end step, if a creature card left your graveyard this turn, target Phoenix you control deals damage equal to its power to any target.\nWhenever another Phoenix you control dies, you may cast this card from your graveyard."
+  },
+  {
+    "name": "Oskar, Rubbish Reclaimer",
+    "oracle_id": "14c2c818-0ce2-4809-a5ff-ee4a6253defa",
+    "mana_cost": "{3}{U}{B}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "This spell costs {1} less to cast for each different mana value among cards in your graveyard.\nWhenever you discard a nonland card, you may cast it from your graveyard.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {3}{U}{B}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 3/3\nThis spell costs {1} less to cast for each different mana value among cards in your graveyard.\nWhenever you discard a nonland card, you may cast it from your graveyard."
+  }
+]

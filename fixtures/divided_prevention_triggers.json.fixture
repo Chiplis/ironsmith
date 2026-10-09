@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Angel of Salvation",
+    "oracle_id": "27b945ad-92a9-4615-87ec-790682e8c3e7",
+    "mana_cost": "{6}{W}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flash; convoke\nFlying\nWhen this creature enters, prevent the next 5 damage that would be dealt this turn to any number of targets, divided as you choose.",
+    "power": "5",
+    "toughness": "5",
+    "text": "Mana cost: {6}{W}{W}\nType: Creature — Angel\nPower/Toughness: 5/5\nFlash; convoke\nFlying\nWhen this creature enters, prevent the next 5 damage that would be dealt this turn to any number of targets, divided as you choose."
+  },
+  {
+    "name": "Serra's Hymn",
+    "oracle_id": "66a3ffde-4c81-4798-b99b-a6cc3a93c3e3",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, you may put a verse counter on this enchantment.\nSacrifice this enchantment: Prevent the next X damage that would be dealt this turn to any number of targets, divided as you choose, where X is the number of verse counters on this enchantment.",
+    "text": "Mana cost: {W}\nType: Enchantment\nAt the beginning of your upkeep, you may put a verse counter on this enchantment.\nSacrifice this enchantment: Prevent the next X damage that would be dealt this turn to any number of targets, divided as you choose, where X is the number of verse counters on this enchantment."
+  }
+]

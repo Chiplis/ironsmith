@@ -2689,7 +2689,8 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::Blight { amount } => {
             EffectAst::subject_verb_put_counters(
                 crate::object::CounterType::MinusOneMinusOne,
-                Value::Fixed(amount as i32)
+                amount
+                    .map_or(Value::X, |amount| Value::Fixed(amount as i32))
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction),
                 TargetAst::Object(ObjectFilter::creature().you_control(), None, None),
                 None,

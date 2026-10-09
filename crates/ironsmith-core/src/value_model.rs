@@ -2318,6 +2318,10 @@ pub enum Condition {
     /// controller is the active player and the game is in the end step.
     /// Appended to preserve serialized condition discriminants.
     OpponentsEndStep,
+    /// "Activate no more times each turn than the number of snow Swamps you
+    /// control." (Withering Wisps): a per-turn activation cap read when the
+    /// ability is activated (CR 602.5b). Appended for wire stability.
+    MaxActivationsPerTurnCount(AnthemCountExpression),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

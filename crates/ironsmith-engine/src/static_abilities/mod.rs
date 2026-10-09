@@ -577,6 +577,14 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "If <trigger> attacks, <required> attack if able" (CR 508.1d): the
+    /// (trigger, required) filters, read from this source's perspective.
+    fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        None
+    }
+
     /// Player currently goading this creature through a static ability.
     fn goaded_by_player(
         &self,
@@ -2024,6 +2032,12 @@ impl StaticAbility {
 
     pub fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
         self.0.goads_matching()
+    }
+
+    pub fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        self.0.conditional_attack_requirement()
     }
 
     pub fn goaded_by_player(

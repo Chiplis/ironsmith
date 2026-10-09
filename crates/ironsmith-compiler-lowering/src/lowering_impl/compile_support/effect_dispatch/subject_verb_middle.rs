@@ -1550,6 +1550,23 @@ pub(super) fn compile_subject_verb_middle(
                 }
                 return Ok(Some((vec![Effect::new(cast)], Vec::new())));
             }
+            // "you may cast this card from your graveyard" (Syrix, Sproutback
+            // Trudge): the ability's own card, cast from wherever it is now.
+            if tag.as_str() == crate::tag::CompilerReferenceTag::SourceObject.as_str()
+                && matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                && !*allow_land
+                && !*as_copy
+                && additional_mana_cost.is_none()
+                && cost_reduction.is_none()
+                && alternative_payment.is_none()
+                && alternative_cost.is_none()
+            {
+                let mut cast = crate::effects::CastSourceEffect::new();
+                if *without_paying_mana_cost {
+                    cast = cast.without_paying_mana_cost();
+                }
+                return Ok(Some((vec![Effect::new(cast)], Vec::new())));
+            }
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
@@ -4305,7 +4322,6 @@ pub(super) fn compile_subject_verb_middle(
             if *require_change {
                 effect = effect.require_change();
             }
-
             if let Some(restriction) = new_target_restriction {
                 effect = effect.with_restriction(restriction.clone());
             }
