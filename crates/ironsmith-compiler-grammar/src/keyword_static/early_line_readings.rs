@@ -193,6 +193,15 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_cycling_cost_alternative_line(input)),
     },
     Reading {
+        id: RuleId::new("commander-tax-life-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(Ok(
+            super::commander_tax_life::parse_commander_tax_life_line(input.tokens)
+                .map(|ability| vec![ability.into()]),
+        )),
+    },
+    Reading {
         id: RuleId::new("echo-cost-alternative-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

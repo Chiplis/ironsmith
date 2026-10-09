@@ -953,7 +953,8 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
 pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &str) -> String {
     if !line.starts_with("Eminence — ")
         || !(line.contains("if this source is in the command zone or on the battlefield")
-            || line.contains("if this creature is in the command zone or on the battlefield"))
+            || line.contains("if this creature is in the command zone or on the battlefield")
+            || line.contains("As long as this source is in the command zone or on the battlefield"))
     {
         return line.to_string();
     }
@@ -968,6 +969,10 @@ pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &
     .replace(
         "if this creature is in the command zone or on the battlefield",
         &format!("if {source} is in the command zone or on the battlefield"),
+    )
+    .replace(
+        "As long as this source is in the command zone or on the battlefield",
+        &format!("As long as {source} is in the command zone or on the battlefield"),
     )
     .replace("target cat", "target Cat")
     .replace("another spell Vampire", "another Vampire spell")

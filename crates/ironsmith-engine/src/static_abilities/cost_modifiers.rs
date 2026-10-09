@@ -1180,6 +1180,22 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
             display: Some(display),
             ..
         } => format!("As long as {display}"),
+        // Eminence (The Ur-Dragon): "As long as <this> is in the command zone
+        // or on the battlefield" (the eminence ability word, CR 207.2c).
+        crate::ConditionExpr::Or(left, right)
+            if matches!(
+                (left.as_ref(), right.as_ref()),
+                (
+                    crate::ConditionExpr::SourceIsInZone(Zone::Command),
+                    crate::ConditionExpr::SourceIsInZone(Zone::Battlefield)
+                ) | (
+                    crate::ConditionExpr::SourceIsInZone(Zone::Battlefield),
+                    crate::ConditionExpr::SourceIsInZone(Zone::Command)
+                )
+            ) =>
+        {
+            "As long as this source is in the command zone or on the battlefield".to_string()
+        }
         _ => "As long as the stated condition is true".to_string(),
     }
 }
