@@ -47,6 +47,44 @@ mechanics), so the package splits into many small clusters rather than one.
   optional-cost / trigger mechanism; madness is p06's replacement family), and the remaining
   cast-timing spell bodies (Berserker's Frenzy, Camouflage, Illusionist's Gambit, Siren's Call).
 
+## Round 4
+- Typed granted spell keywords (`StaticAbilityPayload::GrantSpellKeyword`, `StaticAbilityId::GrantSpellKeyword`,
+  core `granted_spell_keyword_model.rs`): replicate (fixed or "equal to its mana cost"), offspring, conspire,
+  demonstrate granted to spells. Engine `granted_spell_keywords.rs` discovers every applicable grant (battlefield
+  statics and grants attached to the spell) at cast time (CR 601.2b): costs become optional costs with a per-grant
+  discriminator; native Replicate/GrantedConspire copy triggers fire from the paid costs; offspring attaches its
+  CR 702.175a ETB trigger to the spell's incarnation; demonstrate triggers are synthesized on SpellCast.
+  The conspire display-text match (`granted_conspire_count`) and marker grant are gone; Wort / Raiding Schemes /
+  Rassilon now compile to the typed grant (collateral, not package cards). Grammar: `granted_spell_keywords.rs`
+  plus the anthem-grant conspire branch (now also demonstrate).
+- Granted sneak: shared casting-keyword path grants a Composed "Sneak" cost in hand or graveyard; new
+  `AlternativeCastFromZoneForFilter` permission ("cast creature spells from your graveyard using their sneak
+  abilities", `AlternativeCastKeyword::Sneak`) admits printed or granted sneak methods in legal-action enumeration;
+  SneakCostEffect accepts a graveyard source.
+- Granted madness: `DerivedAlternativeCast::MadnessFromCardManaCost` granted in hand/exile/graveyard/library; the
+  engine-native DiscardWithMadness replacement (not p06's EventReplacementWithEffects) now also applies when madness
+  is granted, and MayCastForMadnessCostEffect casts via the granted method from exile. Granted madness can't be an
+  ordinary cast from exile (authorization guard in legal actions).
+- Cast-timing bodies: referenced-creature combat sentences (`attacks that combat if able`, `can't attack you or
+  planeswalkers you control that combat` → RestrictionStart::LastAddedCombatPhase; `They block this turn if able`
+  → MustBlock); "Roll two d20 and ignore the lower roll" (`RollDiceChooseResultEffect.ignore_lower`); player-relation
+  subject "the active player"; block-declaration control already existed (ControlCombatChoicesThisTurn).
+- Taunt: next-turn requirement accepts "attack you"; engine binds the targeted controller in MustAttackPlayer.
+
+### Round 4 risk notes
+- New appended enum variants: StaticAbilityPayload::{GrantSpellKeyword, AlternativeCastFromZoneForFilter},
+  StaticAbilityId::{GrantSpellKeyword, AlternativeCastFromZoneForFilter}, AlternativeCastKeyword::Sneak,
+  DerivedAlternativeCast::MadnessFromCardManaCost, SentencePreludeShape::RollDiceIgnoreLower; new field
+  RandomActionAst::RollDiceChooseResult.ignore_lower and RollDiceChooseResultEffect.ignore_lower (core serde default,
+  engine struct). Arms added in core try_map, text_change_statics, compiler-runtime convert, artifact materializer,
+  engine grant materialize, sentence registry.
+- `AlternativeCastingMethod::keyword()` now maps a Composed method named "Sneak" to `AlternativeCastKeyword::Sneak`.
+- Granted offspring: a printed offspring trigger's discriminator-less paid query also sees a granted payment.
+- Shard_06 engine test now attaches the typed conspire grant instead of a KeywordMarker.
+- Referenced-creature readers rely on the It tag binding to "those creatures"/"they" (unverified without a build).
+- Still blocked here: Siren's Call (exception sentence + delayed "that player" binding), Camouflage (pile-based
+  random block assignment).
+
 ## Source-proposed clusters
 ### absorb-keyword (1): Lymph Sliver
 - Fix: Absorb had no grammar. New registry rule lowers 'Absorb N' and '<subject> have absorb N' to the existing PreventMatchingDamage self-prevention (amount N, target = this object) that the spelled-out CR 702.64a sentence already compiles to (probe), granted via GrantStaticAbility.
