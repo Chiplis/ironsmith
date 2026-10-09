@@ -55,6 +55,10 @@ enum CopyStatement {
     Times(CopyInstructionSurface, u32),
     /// "Copy them." / "Copy those cards." — one copy of each exiled card.
     Each,
+    /// "For each card exiled this way, copy it, and you may cast the copy
+    /// [without paying its mana cost]." (Mizzix's Mastery) — one copy of each
+    /// exiled card, the cast stated with it.
+    EachThenCast,
 }
 
 enum Exiled {
@@ -134,6 +138,53 @@ fn plural_copy_statement(sentence: &SentenceInput) -> Option<CopyStatement> {
     }
 }
 
+/// "For each card exiled this way, copy it, and you may cast the copy ..."
+fn for_each_copy_then_cast(sentence: &SentenceInput) -> Option<MayCastTaggedSpec> {
+    let tokens = sentence.lowered();
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    const HEAD: &[&str] = &["for", "each", "card", "exiled", "this", "way", "copy", "it", "and"];
+    if !words.starts_with(HEAD) {
+        return None;
+    }
+    let cast_start = crate::lexer::TokenWordView::new(tokens)
+        .token_span_for_words(0, HEAD.len())?
+        .end;
+    let cast_tokens = crate::util::trim_commas(&tokens[cast_start..]);
+    let cast = parse_may_cast_it_sentence(&cast_tokens)?;
+    (cast.as_copy && matches!(cast.player, PlayerAst::Implicit | PlayerAst::You)).then_some(cast)
+}
+
+/// "Copy each <cards>." / "Copy the <card>." naming the copied cards by a
+/// filter rather than by an exile in a preceding sentence (Zethi, Arcane
+/// Blademaster; Arcane Bombardment; Spellweaver Volute): the filter tokens
+/// and whether the statement copies each matching card.
+fn copy_filtered_cards_statement(sentence: &SentenceInput) -> Option<(&[OwnedLexToken], bool)> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
+        crate::util::trim_commas(&tokens[1..])
+    } else {
+        tokens.to_vec()
+    };
+    let words = crate::lexer::parser_token_word_refs(&tokens);
+    let plural = match words.as_slice() {
+        ["copy", "each", _, ..] => true,
+        ["copy", "the", _, ..] => false,
+        _ => return None,
+    };
+    let start = crate::lexer::TokenWordView::new(sentence.lowered())
+        .token_span_for_words(0, 2 + usize::from(sentence_starts_with_then(sentence)))?
+        .end;
+    let filter_tokens = crate::util::trim_edge_punctuation_tokens(&sentence.lowered()[start..]);
+    (!filter_tokens.is_empty()).then_some((filter_tokens, plural))
+}
+
+fn sentence_starts_with_then(sentence: &SentenceInput) -> bool {
+    sentence
+        .lowered()
+        .first()
+        .is_some_and(|token| token.is_word("then"))
+}
+
 fn is_plural_copy(statement: &CopyStatement) -> bool {
     matches!(statement, CopyStatement::Times(..) | CopyStatement::Each)
 }
@@ -209,6 +260,9 @@ fn gated_copy(sentence: &SentenceInput, exiled: &TagKey) -> bool {
 fn copy_statement(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyStatement> {
     if let Some(plural) = plural_copy_statement(sentence) {
         return Some(plural);
+    }
+    if for_each_copy_then_cast(sentence).is_some() {
+        return Some(CopyStatement::EachThenCast);
     }
     if copy_then_cast(sentence).is_some() {
         return Some(CopyStatement::ThenCast);
@@ -318,6 +372,40 @@ pub(super) fn open(
         return Ok(None);
     };
     let following = sentences.get(sentence_idx + 2);
+    // "Copy each exiled card you own with a kick counter on it. You may cast
+    // the copies." — the copied cards are named by a filter (CR 707.12).
+    if let Some((filter_tokens, plural)) = copy_filtered_cards_statement(sentence) {
+        let cast = if plural {
+            plural_cast_statement(next)
+        } else {
+            cast_statement(next)
+        };
+        if cast.is_some()
+            && let Ok(filter) = crate::object_filters::parse_object_filter(filter_tokens, false)
+            && let Some(zone) = filter.zone.filter(|zone| *zone != Zone::Battlefield)
+        {
+            let tag = helper_tag_for_tokens(sentence.lowered(), "copied");
+            let select = EffectAst::subject_verb_tag_matching_objects(
+                filter,
+                vec![zone],
+                crate::tag::TagRef::of(tag.clone()),
+            );
+            return Ok(Some(CopyCastGroup {
+                exile: vec![select],
+                tag: tag.key.clone(),
+                exiled: Exiled::Card {
+                    copy: Some(if plural {
+                        CopyStatement::Each
+                    } else {
+                        CopyStatement::Separate(CopyInstructionSurface::SeparateThatCard)
+                    }),
+                },
+                cast: None,
+                first_sentence: sentence_idx,
+                consumed: 1,
+            }));
+        }
+    }
     let Some(effects) = crate::grammar::primitives::probe_shape(
         super::parse_effect_sentence_lexed(sentence.lowered()),
     ) else {
@@ -337,7 +425,7 @@ pub(super) fn open(
         let mut exile = exile.clone();
         if let Some(tag) = tag_card_exile(&mut exile, sentence) {
             let continues = match copy_statement(next, &tag) {
-                Some(CopyStatement::ThenCast) => true,
+                Some(CopyStatement::ThenCast | CopyStatement::EachThenCast) => true,
                 Some(statement) if is_plural_copy(&statement) => {
                     following.is_some_and(|third| plural_cast_statement(third).is_some())
                 }
@@ -428,6 +516,9 @@ pub(super) fn continue_with(
             };
             if matches!(statement, CopyStatement::ThenCast) {
                 group.cast = copy_then_cast(sentence);
+            }
+            if matches!(statement, CopyStatement::EachThenCast) {
+                group.cast = for_each_copy_then_cast(sentence);
             }
             group.exiled = Exiled::Card {
                 copy: Some(statement),
@@ -523,7 +614,7 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                         },
                     ));
                 }
-                Some(CopyStatement::Each) => {
+                Some(CopyStatement::Each | CopyStatement::EachThenCast) => {
                     // Each exiled card is copied, and each copy may be cast
                     // in turn; the iteration binds the current card as "it".
                     cast.tag = CompilerReferenceTag::It.bind().key.clone();
