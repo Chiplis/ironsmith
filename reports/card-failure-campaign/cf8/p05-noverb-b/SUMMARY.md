@@ -1,6 +1,7 @@
 # cf8 p05-noverb-b — "could not find verb in effect clause" (153 cards)
 
-Status (round 4): 60 source-proposed, 5 already-on-main, 88 blocked, 0 untriaged.
+Status (round 5): 61 source-proposed, 5 already-on-main, 87 blocked, 0 untriaged (own package); plus 50 other-package rows: 3 dependant-proposed, 47 dependant-blocked.
+(Round 4: 60 / 5 / 88.)
 (Round 3: 47 / 5 / 101.)
 (Round 2: 42 / 5 / 106.)
 (Round 1 was 18 / 4 / 131. The prebuilt probe binary was removed mid-session, so all round-2
@@ -126,3 +127,53 @@ Still blocked after round 4:
   - `dispatch_entry.rs`: `parse_effect_sentences_from_sentence_inputs` is now `pub(super)`.
 - **Behaviour change in the pronoun binder.** A plural "it/those …" consumer of exile, move or return right after a choice made by each player now takes the union of the choices instead of the last one.
 - **Behaviour change in the suffix grammar.** "and they may spend mana as though ..." is now a permission rider. Before, it was a split clause.
+
+
+## Round 5 — other packages' p05 dependants, Thieves' Auction
+
+I searched every package ledger for blocked rows that need a p05-owned mechanism and found 50. Each one is now recorded in this ledger with `owner_package` set. Shapes built:
+- **3 dependant-proposed**, built as source extensions of the exile-pool permission (`tagged_surface.rs`, `exiled_top_procedure.rs`), with tests in `tests/p05_dependant_exile_pool_permissions.rs` and fixture `fixtures/cf8_p05_dependants.json.fixture`:
+  - **King Narfi's Betrayal (p04):** a "spells from among cards exiled with this Saga" target over the source-linked pool.
+  - **Chandra, Flameshaper (p07):** the exiled-top statement "Choose one [of them]." picks one exiled card, then "You may play that card this turn" grants permission over it.
+  - **Nahiri, Forged in Fury (p04):** "You may cast <filter> spells this way without paying their mana costs" tags the matching exiled card and grants the free cast over it.
+- **Thieves' Auction (own package):** now source-proposed. The program tags the exiled pool, then repeats a round-robin ordered from the controller while an unchosen pool card remains in exile:
+  1. Reset this player's pick tag.
+  2. The player chooses one unchosen card from the pool.
+  3. They put it onto the battlefield tapped under their control.
+  4. The pick joins the shared chosen set.
+
+  A pick that can't enter (CR 303.4g) stays chosen, so the loop always terminates.
+- **Kathril:** still blocked; the ledger records the exact gap. I rejected counting how many keywords are present as lossy, because it miscounts under counter-doubling replacements.
+
+The 47 dependant-blocked rows, grouped by the shape each still needs:
+- **Static zone permissions** (graveyard/library/linked exile, plus additional costs, during-your-turn windows, once-per-turn or once-per-type budgets, conditions; 20 cards): Muldrotha, Share the Spoils, Azula, Dawnhand Dissident, Evendo Brushrazer, Festival of Embers, Theater of Horrors, Shared Fate, Uba Mask, Arcade Gannon, Maralen, Banon, Null Summoner, Falco Spara, Hedonist's Trove, Into the Pit, Noctis, Quilled Greatwurm, Qasali Ambusher, Fblthp.
+  - All of these are unsupported-line-family statics that would need routing in `static_ability_rule_head_hints`.
+  - The engine already has `DerivedAlternativeCast::GraveyardCastFromCardManaCost{additional_costs, usage_limit, condition}` for the graveyard additional-cost subset.
+- **Attack requirements and permissions** (9 cards):
+  - Player-scoped requirements: Seeker, Trove.
+  - Planeswalker target: Gideon Jura.
+  - Per-target "other chosen player": The Brothers' War.
+  - Directional: Teyo.
+  - Most-life selector: Galactus.
+  - Attack-target-scoped haste: Frenzied Saddlebrute.
+  - Filter subject: Imaginary Threats.
+  - Token copies attacking each other opponent: Shredder (p12 token shape).
+- **Mana-spend scopes** (4 cards):
+  - Single color to single color: Sunglasses of Urza.
+  - Owner-relative scopes: Nathan Drake.
+  - One-spell grant: North Star.
+  - Ability-scoped rider: Grell Philosopher.
+- **Exile-pool permissions still open** (6 cards):
+  - "During your next turn" window: Galvanic Relay.
+  - Delayed "if you haven't cast it": Planeswalker's Mischief.
+  - Consult-result "exiled nonland card" inside "if you don't": Black Widow.
+  - Exactly-three-colors filter: Meeting of the Five.
+  - Pool spans two exiles: Kotose.
+  - Waterbend price: Hama.
+- **Cast from another player's zone** (4 cards): Whispersteel Dagger, Tinybones; Sen Triplets and Xanathar also need p10's restrictions.
+- **"As many times as you choose"** (2 cards): Dance with Calamity, Lim-Dûl's Vault (owned by p11).
+- **Granted quoted permissions** (2 cards): Lukka, Monk Class.
+
+### Round-5 risk notes
+- `exiled_top_procedure.rs` has a new `Statements::Chosen` state and two new statement arms. The procedure now opens on "choose one" + play permission, or on play permission + free-cast rider.
+- The Thieves' Auction program resets the pick tag by taking the union of a helper tag that is never written. If a reference-ledger validator rejects consumed-but-unproduced tags, it will flag it.
