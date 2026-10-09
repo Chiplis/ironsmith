@@ -3554,6 +3554,7 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
+        | EffectAst::GreatestManaValueTieBreakExile { .. }
         | EffectAst::SetDayNight(_)
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType

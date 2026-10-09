@@ -235,3 +235,73 @@ pub(super) fn read_following_process_for_each_opponent(
         process
     }]))
 }
+
+/// "Each player exiles the top card of their library. The player who exiled
+/// the card with the greatest mana value <action>. If two or more players'
+/// cards are tied for greatest, the tied players repeat this process until
+/// the tie is broken." (Timesifter): a repeated round among the tied players
+/// (CR 608.2c) whose unique winner then performs the action.
+pub(super) fn read_greatest_mana_value_tie_break(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(round), Some(winner), Some(tie)) = (
+        sentences.get(sentence_idx),
+        sentences.get(sentence_idx + 1),
+        sentences.get(sentence_idx + 2),
+    ) else {
+        return Ok(None);
+    };
+    if primitives::probe_all(
+        strip_sentence_edges(round.lowered()),
+        primitives::phrase(&[
+            "each", "player", "exiles", "the", "top", "card", "of", "their", "library",
+        ]),
+        "tie-break-round",
+    )
+    .is_none()
+    {
+        return Ok(None);
+    }
+    let tie_words = crate::lexer::parser_token_word_refs(strip_sentence_edges(tie.lowered()));
+    let tie_words = tie_words
+        .iter()
+        .map(|word| if *word == "players'" { "players" } else { *word })
+        .collect::<Vec<_>>();
+    const TIE: &[&str] = &[
+        "if", "two", "or", "more", "players", "cards", "are", "tied", "for", "greatest", "the",
+        "tied", "players", "repeat", "this", "process", "until", "the", "tie", "is", "broken",
+    ];
+    if tie_words.as_slice() != TIE {
+        return Ok(None);
+    }
+    let winner_tokens = strip_sentence_edges(winner.lowered());
+    let Some(((), action)) = primitives::parse_prefix(
+        winner_tokens,
+        primitives::phrase(&[
+            "the", "player", "who", "exiled", "the", "card", "with", "the", "greatest", "mana",
+            "value",
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    if action.is_empty() {
+        return Ok(None);
+    }
+    let mut actor_action = crate::lexer::synthetic_word_tokens(["that", "player"]);
+    actor_action.extend_from_slice(action);
+    let winner_effects = super::parse_effect_sentence_lexed(&actor_action)?;
+    let contenders = crate::util::helper_tag_for_tokens(round.lowered(), "tie_break_players");
+    let exiled = crate::util::helper_tag_for_tokens(round.lowered(), "tie_break_exiled");
+    Ok(Some(vec![
+        EffectAst::GreatestManaValueTieBreakExile {
+            contenders_tag: contenders.clone(),
+            exiled_tag: exiled,
+        },
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+            tag: contenders,
+            effects: winner_effects,
+            require_evidence: false,
+        }),
+    ]))
+}

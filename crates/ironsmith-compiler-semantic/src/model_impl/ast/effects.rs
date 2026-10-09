@@ -59,6 +59,15 @@ pub enum EffectAst {
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    /// "Each player exiles the top card of their library. ... If two or more
+    /// players' cards are tied for greatest, the tied players repeat this
+    /// process until the tie is broken." (Timesifter): the contenders each
+    /// exile the top card of their library until at most one has the
+    /// greatest mana value; `contenders_tag` then names that player.
+    GreatestManaValueTieBreakExile {
+        contenders_tag: TagRef,
+        exiled_tag: TagRef,
+    },
     /// "It becomes day." / "It becomes night." (CR 731.2-731.3).
     SetDayNight(ironsmith_core::DayNightDesignation),
     /// "This ability still resolves if its target becomes illegal."

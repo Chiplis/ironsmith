@@ -17,7 +17,7 @@ const CLUSTER: &str = "repeat_process_variants";
 #[test]
 fn every_cluster_card_compiles_strictly_on_both_routes() {
     let rows = support::rows(CLUSTER);
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 3);
     for row in &rows {
         support::definitions(row);
     }
@@ -53,5 +53,25 @@ fn protection_racket_runs_the_following_process_once_per_opponent() {
         // The opponent of the current iteration decides whether to pay.
         assert!(debug.contains("IteratedPlayer"), "{debug}");
         assert!(debug.contains("PayLife") || debug.contains("LoseLife"), "{debug}");
+    }
+}
+
+#[test]
+fn timesifter_repeats_the_round_among_tied_players_then_the_winner_takes_a_turn() {
+    for definition in support::definitions(&support::row(CLUSTER, "Timesifter")) {
+        assert_eq!(
+            support::effects_of::<ironsmith::effects::TagPlayersEffect>(&definition).len(),
+            1,
+            "every player starts as a contender"
+        );
+        assert_eq!(
+            support::effects_of::<ironsmith::effects::KeepGreatestManaValuePlayersEffect>(&definition)
+                .len(),
+            1
+        );
+        let debug = support::debug(&definition);
+        assert!(debug.contains("RepeatProcessEffect"), "{debug}");
+        assert!(debug.contains("GreaterThan(1)"), "repeat while a tie remains: {debug}");
+        assert!(debug.contains("ExtraTurn"), "{debug}");
     }
 }

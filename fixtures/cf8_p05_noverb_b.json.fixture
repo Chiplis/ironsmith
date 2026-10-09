@@ -525,5 +525,13 @@
     "mana_cost": "{2}{U}",
     "type_line": "Sorcery",
     "oracle_text": "Reveal the top ten cards of your library. Starting with the next opponent in turn order, each opponent chooses a different nonland card from among them. Put the chosen cards into your hand and the rest on the bottom of your library in a random order."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Timesifter",
+    "oracle_id": "99f8805f-6618-4838-a4e7-a3660e3b087f",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each upkeep, each player exiles the top card of their library. The player who exiled the card with the greatest mana value takes an extra turn after this one. If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken."
   }
 ]
