@@ -3191,10 +3191,13 @@
         } else {
             "damage"
         };
-        let prevented_part = match prevent_next_time.portion {
+        let prevented_part = match &prevent_next_time.portion {
             ironsmith_core::NextTimeDamagePreventionPortion::All => "that damage".to_string(),
             ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown => {
                 "half that damage, rounded down".to_string()
+            }
+            ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                format!("{} of that damage", describe_value(amount))
             }
             ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining) => {
                 format!("all but {remaining} of that damage")

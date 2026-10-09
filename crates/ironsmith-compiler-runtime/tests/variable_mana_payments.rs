@@ -4,19 +4,21 @@
 //!   whose X may be paid only with red mana (CR 107.3), read by the reflexive
 //!   trigger (CR 603.12);
 //! - one payer, then "Prevent X of that damage" (Errant Minion, Power Leak):
-//!   the payment scope binds X and a shield covers only the wrapped damage
-//!   (CR 615.7);
-//! - every player, then each player's own amount (Liege of the Hollows): all
-//!   payments happen in APNAP order (CR 101.4) before any tokens, and each
-//!   player's program reads that player's payment;
+//!   the shared next-time shield with an exact-amount portion reading the
+//!   payment's published amount, created before the damage (CR 615.7);
+//! - every player, then each player's own amount (Liege of the Hollows): one
+//!   player loop owns the payment and the tokens, so all payments happen in
+//!   APNAP order (CR 101.4) before the tokens, each count reading that
+//!   player's own payment result;
 //! - Karn, Living Legacy's "Pay any amount of mana. Look at that many cards".
 use ironsmith::effect::{Effect, Value};
 use ironsmith::effects::{
-    CollectManaPaymentsEffect, DealDamageEffect, GainLifeEffect, PayManaEffect,
-    PreventDamagePortionEffect, ReflexiveTriggerEffect,
+    CollectManaPaymentsEffect, CreateTokenEffect, DealDamageEffect, ForPlayersEffect,
+    PayManaEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
+    PreventNextTimeDamageTarget, ReflexiveTriggerEffect,
 };
-use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
+use ironsmith::target::ChooseSpec;
+use ironsmith_core::NextTimeDamagePreventionPortion;
 use ironsmith::Zone;
 
 #[path = "cf8_p08/support.rs"]
@@ -59,13 +61,21 @@ fn leyline_tyrant_pays_red_only_x_and_its_reflexive_trigger_deals_that_much() {
 fn errant_minion_and_power_leak_prevent_the_paid_amount_of_that_damage() {
     for (name, body) in [("Errant Minion", ERRANT_MINION), ("Power Leak", POWER_LEAK)] {
         for definition in support::definitions(name, body) {
-            let collect = support::find_all::<CollectManaPaymentsEffect>(&definition);
-            assert_eq!(collect.len(), 1, "{name}");
-            assert!(collect[0].payers.is_some(), "{name}: only that player pays");
-            assert!(!collect[0].per_payer);
-            let portion = support::find_all::<PreventDamagePortionEffect>(&definition);
-            assert_eq!(portion.len(), 1, "{name}");
-            assert_eq!(portion[0].amount, Value::X, "{name}");
+            assert!(support::find_all::<CollectManaPaymentsEffect>(&definition).is_empty());
+            let payments = support::find_all::<PayManaEffect>(&definition);
+            assert_eq!(payments.len(), 1, "{name}");
+            assert!(payments[0].cost.has_x(), "{name}");
+            let shields = support::find_all::<PreventNextTimeDamageEffect>(&definition);
+            assert_eq!(shields.len(), 1, "{name}");
+            assert!(
+                matches!(
+                    &shields[0].portion,
+                    NextTimeDamagePreventionPortion::Exactly(amount)
+                        if matches!(amount.unhinted(), Value::EffectValue(_))
+                ),
+                "{name}: X reads the payment's result: {:?}",
+                shields[0].portion
+            );
             let damage = support::find_all::<DealDamageEffect>(&definition);
             assert_eq!(damage.len(), 1, "{name}");
             assert_eq!(damage[0].amount, Value::Fixed(2), "{name}");
@@ -74,7 +84,7 @@ fn errant_minion_and_power_leak_prevent_the_paid_amount_of_that_damage() {
 }
 
 #[test]
-fn a_portion_shield_covers_only_the_wrapped_damage() {
+fn an_exact_portion_shield_prevents_that_much_of_the_next_damage_only() {
     for (prevented, first_loss) in [(1, 1), (5, 0)] {
         let mut game = play::game();
         let source = game.create_object_from_definition(
@@ -82,77 +92,39 @@ fn a_portion_shield_covers_only_the_wrapped_damage() {
             play::A,
             Zone::Battlefield,
         );
-        let deal = |amount| {
-            Effect::new(DealDamageEffect::new(
-                amount,
-                ChooseSpec::SpecificPlayer(play::B),
-            ))
-        };
         play::apply(
             &mut game,
             source,
-            Effect::new(PreventDamagePortionEffect::new(
-                Value::Fixed(prevented),
-                vec![deal(2)],
-            )),
+            Effect::new(
+                PreventNextTimeDamageEffect::new(
+                    PreventNextTimeDamageSource::Target(ChooseSpec::SpecificObject(source)),
+                    PreventNextTimeDamageTarget::Target(ChooseSpec::SpecificPlayer(play::B)),
+                )
+                .with_portion(NextTimeDamagePreventionPortion::Exactly(Value::Fixed(prevented))),
+            ),
         );
+        play::damage(&mut game, source, ironsmith::Target::Player(play::B), 2);
         assert_eq!(play::life(&game, play::B), 20 - first_loss);
-        // An unused remainder never reaches later damage.
-        play::apply(&mut game, source, deal(2));
+        // The shield was used up by that damage event.
+        play::damage(&mut game, source, ironsmith::Target::Player(play::B), 2);
         assert_eq!(play::life(&game, play::B), 20 - first_loss - 2);
-        assert!(game.effect_store.prevention_effects.shields().is_empty());
     }
 }
 
 #[test]
-fn liege_of_the_hollows_pays_in_apnap_order_then_each_player_uses_their_own_amount() {
+fn liege_of_the_hollows_pays_and_creates_inside_one_player_loop() {
     for definition in support::definitions("Liege of the Hollows", LIEGE_OF_THE_HOLLOWS) {
-        let collect = support::find_all::<CollectManaPaymentsEffect>(&definition);
-        assert_eq!(collect.len(), 1);
-        assert!(collect[0].per_payer && collect[0].apnap_order);
-        assert!(collect[0].payers.is_none(), "each player");
-        let debug = format!("{:?}", collect[0].effects);
+        assert!(support::find_all::<CollectManaPaymentsEffect>(&definition).is_empty());
+        let loops = support::find_all::<ForPlayersEffect>(&definition);
+        assert_eq!(loops.len(), 1, "one loop owns the payment and the tokens");
+        let debug = format!("{:?}", loops[0].effects);
+        assert!(debug.contains("PayManaEffect"), "{debug}");
         assert!(debug.contains("Squirrel"), "{debug}");
-        assert!(debug.contains("IteratedPlayer"), "{debug}");
-        assert!(!debug.contains("ForPlayers"), "the payer loop owns the iteration: {debug}");
+        let tokens = support::find_all::<CreateTokenEffect>(&definition);
+        assert_eq!(tokens.len(), 1);
+        let count = format!("{:?}", tokens[0].count);
+        assert!(count.contains("EffectValue"), "each player's own payment: {count}");
     }
-
-    // The engine scope: A pays 2, B pays 1, C pays nothing; each gains their
-    // own amount.
-    let mut game = play::game();
-    play::give_mana(&mut game, play::A, ManaSymbol::Green, 2);
-    play::give_mana(&mut game, play::B, ManaSymbol::Green, 1);
-    let source = game.create_object_from_definition(
-        &play::vanilla("Source", "{G}", "Spirit", 1, 1),
-        play::A,
-        Zone::Battlefield,
-    );
-    let mut dm = play::Script {
-        numbers: vec![2, 1, 0],
-        ..Default::default()
-    };
-    play::apply_with(
-        &mut game,
-        source,
-        Effect::new(
-            CollectManaPaymentsEffect::new(vec![Effect::new(GainLifeEffect::with_filter(
-                Value::X,
-                PlayerFilter::IteratedPlayer,
-            ))])
-            .in_apnap_order()
-            .per_payer(),
-        ),
-        &mut dm,
-    );
-    assert_eq!(play::life(&game, play::A), 22);
-    assert_eq!(play::life(&game, play::B), 21);
-    assert_eq!(play::life(&game, play::C), 20);
-    let payers = dm
-        .number_prompts
-        .iter()
-        .map(|(player, _)| *player)
-        .collect::<Vec<_>>();
-    assert_eq!(payers, vec![play::A, play::B, play::C], "APNAP from the active player");
 }
 
 #[test]

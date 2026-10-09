@@ -31,10 +31,6 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::OpenAttractionEffect>(payload).map(Some)
         }
         "PopulateEffect" => decode_as::<ironsmith_core::PopulateEffect>(payload).map(Some),
-        "PreventDamagePortionEffect" => {
-            decode_as::<ironsmith_core::PreventDamagePortionEffect<wire::WireEffect>>(payload)
-                .map(Some)
-        }
         "ReflexiveTriggerEffect" => {
             decode_as::<ironsmith_core::ReflexiveTriggerEffect<wire::WireEffect>>(payload).map(Some)
         }
@@ -144,10 +140,6 @@ pub(super) fn map_card_ids(
             super::card_graph::map_payload_as::<ironsmith_core::PopulateEffect>(payload, context)
                 .map(Some)
         }
-        "PreventDamagePortionEffect" => super::card_graph::map_payload_as::<
-            ironsmith_core::PreventDamagePortionEffect<wire::WireEffect>,
-        >(payload, context)
-        .map(Some),
         "ReflexiveTriggerEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ReflexiveTriggerEffect<wire::WireEffect>,
         >(payload, context)

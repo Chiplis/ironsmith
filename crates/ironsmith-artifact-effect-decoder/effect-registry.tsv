@@ -178,7 +178,6 @@ PreventAllCombatDamageEffect	ironsmith_core::PreventAllCombatDamageEffect	combat
 PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect<wire::WireEffect>	combat
 PreventAllDamageToTargetEffect	ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>	combat
 PreventDamageEffect	ironsmith_core::PreventDamageEffect<wire::WireEffect>	combat
-PreventDamagePortionEffect	ironsmith_core::PreventDamagePortionEffect<wire::WireEffect>	composition-m-z
 PreventNextTimeDamageEffect	ironsmith_core::PreventNextTimeDamageEffect<wire::WireEffect>	combat
 ProliferateEffect	ironsmith_core::ProliferateEffect	resources
 PutCounterOfChosenKindEffect	ironsmith_core::PutCounterOfChosenKindEffect	resources

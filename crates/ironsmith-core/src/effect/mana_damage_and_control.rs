@@ -755,14 +755,17 @@ impl<E> PreventAllDamageToTargetEffect<E> {
 /// How much of the next matching damage event a one-shot prevention shield
 /// prevents (CR 615.1): all of it, half of it rounded down ("prevent half
 /// that damage, rounded down", Dark Sphere), or all but a fixed amount
-/// ("prevent all but 1 of that damage", Forcefield).
+/// ("prevent all but 1 of that damage", Forcefield), or exactly an amount
+/// ("Prevent X of that damage, where X is the amount of mana that player
+/// paid this way", Errant Minion), resolved when the shield is created.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum NextTimeDamagePreventionPortion {
     #[default]
     All,
     HalfRoundedDown,
     AllBut(u32),
+    Exactly(Value),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5353,54 +5356,10 @@ pub struct CollectManaPaymentsEffect<E> {
     /// Resolve this complete program with X equal to the accepted payments.
     /// Every in-game player may contribute, starting with the controller.
     pub effects: Vec<E>,
-    /// The players who may pay ("that player may pay any amount of mana").
-    /// Absent: every in-game player (join forces).
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-    pub payers: Option<PlayerFilter>,
-    /// Only mana of these colors may be paid ("any amount of {R}").
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-    pub x_colors: Option<ColorSet>,
-    /// Payers contribute in APNAP order (CR 101.4) rather than starting
-    /// with the controller.
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
-    pub apnap_order: bool,
-    /// Run the program once per payer, with that payer as the iterated
-    /// player and X equal to that payer's own payment ("each player creates
-    /// tokens equal to the amount of mana they paid this way").
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
-    pub per_payer: bool,
 }
 
 impl<E> CollectManaPaymentsEffect<E> {
-    pub fn new(effects: Vec<E>) -> Self {
-        Self {
-            effects,
-            payers: None,
-            x_colors: None,
-            apnap_order: false,
-            per_payer: false,
-        }
-    }
-
-    pub fn paid_by(mut self, payers: PlayerFilter) -> Self {
-        self.payers = Some(payers);
-        self
-    }
-
-    pub fn with_x_colors(mut self, colors: ColorSet) -> Self {
-        self.x_colors = Some(colors);
-        self
-    }
-
-    pub fn in_apnap_order(mut self) -> Self {
-        self.apnap_order = true;
-        self
-    }
-
-    pub fn per_payer(mut self) -> Self {
-        self.per_payer = true;
-        self
-    }
+    pub fn new(effects: Vec<E>) -> Self { Self { effects } }
 }
 
 /// A die-result table row that fixes X ("1—9 | X is one.", Wand of Wonder):
@@ -5418,21 +5377,6 @@ impl<E> BindXValueEffect<E> {
     }
 }
 
-/// "Prevent X of that damage" (Errant Minion, Power Leak; CR 615.1, 615.7):
-/// a prevention shield of `amount` that exists only while the wrapped damage
-/// instruction deals its damage, then ends whether or not it was used up.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct PreventDamagePortionEffect<E> {
-    pub amount: Value,
-    pub effects: Vec<E>,
-}
-
-impl<E> PreventDamagePortionEffect<E> {
-    pub fn new(amount: Value, effects: Vec<E>) -> Self {
-        Self { amount, effects }
-    }
-}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

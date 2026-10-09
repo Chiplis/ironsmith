@@ -551,7 +551,6 @@ fn link_unproduced_result_references_in_children(
     relink_lists!(crate::effects::ReflexiveTriggerEffect, effects);
     relink_lists!(crate::effects::MayEffect<Effect>, effects);
     relink_lists!(crate::effects::CollectManaPaymentsEffect<Effect>, effects);
-    relink_lists!(crate::effects::PreventDamagePortionEffect<Effect>, effects);
     relink_lists!(crate::effects::BindXValueEffect<Effect>, effects);
     relink_lists!(crate::effects::ForPlayersEffect<Effect>, effects);
     relink_lists!(crate::effects::ForEachObject, effects);
@@ -1417,47 +1416,15 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::CollectManaPayments {
-        effects,
-        payers,
-        x_colors,
-        apnap_order,
-        per_payer,
-    } = effect
-    {
-        let payers = (*payers)
-            .map(|payer| resolve_non_target_player_filter(payer, &current_reference_env(ctx)))
-            .transpose()?;
-        // A per-payer body runs once for each payer, who is its iterated
-        // player ("each player creates ... equal to the amount of mana they
-        // paid this way").
-        let (effects, choices) = if *per_payer {
-            compile_effects_in_iterated_player_context(effects, ctx, None)?
-        } else {
-            compile_effects(effects, ctx)?
-        };
-        let mut collect = crate::effects::CollectManaPaymentsEffect::new(effects);
-        collect.payers = payers;
-        collect.x_colors = *x_colors;
-        collect.apnap_order = *apnap_order;
-        collect.per_payer = *per_payer;
-        return Ok((vec![Effect::new(collect)], choices));
+    if let EffectAst::CollectManaPayments { effects } = effect {
+        let (effects, choices) = compile_effects(effects, ctx)?;
+        return Ok((vec![Effect::new(crate::effects::CollectManaPaymentsEffect::new(effects))], choices));
     }
     if let EffectAst::BindX { value, effects } = effect {
         let value = resolve_value_it_tag(value, &current_reference_env(ctx))?;
         let (effects, choices) = compile_effects(effects, ctx)?;
         return Ok((
             vec![Effect::new(crate::effects::BindXValueEffect::new(value, effects))],
-            choices,
-        ));
-    }
-    if let EffectAst::PreventDamagePortion { amount, effects } = effect {
-        let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-        let (effects, choices) = compile_effects(effects, ctx)?;
-        return Ok((
-            vec![Effect::new(crate::effects::PreventDamagePortionEffect::new(
-                amount, effects,
-            ))],
             choices,
         ));
     }

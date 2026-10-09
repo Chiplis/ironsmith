@@ -1031,28 +1031,15 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::CollectManaPaymentsEffect<M::Effect>>(&effect) {
-        let mut converted = crate::effects::CollectManaPaymentsEffect::new(
+        return Ok(Effect::new(crate::effects::CollectManaPaymentsEffect::new(
             convert_effects(payload.effects.iter().cloned(), hooks)?,
-        );
-        converted.payers = payload.payers.clone();
-        converted.x_colors = payload.x_colors;
-        converted.apnap_order = payload.apnap_order;
-        converted.per_payer = payload.per_payer;
-        return Ok(Effect::new(converted));
+        )));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::BindXValueEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::new(crate::effects::BindXValueEffect::new(
             payload.value.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-        )));
-    }
-    if let Some(payload) =
-        M::downcast_ref::<ironsmith_core::PreventDamagePortionEffect<M::Effect>>(&effect)
-    {
-        return Ok(Effect::new(crate::effects::PreventDamagePortionEffect::new(
-            payload.amount.clone(),
             convert_effects(payload.effects.iter().cloned(), hooks)?,
         )));
     }
@@ -1417,7 +1404,7 @@ where
         if let Some(filter) = &payload.reflect_source_filter {
             effect = effect.reflecting_only_from_source_matching(filter.clone());
         }
-        effect = effect.with_portion(payload.portion);
+        effect = effect.with_portion(payload.portion.clone());
         if payload.combat_only {
             effect = effect.combat_damage_only();
         }

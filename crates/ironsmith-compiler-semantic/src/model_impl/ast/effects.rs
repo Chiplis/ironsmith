@@ -196,21 +196,6 @@ pub enum EffectAst {
     /// their checked total as a fresh local X for the complete nested body.
     CollectManaPayments {
         effects: Vec<EffectAst>,
-        /// Who may pay; absent means every player (join forces).
-        payers: Option<PlayerAst>,
-        /// "any amount of {R}": only mana of these colors may be paid.
-        x_colors: Option<crate::color::ColorSet>,
-        /// Contribute in APNAP order (CR 101.4) rather than controller first.
-        apnap_order: bool,
-        /// Run the body once per payer, binding the iterated player and X to
-        /// that payer's own payment.
-        per_payer: bool,
-    },
-    /// "Prevent X of that damage": a shield of `amount` covering only the
-    /// damage the wrapped instruction deals (CR 615.7).
-    PreventDamagePortion {
-        amount: Value,
-        effects: Vec<EffectAst>,
     },
     /// A die-result row that fixes X for the program it governs ("1—9 | X is
     /// one."): run `effects` with X equal to `value`.

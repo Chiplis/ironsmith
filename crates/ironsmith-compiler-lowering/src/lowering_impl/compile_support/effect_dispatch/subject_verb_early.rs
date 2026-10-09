@@ -2836,7 +2836,16 @@ pub(super) fn compile_subject_verb_early(
             };
             let mut effect =
                 crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec)
-                    .with_portion(*portion);
+                    .with_portion(match portion {
+                        // "Prevent X of that damage, where X is ... this way":
+                        // the amount reads the producing payment's result.
+                        ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                            ironsmith_core::NextTimeDamagePreventionPortion::Exactly(
+                                resolve_value_it_tag(amount, &current_reference_env(ctx))?,
+                            )
+                        }
+                        other => other.clone(),
+                    });
             if *combat_only {
                 effect = effect.combat_damage_only();
             }

@@ -84,14 +84,7 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
 // This avoids drift between immutable/mutable/fallible traversal helpers.
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
-        EffectAst::CollectManaPayments {
-            effects: $effects,
-            ..
-        }
-            | EffectAst::PreventDamagePortion {
-                effects: $effects,
-                ..
-            }
+        EffectAst::CollectManaPayments { effects: $effects }
             | EffectAst::BindX {
                 effects: $effects,
                 ..
@@ -285,7 +278,6 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::CollectManaPayments { .. } => {}
-        EffectAst::PreventDamagePortion { .. } => {}
         EffectAst::BindX { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}

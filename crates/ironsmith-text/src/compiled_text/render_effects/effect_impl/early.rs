@@ -22,42 +22,7 @@
     }
     if let Some(payments) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
         let body = payments.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
-        if payments.payers.is_none()
-            && payments.x_colors.is_none()
-            && !payments.apnap_order
-            && !payments.per_payer
-        {
-            return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));
-        }
-        let payer = payments
-            .payers
-            .as_ref()
-            .map_or_else(|| "each player".to_string(), describe_player_filter);
-        let resource = match payments.x_colors {
-            Some(colors) => crate::color::Color::ALL
-                .into_iter()
-                .filter(|color| colors.contains(*color))
-                .map(|color| match color {
-                    crate::color::Color::White => "{W}",
-                    crate::color::Color::Blue => "{U}",
-                    crate::color::Color::Black => "{B}",
-                    crate::color::Color::Red => "{R}",
-                    crate::color::Color::Green => "{G}",
-                })
-                .collect::<Vec<_>>()
-                .join(" and/or "),
-            None => "mana".to_string(),
-        };
-        let binding = if payments.per_payer {
-            "where X is the amount of mana that player paid this way"
-        } else {
-            "where X is the amount of mana paid this way"
-        };
-        return format!(
-            "{} may pay any amount of {resource}. {}, {binding}",
-            capitalize_first(&payer),
-            body.trim_end_matches('.')
-        );
+        return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));
     }
     if let Some(bind) = effect.downcast_ref::<crate::effects::BindXValueEffect>() {
         let body = bind.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
@@ -65,14 +30,6 @@
             "{}, where X is {}",
             body.trim_end_matches('.'),
             describe_value(&bind.value)
-        );
-    }
-    if let Some(portion) = effect.downcast_ref::<crate::effects::PreventDamagePortionEffect>() {
-        let body = portion.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
-        return format!(
-            "{}. Prevent {} of that damage",
-            body.trim_end_matches('.'),
-            describe_value(&portion.amount)
         );
     }
     if let Some(grant) = effect.downcast_ref::<

@@ -246,7 +246,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RedirectNextDamageToTargetEffect" => Some(EffectFamily::Combat),
         "RedirectNextTimeDamageToSourceEffect" => Some(EffectFamily::Combat),
         "ReduceSpeedEffect" => Some(EffectFamily::Player),
-        "PreventDamagePortionEffect" => Some(EffectFamily::CompositionMZ),
         "ReflexiveTriggerEffect" => Some(EffectFamily::CompositionMZ),
         "RegenerateEffect" => Some(EffectFamily::Permanent),
         "RegisterDamagedBySourceZoneReplacementEffect" => Some(EffectFamily::StackEvent),

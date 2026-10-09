@@ -45,13 +45,7 @@ pub(super) fn read(sentences: &[SentenceInput], index: usize) -> Result<Option<V
     // (notably Collective Voyage's tapped entry and mandatory shuffle).
     let effects = crate::effect_sentences::parse_effect_sentence_lexed(&unbound_body)?;
     if effects.is_empty() { return Ok(None); }
-    Ok(Some(vec![EffectAst::CollectManaPayments {
-        effects,
-        payers: None,
-        x_colors: None,
-        apnap_order: false,
-        per_payer: false,
-    }]))
+    Ok(Some(vec![EffectAst::CollectManaPayments { effects }]))
 }
 
 #[cfg(test)]
@@ -71,7 +65,7 @@ mod tests {
             "Each player mills X cards, where X is the total amount of mana paid this way.",
         ] {
             let effects = parse("Starting with you, each player may pay any amount of mana.", body).unwrap().unwrap();
-            assert!(matches!(effects.as_slice(), [EffectAst::CollectManaPayments { effects, .. }] if !effects.is_empty()));
+            assert!(matches!(effects.as_slice(), [EffectAst::CollectManaPayments { effects }] if !effects.is_empty()));
         }
     }
     #[test]

@@ -14,72 +14,10 @@ use crate::target::{ChooseSpec, PlayerFilter};
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectManaPaymentsEffect {
     pub effects: Vec<Effect>,
-    /// Who may pay; absent means every in-game player (join forces).
-    pub payers: Option<PlayerFilter>,
-    /// Only mana of these colors may be paid ("any amount of {R}").
-    pub x_colors: Option<crate::color::ColorSet>,
-    /// Contribute in APNAP order (CR 101.4) instead of controller first.
-    pub apnap_order: bool,
-    /// Run the program once per payer with that payer's own payment as X.
-    pub per_payer: bool,
 }
 impl CollectManaPaymentsEffect {
     pub fn new(effects: Vec<Effect>) -> Self {
-        Self {
-            effects,
-            payers: None,
-            x_colors: None,
-            apnap_order: false,
-            per_payer: false,
-        }
-    }
-
-    pub fn paid_by(mut self, payers: PlayerFilter) -> Self {
-        self.payers = Some(payers);
-        self
-    }
-
-    pub fn with_x_colors(mut self, colors: crate::color::ColorSet) -> Self {
-        self.x_colors = Some(colors);
-        self
-    }
-
-    pub fn in_apnap_order(mut self) -> Self {
-        self.apnap_order = true;
-        self
-    }
-
-    pub fn per_payer(mut self) -> Self {
-        self.per_payer = true;
-        self
-    }
-
-    fn payer_order(
-        &self,
-        game: &GameState,
-        ctx: &ExecutionContext,
-    ) -> Result<Vec<crate::ids::PlayerId>, ExecutionError> {
-        let filter = self.payers.clone().unwrap_or(PlayerFilter::Any);
-        let order = if self.apnap_order {
-            ForPlayersEffect::new(filter, Vec::new())
-        } else {
-            ForPlayersEffect::new_starting_with_controller(filter, Vec::new())
-        };
-        order.selected_players(game, ctx)
-    }
-
-    fn payment_cost(&self) -> ManaCost {
-        let cost = ManaCost::from_symbols(vec![ManaSymbol::X]);
-        match self.x_colors {
-            // CR 107.3: X may be paid only with mana of these colors.
-            Some(colors) => cost.with_spending_restriction(
-                crate::mana::ManaSpendingRestriction::OnX {
-                    colors,
-                    maximum_per_color: None,
-                },
-            ),
-            None => cost,
-        }
+        Self { effects }
     }
 }
 
@@ -124,7 +62,9 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                 ))
             },
             |game, ctx| {
-                let players = self.payer_order(game, ctx)?;
+                let players =
+                    ForPlayersEffect::new_starting_with_controller(PlayerFilter::Any, Vec::new())
+                        .selected_players(game, ctx)?;
                 let saved_x = ctx.x_value;
                 let saved_reason = ctx.mana.payment_reason;
                 // Spell/activation X and their restricted-mana permissions do not
@@ -132,7 +72,6 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                 ctx.mana.payment_reason = Some(crate::costs::PaymentReason::Effect);
                 let result = (|| {
                     let mut total = 0u32;
-                    let mut per_payer = Vec::with_capacity(players.len());
                     let mut receipts = Vec::with_capacity(players.len() + 1);
                     for player in players {
                         ctx.x_value = None;
@@ -155,7 +94,7 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                             )
                         })?;
                         let payment = PayManaEffect::new(
-                            self.payment_cost(),
+                            ManaCost::from_symbols(vec![ManaSymbol::X]),
                             ChooseSpec::SpecificPlayer(player),
                         )
                         .with_x_maximum(Value::Fixed(maximum));
@@ -168,37 +107,18 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                         // A proposed number, failed payment, or cancellation is
                         // never evidence of mana actually paid. An accepted zero
                         // remains a successful payment receipt.
-                        let mut paid = 0u32;
                         for fact in receipt.outcome.instruction_result().execution_facts() {
                             if let ExecutionFact::ManaPaid { x_value } = fact {
-                                paid = add_accepted_payment(paid, *x_value)?;
+                                total = add_accepted_payment(total, *x_value)?;
                             }
                         }
-                        total = add_accepted_payment(total, paid)?;
-                        per_payer.push((player, paid));
                         receipts.push(receipt);
                     }
-                    if self.per_payer {
-                        // Every payment is made before any payer's program runs;
-                        // each program reads only its own payer's amount.
-                        for (player, paid) in per_payer {
-                            ctx.x_value = Some(paid);
-                            let receipt = ctx.with_temp_iterated_player(Some(player), |ctx| {
-                                SequenceEffect::new(self.effects.clone())
-                                    .execute_with_outputs(game, ctx)
-                            })?;
-                            receipts.push(receipt);
-                            if ctx.decision_maker.awaiting_choice() {
-                                break;
-                            }
-                        }
-                    } else {
-                        ctx.x_value = Some(total);
-                        receipts.push(
-                            SequenceEffect::new(self.effects.clone())
-                                .execute_with_outputs(game, ctx)?,
-                        );
-                    }
+                    ctx.x_value = Some(total);
+                    receipts.push(
+                        SequenceEffect::new(self.effects.clone())
+                            .execute_with_outputs(game, ctx)?,
+                    );
                     // Retain every payment/event receipt; expose the final body as
                     // the instruction result, not the sum of its unrelated counts.
                     Ok(crate::effects::CompletedEffectOutputs::from_children(
