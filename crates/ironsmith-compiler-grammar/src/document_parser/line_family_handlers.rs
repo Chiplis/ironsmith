@@ -1333,6 +1333,27 @@ pub(super) fn run_keyword_line_family(
         );
     }
 
+    // "<Name> has bushido X, where X is ..." (Fumiko the Lowblood, Kodama of
+    // the Center Tree): the card's own keyword with a defined amount.
+    let self_named_tokens =
+        normalize_named_source_tokens_with_context(ctx.parse, &ctx.line.tokens);
+    if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_defined_x_keyword_amount(
+        self_named_tokens.as_deref().unwrap_or(&ctx.line.tokens),
+    ) {
+        return line_family_match(
+            ctx,
+            LineDispatchResult::single(
+                RecognizedLine::Static(RecognizedStaticLine {
+                    info: ctx.line.info.clone(),
+                    parse_tokens: ctx.line.tokens.clone(),
+                    chosen_option: None,
+                    parsed: Some(Box::new(LineAst::Abilities(vec![action]))),
+                }),
+                ctx.idx + 1,
+            ),
+        );
+    }
+
     if let Some(actions) = parse_ability_line_lexed(&ctx.line.tokens)
         && matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::CumulativeUpkeep { .. } | crate::cards::builders::KeywordAction::Suspend { .. }])
     {
@@ -2144,7 +2165,10 @@ pub(super) fn run_statement_probe_line_family(
     // read it as "if <condition>, it gains ...", a resolution effect that
     // never changes the cost, so the static cost-modifier family owns the
     // line and reports its own error when it can't read it.
-    if is_this_spell_cost_modifier_line(ctx) {
+    if is_this_spell_cost_modifier_line(ctx)
+        || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
+            &ctx.line.tokens), Ok(Some(_)))
+    {
         crate::parse_trace::event("statement-probe: declined for this-spell cost modifier");
         return ParseOutcome::NoMatch;
     }
@@ -2440,7 +2464,10 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("statement-line");
-    if is_this_spell_cost_modifier_line(ctx) {
+    if is_this_spell_cost_modifier_line(ctx)
+        || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
+            &ctx.line.tokens), Ok(Some(_)))
+    {
         return ParseOutcome::NoMatch;
     }
     if line_family_claimed!(rule, run_keyword_line_family(ctx))

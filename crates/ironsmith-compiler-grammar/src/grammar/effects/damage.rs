@@ -106,6 +106,27 @@ fn parse_damage_amount_head(tokens: &[OwnedLexToken]) -> Option<(Value, &[OwnedL
     Some((amount, rest))
 }
 
+/// "and 1 additional damage to each blue creature" (Tropical Storm): a later
+/// recipient's amount spelled as additional damage. Each recipient part is
+/// its own simultaneous damage assignment from the same source, so a
+/// recipient named by both parts is dealt both amounts.
+fn parse_additional_damage_amount_head(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, &[OwnedLexToken])> {
+    let (amount, used) =
+        super::super::shared_util::value_semantics::parse_value_prefix_lexed(tokens)?;
+    let (_, rest) = primitives::parse_prefix(
+        tokens.get(used..)?,
+        (
+            primitives::kw("additional"),
+            primitives::kw("damage"),
+            opt(primitives::kw("to")),
+        )
+            .void(),
+    )?;
+    Some((amount, rest))
+}
+
 /// Parses the common two-recipient surface
 /// "SOURCE deals N damage to TARGET and M damage to TARGET". The separator
 /// is recognized structurally only when its tail starts with a complete
@@ -123,8 +144,9 @@ fn parse_paired_damage_fanout_tokens(tokens: &[OwnedLexToken]) -> Option<SerialD
             continue;
         }
         let first_target = trim_damage_part_tokens(&first_target_and_tail[..and_idx]);
-        let Some((second_amount, second_target)) =
-            parse_damage_amount_head(&first_target_and_tail[and_idx + 1..])
+        let second_head = &first_target_and_tail[and_idx + 1..];
+        let Some((second_amount, second_target)) = parse_damage_amount_head(second_head)
+            .or_else(|| parse_additional_damage_amount_head(second_head))
         else {
             continue;
         };

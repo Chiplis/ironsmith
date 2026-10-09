@@ -28,6 +28,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Persist
             | KeywordAction::Prowess
             | KeywordAction::Exalted
+            | KeywordAction::Provoke
             | KeywordAction::Storm
             | KeywordAction::Gravestorm
             | KeywordAction::Toxic(_)
@@ -55,8 +56,12 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Outlast(_)
             | KeywordAction::Unearth(_)
             | KeywordAction::Encore(_)
+            | KeywordAction::EncoreFromSourceCost { .. }
             | KeywordAction::Eternalize(_)
             | KeywordAction::Ninjutsu(_)
+            | KeywordAction::CommanderNinjutsu(_)
+            | KeywordAction::Devour(_)
+            | KeywordAction::DevourVariant { .. }
             | KeywordAction::Extort
             | KeywordAction::Sunburst
             | KeywordAction::Firebending(_)
@@ -65,6 +70,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Vanishing(_)
             | KeywordAction::Rampage(_)
             | KeywordAction::Bushido(_)
+            | KeywordAction::BushidoValue(_)
             | KeywordAction::Frenzy(_)
             | KeywordAction::Annihilator(_)
     ) {
@@ -210,10 +216,29 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
             crate::static_abilities::LandwalkKind::ArtifactLand => {
                 CompilerStaticAbility::artifact_landwalk()
             }
+            crate::static_abilities::LandwalkKind::LegendaryLand => {
+                CompilerStaticAbility::legendary_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::SnowLand => {
+                CompilerStaticAbility::snow_any_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::ChosenType { snow } => {
+                CompilerStaticAbility::chosen_type_landwalk(snow)
+            }
+            crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                CompilerStaticAbility::sacrificed_land_types_landwalk()
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(CompilerStaticAbility::bloodthirst(amount)),
+        KeywordAction::BloodthirstX => Some(CompilerStaticAbility::enters_with_counters_value(
+            crate::object::CounterType::PlusOnePlusOne,
+            crate::effect::Value::DamageDealtToPlayersThisTurn(crate::target::PlayerFilter::Opponent),
+        )),
         KeywordAction::Tribute(amount) => Some(CompilerStaticAbility::tribute(amount)),
-        KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
+        KeywordAction::Rampage(_)
+        | KeywordAction::Bushido(_)
+        | KeywordAction::BushidoValue(_)
+        | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(CompilerStaticAbility::changeling()),
         KeywordAction::ProtectionFrom(colors) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),

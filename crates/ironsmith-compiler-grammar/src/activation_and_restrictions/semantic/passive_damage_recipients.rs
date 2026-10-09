@@ -23,7 +23,13 @@ fn recipient(
             ));
         }
     }
-    let target = if let Some(player) = parse_trigger_subject_player_filter(&words) {
+    // "one of the chosen players" (Sower of Discord): the players this
+    // source chose as it entered.
+    let target = if words == ["one", "of", "the", "chosen", "players"] {
+        ChooseSpec::Player(crate::target::PlayerFilter::TaggedPlayer(
+            ironsmith_core::tag::SOURCE_CHOSEN_PLAYERS_TAG.into(),
+        ))
+    } else if let Some(player) = parse_trigger_subject_player_filter(&words) {
         ChooseSpec::Player(player)
     } else if let Some(surface) = source_reference_surface_for_trigger_subject(tokens) {
         ChooseSpec::Object(ObjectFilter::source_with_surface(surface))

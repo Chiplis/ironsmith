@@ -56,6 +56,9 @@ pub fn parse_effect_with_verb(
                     Until::Forever,
                 ));
             }
+            if let Some(effect) = parse_lose_all_player_counters(tokens, subject)? {
+                return Ok(effect);
+            }
             parse_lose_life(tokens, subject)
         }
         Verb::Gain => {
@@ -300,6 +303,29 @@ fn parse_unlock_room_door(
     } else {
         words.as_slice()
     };
+    // "unlock a locked door of up to one target Room you control" (Ghostly
+    // Keybearer): the Room is announced as a target (CR 709.5f). "Lock or
+    // unlock a door of target Room you control" (Keys to the House) names any
+    // door, locked or unlocked: the only authored unlock of an unqualified
+    // door is the lock-or-unlock choice (CR 709.5c).
+    let allow_lock = matches!(words, ["a", "door", "of", ..]);
+    if let ["a", "locked", "door", "of", rest @ ..] | ["a", "door", "of", rest @ ..] = words
+        && rest.iter().any(|word| *word == "target")
+    {
+        let skip = tokens
+            .iter()
+            .position(|token| token.is_word("of"))
+            .map(|idx| idx + 1)
+            .unwrap_or(tokens.len());
+        let target = crate::util::parse_target_phrase(&tokens[skip..])?;
+        return Ok(EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            extract_subject_player(subject).unwrap_or(PlayerAst::You),
+            crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                crate::cards::builders::KeywordActionAst::UnlockTargetRoomDoor { target, allow_lock },
+            ),
+        ));
+    }
     if !crate::word_primitives::parse_sequence_complete(
         words,
         &["a", "locked", "door", "of", "a", "room", "you", "control"],
@@ -489,6 +515,16 @@ pub fn parse_look(
                     TargetAst::Player(PlayerFilter::Opponent, span_from_tokens(surface_tokens))
                 }
                 PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                PlayerAst::Defending => TargetAst::Player(PlayerFilter::Defending, None),
+                // The controller of the object the instruction already
+                // referenced ("Counter target spell. Look at its
+                // controller's hand.").
+                PlayerAst::ItsController => TargetAst::Player(
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                        crate::tag::CompilerReferenceTag::It.bind(),
+                    )),
+                    None,
+                ),
                 _ => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported look clause (clause: '{}')",
@@ -919,4 +955,60 @@ mod counter_qualified_zone_move_tests {
             })
         ));
     }
+}
+
+
+/// "Target player loses all poison counters" (Leeches), "each opponent loses
+/// all counters" (Final Act): every counter of the named kind (or of every
+/// kind) is removed from the subject player (CR 122.1, 122.8). The subject
+/// becomes the removal's non-target holder, or the declared target player.
+fn parse_lose_all_player_counters(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+        return Ok(None);
+    };
+    if !first.is_word("all") || !last.is_word("counters") {
+        return Ok(None);
+    }
+    let descriptor = &tokens[1..tokens.len() - 1];
+    let counter_type = if descriptor.is_empty() {
+        None
+    } else {
+        match super::zone_handlers::parse_counter_type_from_descriptor_tokens(descriptor) {
+            Some(counter_type) => Some(counter_type),
+            None => return Ok(None),
+        }
+    };
+    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (target, holder) = match player {
+        PlayerAst::Target => (
+            parse_target_phrase(&crate::lexer::synthetic_word_tokens(&["target", "player"]))?,
+            PlayerFilter::target_player(),
+        ),
+        PlayerAst::TargetOpponent => (
+            parse_target_phrase(&crate::lexer::synthetic_word_tokens(&["target", "opponent"]))?,
+            PlayerFilter::target_opponent(),
+        ),
+        PlayerAst::You => (TargetAst::Player(PlayerFilter::You, None), PlayerFilter::You),
+        // The participant of "each opponent loses all counters"; outside an
+        // iteration the unbound player reference fails closed in lowering.
+        PlayerAst::That | PlayerAst::Implicit => (
+            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            PlayerFilter::IteratedPlayer,
+        ),
+        _ => return Ok(None),
+    };
+    let amount = match counter_type {
+        Some(counter_type) => Value::PlayerCounters(holder, counter_type),
+        None => Value::CountersOn(Box::new(ChooseSpec::EachPlayer(holder)), None),
+    };
+    Ok(Some(EffectAst::subject_verb_remove_up_to_any_counters(
+        amount,
+        target,
+        counter_type,
+        false,
+    )))
 }

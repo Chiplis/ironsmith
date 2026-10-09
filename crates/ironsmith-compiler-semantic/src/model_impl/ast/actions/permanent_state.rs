@@ -70,4 +70,12 @@ pub enum PermanentStateActionAst {
         target: TargetAst,
     },
     BecomeBlocked { target: TargetAst },
+    /// "reselect which player or permanent <attacking creature> is
+    /// attacking" (CR 508.1b choices); `players_only` for "which player".
+    ReselectAttackTarget {
+        target: TargetAst,
+        players_only: bool,
+        /// "are now attacking that player": the fixed new attacked player.
+        attacked_player: Option<PlayerAst>,
+    },
 }

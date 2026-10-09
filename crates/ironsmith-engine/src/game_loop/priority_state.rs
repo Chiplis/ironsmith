@@ -29,6 +29,9 @@ pub enum CastStage {
     /// Need to choose modes for modal spells (per 601.2b).
     /// Modes must be chosen before targets.
     ChoosingModes,
+    /// The caster chooses which of several eligible players will choose the
+    /// spell's modes ("An opponent chooses one —", CR 700.2, 601.2b).
+    ChoosingModeChooser,
     /// Need to reveal and order cards being spliced onto the spell.
     ChoosingSplices,
     /// Need to choose optional costs (kicker, buyback, etc.).
@@ -73,6 +76,7 @@ impl CastStage {
         match self {
             CastStage::Proposing => "proposing",
             CastStage::ChoosingModes => "choosing modes",
+            CastStage::ChoosingModeChooser => "choosing mode chooser",
             CastStage::ChoosingSplices => "choosing splices",
             CastStage::ChoosingX => "choosing X",
             CastStage::ChoosingCostResource => "choosing cost resource",
@@ -171,6 +175,12 @@ pub struct PendingCast {
     pub active_target_requirement_count: usize,
     /// Candidate players for an unresolved delegated target choice.
     pub pending_target_chooser_candidates: Vec<PlayerId>,
+    /// The player who chooses this spell's modes when someone other than the
+    /// caster does ("An opponent chooses one —"); bound as the spell's chosen
+    /// player so "that player" names them (CR 700.2).
+    pub mode_chooser: Option<PlayerId>,
+    /// Eligible mode choosers offered to the caster.
+    pub pending_mode_chooser_candidates: Vec<PlayerId>,
     /// The casting method (normal or alternative like flashback).
     pub casting_method: CastingMethod,
     /// Whether an effect instructs the player to cast this spell without
@@ -302,6 +312,8 @@ impl PendingCast {
             remaining_requirements,
             active_target_requirement_count: 0,
             pending_target_chooser_candidates: Vec::new(),
+            mode_chooser: None,
+            pending_mode_chooser_candidates: Vec::new(),
             casting_method,
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,

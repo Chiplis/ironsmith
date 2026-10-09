@@ -1044,6 +1044,26 @@ impl TurnHistory {
             .sum()
     }
 
+    /// Whether this permanent was turned face up during the current turn.
+    pub fn object_turned_face_up_this_turn(&self, stable_id: StableId, object: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<crate::events::TurnedFaceUpEvent>()
+                .is_some_and(|event| {
+                    event.permanent == object
+                        || event
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                        || record
+                            .object_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                })
+        })
+    }
+
     pub fn object_entered_battlefield_controller_this_turn(
         &self,
         stable_id: StableId,
@@ -2488,6 +2508,12 @@ pub(crate) fn resolve_turn_history_count(
             }
             seen.len() as i32
         }
+        TurnHistoryCount::LandsPlayed(player) => game
+            .players
+            .iter()
+            .filter(|candidate| player.matches_player(candidate.id, filter_ctx))
+            .map(|candidate| candidate.lands_played_this_turn as i32)
+            .sum(),
         TurnHistoryCount::PlayersLostLife(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())

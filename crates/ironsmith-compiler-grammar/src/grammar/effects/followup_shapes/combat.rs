@@ -8,6 +8,10 @@ pub struct DamageAmountReplacementShape<'a> {
     pub predicate_tokens: &'a [OwnedLexToken],
     pub amount_tokens: &'a [OwnedLexToken],
     pub repeats_source: bool,
+    /// "the creature you control deals twice that much damage instead": a
+    /// definite description of the preceding instruction's chosen damage
+    /// source, rather than `it` or this object.
+    pub definite_source: bool,
 }
 
 pub fn parse_damage_amount_replacement(
@@ -34,7 +38,13 @@ pub fn parse_damage_amount_replacement(
     let deal = action.iter().position(|token| token.is_word("deals"))?;
     let source = token_word_refs(&action[..deal]);
     let repeats_source = source.as_slice() == ["it"];
-    if !repeats_source && crate::util::source_reference_surface_for_words(&source).is_none() {
+    let self_source = crate::util::source_reference_surface_for_words(&source).is_some();
+    let definite_source = !repeats_source
+        && !self_source
+        && source.len() >= 2
+        && action.first().is_some_and(|token| token.is_word("the"))
+        && crate::object_filters::parse_object_filter(&action[1..deal], false).is_ok();
+    if !repeats_source && !self_source && !definite_source {
         return None;
     }
     // The entire action ends at `damage`: explicit destinations, additional
@@ -47,6 +57,7 @@ pub fn parse_damage_amount_replacement(
         predicate_tokens,
         amount_tokens,
         repeats_source,
+        definite_source,
     })
 }
 

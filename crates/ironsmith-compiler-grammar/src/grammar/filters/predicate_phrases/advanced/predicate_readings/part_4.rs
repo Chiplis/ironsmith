@@ -779,6 +779,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                && !input.read_by("phase-step-gate-predicate")
         },
         read: |input| input.outcome(read_object_death_this_turn_predicate(input)),
     },
@@ -930,6 +931,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 // Readings ranked above this one that read the input read it.
+                && !input.read_by("phase-step-gate-predicate")
                 && !input.read_by("source-power-threshold-predicate")
                 && !input.read_by("turn-history-intervening-predicate")
                 && !input.read_by("half-starting-life-total-threshold-predicate")
@@ -989,6 +991,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                && !input.read_by("triggering-object-keyword-predicate")
                 && !input.read_by("stack-object-would-destroy-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
                 && !input.read_by("value-reference-comparison-predicate")

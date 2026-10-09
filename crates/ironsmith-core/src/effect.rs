@@ -16,9 +16,21 @@ use crate::value_model::{PriorEffectAction, Restriction, Value};
 use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
 mod ascend;
+mod chosen_counter_kind;
 mod mana_damage_and_control;
+mod player_option_choice;
+mod reselect_attack;
+mod friend_or_foe;
+mod tie_break;
+mod attraction_visits;
+pub use attraction_visits::*;
 pub use ascend::*;
+pub use friend_or_foe::*;
+pub use chosen_counter_kind::*;
 pub use mana_damage_and_control::*;
+pub use player_option_choice::*;
+pub use reselect_attack::*;
+pub use tie_break::*;
 
 /// Identifier for an effect within an effect sequence.
 ///
@@ -38,6 +50,10 @@ impl EffectId {
 
     /// The unique retained counter-removal producer of one activation.
     pub const ACTIVATION_COUNTER_COST: Self = Self(u32::MAX - 2);
+
+    /// Spell copies a copy-count replacement added beyond the instruction's
+    /// own number ("plus an additional time"), for their new-target choice.
+    pub const ADDITIONAL_COPIES: Self = Self(u32::MAX - 3);
 }
 
 impl From<u32> for EffectId {
@@ -725,6 +741,27 @@ pub enum DelayedTriggerSpec {
         attacker: PlayerFilter,
         defender: PlayerFilter,
         grouping: crate::trigger_model::PlayerAttackGrouping,
+    },
+    /// Append-only. "Whenever [object] deals damage" for the registration's
+    /// lifetime, combat or noncombat alike (CR 120.1). A registration that
+    /// watches a captured object names it with a `source` filter.
+    DealsDamage { source: ObjectFilter },
+    /// Append-only. "Whenever [object] is dealt damage by [source]" for the
+    /// registration's lifetime (CR 120.1); a watched recipient is `source`.
+    DealsDamageTo {
+        source: ObjectFilter,
+        target: ObjectFilter,
+    },
+    /// Append-only. "Whenever [creature] attacks alone" for the
+    /// registration's lifetime: the only creature declared as an attacker
+    /// (CR 506.5).
+    AttacksAlone(ObjectFilter),
+    /// "Whenever damage [from a <quality> source] is prevented this way":
+    /// the delayed ability is linked to the prevention shield created just
+    /// before it was registered (CR 603.7, 615.5); the filter qualifies the
+    /// prevented damage's source.
+    DamagePreventedThisWay {
+        source_filter: Option<ObjectFilter>,
     },
 }
 
@@ -2010,6 +2047,12 @@ pub struct ChooseModeEffect<E> {
     /// the token mode is used.
     #[cfg_attr(feature = "serde", serde(default))]
     pub endure: bool,
+    /// The players one of whom chooses the modes while the spell is cast
+    /// ("An opponent chooses one —", CR 700.2, 601.2b). The caster picks which
+    /// one when several are eligible; that player is the spell's chosen
+    /// player, so its modes' "that player" names them.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cast_chooser: Option<PlayerFilter>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2039,7 +2082,14 @@ impl<E> ChooseModeEffect<E> {
             conditional_mode_range: None,
             presentation_label: None,
             endure: false,
+            cast_chooser: None,
         }
+    }
+
+    /// One of these players chooses the modes as the spell is cast.
+    pub fn with_cast_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.cast_chooser = Some(chooser);
+        self
     }
 
     /// Mark this two-mode choice as the endure keyword action (CR 701.63a).
@@ -3193,12 +3243,20 @@ pub struct MoveToZoneEffect {
         serde(default, skip_serializing_if = "Vec::is_empty")
     )]
     pub tagged_destinations: Vec<(crate::tag::TagKey, crate::zone::Zone)>,
+    /// "put ... onto the battlefield blocking that creature" (Aetherplasm):
+    /// the attacker the entering creature blocks (CR 509.4; it was never
+    /// declared as a blocker). Appended with a serde default.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub enters_blocking: Option<ChooseSpec>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum MoveToZoneAttackTargetMode {
     PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+    /// "tapped and attacking that opponent" (Kaalia of the Vast): the named
+    /// player itself (CR 508.4). Appended to preserve serialized ordinals.
+    Player(PlayerFilter),
 }
 
 impl MoveToZoneEffect {
@@ -3226,7 +3284,14 @@ impl MoveToZoneEffect {
             enters_face_down: false,
             enters_transformed: false,
             transfer_exiled_with_source_links: false,
+            enters_blocking: None,
         }
+    }
+
+    /// The entering creature blocks the attacker `attacker` names.
+    pub fn blocking(mut self, attacker: ChooseSpec) -> Self {
+        self.enters_blocking = Some(attacker);
+        self
     }
 
     pub fn to_top_of_library(target: ChooseSpec) -> Self {
@@ -3335,6 +3400,10 @@ impl MoveToZoneEffect {
         self.attack_target_mode(
             MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player),
         )
+    }
+
+    pub fn attacking_player_only(self, player: PlayerFilter) -> Self {
+        self.attack_target_mode(MoveToZoneAttackTargetMode::Player(player))
     }
 
     pub fn face_down(mut self) -> Self {
@@ -3992,6 +4061,9 @@ pub struct PayManaEffect {
     /// An inclusive upper bound for printed X. The paying player chooses X
     /// from the affordable values between zero and this resolved maximum.
     pub x_maximum: Option<Value>,
+    /// Choose a new payment amount, independently of the enclosing spell's X.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub independent_x_choice: bool,
 }
 
 impl PayManaEffect {
@@ -4001,11 +4073,17 @@ impl PayManaEffect {
             player,
             x_value: None,
             x_maximum: None,
+            independent_x_choice: false,
         }
     }
 
     pub fn with_x_value(mut self, x_value: Value) -> Self {
         self.x_value = Some(x_value);
+        self
+    }
+
+    pub fn with_independent_x_choice(mut self) -> Self {
+        self.independent_x_choice = true;
         self
     }
 
@@ -4403,11 +4481,74 @@ impl AmplifyEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct DevourEffect {
     pub multiplier: u32,
+    /// CR 702.82c "Devour [quality] N": the permanents that may be devoured.
+    /// `None` is the plain keyword's "creatures".
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub quality: Option<ObjectFilter>,
+    /// "Devour X, where X is the number of creatures devoured this way"
+    /// (Thromok the Insatiable): each devoured permanent is worth X counters,
+    /// so the source gets the devoured count squared.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub multiplier_is_devoured_count: bool,
 }
 
 impl DevourEffect {
     pub fn new(multiplier: u32) -> Self {
-        Self { multiplier }
+        Self {
+            multiplier,
+            quality: None,
+            multiplier_is_devoured_count: false,
+        }
+    }
+
+    pub fn with_quality(multiplier: u32, quality: ObjectFilter) -> Self {
+        Self {
+            multiplier,
+            quality: Some(quality),
+            multiplier_is_devoured_count: false,
+        }
+    }
+
+    pub fn devoured_count_squared() -> Self {
+        Self {
+            multiplier: 1,
+            quality: None,
+            multiplier_is_devoured_count: true,
+        }
+    }
+
+    /// The keyword's printed surface ("Devour 2", "Devour artifact 1",
+    /// "Devour X, where X is the number of creatures devoured this way").
+    pub fn keyword_text(&self) -> String {
+        if self.multiplier_is_devoured_count {
+            return "Devour X, where X is the number of creatures devoured this way".to_string();
+        }
+        let Some(quality) = &self.quality else {
+            return format!("Devour {}", self.multiplier);
+        };
+        let word = if let Some(subtype) = quality.subtypes.first() {
+            subtype.to_string()
+        } else if let Some(card_type) = quality.card_types.first() {
+            card_type.to_string().to_ascii_lowercase()
+        } else {
+            "permanent".to_string()
+        };
+        format!("Devour {word} {}", self.multiplier)
+    }
+
+    /// The +1/+1 counters the source gets for `devoured` permanents.
+    pub fn counters_for(&self, devoured: u32) -> u32 {
+        if self.multiplier_is_devoured_count {
+            devoured.saturating_mul(devoured)
+        } else {
+            devoured.saturating_mul(self.multiplier)
+        }
     }
 }
 
@@ -4556,6 +4697,37 @@ impl GoadEffect {
     }
 }
 
+/// "Target creature attacks <player> this turn if able" (CR 508.1d): a
+/// requirement, for this turn only, that each affected creature attacks the
+/// resolved player if able. It does not require the creature to attack at
+/// all when it can't attack that player.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct MustAttackPlayerThisTurnEffect {
+    pub target: ChooseSpec,
+    pub player: ChooseSpec,
+    /// "attacks during its controller's next combat phase if able" (Trench
+    /// Behemoth): the requirement names no player and waits for the
+    /// creature's controller's next combat phase; `player` is unused.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controllers_next_combat: bool,
+}
+
+impl MustAttackPlayerThisTurnEffect {
+    pub fn new(target: ChooseSpec, player: ChooseSpec) -> Self {
+        Self {
+            target,
+            player,
+            controllers_next_combat: false,
+        }
+    }
+
+    pub fn with_controllers_next_combat(mut self, controllers_next_combat: bool) -> Self {
+        self.controllers_next_combat = controllers_next_combat;
+        self
+    }
+}
+
 /// Mark an exiled card as plotted. This does not perform the plot special
 /// action or emit its keyword-action event.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -4591,11 +4763,24 @@ impl SuspectEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PrepareEffect {
     pub target: ChooseSpec,
+    /// "becomes unprepared": remove the prepared designation instead.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub unprepare: bool,
 }
 
 impl PrepareEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            unprepare: false,
+        }
+    }
+
+    pub fn unprepare(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            unprepare: true,
+        }
     }
 }
 
@@ -4738,7 +4923,9 @@ impl ClashEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct EarthbendEffect {
     pub target: ChooseSpec,
-    pub counters: u32,
+    /// Number of +1/+1 counters. Dynamic amounts ("earthbend X, where X is
+    /// ...") are computed once as the instruction resolves (CR 107.3a).
+    pub counters: Value,
     /// Awaken's land animation (CR 702.113a): the land also becomes an
     /// Elemental, and neither earthbend's return trigger nor its keyword
     /// action applies.
@@ -4747,20 +4934,20 @@ pub struct EarthbendEffect {
 }
 
 impl EarthbendEffect {
-    pub fn new(target: ChooseSpec, counters: u32) -> Self {
+    pub fn new(target: ChooseSpec, counters: impl Into<Value>) -> Self {
         Self {
             target,
-            counters,
+            counters: counters.into(),
             awaken: false,
         }
     }
 
     /// Awaken N: put N +1/+1 counters on target land you control, which
     /// becomes a 0/0 Elemental creature with haste (CR 702.113a).
-    pub fn awaken(target: ChooseSpec, counters: u32) -> Self {
+    pub fn awaken(target: ChooseSpec, counters: impl Into<Value>) -> Self {
         Self {
             target,
-            counters,
+            counters: counters.into(),
             awaken: true,
         }
     }
@@ -5264,6 +5451,12 @@ pub struct CreateTokenCopyEffect<A> {
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub removed_supertypes: Vec<Supertype>,
+    /// CR 707.9b copy exception "except it's legendary": added supertypes.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub added_supertypes: Vec<Supertype>,
+    /// CR 707.9b copy exception "except its name is X" / "named X".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub set_name: Option<String>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// Dynamic copiable base power/toughness values evaluated as the token is
     /// created. This is distinct from a later continuous-effect modification:
@@ -5306,6 +5499,8 @@ impl<A> CreateTokenCopyEffect<A> {
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             removed_supertypes: Vec::new(),
+            added_supertypes: Vec::new(),
+            set_name: None,
             set_base_power_toughness: None,
             set_base_power_toughness_value: None,
             starting_loyalty: None,

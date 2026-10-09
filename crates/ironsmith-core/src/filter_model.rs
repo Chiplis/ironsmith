@@ -1569,6 +1569,10 @@ pub enum PlayerFilter {
     /// and returns does not inherit the earlier object's damage history.
     WasDealtDamageBySourceThisGame {
         base: Box<PlayerFilter>,
+        /// Only damage dealt this turn ("target player dealt damage by this
+        /// creature this turn", Wicked Akuba). Older payloads mean this game.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+        this_turn: bool,
     },
     /// A player matching `base` who was dealt positive combat damage this
     /// game by an object matching `sources` at the time it dealt that damage.
@@ -1611,6 +1615,12 @@ pub enum PlayerFilter {
         /// the matching cards they own in that zone.
         #[cfg_attr(feature = "serde", serde(default))]
         fewer: bool,
+        /// "... as you activate this ability" (Keeper of the Beasts): the
+        /// comparison is a targeting restriction checked only as the target
+        /// is chosen; on resolution only the opponent relation is rechecked
+        /// (CR 601.2c via 602.2b, 608.2b).
+        #[cfg_attr(feature = "serde", serde(default))]
+        as_you_activate: bool,
     },
     /// The unique in-game player who controls more objects matching `filter`
     /// than every other in-game player. No player matches when the lead is
@@ -1648,6 +1658,33 @@ pub enum PlayerFilter {
     ControlsFewestTied {
         filter: Box<ObjectFilter>,
     },
+    /// "the player to their left": the nearest in-game player seated to the
+    /// left of the player `base` names (CR 101.4a). Appended to preserve
+    /// existing serialized variant ordinals.
+    PlayerToLeftOf(Box<PlayerFilter>),
+    /// "who cast a spell this turn" / "who attacked with a creature this
+    /// turn" (Angelic Arbiter): players by this turn's history. Appended to
+    /// preserve existing serialized variant ordinals.
+    TurnHistory(PlayerTurnHistoryFilter),
+}
+
+/// A player's action this turn, for [`PlayerFilter::TurnHistory`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum PlayerTurnHistoryFilter {
+    /// Cast one or more spells this turn.
+    CastSpell,
+    /// Attacked with one or more creatures this turn.
+    AttackedWithCreature,
+}
+
+impl PlayerTurnHistoryFilter {
+    pub fn relative_clause(self) -> &'static str {
+        match self {
+            Self::CastSpell => "who cast a spell this turn",
+            Self::AttackedWithCreature => "who attacked with a creature this turn",
+        }
+    }
 }
 
 impl PlayerFilter {
@@ -1728,6 +1765,15 @@ impl PlayerFilter {
     pub fn was_dealt_damage_by_source_this_game(base: PlayerFilter) -> Self {
         Self::WasDealtDamageBySourceThisGame {
             base: Box::new(base),
+            this_turn: false,
+        }
+    }
+
+    /// A player matching `base` the current source dealt damage to this turn.
+    pub fn was_dealt_damage_by_source_this_turn(base: PlayerFilter) -> Self {
+        Self::WasDealtDamageBySourceThisGame {
+            base: Box::new(base),
+            this_turn: true,
         }
     }
 
@@ -1767,7 +1813,7 @@ impl PlayerFilter {
             Self::IteratedPlayer => false,
             Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_player_filter(needle),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_player_filter(needle),
-            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_player_filter(needle),
+            Self::WasDealtDamageBySourceThisGame { base, .. } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
                 base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
@@ -1782,7 +1828,9 @@ impl PlayerFilter {
             Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
                 filter.mentions_player_filter(needle)
             }
-            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_player_filter(needle),
+            Self::OpponentOf(base) | Self::PlayerToLeftOf(base) | Self::MaxSpeed { base, .. } => {
+                base.mentions_player_filter(needle)
+            }
             Self::Excluding { base, excluded } => {
                 base.mentions_player_filter(needle) || excluded.mentions_player_filter(needle)
             }
@@ -1803,6 +1851,7 @@ impl PlayerFilter {
             | Self::LowestLifeTied
             | Self::MostCardsInHand
             | Self::CastCardTypeThisTurn(_)
+            | Self::TurnHistory(_)
             | Self::AttackedBySourceThisTurn
             | Self::ChosenPlayer
             | Self::TaggedPlayer(_)
@@ -1816,6 +1865,7 @@ impl PlayerFilter {
 
     pub fn description(&self) -> String {
         match self {
+            Self::TurnHistory(history) => format!("a player {}", history.relative_clause()),
             Self::Any => "a player".to_string(),
             Self::You => "you".to_string(),
             Self::NotYou => "a player other than you".to_string(),
@@ -1841,9 +1891,10 @@ impl PlayerFilter {
             Self::AttackedBySourceThisTurn => {
                 "a player this creature attacked this turn".to_string()
             }
-            Self::WasDealtDamageBySourceThisGame { base } => format!(
-                "{} this source has dealt damage to this game",
-                base.description()
+            Self::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+                "{} this source has dealt damage to this {}",
+                base.description(),
+                if *this_turn { "turn" } else { "game" }
             ),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
                 "{} dealt combat damage this game by {}",
@@ -1880,6 +1931,7 @@ impl PlayerFilter {
                 player,
                 filter,
                 fewer: true,
+                ..
             } => {
                 let mut counted = filter.as_ref().clone();
                 let zone = counted.zone.take();
@@ -1915,6 +1967,15 @@ impl PlayerFilter {
                     ),
                 }
             }
+            Self::OpponentWithMoreControlledObjectsThan {
+                player,
+                filter,
+                as_you_activate: true,
+                ..
+            } if matches!(player.as_ref(), Self::You) => format!(
+                "an opponent who controls more {} than you do as you activate this ability",
+                pluralize_count_terminal_word(&filter.description())
+            ),
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
                 "an opponent of {} who controls more {} than they do",
                 player.description(),
@@ -1929,6 +1990,10 @@ impl PlayerFilter {
                 pluralize_count_terminal_word(&filter.description())
             ),
             Self::OpponentOf(base) => format!("an opponent of {}", base.description()),
+            Self::PlayerToLeftOf(base) => match base.as_ref() {
+                Self::IteratedPlayer => "the player to their left".to_string(),
+                base => format!("the player to the left of {}", base.description()),
+            },
             Self::MaxSpeed {
                 base,
                 has_max_speed,
@@ -2176,6 +2241,11 @@ pub struct ObjectFilter {
     pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
+    /// "spells that share a color with the spell most recently cast this
+    /// turn" (Mana Maze): the candidate shares at least one color with the
+    /// last spell cast this turn by any player. Appended with a serde default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_color_with_last_spell_cast_this_turn: bool,
     /// Exact ordinal among spells matching this filter that the caster has
     /// cast this turn. `None` is the ordinary unrestricted set; `Some(2)` is
     /// the reusable surface used by "the second spell you cast each turn".
@@ -2264,6 +2334,9 @@ pub struct ObjectFilter {
     pub excluded_colors: ColorSet,
     pub colorless: bool,
     pub multicolored: bool,
+    /// "double-faced card" (CR 712.1): the object has a second face.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub double_faced: bool,
     pub monocolored: bool,
     pub all_colors: Option<bool>,
     pub exactly_two_colors: Option<bool>,
@@ -2398,6 +2471,10 @@ pub struct ObjectFilter {
     pub didnt_enter_battlefield_this_turn: bool,
     pub entered_battlefield_this_turn: bool,
     pub entered_battlefield_controller: Option<PlayerFilter>,
+    /// The permanent was turned face up during the current turn (CR 708.8),
+    /// read from the turn's history, not from its current face state.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub turned_face_up_this_turn: bool,
     /// The object was put onto the battlefield by an effect of the current
     /// source object (for example, "the creature put onto the battlefield
     /// with this enchantment").
@@ -2532,6 +2609,15 @@ pub struct ObjectFilter {
     /// must contain a color. Colorless objects do not share a color.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shares_color: bool,
+    /// Requires at least one activated ability, mana abilities included
+    /// ("four or more nonlands with activated abilities", CR 602.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub has_activated_ability: bool,
+    /// Selection-set constraint: all chosen objects share at least one card
+    /// type ("two that share a card type"). Never changes whether an
+    /// individual object matches.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_card_type: bool,
     /// Exact latest successfully drawn incarnation for a matching player this
     /// turn. Never falls back when that card leaves its current zone.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3206,6 +3292,7 @@ impl ObjectFilter {
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
             || self.has_non_mana_activated_ability
+            || self.has_activated_ability
             || self.no_abilities
             || self.no_x_in_cost
             || self.has_x_in_cost
@@ -4481,6 +4568,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::TurnHistory(history) => {
+                    parts.push(format!("a player {}'s", history.relative_clause()))
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4511,7 +4601,9 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
@@ -4642,6 +4734,10 @@ impl ObjectFilter {
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
         }
+        if self.shares_color_with_last_spell_cast_this_turn {
+            post_noun_qualifiers
+                .push("that share a color with the spell most recently cast this turn".to_string());
+        }
         if let Some(minimum) = self.spell_cast_minimum_each_turn {
             post_noun_qualifiers.push(format!(
                 "with matching cast ordinal at least {minimum} this turn"
@@ -4693,6 +4789,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("a player {} owns", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -4720,7 +4819,9 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
@@ -4943,6 +5044,7 @@ impl ObjectFilter {
                         "it" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
+                        "fortified" => parts.push("fortified".to_string()),
                         "convoked_this_spell" => {
                             post_noun_qualifiers.push("that convoked this spell".to_string());
                         }
@@ -5231,6 +5333,9 @@ impl ObjectFilter {
         }
         if self.multicolored {
             parts.push("multicolored".to_string());
+        }
+        if self.double_faced {
+            parts.push("double-faced".to_string());
         }
         if self.monocolored {
             parts.push("monocolored".to_string());
@@ -5896,6 +6001,9 @@ impl ObjectFilter {
         if self.shares_color {
             parts.push("that share a color".to_string());
         }
+        if self.shares_card_type {
+            parts.push("that share a card type".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -6319,6 +6427,10 @@ impl ObjectFilter {
                 "that entered this turn".to_string()
             };
             parts.push(clause);
+        }
+
+        if self.turned_face_up_this_turn {
+            parts.push("that was turned face up this turn".to_string());
         }
 
         if self.put_onto_battlefield_with_source {
@@ -7459,12 +7571,14 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}'s", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game's",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}'s",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}'s",
@@ -7501,7 +7615,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
             format!("{}'s", filter.description())
         }
-        PlayerFilter::OpponentOf(_) => format!("{}'s", describe_player_filter(filter)),
+        PlayerFilter::OpponentOf(_) | PlayerFilter::PlayerToLeftOf(_) => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -7573,12 +7689,14 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}",
@@ -7629,6 +7747,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
+        PlayerFilter::PlayerToLeftOf(base) => match base.as_ref() {
+            PlayerFilter::IteratedPlayer => "the player to their left".to_string(),
+            base => format!("the player to the left of {}", describe_player_filter(base)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -8095,6 +8217,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::GreatestCount(filter) => format!(
                 "the greatest number of {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::LeastCount(filter) => format!(
+                "the number of {} of the player with the fewest",
                 describe_count_filter_subject(filter)
             ),
             Value::GreatestSharedCreatureTypeCount(filter) => format!(

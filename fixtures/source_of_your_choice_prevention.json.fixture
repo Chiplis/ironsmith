@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Burrenton Forge-Tender",
+    "oracle_id": "70bb275b-3458-4690-a50f-b231fbf0bccb",
+    "text": "Mana cost: {W}\nType: Creature — Kithkin Wizard\nPower/Toughness: 1/1\nProtection from red\nSacrifice this creature: Prevent all damage a red source of your choice would deal this turn."
+  },
+  {
+    "name": "Auriok Replica",
+    "oracle_id": "783a62c0-3b06-4250-a1cb-5cf4042611aa",
+    "text": "Mana cost: {3}\nType: Artifact Creature — Cleric\nPower/Toughness: 2/2\n{W}, Sacrifice this creature: Prevent all damage a source of your choice would deal to you this turn."
+  },
+  {
+    "name": "Prahv, Spires of Order",
+    "oracle_id": "37ff5ba6-0763-4c73-85bf-66856e67b8f3",
+    "text": "Type: Land\n{T}: Add {C}.\n{4}{W}{U}, {T}: Prevent all damage a source of your choice would deal this turn."
+  },
+  {
+    "name": "Rith's Charm",
+    "oracle_id": "9dbccdc5-61f7-4a7d-bbbc-5cab393e24f7",
+    "text": "Mana cost: {R}{G}{W}\nType: Instant\nChoose one —\n• Destroy target nonbasic land.\n• Create three 1/1 green Saproling creature tokens.\n• Prevent all damage a source of your choice would deal this turn."
+  }
+]

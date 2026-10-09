@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Tidebinder Mage",
+    "oracle_id": "f881378b-b539-4ea8-981d-e01ee82af105",
+    "mana_cost": "{U}{U}",
+    "type_line": "Creature — Merfolk Wizard",
+    "oracle_text": "When this creature enters, tap target red or green creature an opponent controls. That creature doesn't untap during its controller's untap step for as long as you control this creature.",
+    "power": "2",
+    "toughness": "2",
+    "text": "Mana cost: {U}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nWhen this creature enters, tap target red or green creature an opponent controls. That creature doesn't untap during its controller's untap step for as long as you control this creature."
+  }
+]

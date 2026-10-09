@@ -139,15 +139,22 @@ pub(crate) fn rewrite_static_model_words(
         | P::RemoveSupertypes { filter, .. } | P::AddChosenCreatureType { filter, .. }
         | P::AddChosenBasicLandType { filter, .. } | P::AddChosenColor { filter, .. }
         | P::SetChosenColor { filter, .. } | P::SetBasePowerToughness { filter, .. }
-        | P::SetBasePower { filter, .. } | P::AddCardTypes { filter, .. }
+        | P::SetBasePower { filter, .. } | P::SetBaseToughness { filter, .. }
+        | P::AddCardTypes { filter, .. }
         | P::SetCardTypes { filter, .. } | P::AddAllSubtypesOfFamily { filter, .. }
         | P::RevealFromHandAsEnters { filter, .. } | P::RedirectZoneChange { filter, .. }
         | P::DrawReplacementRevealTopMatchingToHandRestBottom { filter, .. }
         | P::DiscardOrRedirectReplacement { filter, .. }
         | P::SacrificeOrRedirectReplacement { filter, .. }
         | P::RevealCardOrEnterTapped { filter, .. } | P::RedirectWouldEnter { filter, .. }
-        | P::CanBlockAdditionalForEach { filter, .. } => {
+        | P::CanBlockAdditionalForEach { filter, .. }
+        | P::GrantSpellKeyword { filter, .. }
+        | P::AlternativeCastFromZoneForFilter { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
+        }
+        P::ConditionalAttackRequirement { trigger, required } => {
+            *trigger = rewrite_filter_words(trigger, change)?;
+            *required = rewrite_filter_words(required, change)?;
         }
         P::LegendRuleDoesntApplyToController { filter } => {
             // This id selects a hardcoded token filter in native materialization.
@@ -292,6 +299,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::IncreaseMaximumHandSize { player, .. }
         | P::MaximumHandSizeSevenMinusYourGraveyardCardTypes { player, .. }
         | P::PlayersSkipUpkeep { player } | P::PlayerSkipsDrawStep { player }
+        | P::PlayersSkipUntapStep { player }
         | P::PlayersSkipExtraTurns { player } | P::ChoosePlayerAsEnters { filter: player, .. }
         | P::ExileToCounteredExileInsteadOfGraveyard { player, .. }
         | P::PlayerCounterPerTurnLimitReplacement { player_filter: player, .. }
@@ -561,6 +569,8 @@ pub(crate) fn rewrite_static_model_words(
         | P::MayChooseNotToUntapDuringUntapStep(_) | P::PreventAllDamageToYou
         | P::ControlAttachedPermanent(_) | P::CountAsCardNamedForSpellEffect { .. }
         | P::MaxCreaturesCanAttackEachCombat(_) | P::MaxCreaturesCanAttackYouEachCombat(_)
+        | P::MaxCreaturesCanAttackSourceEachCombat(_) | P::CanBlockAsThoughUntapped
+        | P::CanBlockAsThoughNoLandwalk
         | P::MaxCreaturesCanBlockEachCombat(_) | P::ChooseBasicLandTypeAsEnters(_)
         | P::ChooseLandTypeAsEnters(_) | P::EnchantedLandIsChosenType(_)
         | P::SourceLandIsChosenType(_) | P::SoulbondSharedPowerToughness { .. }
@@ -581,7 +591,12 @@ pub(crate) fn rewrite_static_model_words(
         // These variants encode literal qualities or executable prices in an
         // enum name/string without enough authored-word role information.
         P::OpponentsMustTargetFlagbearers | P::FirstEquipCostAlternative(_)
-        | P::ChooseNamedOptionAsEnters { .. } | P::ConvertUnspentMana { .. } => return Err(hold(model)),
+        | P::ChooseNamedOptionAsEnters { .. } | P::ConvertUnspentMana { .. }
+        // A generic instead-replacement's event selectors are not yet
+        // rewritten; hold rather than change only part of its words.
+        | P::EventReplacementWithEffects { .. }
+        | P::EchoCostAlternative { .. }
+        | P::EventAmountReplacement { .. } => return Err(hold(model)),
     }
     Ok(rewritten)
 }
@@ -620,7 +635,8 @@ fn activation_cost_condition_words(condition: &mut ironsmith_core::ActivatedAbil
     match condition {
         C::TargetsExactly { filter, .. } => *filter = rewrite_filter_words(filter, change)?,
         C::EquipAbility { targeting } => optional_filter(targeting, change)?,
-        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::LoyaltyAbility => {}
+        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::LoyaltyAbility
+        | C::FirstKeywordAbilityThisTurn { .. } => {}
         C::Activator(player) => *player = rewrite_player_filter_words(player, change)?,
         C::All(conditions) => {
             for condition in conditions { activation_cost_condition_words(condition, change)?; }
@@ -698,19 +714,23 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
     use ironsmith_core::Restriction as R;
     match restriction {
         R::AdditionalLandPlays(player, _) | R::NoMaximumHandSize(player) | R::GainLife(player)
+        | R::DrawFromBottom(player) | R::ActivateAbilities(player)
         | R::SearchLibraries(player) | R::SearchOwnLibraryFromOwnEffects(player)
         | R::CastSpellsOnlyAsSorcery(player) | R::ActivateNonManaAbilities(player)
         | R::DrawCards(player) | R::DrawExtraCards(player) | R::PoisonCounters(player)
         | R::LoseLife(player) | R::DamageCauseLifeLoss(player) | R::DamageReduceLifeBelowOne(player)
         | R::ChangeLifeTotal(player) | R::LoseGame(player) | R::LoseGameForZeroLife(player)
-        | R::WinGame(player) | R::BecomeMonarch(player) | R::BeTargetedPlayer(player) => {
+        | R::WinGame(player) | R::BecomeMonarch(player) | R::BeTargetedPlayer(player)
+        | R::VentureMoreThanOnceEachTurn(player) | R::BlockWithMoreThan { player, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         R::CastSpellsMatching(player, filter) | R::CastMoreThanOneSpellEachTurn(player, filter)
+        | R::CastMoreThanNSpellsEachTurn { player, spells: filter, .. }
         | R::BeTargetedPlayerFrom(player, filter) | R::PlayerHexproofFrom(player, filter)
         | R::PlayLandsMatching(player, filter)
         | R::AttackPlayerOrPlaneswalkersControlledBy { attackers: filter, player }
-        | R::AttackPlayer { attackers: filter, player } => {
+        | R::AttackPlayer { attackers: filter, player }
+        | R::MustAttackPlayer { attackers: filter, player } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
@@ -727,10 +747,13 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::PhaseOut(filter) | R::PhaseIn(filter) | R::AttackOrBlock(filter)
         | R::AttackOrBlockAlone(filter) | R::EnterBattlefield(filter)
         | R::PreventDamageFrom { sources: filter, .. } | R::ActivateLoyaltyAbilitiesOf(filter)
-        | R::MustAttack(filter) | R::BecomeSuspected(filter) | R::MaximumBlockers { filter, .. }
+        | R::MustAttack(filter) | R::BecomeSuspected(filter) | R::BecomeUntapped(filter)
+        | R::AttackBlockOrCrew(filter)
+        | R::MaximumBlockers { filter, .. }
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }
-        | R::BeTargetedFrom(blockers, attacker) => {
+        | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
+        | R::AttackPermanents { attackers: blockers, permanents: attacker } => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
         }
@@ -739,6 +762,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             optional_filter(&mut cause.source_filter, change)?;
             // Cause controller is a closed relation, not a PlayerFilter.
         }
+        R::AttackTax(rule) => rule.attackers = rewrite_filter_words(&rule.attackers, change)?,
         R::PreventDamage | R::PreventCombatDamage | R::AttackYouUnlessControllerPaysPerAttacker(_, _) => {}
     }
     Ok(())
@@ -777,10 +801,10 @@ fn grantable_words(
             D::RetraceFromCardManaCost | D::BlitzFromCardManaCost | D::EmergeFromCardManaCost
             | D::MiracleFromCardManaCostReducedBy { .. } | D::EscapeFromCardManaCost { .. }
             | D::ManaValueAsGenericFromHand | D::LifeEqualManaValueFromHand { .. }
-            | D::LifeEqualManaValueFromZone { .. } => {}
+            | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost => {}
         },
         G::AlternativeCast(method) => match method {
-            A::Blitz { total_cost } | A::Flashback { total_cost } | A::Harmonize { total_cost }
+            A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost }
             | A::Retrace { total_cost } | A::Madness { total_cost } | A::Bestow { total_cost }
             | A::FlashWithAdditionalCost { total_cost, .. } => {
                 *total_cost = rewrite_total_cost_words(total_cost, change)?;

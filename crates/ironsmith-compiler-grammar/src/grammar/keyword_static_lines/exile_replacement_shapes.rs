@@ -77,6 +77,9 @@ pub enum ExileWouldDieSpec {
     SimpleSource(SimpleSourceReplacementKind),
     SimpleCreature {
         controller: ReplacementPlayerKind,
+        /// "If another creature would die" (Void Maw): the source itself is
+        /// excluded.
+        other: bool,
         follow_up_tokens: Vec<OwnedLexToken>,
     },
 }
@@ -296,13 +299,26 @@ fn parse_nontoken_exile_would_die_lexed<'a>(
     .parse_next(input)?;
     primitives::phrase(&["would", "die"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    let (exile_counter, follow_up_token, follow_up_tokens) = alt((
+    let (exile_counter, follow_up_token, mut follow_up_tokens) = alt((
         parse_created_token_exile_tail_lexed.map(|token| (None, Some(token), Vec::new())),
         parse_countered_exile_tail_lexed.map(|counter| (Some(counter), None, Vec::new())),
         parse_exile_with_follow_up_tail_lexed.map(|tokens| (None, None, tokens)),
         parse_plain_exile_tail_lexed.value((None, None, Vec::new())),
     ))
     .parse_next(input)?;
+    // "... exile it instead. When you do, ..." (Valentin, Dean of the Vein):
+    // a reflexive follow-up of the replacement, as the plain-creature form
+    // already accepts.
+    if exile_counter.is_none() && follow_up_token.is_none() && follow_up_tokens.is_empty() {
+        opt(primitives::period()).parse_next(input)?;
+        if input
+            .first()
+            .is_some_and(|token| token.as_word() == Some("when"))
+        {
+            follow_up_tokens =
+                repeat::<_, _, Vec<_>, _, _>(0.., any.map(Clone::clone)).parse_next(input)?;
+        }
+    }
     primitives::sentence_end().parse_next(input)?;
     Ok(ExileWouldDieSpec::NontokenCreature {
         controller,
@@ -563,7 +579,13 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ExileWouldDieSpec> {
     primitives::kw("if").parse_next(input)?;
-    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let other = opt(alt((
+        primitives::kw("a").value(false),
+        primitives::kw("an").value(false),
+        primitives::kw("another").value(true),
+    )))
+    .map(|other| other.unwrap_or(false))
+    .parse_next(input)?;
     primitives::kw("creature").parse_next(input)?;
     let player = opt(alt((
         alt((
@@ -589,6 +611,7 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     };
     Ok(ExileWouldDieSpec::SimpleCreature {
         controller: player,
+        other,
         follow_up_tokens,
     })
 }

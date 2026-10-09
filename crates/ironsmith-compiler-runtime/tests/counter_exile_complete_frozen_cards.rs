@@ -225,7 +225,7 @@ fn frozen_instants_actually_counter_permanents_and_preserve_nonpermanent_gate_be
                 let stack = game.find_object_by_stable_id(stable).unwrap();
                 assert_eq!(game.object(stack).unwrap().zone, Zone::Stack);
                 assert_eq!(game.object(stack).unwrap().caster_mana_spent_to_cast, Some(0));
-                assert_eq!(game.object(stack).unwrap().controller, A);
+                assert_eq!(game.controller_of_id(stack), Some(A));
                 assert_eq!(game.object(stack).unwrap().owner, B);
                 assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             }
@@ -262,7 +262,7 @@ fn full_frozen_permissions_survive_source_departure_but_preserve_timing_and_addi
             resolve_stack_entry(&mut game).unwrap();
             let creature = game.find_object_by_stable_id(stable).unwrap();
             assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
-            assert_eq!(game.object(creature).unwrap().controller, A);
+            assert_eq!(game.controller_of_id(creature), Some(A));
             assert_eq!(game.object(creature).unwrap().owner, B);
         }
     }
@@ -301,7 +301,7 @@ fn full_spelljack_plays_the_countered_land_face_and_full_decree_only_casts() {
             if allow_land {
                 act(&mut game, A, land);
                 assert!(game.battlefield.iter().any(|id| game.object(*id).is_some_and(|object|
-                    object.name.as_str() == "Countered modal land" && object.controller == A && object.owner == B)));
+                    object.name.as_str() == "Countered modal land" && game.controller_of(object) == A && object.owner == B)));
                 assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             } else {
                 let mut forged = game.clone();
@@ -375,22 +375,26 @@ fn full_frozen_free_permission_cannot_combine_morph_or_another_printed_alternati
 }
 
 fn mutate_counter(artifact: &mut CompiledCardArtifact, mut change: impl FnMut(&mut Value)) {
-    fn walk(value: &mut Value, change: &mut impl FnMut(&mut Value), count: &mut usize) {
+    fn walk(value: &mut Value, change: &mut impl FnMut(&mut Value), originals: &mut Vec<Value>) {
         if value.get("kind").and_then(Value::as_str) == Some("CounterEffect") {
-            *count += 1;
+            originals.push(value.get("payload").expect("wire counter payload").clone());
             change(value.get_mut("payload").expect("wire counter payload"));
             return;
         }
         match value {
-            Value::Object(fields) => for value in fields.values_mut() { walk(value, change, count); },
-            Value::Array(values) => for value in values { walk(value, change, count); },
+            Value::Object(fields) => for value in fields.values_mut() { walk(value, change, originals); },
+            Value::Array(values) => for value in values { walk(value, change, originals); },
             _ => {}
         }
     }
     let mut value = serde_json::to_value(&artifact.payload.definition).unwrap();
-    let mut count = 0;
-    walk(&mut value, &mut change, &mut count);
-    assert_eq!(count, 1, "mutate the complete card's unique counter, including Kheru's nested trigger");
+    let mut originals = Vec::new();
+    walk(&mut value, &mut change, &mut originals);
+    assert!(!originals.is_empty(), "counter payload must be present");
+    // Native-model retention can serialize the same instruction twice. Mutate
+    // every copy and prove they describe one identical counter contract.
+    assert!(originals.iter().all(|payload| payload == &originals[0]),
+        "the complete card must contain one unique counter contract");
     artifact.payload.definition = serde_json::from_value(value).unwrap();
 }
 

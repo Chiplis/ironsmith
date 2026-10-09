@@ -49,6 +49,10 @@ pub enum RemoveClauseShape<'a> {
     Counters {
         amount: Value,
         up_to: bool,
+        /// "remove any number of [kind] counters from ...": the bound is every
+        /// counter of that kind the holder has; `amount` is a source-relative
+        /// placeholder the effect reader rebinds to the counter kind.
+        any_number: bool,
         counter_descriptor: &'a [OwnedLexToken],
         destination: RemoveCounterDestination<'a>,
     },
@@ -229,7 +233,16 @@ pub fn parse_remove_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<RemoveClauseShape<'_>, RemoveShapeError> {
     let tokens = trim_shape_edges(tokens);
-    if exact_tokens(tokens, &["all", "of", "them"]) || exact_tokens(tokens, &["those", "counters"])
+    // "remove them", "remove them all", "remove all of them from it": every
+    // counter named by the preceding source counter-threshold condition. The
+    // shape stays an unresolved reference; lowering refuses it unless that
+    // condition binds the counter kind (CR 122.8 removal of named counters).
+    if exact_tokens(tokens, &["all", "of", "them"])
+        || exact_tokens(tokens, &["those", "counters"])
+        || exact_tokens(tokens, &["them"])
+        || exact_tokens(tokens, &["them", "all"])
+        || exact_tokens(tokens, &["all", "of", "them", "from", "it"])
+        || exact_tokens(tokens, &["them", "from", "it"])
     {
         return Ok(RemoveClauseShape::AllOfThem);
     }
@@ -270,6 +283,7 @@ pub fn parse_remove_clause_shape(
             return Ok(RemoveClauseShape::Counters {
                 amount: amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
                 up_to: false,
+                any_number: false,
                 counter_descriptor: trim_lexed_commas(&after_number_of[..counter_idx]),
                 destination: RemoveCounterDestination::Single { target_tokens },
             });
@@ -303,18 +317,31 @@ pub fn parse_remove_clause_shape(
         });
     }
 
-    let (up_to, value_tokens) = if let Some(((), rest)) =
-        primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]))
-    {
-        (true, rest)
+    let any_number_rest =
+        primitives::parse_prefix(tokens, primitives::phrase(&["any", "number", "of"]).void())
+            .map(|((), rest)| rest);
+    let (up_to, any_number, amount, after_amount) = if let Some(rest) = any_number_rest {
+        (
+            true,
+            true,
+            Value::CountersOn(Box::new(crate::target::ChooseSpec::Source), None),
+            rest,
+        )
     } else {
-        (false, tokens)
+        let (up_to, value_tokens) = if let Some(((), rest)) =
+            primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]))
+        {
+            (true, rest)
+        } else {
+            (false, tokens)
+        };
+        let (amount, amount_used) = values::parse_value_prefix_lexed(value_tokens)
+            .ok_or(RemoveShapeError::MissingAmount)?;
+        let after_amount = value_tokens
+            .get(amount_used..)
+            .ok_or(RemoveShapeError::MissingCounterKeyword)?;
+        (up_to, false, amount, after_amount)
     };
-    let (amount, amount_used) =
-        values::parse_value_prefix_lexed(value_tokens).ok_or(RemoveShapeError::MissingAmount)?;
-    let after_amount = value_tokens
-        .get(amount_used..)
-        .ok_or(RemoveShapeError::MissingCounterKeyword)?;
     let (counter_idx, (), after_counter) = primitives::find_prefix(after_amount, || counter_word)
         .ok_or(RemoveShapeError::MissingCounterKeyword)?;
     let counter_descriptor = trim_lexed_commas(&after_amount[..counter_idx]);
@@ -373,6 +400,7 @@ pub fn parse_remove_clause_shape(
     Ok(RemoveClauseShape::Counters {
         amount,
         up_to,
+        any_number,
         counter_descriptor,
         destination,
     })

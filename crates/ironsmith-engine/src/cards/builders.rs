@@ -1870,6 +1870,18 @@ impl CardDefinitionBuilder {
                     crate::static_abilities::LandwalkKind::ArtifactLand => {
                         StaticAbility::artifact_landwalk()
                     }
+                    crate::static_abilities::LandwalkKind::LegendaryLand => {
+                        StaticAbility::legendary_landwalk()
+                    }
+                    crate::static_abilities::LandwalkKind::SnowLand => {
+                        StaticAbility::snow_any_landwalk()
+                    }
+                    crate::static_abilities::LandwalkKind::ChosenType { snow } => {
+                        StaticAbility::chosen_type_landwalk(snow)
+                    }
+                    crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                        StaticAbility::sacrificed_land_types_landwalk()
+                    }
                 };
                 self.with_ability(Ability::static_ability(ability))
             }
@@ -4365,6 +4377,7 @@ impl CardDefinitionBuilder {
     pub fn flashback(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Flashback {
+                x_minimum: 0,
                 total_cost: TotalCost::mana(cost),
             });
         self

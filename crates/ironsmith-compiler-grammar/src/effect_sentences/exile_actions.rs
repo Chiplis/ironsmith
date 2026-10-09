@@ -326,6 +326,61 @@ fn parse_independent_exile_pair(
     }))
 }
 
+/// "Exile target creature and target land." (Grip of Desolation): a shared
+/// exile verb governing two independently chosen explicit targets. Each
+/// operand is its own target (CR 115.1d: a spell may have multiple targets,
+/// each chosen as described), so the instruction is two coordinated exiles,
+/// mirroring the destroy grammar. Anything other than two plain explicit
+/// target operands stays unsupported.
+fn parse_explicit_target_exile_pair(
+    first_tokens: &[OwnedLexToken],
+    second_tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    until_source_leaves: bool,
+    face_down: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let single_target_operand = |branch: &[OwnedLexToken]| {
+        branch.first().is_some_and(|token| token.is_word("target"))
+            && branch.iter().filter(|token| token.is_word("target")).count() == 1
+            && !branch.iter().any(|token| {
+                token.is_any_word(&[
+                    "and", "or", "then", "destroy", "exile", "return", "put", "copy", "cast",
+                    "draw", "gain", "gains", "lose", "loses", "until",
+                ])
+            })
+    };
+    if !single_target_operand(first_tokens) || !single_target_operand(second_tokens) {
+        return Ok(None);
+    }
+    let explicit_object_target = |target: &TargetAst| match target {
+        TargetAst::Object(_, explicit_target_span, _) => explicit_target_span.is_some(),
+        TargetAst::WithCount(inner, count) if count.is_single() => matches!(
+            inner.as_ref(),
+            TargetAst::Object(_, explicit_target_span, _) if explicit_target_span.is_some()
+        ),
+        _ => false,
+    };
+    let mut first = parse_target_phrase(first_tokens)?;
+    let mut second = parse_target_phrase(second_tokens)?;
+    if !explicit_object_target(&first) || !explicit_object_target(&second) {
+        return Ok(None);
+    }
+    apply_exile_subject_hand_owner_context(&mut first, subject);
+    apply_exile_subject_hand_owner_context(&mut second, subject);
+    let exile = |target| {
+        if until_source_leaves {
+            EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
+        } else {
+            EffectAst::subject_verb_exile(target, face_down)
+        }
+    };
+    Ok(Some(EffectAst::Coordinated {
+        effects: vec![exile(first), exile(second)],
+        leading_duration: false,
+        result_conjunction: false,
+    }))
+}
+
 fn parse_source_and_target_exile_pair(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -449,6 +504,26 @@ pub fn parse_exile(
         && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
     {
         return Ok(effect);
+    }
+    // "exile Ajani and each artifact and creature your opponents control"
+    // (Ajani, Strength of the Pride; Fraying Line): the source and an
+    // each-set are two recipients of one exile instruction. The set's own
+    // `and` belongs to its filter, so split only at the first `and each`
+    // after a complete source reference.
+    if subject.is_none()
+        && let Some((and_index, (), _)) = crate::grammar::primitives::find_prefix(tokens, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        && and_index > 0
+        && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
+            &tokens[..and_index],
+        ))
+    {
+        let source = parse_exile(&tokens[..and_index], None)?;
+        let each = parse_exile(&tokens[and_index + 1..], None)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![source, each],
+        });
     }
     if let Some((target_tokens, leave_watcher_tokens)) = split_until_target_leaves_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);

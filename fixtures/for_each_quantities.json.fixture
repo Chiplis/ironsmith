@@ -1,0 +1,18 @@
+[
+ {
+  "name": "Might of the Nephilim",
+  "oracle_id": "4fda9b70-8da5-4292-b05a-0a0e5a2ad809",
+  "mana_cost": "{1}{G}",
+  "type_line": "Instant",
+  "oracle_text": "Target creature gets +2/+2 until end of turn for each of its colors."
+ },
+ {
+  "name": "Whispering Specter",
+  "oracle_id": "18d270bf-d0d3-4fac-a8d2-5f920e789bb5",
+  "mana_cost": "{1}{B}{B}",
+  "type_line": "Creature — Phyrexian Specter",
+  "oracle_text": "Flying\nInfect\nWhenever this creature deals combat damage to a player, you may sacrifice it. If you do, that player discards a card for each poison counter they have.",
+  "power": "1",
+  "toughness": "1"
+ }
+]

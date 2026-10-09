@@ -447,6 +447,7 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         || permission.while_on_top_of_library
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || !permission.lands_enter_tapped
         || !matches!(
             &permission.player,
@@ -4317,6 +4318,7 @@ fn describe_search_two_split_battlefield_hand_sequence(
             player,
             filter,
             fewer: false,
+            ..
         } = &comparison.filter
         else {
             return None;
@@ -6059,6 +6061,7 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -13539,6 +13542,7 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
         || permission.filter.is_some()
         || permission.spell_cost_increase.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || permission.max_plays.is_some()
         || permission.lands_enter_tapped
     {
@@ -13608,6 +13612,7 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
     {
         return None;
     }

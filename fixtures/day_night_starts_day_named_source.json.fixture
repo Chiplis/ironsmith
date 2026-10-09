@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Vadrik, Astral Archmage",
+  "oracle_id": "a9ab17ce-ba07-4ce8-99f9-9c4c633957f7",
+  "oracle_text": "If it's neither day nor night, it becomes day as Vadrik enters.\nInstant and sorcery spells you cast cost {X} less to cast, where X is Vadrik's power.\nWhenever day becomes night or night becomes day, put a +1/+1 counter on Vadrik.",
+  "text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/2\nIf it's neither day nor night, it becomes day as Vadrik enters.\nInstant and sorcery spells you cast cost {X} less to cast, where X is Vadrik's power.\nWhenever day becomes night or night becomes day, put a +1/+1 counter on Vadrik."
+ }
+]

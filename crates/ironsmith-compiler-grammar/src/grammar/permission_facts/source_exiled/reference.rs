@@ -52,7 +52,7 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
         .parse_next(input)?
         .is_some();
     primitives::phrase(&["exiled", "with", "this"]).parse_next(input)?;
-    let source_kind = alt((
+    let source_kind = opt(alt((
         primitives::kw("enchantment").value("enchantment"),
         primitives::kw("class").value("Class"),
         primitives::kw("artifact").value("artifact"),
@@ -60,14 +60,14 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
         primitives::kw("permanent").value("permanent"),
         primitives::kw("card").value("card"),
         primitives::kw("land").value("land"),
-    ))
+    )))
     .parse_next(input)?;
     Ok((
         owned_by_you,
         SourceExiledReference {
-            surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(format!(
-                "this {source_kind}"
-            )),
+            surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                source_kind.map_or_else(|| "this".to_string(), |kind| format!("this {kind}")),
+            ),
         },
     ))
 }
@@ -96,6 +96,17 @@ pub fn parse_cards_from_source_exiled_tokens(
         return None;
     }
     Some((reference, tail))
+}
+
+/// "cards you own exiled with this artifact" (Kayla's Music Box): the
+/// source-linked pool narrowed to cards the permission's player owns.
+pub fn parse_owned_cards_from_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(SourceExiledReference, &[OwnedLexToken])> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("cards"))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    owned_by_you.then_some((reference, tail))
 }
 
 /// A complete static land-and-spell permission over one source-linked pool.

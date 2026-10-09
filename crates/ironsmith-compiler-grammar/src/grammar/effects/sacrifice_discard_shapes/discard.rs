@@ -13,6 +13,9 @@ const HAND_REFERENCES: &[&[&str]] = &[
     &["hand"],
     &["your", "hand"],
     &["their", "hand"],
+    // "Any number of target opponents each discard their hands" (Wheel and
+    // Deal): the plural possessive is each player's own hand.
+    &["their", "hands"],
     &["that", "players", "hand"],
 ];
 const TAGGED_REFERENCES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
@@ -128,6 +131,8 @@ pub enum DiscardTrailingShape {
     ChosenColor,
     SameManaValueAsTriggering,
     Colors(ColorSet),
+    /// "of that type" / "of the chosen type" after "Choose a creature type".
+    ChosenCreatureType,
     Other,
 }
 
@@ -254,6 +259,11 @@ pub fn parse_discard_clause_shape(
             (false, count, any_number, used)
         } else if let Some((count, used)) = crate::util::parse_value(tokens) {
             (false, count, false, used)
+        } else if tokens.first().is_some_and(|token| token.is_word("another")) {
+            // "then that player discards another card at random" (Flay): the
+            // earlier discarded card has already left the hand, so this is
+            // one more card from what remains.
+            (false, Value::Fixed(1), false, 1)
         } else {
             return Err(DiscardShapeError::MissingCount);
         };
@@ -331,6 +341,11 @@ pub fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailing
         DiscardTrailingShape::Random
     } else if common::exact(&words, &["with", "that", "name"]) {
         DiscardTrailingShape::ChosenName
+    } else if common::exact_any(
+        &words,
+        &[&["of", "that", "type"], &["of", "the", "chosen", "type"]],
+    ) {
+        DiscardTrailingShape::ChosenCreatureType
     } else if chosen_color_reference(tokens) {
         DiscardTrailingShape::ChosenColor
     } else if common::exact_any(&words, SAME_MANA_VALUE_REFERENCES) {

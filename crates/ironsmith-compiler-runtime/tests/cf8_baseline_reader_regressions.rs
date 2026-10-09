@@ -1,0 +1,104 @@
+//! Full-card direct/artifact regressions for exact-reader ownership and cost boundaries.
+#[path = "p01_support/mod.rs"]
+mod support;
+macro_rules! card_reader {
+    ($test:ident, $name:literal, $text:literal) => {
+        #[test]
+        fn $test() { support::definitions_for_text($name, $text); }
+    };
+}
+card_reader!(compleat_devotion,"Compleat Devotion","Mana cost: {1}{W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn. If that creature has toxic, draw a card.");
+card_reader!(hexgold_slash,"Hexgold Slash","Mana cost: {R}\nType: Instant\nHexgold Slash deals 2 damage to target creature. If that creature has toxic, Hexgold Slash deals 4 damage to that creature instead.");
+card_reader!(arachnus_web,"Arachnus Web","Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nAt the beginning of the end step, if enchanted creature's power is 4 or greater, destroy this Aura.");
+card_reader!(domestication,"Domestication","Mana cost: {2}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.\nAt the beginning of your end step, if enchanted creature's power is 4 or greater, sacrifice this Aura.");
+card_reader!(mysterious_pathlighter,"Mysterious Pathlighter","Mana cost: {2}{W}\nType: Creature — Faerie\nPower/Toughness: 2/2\nFlying\nEach creature you control that has an Adventure enters with an additional +1/+1 counter on it. (It doesn't need to have gone on the adventure first.)");
+card_reader!(edgar_master_machinist,"Edgar, Master Machinist","Mana cost: {2}{R}{W}\nType: Legendary Creature — Human Artificer Noble\nPower/Toughness: 2/4\nOnce during each of your turns, you may cast an artifact spell from your graveyard. If you cast a spell this way, that artifact enters tapped.\nTools — Whenever Edgar attacks, it gets +X/+0 until end of turn, where X is the greatest mana value among artifacts you control.");
+card_reader!(detective_s_phoenix,"Detective's Phoenix","Mana cost: {2}{R}\nType: Enchantment Creature — Phoenix\nPower/Toughness: 2/2\nBestow—{R}, Collect evidence 6. (To pay this bestow cost, pay {R} and exile cards with total mana value 6 or greater from your graveyard.)\nFlying, haste\nEnchanted creature gets +2/+2 and has flying and haste.\nYou may cast this card from your graveyard using its bestow ability.");
+card_reader!(assassin_s_ink,"Assassin's Ink","Mana cost: {2}{B}{B}\nType: Instant\nThis spell costs {1} less to cast if you control an artifact and {1} less to cast if you control an enchantment.\nDestroy target creature or planeswalker.");
+card_reader!(geistlight_snare,"Geistlight Snare","Mana cost: {2}{U}\nType: Instant\nThis spell costs {1} less to cast if you control a Spirit. It also costs {1} less to cast if you control an enchantment.\nCounter target spell unless its controller pays {3}.");
+
+#[test]
+fn aluren_preserves_its_permission() {
+    for definition in support::definitions_for_text("Aluren","Mana cost: {2}{G}{G}\nType: Enchantment\nAny player may cast creature spells with mana value 3 or less without paying their mana costs and as though they had flash.") {
+        let text = support::rendered(&definition);
+        assert!(text.contains("without paying"), "{text}");
+        assert!(definition.spell_effect.is_none(), "permanent permission must be static");
+        assert_eq!(definition.abilities.iter().filter(|ability| matches!(&ability.kind, ironsmith::ability::AbilityKind::Static(ability) if ability.id() == ironsmith::static_abilities::StaticAbilityId::Grants)).count(), 2);
+    }
+}
+
+#[test]
+fn atomic_microsizer_preserves_its_permission() {
+    for definition in support::definitions_for_text("Atomic Microsizer","Mana cost: {U}\nType: Artifact — Equipment\nEquipped creature gets +1/+0.\nWhenever equipped creature attacks, choose up to one target creature. That creature can't be blocked this turn and has base power and toughness 1/1 until end of turn.\nEquip {2}") {
+        let text = support::rendered(&definition);
+        assert!(text.contains("can't be blocked"), "{text}");
+        assert!(text.contains("base power and toughness 1/1"), "{text}");
+    }
+}
+
+#[test]
+fn aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_phase() {
+    use ironsmith::decision::{compute_legal_actions, LegalAction};
+    use ironsmith::{GameState, PlayerId, Zone};
+    let alice = PlayerId(0);
+    let bob = PlayerId(1);
+    for definition in support::definitions_for_text("Aluren", "Mana cost: {2}{G}{G}\nType: Enchantment\nAny player may cast creature spells with mana value 3 or less without paying their mana costs and as though they had flash.") {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(bob);
+        game.turn.phase = ironsmith::Phase::Beginning;
+        game.turn.step = Some(ironsmith::Step::Upkeep);
+        game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        for (name, text, expected) in [
+            ("Small Bear", "Mana cost: {2}{G}\nType: Creature — Bear\nPower/Toughness: 2/2", true),
+            ("Large Bear", "Mana cost: {3}{G}\nType: Creature — Bear\nPower/Toughness: 2/2", false),
+            ("Sorcery", "Mana cost: {G}\nType: Sorcery\nDraw a card.", false),
+        ] {
+            let card = ironsmith_compiler_runtime::compile_to_runtime_definition(name, text, false).unwrap();
+            let id = game.create_object_from_definition(&card, bob, Zone::Hand);
+            let has_free_cast = compute_legal_actions(&game, bob).unwrap().iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == id && (casting_method.is_alternative() || matches!(casting_method.origin_method(), ironsmith::alternative_cast::CastingMethod::PlayFrom { use_alternative: Some(_), .. }))));
+            assert_eq!(has_free_cast, expected, "{name}: empty mana pool, opponent's upkeep");
+        }
+    }
+}
+
+card_reader!(ageless_sentinels,"Ageless Sentinels","Mana cost: {3}{W}\nType: Creature — Wall\nPower/Toughness: 4/4\nDefender (This creature can't attack.)\nFlying\nWhen this creature blocks, it becomes a Bird Giant, and it loses defender. (It's no longer a Wall. This effect lasts indefinitely.)");
+
+card_reader!(emrakul_the_promised_end,"Emrakul, the Promised End","Mana cost: {13}\nType: Legendary Creature — Eldrazi\nPower/Toughness: 13/13\nThis spell costs {1} less to cast for each card type among cards in your graveyard.\nWhen you cast this spell, you gain control of target opponent during that player's next turn. After that turn, that player takes an extra turn.\nFlying, trample, protection from instants");
+
+card_reader!(pulling_teeth,"Pulling Teeth","Mana cost: {1}{B}\nType: Sorcery\nClash with an opponent. If you win, target player discards two cards. Otherwise, that player discards a card. (Each clashing player reveals the top card of their library, then puts that card on their choice of the top or bottom. A player wins if their card had a greater mana value.)");
+
+card_reader!(spirit_sisters_call,"Spirit-Sister's Call","Mana cost: {3}{W}{B}\nType: Enchantment\nAt the beginning of your end step, choose target permanent card in your graveyard. You may sacrifice a permanent that shares a card type with the chosen card. If you do, return the chosen card from your graveyard to the battlefield and it gains \"If this permanent would leave the battlefield, exile it instead of putting it anywhere else.\"");
+
+card_reader!(tishanas_tidebinder,"Tishana's Tidebinder","Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 3/2\nFlash\nWhen this creature enters, counter up to one target activated or triggered ability. If an ability of an artifact, creature, or planeswalker is countered this way, that permanent loses all abilities for as long as this creature remains on the battlefield. (Mana abilities can't be targeted.)");
+
+card_reader!(transcendent_dragon,"Transcendent Dragon","Mana cost: {4}{U}{U}\nType: Creature — Dragon\nPower/Toughness: 4/3\nFlash\nFlying\nWhen this creature enters, if you cast it, counter target spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard, then you may cast it without paying its mana cost.");
+
+card_reader!(flaring_flame_kin,"Flaring Flame-Kin","Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"");
+
+card_reader!(the_fallen,"The Fallen","Mana cost: {1}{B}{B}{B}\nType: Creature — Zombie\nPower/Toughness: 2/3\nAt the beginning of your upkeep, this creature deals 1 damage to each opponent and planeswalker it has dealt damage to this game.");
+
+#[test]
+fn shared_static_condition_gates_pump_keyword_and_activated_grant_together() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::{GameState, PlayerId, Zone};
+    let player = PlayerId(0);
+    for definition in support::definitions_for_text("Flaring Flame-Kin", "Mana cost: {2}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 2/2\nAs long as this creature is enchanted, it gets +2/+2, has trample, and has \"{R}: This creature gets +1/+0 until end of turn.\"") {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let creature = game.create_object_from_definition(&definition, player, Zone::Battlefield);
+        let check = |game: &GameState, enchanted: bool| {
+            assert_eq!(game.current_power(creature), Some(if enchanted { 4 } else { 2 }));
+            let view = game.calculated_characteristics(creature).unwrap();
+            assert_eq!(view.static_abilities.iter().any(|ability| ability.id() == StaticAbilityId::Trample), enchanted);
+            assert_eq!(game.current_abilities(creature).unwrap().iter().any(|ability| matches!(&ability.kind, AbilityKind::Activated(_))), enchanted);
+        };
+        check(&game, false);
+        let aura = ironsmith_compiler_runtime::compile_to_runtime_definition("Test Aura", "Mana cost: {W}\nType: Enchantment — Aura\nEnchant creature", false).unwrap();
+        let aura = game.create_object_from_definition(&aura, player, Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(creature)));
+        check(&game, true);
+        game.move_object_by_game_rule(aura, Zone::Graveyard).unwrap();
+        check(&game, false);
+    }
+}

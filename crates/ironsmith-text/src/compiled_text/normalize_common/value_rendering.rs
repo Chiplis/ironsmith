@@ -285,6 +285,10 @@ pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             Value::ColorsAmong(filter) => {
                 format!("a card for each {}", describe_colors_among(filter))
             }
+            Value::CardTypesAmongSpellsCastThisTurn { player, filter } => format!(
+                "a card for each card type among {}",
+                describe_spells_cast_this_turn_phrase(player, filter)
+            ),
             Value::SourcePower
             | Value::SourceToughness
             | Value::PowerOf(_)
@@ -2032,7 +2036,7 @@ pub(crate) fn describe_attached_tagged_object_filter(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     | crate::filter::TaggedOpbjectRelation::SameObjectId
-            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         })
         .collect::<Vec<_>>();
     if attached_constraints.len() != 1 {
@@ -2339,6 +2343,29 @@ fn describe_any_target_excluding_subtypes(
 }
 
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
+    // "any target chosen at random" (Goblin Test Pilot): a single target the
+    // game picks at random.
+    if let ChooseSpec::Target(inner) = spec
+        && let ChooseSpec::WithCount(base, count) = inner.as_ref()
+        && count.random
+        && count.is_single()
+    {
+        return format!(
+            "{} chosen at random",
+            describe_choose_spec(&ChooseSpec::Target(base.clone()))
+        );
+    }
+    if let ChooseSpec::WithCount(base, count) = spec
+        && count.random
+        && count.is_single()
+        && matches!(base.as_ref(), ChooseSpec::Target(_) | ChooseSpec::AnyTarget)
+    {
+        let base = match base.as_ref() {
+            ChooseSpec::AnyTarget => ChooseSpec::Target(Box::new(ChooseSpec::AnyTarget)),
+            other => other.clone(),
+        };
+        return format!("{} chosen at random", describe_choose_spec(&base));
+    }
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
             // An explicit target declaration owns the rendered subject. A
@@ -5883,6 +5910,13 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::LandsPlayed(player) => match player {
+            PlayerFilter::You => "the number of lands you've played this turn".to_string(),
+            _ => format!(
+                "the number of lands {} played this turn",
+                describe_player_filter(player)
+            ),
+        },
         TurnHistoryCount::PlayersLostLife(player) => format!(
             "the number of {} who lost life this turn",
             pluralize_noun_phrase(&describe_player_filter(player))
@@ -6051,6 +6085,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
     }
 
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility) => {
+                format!("{} as you activate this ability", describe_value(&value.clone().without_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility)))
+            }
         Value::SurfaceHinted { hints, .. }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatMany) =>
         {
@@ -6301,6 +6340,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
 
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
+        Value::PowerOfTwo(exponent) => match exponent.unhinted() {
+            Value::X => "2ˣ".to_string(),
+            other => format!("2 to the power of {}", describe_value(other)),
+        },
         Value::HalfRoundedDown(value) => {
             if let Value::Add(left, right) = value.as_ref() {
                 let count_filter = match (left.as_ref(), right.as_ref()) {
@@ -6435,6 +6478,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::GreatestCount(filter) => {
             format!(
                 "the greatest number of {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::LeastCount(filter) => {
+            format!(
+                "the number of {} of the player with the fewest",
                 describe_count_filter_value_subject(filter)
             )
         }
@@ -6752,6 +6801,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::ChosenColorsOf(_) => "the number of the chosen colors it is".to_string(),
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
@@ -7093,6 +7143,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::SourceDevouredCreatureCount => {
             "the number of creatures this creature devoured".to_string()
         }
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter } => format!(
+            "the number of card types among {}",
+            describe_spells_cast_this_turn_phrase(player, filter)
+        ),
         Value::SpellsCastThisTurnMatching {
             player,
             filter,
@@ -7351,4 +7405,27 @@ pub(crate) fn is_one_plus_kick_count(value: &Value) -> bool {
                 (Value::Fixed(1), Value::KickCount) | (Value::KickCount, Value::Fixed(1))
             )
     )
+}
+
+/// "spells you've cast this turn" / "instant spells your opponents have cast
+/// this turn": the cast-history set a per-spell aggregate ranges over.
+pub(crate) fn describe_spells_cast_this_turn_phrase(
+    player: &PlayerFilter,
+    filter: &ObjectFilter,
+) -> String {
+    let base = if *filter == ObjectFilter::default() {
+        "spells".to_string()
+    } else {
+        let mut spells = filter.clone();
+        spells.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        spells.zone = Some(Zone::Stack);
+        pluralize_noun_phrase(&describe_for_each_filter(&spells))
+    };
+    let cast_surface = match player {
+        PlayerFilter::You => "you've cast this turn".to_string(),
+        PlayerFilter::Opponent => "your opponents have cast this turn".to_string(),
+        PlayerFilter::Any => "cast this turn".to_string(),
+        other => format!("cast this turn by {}", describe_player_filter(other)),
+    };
+    format!("{base} {cast_surface}")
 }

@@ -2954,6 +2954,7 @@ fn this_way_commander_reduction_applies_only_to_flashback_cost() {
         .push(Ability::static_ability(reduction));
     spell.alternative_casts.push(
         crate::alternative_cast::AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::mana(flashback_cost.clone()),
         },
     );

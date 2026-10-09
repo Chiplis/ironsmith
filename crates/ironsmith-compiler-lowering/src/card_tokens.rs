@@ -477,6 +477,29 @@ pub fn royal_role_token_definition() -> CardDefinition {
         )))
         .build()
 }
+/// CR 111.10 (Virtuous Role): "Enchant creature / Enchanted creature gets
+/// +1/+1 for each enchantment you control." The count is a live layer-7c
+/// characteristic of the enchanted creature, not a value locked on creation.
+pub fn virtuous_role_token_definition() -> CardDefinition {
+    let count = crate::static_abilities::AnthemCountExpression::MatchingFilter(
+        ObjectFilter::enchantment().you_control(),
+    );
+    CardDefinitionBuilder::new(CardId::new(), "Virtuous Role")
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .oracle_text(
+            "Enchant creature\nEnchanted creature gets +1/+1 for each enchantment you control.",
+        )
+        .enchants(ObjectFilter::creature().into())
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            Anthem::<crate::ConditionExpr>::new(enchanted_creature_filter(), 0, 0).with_values(
+                crate::static_abilities::AnthemValue::scaled(1, count.clone()),
+                crate::static_abilities::AnthemValue::scaled(1, count),
+            ),
+        )))
+        .build()
+}
 pub fn cursed_role_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Cursed Role")
         .token()

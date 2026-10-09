@@ -14,11 +14,16 @@ pub struct TokenTemplateReplacement<'a> {
     pub mode: ironsmith_core::TokenCreationTemplateMode,
     pub choose_one: bool,
     pub optional: bool,
+    /// "The first time you would create one or more tokens each turn"
+    /// (Moonlit Meditation).
+    pub first_time_each_turn: bool,
 }
 
-fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, bool)> {
-    primitives::kw("if").parse_next(input)?;
+fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, bool, bool)> {
+    let first_time = opt(primitives::phrase(&["the", "first", "time"])).parse_next(input)?.is_some();
+    if !first_time { primitives::kw("if").parse_next(input)?; }
     let active = opt(primitives::kw("you")).parse_next(input)?.is_some();
+    if first_time && !active { return Err(primitives::backtrack_err("token replacement", "you")); }
     if active { primitives::phrase(&["would", "create"]).parse_next(input)?; }
     let singular = alt((
         primitives::phrase(&["one", "or", "more"]).value(false),
@@ -29,8 +34,9 @@ fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, 
         .map(|((), _)| ()).take().parse_next(input)?;
     alt((primitives::kw("token"), primitives::kw("tokens"))).parse_next(input)?;
     if !active { primitives::phrase(&["would", "be", "created", "under", "your", "control"]).parse_next(input)?; }
+    if first_time { primitives::phrase(&["each", "turn"]).parse_next(input)?; }
     opt(primitives::comma()).parse_next(input)?;
-    Ok((descriptor, singular, active))
+    Ok((descriptor, singular, active, first_time))
 }
 fn complete_tail<'a>(tokens: &'a [OwnedLexToken], words: &'static [&'static str]) -> Option<&'a [OwnedLexToken]> {
     let mut quoted = false;
@@ -54,7 +60,8 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool)> {
 
 pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<TokenTemplateReplacement<'_>> {
     use ironsmith_core::TokenCreationTemplateMode;
-    let ((source_descriptor, singular, active), mut body) = primitives::parse_prefix(tokens, header)?;
+    let ((source_descriptor, singular, active, first_time_each_turn), mut body) =
+        primitives::parse_prefix(tokens, header)?;
     let mut optional = false;
     let mut leading_instead = false;
     if active {
@@ -114,7 +121,7 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
         }
     }
     if templates.iter().any(|template| template.is_empty()) { return None; }
-    Some(TokenTemplateReplacement { source_descriptor, templates, mode, choose_one, optional })
+    Some(TokenTemplateReplacement { source_descriptor, templates, mode, choose_one, optional, first_time_each_turn })
 }
 
 #[cfg(test)]

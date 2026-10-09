@@ -1,0 +1,9 @@
+[
+ {
+  "name": "Flay",
+  "oracle_id": "987b74f4-02cb-4d47-94e5-d58a3c8e92e4",
+  "mana_cost": "{3}{B}",
+  "type_line": "Sorcery",
+  "oracle_text": "Target player discards a card at random. Then that player discards another card at random unless they pay {1}."
+ }
+]

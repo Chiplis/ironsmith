@@ -103,6 +103,17 @@ pub fn rewrite_modal_to_parsed_item(
             modal.header.raw_line
         )));
     };
+    // A modal Saga chapter is a triggered modal ability whose trigger is the
+    // chapter itself (CR 714.2b); its body cannot carry another trigger.
+    if let Some(chapters) = modal.saga_chapters.clone() {
+        if header.trigger.is_some() || header.activated.is_some() {
+            return Err(CardTextError::ParseError(format!(
+                "modal saga chapter body has its own trigger or cost: '{}'",
+                modal.header.raw_line
+            )));
+        }
+        header.trigger = Some(crate::cards::builders::TriggerSpec::SagaChapter(chapters));
+    }
 
     let spending_rules = modal.modes.iter().map(|mode|
         crate::consumer_mana::split_x_spending_sentences(&mode.info.source_tokens).1)

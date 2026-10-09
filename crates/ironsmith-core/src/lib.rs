@@ -29,6 +29,10 @@ pub mod event_model;
 pub mod filter_model;
 pub mod functional_zones;
 pub mod grant_model;
+pub mod granted_spell_keyword_model;
+pub use granted_spell_keyword_model::{
+    GrantedSpellKeyword, GrantedSpellKeywordKind, GrantedSpellKeywordPrice,
+};
 pub mod ids;
 pub mod interned;
 pub mod mana;
@@ -38,6 +42,10 @@ pub mod spell_cost_condition_model;
 pub mod spell_timing_model;
 pub mod static_ability_id;
 pub mod static_ability_model;
+pub mod replaced_event_model;
+pub use replaced_event_model::ReplacedEventSpec;
+pub mod amount_replacement_model;
+pub use amount_replacement_model::{AmountEventSpec, AmountModifierSpec};
 pub mod suspend;
 pub use suspend::SuspendTime;
 pub mod tag;
@@ -91,7 +99,8 @@ pub use effect::{
     AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect, BattlefieldController,
     BattlefieldEntryCounterSpec, BattlefieldEntryCounterSurface, BecomeBasicLandTypeChoiceEffect,
     BecomeColorChoiceEffect, BecomeCreatureTypeChoiceEffect, BecomeForetoldEffect,
-    BecomeMonarchEffect, BecomePlottedEffect, BecomeSaddledUntilEotEffect, BeholdEffect,
+    BecomeMonarchEffect, BecomePlottedEffect, GrantLoyaltyActivationAllowanceEffect,
+    LoyaltyActivationAllowance, LoyaltyActivationScope, BecomeSaddledUntilEotEffect, BeholdEffect,
     BidLifeEffect, BolsterEffect, CantEffect, CastSourceEffect, CastTaggedAlternativePayment,
     CastTaggedEffect, ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
@@ -124,6 +133,8 @@ pub use effect::{
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
     ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
+    BindXValueEffect,
+    MustAttackPlayerThisTurnEffect,
     GrantAbilitiesTargetEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
     GrantNextSpellCostReductionEffect, NextSpellGrantMode, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantPlayTaggedManaReferenceSurface, GrantPlayTaggedObjectSurface, GrantPlayTaggedSurface,
@@ -147,11 +158,12 @@ pub use effect::{
     PlayerControlDuration, PlayerControlStart, PoisonCountersEffect, PopulateEffect, PrepareEffect,
     PreventAllCombatDamageEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
     PreventDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
-    PreventNextTimeDamageTarget, PreventionTarget, PriorEffectResultActor,
+    PreventNextTimeDamageTarget, NextTimeDamagePreventionPortion, PreventionTarget,
+    PriorEffectResultActor,
     PriorEffectResultQuantifier, PriorEffectResultSurface, ProliferateEffect,
     PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
+    ReconfigureEffect, ReselectAttackTargetEffect, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, ChooseFriendsOrFoesEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
     ReflexiveTriggerEffect, RegenerateEffect, RegisterCounterPlacementReplacementEffect,
@@ -164,6 +176,7 @@ pub use effect::{
     BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect, RepeatProcessPromptKind,
+    RepeatProcessChoiceHistory, RollToVisitAttractionsEffect,
     ReplaceNextDamageToTargetEffect, ReplacementApplyMode, ResolvesDespiteIllegalTargetsEffect,
     RestartGameEffect, RestrictionDurationSurface, RestrictionStart,
     RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
@@ -177,6 +190,9 @@ pub use effect::{
     ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
     SearchResultReferenceSurface, SearchSelectionMode, SecretChoiceEffect, SecretObjectChoice,
     SequenceEffect, SequenceSurface, SetBasePowerToughnessEffect, SetClassLevelEffect,
+    DayNightDesignation, SetDayNightEffect,
+    ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag,
+    ControlVotesThisTurnEffect, PutCounterOfKindChosenFromEffect,
     SetLifeTotalEffect, SetQuantifierSurface, SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
@@ -202,7 +218,8 @@ pub use filter_model::{
     GlobalCharacteristicDomainSurface, GraveyardEntryHistorySurface, LiteralNameSurface,
     ObjectCharacteristic, ObjectCharacteristicRelation, ObjectCharacteristicRelationKind,
     ObjectFilter, ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef,
-    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PowerToughnessRelation, PtReference,
+    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PlayerTurnHistoryFilter,
+    PowerToughnessRelation, PtReference,
     SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
     TaggedOpbjectRelation, TargetabilityConstraint,
 };

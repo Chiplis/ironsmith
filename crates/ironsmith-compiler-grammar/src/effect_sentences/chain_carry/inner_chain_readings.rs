@@ -388,6 +388,11 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
     let tokens = input.tokens;
     let recognize_control_flow = input.recognize_control_flow;
     if recognize_control_flow {
+        // This requirement owns its leading duration. Keep it intact before
+        // the generic control-flow reader separates scope from the body.
+        if let Some(effect) = crate::effect_sentences::clause_primitives::parse_attack_player_if_able_clause(tokens)? {
+            return Ok(Some(vec![effect]));
+        }
         match super::super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;

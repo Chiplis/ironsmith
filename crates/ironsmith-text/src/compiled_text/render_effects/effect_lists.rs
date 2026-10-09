@@ -33,6 +33,8 @@ mod graveyard_copy_cast;
 mod graveyard_return_compaction;
 #[path = "effect_list/named_random_discard.rs"]
 mod named_random_discard;
+#[path = "effect_list/basic_land_type_choices.rs"]
+mod basic_land_type_choices;
 #[path = "effect_list/helpers_00.rs"]
 mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
@@ -105,6 +107,7 @@ pub(in crate::compiled_text) use graveyard_copy_cast::{
 };
 pub(super) use graveyard_return_compaction::*;
 pub(super) use named_random_discard::*;
+pub(super) use basic_land_type_choices::*;
 pub(super) use helpers_00::describe_each_player_choose_creature_destroy_others;
 pub(in crate::compiled_text) use helpers_00::describe_target_only_then_exchange_control;
 pub(super) use helpers_00::player_is_controller_of_produced_target;
@@ -981,7 +984,11 @@ pub(super) fn describe_full_game_source_damage_recipient_union(
     if players.starting_with_controller || players.stop_after_first_happened {
         return None;
     }
-    let PlayerFilter::WasDealtDamageBySourceThisGame { base } = &players.filter else {
+    let PlayerFilter::WasDealtDamageBySourceThisGame {
+        base,
+        this_turn: false,
+    } = &players.filter
+    else {
         return None;
     };
     if base.as_ref() != &PlayerFilter::Opponent {
@@ -10130,6 +10137,9 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     if let Some(compact) = describe_leading_duration_wrapped_modifications(effects) {
         return Some(compact);
     }
+    if let Some(compact) = describe_this_turn_and_next_turn_restrictions(effects) {
+        return Some(compact);
+    }
     if let Some(compact) =
         describe_coordinated_target_player_cast_and_activation_restrictions(effects, true)
     {
@@ -13961,6 +13971,60 @@ fn describe_optional_return_with_base_pt_and_haste(effects: &[Effect]) -> Option
     ))
 }
 
+/// "This turn and next turn, creatures can't attack, and players and
+/// permanents can't be the targets of spells or activated abilities." (Peace
+/// Talks): restrictions sharing the leading two-turn duration render as one
+/// clause list behind that duration, as printed. The player and permanent
+/// untargetability pair shares one clause.
+fn describe_this_turn_and_next_turn_restrictions(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+    let cants = effects
+        .iter()
+        .map(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::CantEffect>()
+                .filter(|cant| {
+                    cant.duration == crate::effect::Until::EndOfTurn
+                        && cant.start == crate::effect::RestrictionStart::Immediate
+                        && cant.duration_surface
+                            == crate::effect::RestrictionDurationSurface::ThisTurnAndNextTurn
+                })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let mut clauses: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < cants.len() {
+        if let (
+            crate::effect::Restriction::BeTargetedPlayerFrom(PlayerFilter::Any, player_sources),
+            Some(next),
+        ) = (&cants[index].restriction, cants.get(index + 1))
+            && let crate::effect::Restriction::BeTargetedFrom(objects, object_sources) =
+                &next.restriction
+            && object_sources == player_sources
+            && objects == &ObjectFilter::permanent()
+        {
+            let restricted = describe_restriction(&next.restriction);
+            let tail = restricted
+                .find(" can't")
+                .map(|at| restricted[at..].replace("can't be the target of", "can't be the targets of"))?;
+            clauses.push(format!("players and permanents{tail}"));
+            index += 2;
+            continue;
+        }
+        clauses.push(lowercase_first(&describe_restriction(&cants[index].restriction)));
+        index += 1;
+    }
+    let body = match clauses.as_slice() {
+        [only] => only.clone(),
+        [first, second] => format!("{first}, and {second}"),
+        [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+        [] => return None,
+    };
+    Some(format!("This turn and next turn, {body}"))
+}
+
 /// Preserve an authored leading duration wrapped around one coordinated,
 /// same-target modifier bundle.  The inner bundle owns the target declaration
 /// and all tag correlations; the outer sequence owns only the placement of
@@ -15059,6 +15123,9 @@ pub(in crate::compiled_text) fn refer_back_to_declared_any_target(
 }
 
 fn describe_effect_list_inner(effects: &[Effect]) -> String {
+    if let Some(text) = describe_choose_land_of_each_basic_land_type(effects) {
+        return text;
+    }
     if let Some(text) = describe_paired_owner_library_shuffles(effects) {
         return text;
     }
@@ -16873,6 +16940,9 @@ fn describe_linked_exile_top_play_parts(
         .mana_spend_cast_suffix(spell_reference)
         .unwrap_or_default();
 
+    if grant_play.during_turns_attacked_with.is_some() {
+        return None;
+    }
     let permission = if let Some(counter_type) = grant_play.during_turns_counter_put_on_source {
         format!(
             "During any turn you put {} on this Saga, you may {verb} {cards_text}{mana_suffix}",

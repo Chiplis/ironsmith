@@ -195,6 +195,16 @@ impl EffectExecutor for ShuffleLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        // Multiple moved objects may share an owner: shuffle each owner once.
+        if let crate::target::PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) = &self.player
+            && let Some(owners) = distinct_tagged_owners(game, ctx, tag)
+        {
+            let mut children = Vec::with_capacity(owners.len());
+            for owner in owners {
+                children.push(shuffle_library_with_outputs(game, ctx, owner, &[], 1, "library shuffled")?);
+            }
+            return Ok(crate::effects::CompletedEffectOutputs::from_children(children, EffectOutcome::aggregate));
+        }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         shuffle_library_with_outputs(game, ctx, player_id, &[], 1, "library shuffled")
@@ -207,6 +217,32 @@ impl EffectExecutor for ShuffleLibraryEffect {
     fn target_description(&self) -> &'static str {
         "player to shuffle"
     }
+}
+
+/// The distinct owners of a tag holding more than one object, in APNAP order
+/// (CR 101.4). `None` for an empty or single-object tag, which keeps the
+/// ordinary single-player resolution.
+fn distinct_tagged_owners(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    tag: &crate::tag::TagKey,
+) -> Option<Vec<crate::ids::PlayerId>> {
+    let snapshots = ctx.get_tagged_all(tag)?;
+    if snapshots.len() < 2 {
+        return None;
+    }
+    let mut owners = Vec::new();
+    for player in game.team_apnap_player_order() {
+        if snapshots.iter().any(|snapshot| snapshot.owner == player) && !owners.contains(&player) {
+            owners.push(player);
+        }
+    }
+    for snapshot in snapshots {
+        if !owners.contains(&snapshot.owner) {
+            owners.push(snapshot.owner);
+        }
+    }
+    Some(owners)
 }
 
 /// Shuffling asks no choices and runs no replacement-added programs. Resolve

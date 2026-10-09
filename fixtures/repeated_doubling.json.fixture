@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Exponential Growth",
+    "oracle_id": "18616f70-e30c-4ff7-b62a-55939a96ca1b",
+    "mana_cost": "{X}{X}{G}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Until end of turn, double target creature's power X times.",
+    "text": "Mana cost: {X}{X}{G}{G}\nType: Sorcery\nUntil end of turn, double target creature's power X times."
+  }
+]

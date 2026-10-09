@@ -100,12 +100,18 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 target,
             })
@@ -144,6 +150,10 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             })

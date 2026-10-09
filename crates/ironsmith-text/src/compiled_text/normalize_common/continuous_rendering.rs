@@ -974,7 +974,8 @@ pub(crate) fn choose_spec_dynamic_count_value_where_clause(spec: &ChooseSpec) ->
             let basis = if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult) {
                 "the result".to_string()
             } else {
-                describe_value(value)
+                describe_where_x_basis(value)
+                    .unwrap_or_else(|| describe_value(value))
             };
             Some(format!(", where X is {basis}"))
         }
@@ -1293,7 +1294,7 @@ pub(crate) fn describe_attached_and_related_creatures_filter(
             continue;
         };
         if attached_constraint.relation != TaggedOpbjectRelation::IsTaggedObject
-            || !matches!(attached_constraint.tag.as_str(), "enchanted" | "equipped")
+            || !matches!(attached_constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         {
             continue;
         }
@@ -2232,6 +2233,9 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             crate::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 clauses.push("loses this ability".to_string());
             }
+            crate::effects::continuous::RuntimeModification::RetainSourceColors => {
+                clauses.push("keeps its color".to_string());
+            }
             crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(_) => {
                 clauses.push("has enchant restriction".to_string());
             }
@@ -2790,7 +2794,7 @@ pub(crate) fn plural_non_target_land_animation_target(
     }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
     }) {
         return None;
     }
@@ -4613,7 +4617,7 @@ pub(crate) fn describe_tag_attached_then_tap_or_untap(
     next: &Effect,
 ) -> Option<String> {
     let tag = tag_attached.tag.as_str();
-    if !matches!(tag, "enchanted" | "equipped") {
+    if !matches!(tag, "enchanted" | "equipped" | "fortified") {
         return None;
     }
 
@@ -4637,7 +4641,7 @@ pub(crate) fn describe_tag_attached_then_unattach(
     next: &Effect,
 ) -> Option<String> {
     let tag = tag_attached.tag.as_str();
-    if !matches!(tag, "enchanted" | "equipped") {
+    if !matches!(tag, "enchanted" | "equipped" | "fortified") {
         return None;
     }
     let unattach = next.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;
@@ -5468,7 +5472,12 @@ fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
         crate::effect::Restriction::AdditionalLandPlays(filter, count) => {
-            if *count == 1 {
+            if *count == u32::MAX {
+                format!(
+                    "{} may play any number of lands",
+                    describe_player_set_filter(filter)
+                )
+            } else if *count == 1 {
                 format!(
                     "{} may play an additional land",
                     describe_player_set_filter(filter)
@@ -5480,6 +5489,25 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     count
                 )
             }
+        }
+        crate::effect::Restriction::AttackPermanents {
+            attackers,
+            permanents,
+        } => format!(
+            "{} can't attack {}",
+            pluralize_relative_object_phrase(&attackers.description()),
+            pluralize_relative_object_phrase(&permanents.description())
+        ),
+        crate::effect::Restriction::ActivateAbilities(filter) => {
+            format!("{} can't activate abilities", describe_player_set_filter(filter))
+        }
+        crate::effect::Restriction::DrawFromBottom(filter) => {
+            let (subject, library) = if matches!(filter, PlayerFilter::You) {
+                ("You".to_string(), "your library")
+            } else {
+                (describe_player_set_filter(filter), "their library")
+            };
+            format!("{subject} draw cards from the bottom of {library} rather than the top")
         }
         crate::effect::Restriction::NoMaximumHandSize(filter) => {
             let subject = describe_player_set_filter(filter);
@@ -5616,6 +5644,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             describe_player_set_filter(filter),
             describe_cast_limit_spell_filter(spell_filter)
         ),
+        crate::effect::Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        } => format!(
+            "{} can cast no more than {} {} each turn",
+            describe_player_set_filter(player),
+            maximum,
+            pluralize_cast_spell_description(&describe_cast_limit_spell_filter(spells))
+        ),
         crate::effect::Restriction::DrawCards(filter) => {
             format!("{} can't draw cards", describe_player_set_filter(filter))
         }
@@ -5674,6 +5712,20 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::WinGame(filter) => {
             format!("{} can't win the game", describe_player_set_filter(filter))
+        }
+        crate::effect::Restriction::VentureMoreThanOnceEachTurn(filter) => {
+            format!(
+                "{} can't venture into the dungeon more than once each turn",
+                describe_player_set_filter(filter)
+            )
+        }
+        crate::effect::Restriction::BlockWithMoreThan { player, maximum } => {
+            let noun = if *maximum == 1 { "creature" } else { "creatures" };
+            let count = if *maximum == 1 { "one".to_string() } else { maximum.to_string() };
+            format!(
+                "{} can't block with more than {count} {noun}",
+                describe_player_set_filter(player),
+            )
         }
         crate::effect::Restriction::BecomeMonarch(filter) => {
             format!(
@@ -5767,6 +5819,35 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::AttackTax(rule) => {
+            use ironsmith_core::value_model::AttackTaxDefenders;
+            let subject = pluralize_relative_object_phrase(&rule.attackers.description());
+            let (scope, per) = match rule.defenders {
+                AttackTaxDefenders::Controller => ("attack you", "for each of those creatures"),
+                AttackTaxDefenders::ControllerOrPlaneswalkers => (
+                    "attack you or planeswalkers you control",
+                    "for each of those creatures",
+                ),
+                AttackTaxDefenders::ControllerPlaneswalkers => (
+                    "attack planeswalkers you control",
+                    "for each creature they control that's attacking a planeswalker you control",
+                ),
+                AttackTaxDefenders::Anyone => {
+                    ("attack", "for each attacking creature they control")
+                }
+            };
+            let mut payments = Vec::new();
+            if !matches!(rule.mana_per_attacker, Value::Fixed(0)) {
+                payments.push(format!("{{{}}}", describe_value(&rule.mana_per_attacker)));
+            }
+            if rule.life_per_attacker > 0 {
+                payments.push(format!("{} life", rule.life_per_attacker));
+            }
+            format!(
+                "{subject} can't {scope} unless their controller pays {} {per}",
+                payments.join(" and ")
+            )
+        }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
         }
@@ -5858,6 +5939,11 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "{} attack each combat if able",
             crate::compiled_text::pluralize_noun_phrase(&filter.description()),
         ),
+        crate::effect::Restriction::MustAttackPlayer { attackers, player } => {
+            let subject = restriction_backref_subject(attackers)
+                .unwrap_or_else(|| attackers.description());
+            format!("{subject} attacks {} if able", describe_player_filter(player))
+        }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }
@@ -5866,6 +5952,21 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::Untap(filter) => {
             format!("{} can't untap", filter.description())
+        }
+        crate::effect::Restriction::BecomeUntapped(filter) => {
+            format!("{} can't become untapped", filter.description())
+        }
+        crate::effect::Restriction::BeAttachedBy(hosts, attachments) => {
+            if attachments.subtypes.contains(&crate::types::Subtype::Equipment) {
+                format!("{} can't be equipped", hosts.description())
+            } else if attachments.other {
+                format!("{} can't be enchanted by other Auras", hosts.description())
+            } else {
+                format!("{} can't be enchanted", hosts.description())
+            }
+        }
+        crate::effect::Restriction::AttackBlockOrCrew(filter) => {
+            format!("{} can't attack, block, or crew Vehicles", filter.description())
         }
         crate::effect::Restriction::BeBlocked(filter) => {
             let subject =

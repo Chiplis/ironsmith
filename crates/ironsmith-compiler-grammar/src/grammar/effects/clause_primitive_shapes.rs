@@ -83,6 +83,9 @@ pub enum RepeatProcessShape {
     Once,
     May,
     Additional(Value),
+    /// "repeat this process except that <player> can't choose a card already
+    /// chosen for <this>".
+    ExcludingPriorChoices,
 }
 
 pub(super) fn trim_shape_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -161,6 +164,10 @@ pub fn parse_stack_retarget_filter_shape(
 fn choose_name_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<PlayerAst> {
     alt((
         primitives::phrase(&["that", "player", "chooses"]).value(PlayerAst::That),
+        // "Target player chooses a card name" (Petra Sphinx, Vexing
+        // Arcanix): the declared target makes the choice.
+        primitives::phrase(&["target", "player", "chooses"]).value(PlayerAst::Target),
+        primitives::phrase(&["target", "opponent", "chooses"]).value(PlayerAst::TargetOpponent),
         primitives::phrase(&["you", "choose"]).value(PlayerAst::You),
         primitives::kw("choose").value(PlayerAst::You),
     ))

@@ -246,6 +246,12 @@ pub(super) fn read_choose_land_type(
             parsed.exclude_basic,
         )));
     }
+    // "choose a basic land type" (Giant Slug) as a standalone instruction.
+    if crate::grammar::choices::parse_choice_basic_land_type_phrase_words(&choice_words)
+        .is_some_and(|parsed| parsed.consumed == choice_words.len())
+    {
+        return Ok(Some(EffectAst::subject_verb_choose_basic_land_type(choice_player)));
+    }
     Ok(None)
 }
 pub(super) fn read_choose_subtype_family(
@@ -870,6 +876,12 @@ pub(super) fn read_target_only(input: &Clause<'_>) -> Result<Option<EffectAst>, 
             false,
         ),
     };
+    if let Some(effect) = crate::effect_sentences::attack_player_requirement::parse(tokens)? {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = crate::effect_sentences::now_attacking::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     if let Some(shape) = clause_grammar::parse_target_only_shape(tokens) {
         if find_negation_span(tokens).is_some() || shape.restriction_like {
             return Err(CardTextError::ParseError(format!(

@@ -116,12 +116,62 @@ fn bind_restriction_target_players(
             *reference = crate::target::PlayerFilter::Specific(id);
         }
     }
+    // CR 608.2h: a number a resolving instruction reads ("power less than or
+    // or equal to that number", Rumbling Ruin) is determined once, as the
+    // instruction resolves; the affected objects' own power stays live.
+    for comparison in [
+        &mut resolved.power,
+        &mut resolved.toughness,
+        &mut resolved.mana_value,
+    ] {
+        freeze_resolution_comparison(comparison, ctx, game);
+    }
     resolved.any_of = resolved
         .any_of
         .iter()
         .map(|branch| bind_restriction_target_players(branch, ctx, game))
         .collect();
     resolved
+}
+
+/// Replace a game-wide quantity in a comparison with its value now. Only
+/// quantities that never depend on the compared object are frozen.
+fn freeze_resolution_comparison(
+    comparison: &mut Option<crate::filter::Comparison>,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) {
+    use crate::effect::Value;
+    use crate::filter::Comparison;
+    let Some(current) = comparison.as_ref() else {
+        return;
+    };
+    let (value, rebuild): (&Value, fn(i32) -> Comparison) = match current {
+        Comparison::EqualExpr(value) => (value, Comparison::Equal),
+        Comparison::NotEqualExpr(value) => (value, Comparison::NotEqual),
+        Comparison::LessThanExpr(value) => (value, Comparison::LessThan),
+        Comparison::LessThanOrEqualExpr(value) => (value, Comparison::LessThanOrEqual),
+        Comparison::GreaterThanExpr(value) => (value, Comparison::GreaterThan),
+        Comparison::GreaterThanOrEqualExpr(value) => (value, Comparison::GreaterThanOrEqual),
+        _ => return,
+    };
+    if !matches!(
+        value.unhinted(),
+        Value::Count(_)
+            | Value::CountersOn(..)
+            | Value::TotalPower(_)
+            | Value::TotalToughness(_)
+            | Value::GreatestPower(_)
+            | Value::GreatestToughness(_)
+            | Value::GreatestManaValue(_)
+            | Value::EffectValue(_)
+            | Value::X
+    ) {
+        return;
+    }
+    if let Ok(amount) = crate::effects::helpers::resolve_value(game, value, ctx) {
+        *comparison = Some(rebuild(amount));
+    }
 }
 
 fn collapse_filter_to_current_matching_objects(
@@ -251,7 +301,38 @@ fn normalize_restriction_for_resolution(
         Restriction::MustAttack(filter) => Restriction::must_attack(
             // Plain creature/controller filters stay live. Exact anaphoric
             // object references remain the identities the instruction named.
-            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+            // A targeted controller ("each creature that player controls",
+            // Rowan Kenrith) keeps the announced player after the target
+            // slots are gone.
+            collapse_tagged_filter_to_specific_objects(
+                &bind_restriction_target_players(filter, ctx, game),
+                ctx,
+                game,
+            ),
+        ),
+        // "This creature attacks that player this combat if able": the
+        // creature and the player are the ones this resolution named
+        // (CR 608.2c), so a later choice cannot redirect the requirement.
+        Restriction::MustAttackPlayer { attackers, player } => Restriction::must_attack_player(
+            // A targeted controller ("creatures that player controls attack
+            // you", Taunt) keeps the announced player once target slots end.
+            collapse_tagged_filter_to_specific_objects(
+                &bind_restriction_target_players(attackers, ctx, game),
+                ctx,
+                game,
+            ),
+            // A group ("a player": any opponent) stays a group; a single
+            // named player is bound now.
+            if matches!(
+                player,
+                crate::target::PlayerFilter::Any | crate::target::PlayerFilter::Opponent
+            ) {
+                player.clone()
+            } else {
+                crate::effects::helpers::resolve_player_filter(game, player, ctx)
+                    .map(crate::target::PlayerFilter::Specific)
+                    .unwrap_or_else(|_| player.clone())
+            },
         ),
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
@@ -277,11 +358,39 @@ fn normalize_restriction_for_resolution(
         Restriction::Untap(filter) => Restriction::untap(
             bind_restriction_target_players(filter, ctx, game),
         ),
+        Restriction::BecomeUntapped(filter) => Restriction::become_untapped(
+            bind_restriction_target_players(filter, ctx, game),
+        ),
         Restriction::AttackOrBlock(filter) => {
             Restriction::attack_or_block(lock_filter_to_current_matching_objects(filter, ctx, game))
         }
         Restriction::PhaseIn(filter) => {
             Restriction::phase_in(lock_filter_to_current_matching_objects(filter, ctx, game))
+        }
+        // "You gain protection from that player": the targeting sources are
+        // the ones the player named by this resolution controls (CR 702.16k).
+        Restriction::BeTargetedPlayerFrom(player, source_filter) => {
+            Restriction::be_targeted_player_from(
+                player.clone(),
+                crate::effects::player_reference_binding::bind_filter_player_references(
+                    source_filter,
+                    game,
+                    ctx,
+                ),
+            )
+        }
+        // CR 107.3, 611.2a: War Tax's {X} is the value announced for this
+        // activation; it is fixed when the effect begins, not re-read later.
+        Restriction::AttackTax(rule) => {
+            let mut rule = rule.clone();
+            if !matches!(rule.mana_per_attacker, crate::effect::Value::Fixed(_))
+                && let Ok(amount) =
+                    crate::effects::helpers::resolve_value(game, &rule.mana_per_attacker, ctx)
+            {
+                rule.mana_per_attacker = crate::effect::Value::Fixed(amount.max(0));
+            }
+            rule.attackers = bind_restriction_target_players(&rule.attackers, ctx, game);
+            Restriction::AttackTax(rule)
         }
         _ => restriction.clone(),
     }
@@ -585,6 +694,11 @@ impl EffectExecutor for CantEffect {
                 if matches!(duration, Until::ControllersNextUntapStep) {
                     game.effect_store.restriction_effects.last_mut().unwrap().untap_step_object = Some(object_id);
                 }
+                game.effect_store
+                    .restriction_effects
+                    .last_mut()
+                    .unwrap()
+                    .additional_untap_steps = self.duration_surface.additional_untap_steps();
             }
             // A known empty affected set cannot become a future broad rule.
         } else {
@@ -597,6 +711,15 @@ impl EffectExecutor for CantEffect {
                 starts_next_turn_of,
                 ctx.tagged_objects.clone(),
             );
+            // "This turn and next turn" (CR 611.2a): the end-of-turn duration
+            // runs through the end of the turn after this one.
+            if self.duration_surface == ironsmith_core::RestrictionDurationSurface::ThisTurnAndNextTurn
+                && matches!(duration, Until::EndOfTurn)
+                && starts_next_turn_of.is_none()
+                && let Some(added) = game.effect_store.restriction_effects.last_mut()
+            {
+                added.expires_end_of_turn = added.expires_end_of_turn.saturating_add(1);
+            }
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())

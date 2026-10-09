@@ -370,61 +370,55 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::SearchFourCreatureCards {
+        // "Search your library and graveyard for up to four creature cards
+        // with different names that each have mana value X or less and reveal
+        // them. An opponent chooses two of those cards. Shuffle the chosen
+        // cards into your library and put the rest onto the battlefield."
+        // (Ecological Appreciation): the searched set, an opponent-chosen
+        // subset, and its exact complement (same program as the delegated
+        // search partition, CR 701.23, 700.3-style subset choice).
         let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
             .into_iter()
             .next()
             .unwrap_or_else(|| sentences[0].lowered());
+        let source_tag = crate::tag::CompilerReferenceTag::Searched.bind();
+        let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.bind();
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
-        effects.extend(vec![
-            EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                vec![Zone::Library, Zone::Graveyard],
-                crate::tag::CompilerReferenceTag::DivvySource.bind(),
-            ),
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(source_tag.clone()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
                 player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                tag: chosen_tag.clone(),
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: None,
-            }),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object(
-                        crate::tag::CompilerReferenceTag::DivvyChosen,
-                    ),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
+            },
+        ));
+        effects.push(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_shuffle_objects_into_library(
+                    PlayerAst::You,
+                    TargetAst::Tagged(chosen_tag.clone(), None),
+                ),
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Object(
+                        ObjectFilter::tagged(source_tag)
+                            .match_tagged(chosen_tag, TaggedOpbjectRelation::IsNotTaggedObject),
                         None,
-                    )],
-                })],
-            }),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                    Zone::Library,
+                        None,
+                    ),
+                    Zone::Battlefield,
                     false,
                     ReturnControllerAst::Preserve,
                     false,
                     None,
-                )],
-            }),
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::You,
-                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-            ),
-            EffectAst::subject_verb_exile(TargetAst::Source(None), false),
-        ]);
+                ),
+            ],
+            leading_duration: false,
+            result_conjunction: false,
+        });
+        effects.push(EffectAst::subject_verb_exile(TargetAst::Source(None), false));
         return Ok(Some(effects));
     }
 

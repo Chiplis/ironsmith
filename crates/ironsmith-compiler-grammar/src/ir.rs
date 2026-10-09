@@ -184,6 +184,7 @@ pub struct RewriteModalBlock {
     pub header: LineInfo,
     pub header_tokens: Vec<OwnedLexToken>,
     pub modes: Vec<RewriteModalMode>,
+    pub saga_chapters: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Clone)]

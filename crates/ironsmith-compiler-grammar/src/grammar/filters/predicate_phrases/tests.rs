@@ -3194,7 +3194,7 @@ fn parse_predicate_preserves_ordered_graveyard_cards_above_source() -> Result<()
         0,
     )?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
-    let PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count }) =
+    let PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count, .. }) =
         parsed
     else {
         panic!("expected ordered-graveyard source predicate: {parsed:#?}");

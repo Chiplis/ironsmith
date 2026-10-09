@@ -19,9 +19,11 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
             parse_blight,
             parse_manifest_dread,
             parse_manifest_from_hand,
+            parse_cloak_from_hand,
             alt((
                 parse_cloak_top_you,
                 parse_manifest_top_you,
+                parse_manifest_top_count_you,
                 parse_cloak_top_that_player,
                 parse_manifest_top_that_player,
             )),

@@ -242,6 +242,7 @@ fn assemble_modal_block(
     Ok(RewriteSemanticItem::Modal(RewriteModalBlock {
         header: modal.header,
         header_tokens: modal.header_tokens,
+        saga_chapters: modal.saga_chapters,
         modes: modal
             .modes
             .into_iter()

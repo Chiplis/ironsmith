@@ -1,0 +1,16 @@
+[
+ {
+  "name": "Dark Sphere",
+  "oracle_id": "397f53f7-f801-4442-a778-2f26ac246b62",
+  "mana_cost": "{0}",
+  "type_line": "Artifact",
+  "oracle_text": "{T}, Sacrifice this artifact: The next time a source of your choice would deal damage to you this turn, prevent half that damage, rounded down."
+ },
+ {
+  "name": "Forcefield",
+  "oracle_id": "bd6823fb-a696-4e6d-9c5e-3b55dfe03730",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "oracle_text": "{1}: The next time an unblocked creature of your choice would deal combat damage to you this turn, prevent all but 1 of that damage."
+ }
+]

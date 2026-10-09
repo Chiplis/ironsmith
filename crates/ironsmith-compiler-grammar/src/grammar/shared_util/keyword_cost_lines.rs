@@ -325,6 +325,9 @@ pub fn parse_bestow(
         let clause_end = first_kind_after(tail, 0, TokenKind::Period).unwrap_or(tail.len());
         let clause = trim_edge_commas(&tail[..clause_end]);
         if !permission_shapes::prefix_words(&TokenWordView::new(clause).word_refs(), &["if"]) {
+            // Keep the boundary between the mana component and the authored
+            // additional cost (for example, collect evidence).
+            cost_tokens.push(tail[0].clone());
             cost_tokens.extend_from_slice(clause);
         }
     }

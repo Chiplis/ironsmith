@@ -10,6 +10,22 @@ pub enum LandwalkKind {
     AnyLand,
     NonbasicLand,
     ArtifactLand,
+    /// CR 702.14c: "legendary landwalk" — the defending player controls a
+    /// legendary land.
+    LegendaryLand,
+    /// CR 702.14c: "snow landwalk" — the defending player controls a snow
+    /// land (of any subtype).
+    SnowLand,
+    /// "landwalk of the chosen type" granted by a resolving instruction
+    /// (Illusionary Presence, Barbarian Guides): the land type chosen for that
+    /// resolution, materialized to [`Self::Subtype`] as the grant resolves
+    /// (CR 702.14a). Unmaterialized, it grants no evasion.
+    ChosenType { snow: bool },
+    /// "landwalk of each of the land types of the sacrificed land"
+    /// (Excavator): one landwalk per land type the sacrificed cost land had
+    /// (CR 702.14a), expanded as the grant resolves. Unexpanded, it grants no
+    /// evasion.
+    SacrificedLandTypes,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -290,6 +306,9 @@ pub struct CopyActivatedAbilities {
     pub exclude_source_id: bool,
     pub force_once_each_turn: bool,
     pub display: String,
+    /// "... except mana abilities" (Sharkey, Tyrant of the Shire).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_mana_abilities: bool,
 }
 
 impl CopyActivatedAbilities {
@@ -302,7 +321,12 @@ impl CopyActivatedAbilities {
             exclude_source_id: true,
             force_once_each_turn: false,
             display: "Has all activated abilities of matching objects".to_string(),
+            exclude_mana_abilities: false,
         }
+    }
+    pub fn with_exclude_mana_abilities(mut self, exclude: bool) -> Self {
+        self.exclude_mana_abilities = exclude;
+        self
     }
     pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {
         self.exclude_source_name = exclude;
@@ -426,6 +450,16 @@ pub struct CostReductionCharacteristicIntersection {
     /// Authored comparison-set surface, such as
     /// "cards exiled with this creature".
     pub comparison_surface: Option<String>,
+    /// The comparison set is the source's chosen colors instead of
+    /// `comparison` ("for each of the chosen colors it is", Seal of the
+    /// Guildpact).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub against_source_chosen_colors: bool,
+    /// Count the comparison objects that share the characteristic with the
+    /// spell instead of the distinct shared values ("for each card with the
+    /// same name as that spell in your graveyard", Locket of Yesterdays).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub count_matching_objects: bool,
 }
 
 impl CostReductionCharacteristicIntersection {
@@ -434,6 +468,26 @@ impl CostReductionCharacteristicIntersection {
             characteristic,
             comparison,
             comparison_surface: None,
+            against_source_chosen_colors: false,
+            count_matching_objects: false,
+        }
+    }
+
+    /// Count the comparison objects sharing the characteristic with the
+    /// spell rather than the shared values.
+    pub fn counting_matching_objects(mut self) -> Self {
+        self.count_matching_objects = true;
+        self
+    }
+
+    /// Count the candidate spell's colors among the source's chosen colors.
+    pub fn source_chosen_colors() -> Self {
+        Self {
+            characteristic: crate::ObjectCharacteristic::Color,
+            comparison: ObjectFilter::default(),
+            comparison_surface: Some("the chosen colors".to_string()),
+            against_source_chosen_colors: true,
+            count_matching_objects: false,
         }
     }
 
@@ -892,6 +946,15 @@ pub enum ActivatedAbilityCostCondition {
     LoyaltyAbility,
     /// The activator, relative to the modifier's controller; not source ownership.
     Activator(PlayerFilter),
+    /// The priced activation is the first ability with this keyword its
+    /// activator activates this turn ("the first equip ability you activate
+    /// each turn", "the first card you cycle each turn"); with
+    /// `during_your_turn`, only during the activator's own turns ("during
+    /// each of your turns"). Appended for artifact compatibility.
+    FirstKeywordAbilityThisTurn {
+        keyword: crate::ActivatedAbilityKeyword,
+        during_your_turn: bool,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1045,6 +1108,10 @@ pub enum EnterAsCopyFollowup {
     /// controller's untap step for as long as you control this creature"
     /// (Wall of Stolen Identity): a reflexive triggered ability (CR 603.12).
     TapCopiedObjectFrozenWhileYouControlSource,
+    /// "except it doesn't copy that creature's color" (Vesuvan Doppelganger,
+    /// CR 707.9b): the copy keeps the entering object's own colors. Applied as
+    /// the copy's copiable values are set, not as a later effect.
+    RetainOwnColors,
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.
@@ -1105,6 +1172,13 @@ impl LandwalkKind {
             Self::AnyLand => "Landwalk".to_string(),
             Self::NonbasicLand => "Nonbasic landwalk".to_string(),
             Self::ArtifactLand => "Artifact landwalk".to_string(),
+            Self::LegendaryLand => "Legendary landwalk".to_string(),
+            Self::SnowLand => "Snow landwalk".to_string(),
+            Self::ChosenType { snow: false } => "Landwalk of the chosen type".to_string(),
+            Self::ChosenType { snow: true } => "Snow landwalk of the chosen type".to_string(),
+            Self::SacrificedLandTypes => {
+                "Landwalk of each of the land types of the sacrificed land".to_string()
+            }
         }
     }
 }

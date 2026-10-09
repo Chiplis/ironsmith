@@ -816,18 +816,19 @@ pub fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> GrantedKeywo
 }
 
 pub fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
-    token_phrase_complete(
+    // "The flashback cost is equal to that card's mana cost" (Lier, Iroh)
+    // is the same CR 702.34a derived cost as "its flashback cost ...".
+    token_any_phrase_complete(
         tokens,
         &[
-            "its",
-            "flashback",
-            "cost",
-            "is",
-            "equal",
-            "to",
-            "its",
-            "mana",
-            "cost",
+            &["its", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
+            &["the", "flashback", "cost", "is", "equal", "to", "its", "mana", "cost"],
+            &[
+                "the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost",
+            ],
+            &[
+                "the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost",
+            ],
         ],
     )
 }
@@ -1340,7 +1341,7 @@ pub fn parse_attached_no_defender_shape(
     }
     let subject_tokens = trim_lexed_commas(&tokens[..phrase_start]);
     let first = subject_tokens.first()?.as_word()?;
-    (matches!(first, "enchanted" | "equipped" | "attached") && !subject_tokens.is_empty())
+    (matches!(first, "enchanted" | "equipped" | "fortified" | "attached") && !subject_tokens.is_empty())
         .then_some(NoDefenderSubjectShape { subject_tokens })
 }
 

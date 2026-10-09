@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Telekinesis",
+  "oracle_id": "1b9dd2b6-d14d-4c1e-9885-00ab2c0bf8da",
+  "oracle_text": "Tap target creature. Prevent all combat damage that would be dealt by that creature this turn. It doesn't untap during its controller's next two untap steps.",
+  "text": "Mana cost: {U}{U}\nType: Instant\nTap target creature. Prevent all combat damage that would be dealt by that creature this turn. It doesn't untap during its controller's next two untap steps."
+ }
+]

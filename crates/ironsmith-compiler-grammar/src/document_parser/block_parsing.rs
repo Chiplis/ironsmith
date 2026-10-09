@@ -144,6 +144,8 @@ pub(super) fn try_parse_modal_bullet_block(
     let header_has_common_target_suffix =
         super::super::modal_support::parse_modal_header(&line.info, &header_tokens)?
             .is_some_and(|header| !header.common_suffix_effects_ast.is_empty());
+    let characteristics_template =
+        super::characteristic_modes::characteristics_template(&header_tokens);
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
@@ -154,6 +156,13 @@ pub(super) fn try_parse_modal_bullet_block(
                 .is_some_and(|token| token.kind == TokenKind::Plus);
         if !is_bullet_line(next_line) && !is_spree_mode {
             break;
+        }
+        if let Some(template) = characteristics_template.as_ref() {
+            bullet_modes.push(super::characteristic_modes::recognize_characteristics_mode(
+                next_line, template,
+            )?);
+            probe_idx += 1;
+            continue;
         }
         bullet_modes.push(recognize_modal_mode(
             &preprocessed.card,
@@ -172,6 +181,70 @@ pub(super) fn try_parse_modal_bullet_block(
             header: line.info.clone(),
             header_tokens,
             modes: bullet_modes,
+            saga_chapters: None,
+        }),
+        probe_idx,
+    )))
+}
+
+/// "I, II — Choose one —" followed by bullet modes: a modal Saga chapter
+/// ability (CR 714.2b). Its mode is chosen as the chapter ability is put on
+/// the stack, exactly as for any other modal triggered ability (CR 700.2b).
+pub(super) fn try_parse_saga_modal_chapter_block(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+) -> Result<Option<(RecognizedLine, usize)>, CardTextError> {
+    let Some(authored) = parse_saga_chapter_prefix_tokens(&line.info.source_tokens) else {
+        return Ok(None);
+    };
+    if authored.presentation_label.is_some() {
+        return Ok(None);
+    }
+    let next_line_is_mode = matches!(
+        preprocessed.items.get(idx + 1),
+        Some(PreprocessedItem::Line(next_line)) if is_bullet_line(next_line)
+    );
+    if !next_line_is_mode {
+        return Ok(None);
+    }
+    let chapters = authored.chapters.clone();
+    let body_tokens = parse_saga_chapter_prefix_tokens(&line.tokens)
+        .filter(|normalized| normalized.chapters == chapters)
+        .map(|normalized| normalized.body_tokens.to_vec())
+        .unwrap_or_else(|| authored.body_tokens.to_vec());
+    let Some(header) = super::super::modal_support::parse_modal_header(&line.info, &body_tokens)?
+    else {
+        return Ok(None);
+    };
+    // The chapter number is the only trigger; a body with its own trigger or
+    // activation cost is not a chapter-level choice.
+    if header.trigger.is_some() || header.activated.is_some() {
+        return Ok(None);
+    }
+    let header_has_common_target_suffix = !header.common_suffix_effects_ast.is_empty();
+    let mut bullet_modes = Vec::new();
+    let mut probe_idx = idx + 1;
+    while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
+        if !is_bullet_line(next_line) {
+            break;
+        }
+        bullet_modes.push(recognize_modal_mode(
+            &preprocessed.card,
+            next_line,
+            header_has_common_target_suffix,
+        )?);
+        probe_idx += 1;
+    }
+    if bullet_modes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some((
+        RecognizedLine::Modal(RecognizedModalBlock {
+            header: line.info.clone(),
+            header_tokens: body_tokens,
+            modes: bullet_modes,
+            saga_chapters: Some(chapters),
         }),
         probe_idx,
     )))

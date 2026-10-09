@@ -2313,6 +2313,7 @@ pub fn resolve_player_filter(
         PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
@@ -2324,6 +2325,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::MostCardsInHand => {
             let filter_ctx = ctx.filter_context(game);
@@ -2792,7 +2794,7 @@ fn matching_object_targets_for_spec(
         .collect()
 }
 
-fn matching_player_targets_for_spec(
+pub(crate) fn matching_player_targets_for_spec(
     game: &GameState,
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
@@ -4564,6 +4566,13 @@ pub(crate) fn resolve_player_filter_to_list(
                 )),
             }
         }
+        PlayerFilter::TurnHistory(history) => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| crate::filter::player_turn_history_matches(game, player.id, *history))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::CastCardTypeThisTurn(card_type) => Ok(game
             .players
             .iter()
@@ -4613,7 +4622,9 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => Ok(game
+        PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
+        | PlayerFilter::MaxSpeed { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

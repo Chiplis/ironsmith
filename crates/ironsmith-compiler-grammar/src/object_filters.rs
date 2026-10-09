@@ -1104,6 +1104,26 @@ fn parse_terminal_same_name_filter(
     if start == 0 {
         return Ok(None);
     }
+    // "all cards with the same name as that spell from their graveyard"
+    // (Bloodbond March), "all other cards with the same name as that card
+    // from your graveyard" (Rat King, Verminister): a zone qualifier after the
+    // two-word reference still qualifies the head noun phrase.
+    let (reference, head_tail): (&[OwnedLexToken], &[OwnedLexToken]) = match reference {
+        [head, noun, tail @ ..]
+            if (head.is_word("that") || head.is_word("this"))
+                && !tail.is_empty()
+                && noun
+                    .as_word()
+                    .and_then(ironsmith_core::SameNameAntecedentSurface::from_noun)
+                    .is_some()
+                && tail
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["from", "in", "on"])) =>
+        {
+            (&reference[..2], tail)
+        }
+        _ => (reference, &[]),
+    };
     let reference_shape = match reference {
         [head, noun] if head.is_word("that") || head.is_word("this") => noun.as_word()
             .and_then(ironsmith_core::SameNameAntecedentSurface::from_noun)
@@ -1129,7 +1149,13 @@ fn parse_terminal_same_name_filter(
         }
         return Ok(None);
     };
-    let mut filter = parse_object_filter(&trimmed[..start], other)?;
+    let mut filter = if head_tail.is_empty() {
+        parse_object_filter(&trimmed[..start], other)?
+    } else {
+        let mut head = trimmed[..start].to_vec();
+        head.extend_from_slice(head_tail);
+        parse_object_filter(&head, other)?
+    };
     filter.set_same_name_antecedent_surface(surface);
     filter
         .tagged_constraints
@@ -1455,6 +1481,18 @@ pub fn parse_object_filter(
                 "right",
                 "controls" | "control",
             ] => Some(PlayerFilter::PlayerToYourRight),
+            // "the player to their left": relative to the player the
+            // enclosing per-player process is for (Grenzo's Rebuttal).
+            [
+                "player",
+                "to",
+                "their",
+                "left",
+                "controls" | "control",
+            ]
+            | ["controlled", "by", "the", "player", "to", "their", "left"] => Some(
+                PlayerFilter::PlayerToLeftOf(Box::new(PlayerFilter::IteratedPlayer)),
+            ),
             _ => None,
         };
         if let Some(player) = player {

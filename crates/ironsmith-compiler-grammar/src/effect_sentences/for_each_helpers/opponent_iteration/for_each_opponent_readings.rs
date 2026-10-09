@@ -100,6 +100,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_relative_control_clause(input)),
     },
     Reading {
+        id: RuleId::new("negated-relative-control-clause"),
+        head: HeadDiscriminator::Any,
+        admits: |input| !input.read_by("doesnt-control-lose-game"),
+        read: |input| input.outcome(read_negated_relative_control_clause(input)),
+    },
+    Reading {
         id: RuleId::new("combat-damage-history-participant"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -117,6 +123,7 @@ const READINGS: &[Reading] = &[
         admits: |input| {
             // Readings ranked above this one that read the input read it.
             !input.read_by("doesnt-control-lose-game")
+                && !input.read_by("negated-relative-control-clause")
         },
         read: |input| input.outcome(read_who_clause(input)),
     },
@@ -258,6 +265,74 @@ fn read_relative_control_clause(
         return Ok(Some(wrap_opponents(&iteration_filter, vec![conditional])));
     }
     Ok(None)
+}
+/// "each opponent who doesn't control an Elf loses 1 life" (Thornbow
+/// Archer): a negated control relation on the participant, applied as the
+/// complement of the ordinary "who controls ..." participant condition.
+fn read_negated_relative_control_clause(
+    input: &ParticipantClause<'_>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let outer = input.outer;
+    let tokens = outer.inner_tokens;
+    if !tokens.first().is_some_and(|token| token.is_word("who")) {
+        return Ok(None);
+    }
+    let control_idx = if tokens
+        .get(1)
+        .is_some_and(|token| token.is_any_word(&["doesn't", "doesnt", "don't", "dont"]))
+    {
+        2
+    } else if tokens.get(1).is_some_and(|token| token.is_any_word(&["does", "do"]))
+        && tokens.get(2).is_some_and(|token| token.is_word("not"))
+    {
+        3
+    } else {
+        return Ok(None);
+    };
+    if !tokens
+        .get(control_idx)
+        .is_some_and(|token| token.is_any_word(&["control", "controls"]))
+    {
+        return Ok(None);
+    }
+    let mut positive = crate::lexer::synthetic_word_tokens(&["who", "controls"]);
+    positive.extend_from_slice(&tokens[control_idx + 1..]);
+    let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(&positive) else {
+        return Ok(None);
+    };
+    // Only the plain membership form has a well-defined complement here.
+    if relative.controls_most
+        || relative.controls_fewest
+        || relative.count_comparison.is_some()
+        || relative.fewer_than_most_filter_tokens.is_some()
+        || relative.fewer_than_you
+    {
+        return Ok(None);
+    }
+    let conditional = parse_relative_control_conditional(
+        relative,
+        outer.participant_is_actor,
+        input.clause_text,
+    )?;
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true,
+        if_false,
+    }) = conditional
+    else {
+        return Ok(None);
+    };
+    if !if_false.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(wrap_opponents(
+        &input.iteration_filter,
+        vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: crate::cards::builders::PredicateAst::Not(Box::new(predicate)),
+            if_true,
+            if_false: Vec::new(),
+        })],
+    )))
 }
 fn read_combat_damage_history_participant(
     input: &ParticipantClause<'_>,

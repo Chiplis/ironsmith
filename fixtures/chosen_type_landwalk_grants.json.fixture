@@ -1,0 +1,36 @@
+[
+ {
+  "name": "Illusionary Presence",
+  "oracle_id": "8f319b31-efb0-4f48-a2a3-1f308e7b1dda",
+  "mana_cost": "{1}{U}{U}",
+  "type_line": "Creature — Illusion",
+  "oracle_text": "Cumulative upkeep {U}\nAt the beginning of your upkeep, choose a land type. This creature gains landwalk of the chosen type until end of turn.",
+  "power": "2",
+  "toughness": "2"
+ },
+ {
+  "name": "Barbarian Guides",
+  "oracle_id": "ef8c324a-582b-401e-add1-1985c5596908",
+  "mana_cost": "{2}{R}",
+  "type_line": "Creature — Human Barbarian",
+  "oracle_text": "{2}{R}, {T}: Choose a land type. Target creature you control gains snow landwalk of the chosen type until end of turn. Return that creature to its owner's hand at the beginning of the next end step.",
+  "power": "1",
+  "toughness": "2"
+ },
+ {
+  "name": "Giant Slug",
+  "oracle_id": "1ce7f356-1f9b-44dc-9b05-f7b1ecc5d755",
+  "mana_cost": "{1}{B}",
+  "type_line": "Creature — Slug",
+  "oracle_text": "{5}: At the beginning of your next upkeep, choose a basic land type. This creature gains landwalk of the chosen type until the end of that turn.",
+  "power": "1",
+  "toughness": "1"
+ },
+ {
+  "name": "Excavator",
+  "oracle_id": "2d5ebcd7-07c2-412e-b0d9-54e3a88895fd",
+  "mana_cost": "{2}",
+  "type_line": "Artifact",
+  "oracle_text": "{T}, Sacrifice a basic land: Target creature gains landwalk of each of the land types of the sacrificed land until end of turn."
+ }
+]

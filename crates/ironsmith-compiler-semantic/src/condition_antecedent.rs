@@ -137,6 +137,24 @@ pub fn predicate_source_counter_antecedent(predicate: &PredicateAst) -> Option<C
         PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
             counter_type, ..
         }) => Some(*counter_type),
+        // "if it has three or more ritual counters on it, remove them"
+        // (Heirloom Mirror): the threshold comparison over the source's own
+        // counters of one kind names those counters as the antecedent.
+        PredicateAst::ValueComparison {
+            left,
+            operator:
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                | crate::effect::ValueComparisonOperator::GreaterThan,
+            ..
+        } => match left.unhinted() {
+            Value::CountersOnSource(counter_type) => Some(*counter_type),
+            Value::CountersOn(spec, Some(counter_type))
+                if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
+            {
+                Some(*counter_type)
+            }
+            _ => None,
+        },
         PredicateAst::And(left, right) => match (
             predicate_source_counter_antecedent(left),
             predicate_source_counter_antecedent(right),
@@ -694,6 +712,7 @@ fn persistent_battlefield_subject(action: &mut SubjectVerbActionAst) -> Option<&
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             target,
         })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { target }) => {
             Some(target)
         }
@@ -866,6 +885,84 @@ fn bind_condition_counter_antecedent_in_effect(effect: &mut EffectAst, counter_t
     for_each_nested_effects_mut(effect, true, |nested| {
         bind_condition_counter_antecedent_in_effects(nested, counter_type);
     });
+}
+
+/// "if it has three or more ritual counters on it, remove them" (Heirloom
+/// Mirror): when the threshold is read off the pronoun antecedent `it`, the
+/// removal names that same holder's counters of that kind. Binding the
+/// removal to the predicate's own holder keeps both references identical
+/// whatever `it` resolves to during lowering.
+pub fn predicate_it_counter_antecedent(predicate: &PredicateAst) -> Option<CounterType> {
+    let PredicateAst::ValueComparison {
+        left,
+        operator:
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+            | crate::effect::ValueComparisonOperator::GreaterThan,
+        ..
+    } = predicate
+    else {
+        return None;
+    };
+    let Value::CountersOn(spec, Some(counter_type)) = left.unhinted() else {
+        return None;
+    };
+    match spec.base() {
+        crate::target::ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
+            Some(*counter_type)
+        }
+        _ => None,
+    }
+}
+
+fn bind_condition_it_counter_antecedent_in_effect(effect: &mut EffectAst, counter_type: CounterType) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+            amount,
+            target,
+            counter_type: remove_counter_type,
+            all_of_them,
+            ..
+        }) = &mut subject_verb.action
+        && *all_of_them
+        && remove_counter_type.is_none()
+        && matches!(target, TargetAst::Source(_))
+    {
+        let span = match target {
+            TargetAst::Source(span) => *span,
+            _ => None,
+        };
+        *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span);
+        *amount = Value::CountersOn(
+            Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind().into(),
+            )),
+            Some(counter_type),
+        );
+        *remove_counter_type = Some(counter_type);
+        *all_of_them = false;
+    }
+
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            bind_condition_it_counter_antecedent_in_effect(effect, counter_type);
+        }
+    });
+}
+
+/// Bind an unresolved "remove them" to the counters a pronoun-holder
+/// threshold predicate names. No-op for any other predicate.
+pub fn bind_condition_it_counter_antecedent_in_effects(
+    effects: &mut [EffectAst],
+    predicate: &PredicateAst,
+) {
+    let Some(counter_type) = predicate_it_counter_antecedent(predicate) else {
+        return;
+    };
+    for effect in effects {
+        bind_condition_it_counter_antecedent_in_effect(effect, counter_type);
+    }
 }
 
 pub fn bind_condition_counter_antecedent_in_effects(

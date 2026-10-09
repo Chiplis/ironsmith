@@ -212,6 +212,7 @@ mod tests {
     #[test]
     fn test_flashback_properties() {
         let flashback = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![
                 vec![ManaSymbol::Generic(2)],
                 vec![ManaSymbol::Blue],

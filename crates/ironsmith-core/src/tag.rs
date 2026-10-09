@@ -53,9 +53,23 @@ pub const COST_EXILED_TAG: &str = "__cost_exiled__";
 /// Evaluated directly from the exile links rather than captured.
 pub const EXILED_BY_YOU_TAG: &str = "__exiled_by_you__";
 
+/// Runtime tag for the card on top of the filter context player's library
+/// ("that card" after "as long as the top card of your library is ...").
+/// Evaluated from the live library (CR 401.1), never captured.
+pub const TOP_OF_YOUR_LIBRARY_TAG: &str = "__top_of_your_library__";
+
+/// Runtime tag for the objects chosen in earlier rounds of the enclosing
+/// repeated process ("can't choose a card already chosen for <this>"). The
+/// process owns it: after each completed round it appends that round's choice
+/// before the next round chooses (Forgotten Lore).
+pub const PRIOR_PROCESS_CHOICES_TAG: &str = "__prior_process_choices__";
+
 /// The exact new object created by a zone-change replacement before its
 /// replacement follow-up effects execute.
 pub const ZONE_REPLACEMENT_OBJECT_TAG: &str = "__zone_replacement_object__";
+/// The card(s) an "Exile a card from your hand" activation cost exiled,
+/// published by cost payment to the ability ("the card exiled this way").
+pub const COST_EXILED_FROM_HAND_TAG: &str = "__cost_exiled_from_hand__";
 
 /// Runtime tag for a card explicitly referenced later as "the exiled card".
 pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
@@ -230,6 +244,12 @@ pub const DAMAGE_SOURCE_CONTROLLER_TAG: &str = "__damage_source_controller__";
 /// Live controllers attacking the event's frozen defender when an effect
 /// constructs its filter context (CR 508.6), not the declaration's old actors.
 pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
+
+/// The players a source chose ("As this enters, choose two players", Sower of
+/// Discord). Runtime filter contexts populate this system tag from the
+/// source's recorded player choices, so "one of the chosen players" is
+/// `PlayerFilter::TaggedPlayer` of this key.
+pub const SOURCE_CHOSEN_PLAYERS_TAG: &str = "__source_chosen_players__";
 
 /// The player who currently holds the initiative designation.
 ///

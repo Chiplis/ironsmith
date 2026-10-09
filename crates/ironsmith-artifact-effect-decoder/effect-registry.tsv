@@ -28,6 +28,7 @@ BecomeMonarchEffect	ironsmith_core::BecomeMonarchEffect	player
 BecomeSaddledUntilEotEffect	ironsmith_core::BecomeSaddledUntilEotEffect	permanent
 BeholdEffect	ironsmith_core::BeholdEffect	composition-a-l
 BidLifeEffect	ironsmith_core::BidLifeEffect<wire::WireEffect>	composition-a-l
+BindXValueEffect	ironsmith_core::BindXValueEffect<wire::WireEffect>	composition-a-l
 BolsterEffect	ironsmith_core::BolsterEffect	composition-a-l
 CantEffect	ironsmith_core::CantEffect	stack-event
 CastSourceEffect	ironsmith_core::CastSourceEffect	player
@@ -43,6 +44,7 @@ ChooseNamedOptionEffect	ironsmith_core::ChooseNamedOptionEffect	player
 ChooseNewTargetsEffect	ironsmith_core::ChooseNewTargetsEffect	stack-event
 ChooseObjectsEffect	ironsmith_core::ChooseObjectsEffect	composition-a-l
 ChoosePlayerEffect	ironsmith_core::ChoosePlayerEffect	player
+ChooseFriendsOrFoesEffect	ironsmith_core::ChooseFriendsOrFoesEffect	player
 ChooseSpellCastHistoryEffect	ironsmith_core::ChooseSpellCastHistoryEffect	composition-a-l
 CipherEffect	ironsmith_core::CipherEffect	composition-a-l
 ClashEffect	ironsmith_core::ClashEffect	zone-library
@@ -116,6 +118,7 @@ GivePlayerCountersEffect	ironsmith_core::GivePlayerCountersEffect	player
 GainLifeEffect	ironsmith_core::GainLifeEffect	resources
 GoadEffect	ironsmith_core::GoadEffect	combat
 ClearGoadEffect	ironsmith_core::ClearGoadEffect	combat
+MustAttackPlayerThisTurnEffect	ironsmith_core::MustAttackPlayerThisTurnEffect	combat
 GrantAbilitiesTargetEffect	ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>	combat
 GrantBySpecEffect	ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::WireGrantDuration>	player
 GrantEffect	ironsmith_core::GrantEffect<wire::WireGrantable, wire::WireGrantDuration>	player
@@ -131,6 +134,7 @@ IfEffect	ironsmith_core::IfEffect<wire::WireEffect>	composition-a-l
 IncreaseSpeedEffect	ironsmith_core::IncreaseSpeedEffect	player
 IncubateEffect	ironsmith_core::IncubateEffect	permanent
 InvestigateEffect	ironsmith_core::InvestigateEffect	permanent
+KeepGreatestManaValuePlayersEffect	ironsmith_core::KeepGreatestManaValuePlayersEffect	player
 LearnEffect	ironsmith_core::LearnEffect	zone-library
 LocalRewriteEffect	ironsmith_core::LocalRewriteEffect<wire::WireEffect>	composition-a-l
 LookAtHandEffect	ironsmith_core::LookAtHandEffect	zone-library
@@ -162,6 +166,7 @@ NinjutsuCostEffect	ironsmith_core::NinjutsuCostEffect	permanent
 NinjutsuEffect	ironsmith_core::NinjutsuEffect	permanent
 NoteLifeTotalEffect	ironsmith_core::NoteLifeTotalEffect	resources
 OpenAttractionEffect	ironsmith_core::OpenAttractionEffect	composition-m-z
+RollToVisitAttractionsEffect	ironsmith_core::RollToVisitAttractionsEffect	composition-m-z
 PayAnyEnergyEffect	ironsmith_core::PayAnyEnergyEffect	player
 PayAnyLifeEffect	ironsmith_core::PayAnyLifeEffect	player
 PayEnergyEffect	ironsmith_core::PayEnergyEffect	player
@@ -208,6 +213,7 @@ RemoveAnyCountersAmongEffect	ironsmith_core::RemoveAnyCountersAmongEffect	resour
 RemoveAnyCountersFromSourceEffect	ironsmith_core::RemoveAnyCountersFromSourceEffect	resources
 RemoveCountersEffect	ironsmith_core::RemoveCountersEffect	resources
 RemoveFromCombatEffect	ironsmith_core::RemoveFromCombatEffect	combat
+ReselectAttackTargetEffect	ironsmith_core::ReselectAttackTargetEffect	combat
 RemoveUpToAnyCountersEffect	ironsmith_core::RemoveUpToAnyCountersEffect	resources
 RemoveUpToCountersEffect	ironsmith_core::RemoveUpToCountersEffect	resources
 RenownEffect	ironsmith_core::RenownEffect	permanent
@@ -259,12 +265,14 @@ SkipTurnEffect	ironsmith_core::SkipTurnEffect	player
 SneakCostEffect	ironsmith_core::SneakCostEffect	permanent
 SolveCaseEffect	ironsmith_core::SolveCaseEffect	permanent
 SetClassLevelEffect	ironsmith_core::SetClassLevelEffect	permanent
+SetDayNightEffect	ironsmith_core::SetDayNightEffect	permanent
 SoulbondPairEffect	ironsmith_core::SoulbondPairEffect	permanent
 SupportEffect	ironsmith_core::SupportEffect	composition-m-z
 SurveilEffect	ironsmith_core::SurveilEffect	zone-library
 SuspectEffect	ironsmith_core::SuspectEffect	permanent
 TagAttachedToSourceEffect	ironsmith_core::TagAttachedToSourceEffect	composition-m-z
 TagMatchingObjectsEffect	ironsmith_core::TagMatchingObjectsEffect	composition-m-z
+TagPlayersEffect	ironsmith_core::TagPlayersEffect	player
 TagOtherBlockParticipantEffect	ironsmith_core::TagOtherBlockParticipantEffect	composition-m-z
 TagTriggeringAttackerEffect	ironsmith_core::TagTriggeringAttackerEffect	composition-m-z
 TagTriggeringBlockersEffect	ironsmith_core::TagTriggeringBlockersEffect	composition-m-z
@@ -294,6 +302,7 @@ ImprintFromHandEffect	wire::WireImprintFromHandEffect	zone-library
 ScaleXValueEffect	wire::WireScaleXValueEffect	stack-event
 RevealChosenSubtypeEffect	ironsmith_core::RevealChosenSubtypeEffect	player
 BecomePlottedEffect	ironsmith_core::BecomePlottedEffect	zone-library
+GrantLoyaltyActivationAllowanceEffect	ironsmith_core::GrantLoyaltyActivationAllowanceEffect	player
 GrantEndThisEffectPaymentEffect	ironsmith_core::GrantEndThisEffectPaymentEffect	player
 SaddleCostEffect	ironsmith_core::SaddleCostEffect	permanent
 AddManaOfNotedTypeEffect	ironsmith_core::AddManaOfNotedTypeEffect	resources
@@ -312,3 +321,6 @@ SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
 RippleEffect	ironsmith_core::RippleEffect	player
 RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event
 CollectManaPaymentsEffect	ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>	composition-a-l
+ChoosePlayerOptionEffect	ironsmith_core::ChoosePlayerOptionEffect	player
+ControlVotesThisTurnEffect	ironsmith_core::ControlVotesThisTurnEffect	player
+PutCounterOfKindChosenFromEffect	ironsmith_core::PutCounterOfKindChosenFromEffect	resources

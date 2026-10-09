@@ -32,6 +32,16 @@ pub(super) fn read_generic_top_cards_cloak_counted_rest_bottom(
     }
     Ok(None)
 }
+pub(super) fn read_face_down_pile_sentence(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "Exile it and the top card of your library in a face-down pile,
+    // shuffle that pile, then manifest those cards." is one pile program;
+    // the comma-then boundary would otherwise sever the pile from its entry.
+    crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_sentence(
+        input.tokens,
+    )
+}
 pub(super) fn read_explicit_action_segments(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -99,6 +109,21 @@ pub(super) fn read_roll_dice_choose_one_result(
     {
         return Ok(Some(vec![
             EffectAst::subject_verb_roll_dice_choose_result_with_surface(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(surface),
+            ),
+        ]));
+    }
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceIgnoreLower {
+        count,
+        sides,
+        surface,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_roll_dice_ignore_lower_with_surface(
                 PlayerAst::Implicit,
                 count,
                 sides,

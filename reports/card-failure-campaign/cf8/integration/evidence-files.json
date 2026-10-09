@@ -1,0 +1,71 @@
+[
+  {
+    "file": "workspace-check.log",
+    "uncompressed_sha256": "53d031abd8240e75a7b060db2e689742d21f49ef600275977f457a5ebd4b72c9",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "compiler-build.log",
+    "uncompressed_sha256": "cd98ac6b43c0527ad194d287604f5cf6fd5aca05c7669fb73f0ddcb326a8d7e0",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "broader-tests.log.gz",
+    "uncompressed_sha256": "85d817bffad63776e8fcf15e747aba0108377ad6ddf863d752f7306560b10eb1",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "focused-tests.log",
+    "uncompressed_sha256": "41787bfc5e049a2baa30743470b159741805e46d16a29f134ca5f558dd3f52f4",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "conditional-exclusion-test.log",
+    "uncompressed_sha256": "b03f2d95989d40f60668e5db41e86d6c00fdc5e79c96380906e90b97d6d59dd7",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "artifact-golden-tests.log",
+    "uncompressed_sha256": "636883474267c9ec46b9f15452f11476bc169879b3242f1716d727b7e955b925",
+    "source_provenance": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    }
+  },
+  {
+    "file": "checkpoint-tests.log",
+    "uncompressed_sha256": "ad3146b9b705361ab84e1597f2d5cd547aead9824c62d333f30626d919ac64e6",
+    "source_provenance": "Earlier integrated revision; relevant mechanism unchanged. Not a rerun at final frozen source."
+  },
+  {
+    "file": "tagged-identity-tests.log",
+    "uncompressed_sha256": "bf23ccd128c02851eb9a5267699ec93805ebd6bd46cf9a8a41d8faf9cc6d8e51",
+    "source_provenance": "Earlier integrated revision; relevant mechanism unchanged. Not a rerun at final frozen source."
+  },
+  {
+    "file": "payload-serialization-tests.log",
+    "uncompressed_sha256": "9c0697cc38e280d212b6656a5e09a89e31487abe2a69b2fafb7998b0ea946de0",
+    "source_provenance": "Earlier integrated revision; relevant mechanism unchanged. Not a rerun at final frozen source."
+  }
+]

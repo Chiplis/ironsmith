@@ -24,6 +24,14 @@
         let body = payments.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
         return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));
     }
+    if let Some(bind) = effect.downcast_ref::<crate::effects::BindXValueEffect>() {
+        let body = bind.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
+        return format!(
+            "{}, where X is {}",
+            body.trim_end_matches('.'),
+            describe_value(&bind.value)
+        );
+    }
     if let Some(grant) = effect.downcast_ref::<
         crate::effects::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     >() && grant.player == PlayerFilter::You
@@ -1635,6 +1643,12 @@
         let selection = describe_choose_card_name_selection(choose_name);
         return format!("{chooser} {choose_verb} {selection} name");
     }
+    if effect
+        .downcast_ref::<crate::effects::ChooseFriendsOrFoesEffect>()
+        .is_some()
+    {
+        return "For each player, choose friend or foe".to_string();
+    }
     if let Some(choose_player) = effect.downcast_ref::<crate::effects::ChoosePlayerEffect>() {
         let chooser = describe_player_filter(&choose_player.chooser);
         let choose_verb = if choose_player.random {
@@ -1665,6 +1679,9 @@
         );
     }
     if let Some(unlock) = effect.downcast_ref::<crate::effects::UnlockRoomDoorEffect>() {
+        if unlock.allow_lock && unlock.player == PlayerFilter::You {
+            return "Lock or unlock a door of target Room you control".to_string();
+        }
         if unlock.player == PlayerFilter::You {
             return "Unlock a locked door of a Room you control".to_string();
         }
@@ -1697,6 +1714,8 @@
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let kind = if choose_land_type.exclude_basic {
             "a nonbasic land type"
+        } else if choose_land_type.basic_only {
+            "a basic land type"
         } else {
             "a land type"
         };
@@ -4253,6 +4272,18 @@
         } else {
             "from"
         };
+        // "any number of" is an upper bound of every counter of that kind on
+        // the holder(s) themselves.
+        if let Value::CountersOn(counter_source, Some(counter_type)) =
+            remove_up_to_counters.max_count.unhinted()
+            && counter_source.unhinted() == remove_up_to_counters.target.unhinted()
+            && *counter_type == remove_up_to_counters.counter_type
+        {
+            return format!(
+                "Remove any number of {} counters {preposition} {target}",
+                describe_counter_type(remove_up_to_counters.counter_type),
+            );
+        }
         let counter_noun = if remove_up_to_counters.max_count.unhinted() == &Value::Fixed(1) {
             "counter"
         } else {
@@ -4268,6 +4299,13 @@
         effect.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
     {
         let target = describe_choose_spec(&remove_up_to_any_counters.target);
+        if remove_up_to_any_counters.up_to
+            && let Value::CountersOn(counter_source, None) =
+                remove_up_to_any_counters.max_count.unhinted()
+            && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
+        {
+            return format!("Remove any number of counters from {target}");
+        }
         if let Value::CountersOn(counter_source, None) = &remove_up_to_any_counters.max_count
             && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
         {
@@ -5469,6 +5507,22 @@
                 return format!("{} {} {}", player, player_verb(&player, "tap", "taps"), text.strip_prefix("Tap ").unwrap_or(&text));
             }
             return text;
+        }
+        // "Tap each creature dealt damage this way" (Aurelia's Fury).
+        if tap.actor.is_none()
+            && let ChooseSpec::All(filter) = &tap.target
+            && let [card_type] = filter.card_types.as_slice()
+            && let Some(action) = describe_tagged_this_way_action(filter)
+        {
+            let mut rest = filter.clone();
+            rest.tagged_constraints.clear();
+            rest.zone = None;
+            let noun = if rest == ObjectFilter::default().with_type(*card_type) {
+                describe_card_type_word_local(*card_type).to_string()
+            } else {
+                strip_leading_article(&rest.description()).to_string()
+            };
+            return format!("Tap each {noun} {action} this way");
         }
         let where_clause = choose_spec_dynamic_count_value_where_clause(&tap.target)
             .or_else(|| choose_spec_filter_where_x_clause(&tap.target))
@@ -6673,6 +6727,17 @@
     if let Some(modify_pt_all) =
         effect.downcast_ref::<crate::effects::ModifyPowerToughnessAllEffect>()
     {
+        // "creatures you control get +1/+1 for each basic land type among
+        // lands you control until end of turn" (Tromp the Domains).
+        if let Some(for_each_text) =
+            describe_basic_land_type_pt_for_each(&modify_pt_all.power, &modify_pt_all.toughness)
+        {
+            return format!(
+                "{} get {for_each_text} {}",
+                describe_object_filter_with_fixed_pt_shorthand(&modify_pt_all.filter),
+                describe_until(&modify_pt_all.duration)
+            );
+        }
         return format!(
             "{} get {}/{} {}",
             describe_object_filter_with_fixed_pt_shorthand(&modify_pt_all.filter),
@@ -6945,6 +7010,15 @@
             2 => "two".to_string(),
             n => n.to_string(),
         };
+        if roll_dice.ignore_lower {
+            if player == "you" {
+                return format!("Roll {count} {die_text} and ignore the lower roll");
+            }
+            return format!(
+                "{player} {} {count} {die_text} and ignores the lower roll",
+                player_verb(&player, "roll", "rolls"),
+            );
+        }
         if player == "you" {
             return format!("Roll {count} {die_text} and choose one result");
         }
@@ -6993,6 +7067,21 @@
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return describe_effect(&with_id.effect);
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>()
+        && !repeat.choice_history.is_empty()
+    {
+        // Later rounds exclude earlier rounds' choices.
+        let body = describe_effect_list(&repeat.effects);
+        let body = body.trim().trim_end_matches('.');
+        let gate = if repeat.predicate == EffectPredicate::Happened {
+            "If you do, repeat"
+        } else {
+            "Repeat"
+        };
+        return format!(
+            "{body}. {gate} this process except that a card already chosen this way can't be chosen"
+        );
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
         let mut gate = repeat.effects.last();
@@ -7079,6 +7168,31 @@
         } else {
             prompt.description().to_string()
         };
+    }
+    if effect.downcast_ref::<crate::effects::TagPlayersEffect>().is_some() {
+        return String::new();
+    }
+    if effect
+        .downcast_ref::<crate::effects::KeepGreatestManaValuePlayersEffect>()
+        .is_some()
+    {
+        return "If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken".to_string();
+    }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()
+        && let Some(player) = &reselect.attacked_player
+    {
+        return format!(
+            "{} are now attacking {}",
+            describe_choose_spec(&reselect.target),
+            describe_player_filter(player)
+        );
+    }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>() {
+        let choices = if reselect.players_only { "player" } else { "player or permanent" };
+        return format!(
+            "Reselect which {choices} {} is attacking",
+            describe_choose_spec(&reselect.target)
+        );
     }
     if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
         return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));

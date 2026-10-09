@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Illusion of Choice",
+  "oracle_id": "e3ad9287-ef13-4b66-9df8-b17e15bb4b0f",
+  "oracle_text": "You choose how each player votes this turn.\nDraw a card.",
+  "text": "Mana cost: {U}\nType: Instant\nYou choose how each player votes this turn.\nDraw a card."
+ }
+]

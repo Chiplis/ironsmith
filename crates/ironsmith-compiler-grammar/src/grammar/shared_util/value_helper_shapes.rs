@@ -250,6 +250,17 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             &["put", "into", "their", "graveyards"],
             PriorEffectAction::PutIntoGraveyard,
         ),
+        // "for each card put into your hand this way" (Demonlord
+        // Belzenlok): cards that actually arrived in a hand.
+        (
+            &["put", "into", "your", "hand"],
+            PriorEffectAction::PutIntoHand,
+        ),
+        (&["put", "into", "hand"], PriorEffectAction::PutIntoHand),
+        (
+            &["put", "into", "their", "hand"],
+            PriorEffectAction::PutIntoHand,
+        ),
         (&["dealt", "damage"], PriorEffectAction::DealtDamage),
         (
             &["counters", "put", "on", "it"],
@@ -289,6 +300,25 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
         ),
         (
             &["returned", "to", "their", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        // "for each permanent returned to its owner's hand this way"
+        // (Wanderwine Farewell): the destination restates the bounce; the
+        // count is the objects that bounce actually returned.
+        (
+            &["returned", "to", "its", "owner's", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "its", "owners", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "their", "owners'", "hands"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "their", "owners", "hands"],
             PriorEffectAction::Returned,
         ),
         (&["returned"], PriorEffectAction::Returned),

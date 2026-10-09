@@ -114,6 +114,12 @@ mod activated_keywords {
             parse: structured_keyword_parser!(registry::parse_equip),
         },
         KeywordLineRule {
+            cst_kind: super::super::recognized_document::KeywordLineKind::Fortify,
+            hints: &[KeywordDispatchHint::Fortify],
+            id: RuleId::new("parse_fortify"),
+            parse: structured_keyword_parser!(registry::parse_fortify),
+        },
+        KeywordLineRule {
             cst_kind: super::super::recognized_document::KeywordLineKind::Reconfigure,
             hints: &[KeywordDispatchHint::Reconfigure],
             id: RuleId::new("parse_reconfigure"),

@@ -81,6 +81,8 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
@@ -104,12 +106,14 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(filter, source_filter);
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
-        | Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+        | Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::BeAttachedBy(blockers, attacker) => {
             retarget_it_filter_for_counter_followup(blockers, source_filter);
             retarget_it_filter_for_counter_followup(attacker, source_filter);
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
         | Restriction::AttackPlayer { attackers, .. }
+        | Restriction::MustAttackPlayer { attackers, .. }
         | Restriction::PlayLandsMatching(_, attackers)
         | Restriction::CastSpellsMatching(_, attackers)
         | Restriction::CastMoreThanOneSpellEachTurn(_, attackers) => {
@@ -308,6 +312,11 @@ pub fn parse_sentence_for_each_counter_kind_put_or_remove(
         return Ok(None);
     };
     let target = parse_target_phrase(shape.target_tokens)?;
+    if shape.put_only {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_for_each_counter_kind_put_another(target),
+        ]));
+    }
 
     Ok(Some(vec![
         EffectAst::subject_verb_for_each_counter_kind_put_or_remove(target),

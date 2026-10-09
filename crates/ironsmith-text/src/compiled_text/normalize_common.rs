@@ -152,12 +152,14 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => filter.description(),
         PlayerFilter::LostLifeThisTurn { base } => format!(
@@ -185,6 +187,10 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
+        PlayerFilter::PlayerToLeftOf(base) => match base.as_ref() {
+            PlayerFilter::IteratedPlayer => "the player to their left".to_string(),
+            base => format!("the player to the left of {}", describe_player_filter(base)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

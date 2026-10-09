@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Karakyk Guardian",
+    "oracle_id": "41129dc1-be88-4198-94f9-032817a79bc7",
+    "text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Dragon\nPower/Toughness: 6/5\nFlying, vigilance, trample\nThis creature has hexproof as long as it hasn't dealt damage yet."
+  },
+  {
+    "name": "Palladia-Mors, the Ruiner",
+    "oracle_id": "4c2b10ba-1930-4da8-9570-c89b2e239e3e",
+    "text": "Mana cost: {3}{R}{G}{W}\nType: Legendary Creature — Elder Dragon\nPower/Toughness: 6/6\nFlying, vigilance, trample\nPalladia-Mors has hexproof as long as it hasn't dealt damage yet."
+  }
+]

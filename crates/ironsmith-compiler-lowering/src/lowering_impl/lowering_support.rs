@@ -2728,6 +2728,7 @@ fn source_sentence_boundary_continues_repeat_process(
         match effect {
             EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess
                 | ForEachEffectAst::RepeatThisProcessOnce
+                | ForEachEffectAst::RepeatThisProcessExcludingPriorChoices
                 | ForEachEffectAst::RepeatThisProcessAdditional { .. }
                 | ForEachEffectAst::RepeatThisProcessMay) => true,
             EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) =>
@@ -3953,6 +3954,12 @@ pub fn stage_owned_triggered_effects_for_lowering(
     {
         bind_condition_counter_antecedent_in_effects(&mut body_effects, counter_type);
     }
+    if let Some(predicate) = intervening_if.as_ref() {
+        crate::condition_antecedent::bind_condition_it_counter_antecedent_in_effects(
+            &mut body_effects,
+            predicate,
+        );
+    }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
         resolve_phase_step_it_targets_to_source(&mut body_effects);
     }
@@ -4499,6 +4506,9 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
     match action {
         KeywordAction::Flying => Some(StaticAbility::flying()),
         KeywordAction::Menace => Some(StaticAbility::menace()),
+        // CR 702.22: a granted banding ("Enchanted creature has banding") is
+        // the same static keyword the printed one lowers to.
+        KeywordAction::Banding => Some(StaticAbility::banding()),
         KeywordAction::Hexproof => Some(StaticAbility::hexproof()),
         KeywordAction::Haste => Some(StaticAbility::haste()),
         KeywordAction::Improvise => Some(StaticAbility::improvise()),
@@ -4600,10 +4610,27 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
             crate::static_abilities::LandwalkKind::ArtifactLand => {
                 StaticAbility::artifact_landwalk()
             }
+            crate::static_abilities::LandwalkKind::LegendaryLand => {
+                StaticAbility::legendary_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::SnowLand => StaticAbility::snow_any_landwalk(),
+            crate::static_abilities::LandwalkKind::ChosenType { snow } => {
+                StaticAbility::chosen_type_landwalk(snow)
+            }
+            crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                StaticAbility::sacrificed_land_types_landwalk()
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
+        KeywordAction::BloodthirstX => Some(StaticAbility::enters_with_counters_value(
+            crate::object::CounterType::PlusOnePlusOne,
+            crate::effect::Value::DamageDealtToPlayersThisTurn(crate::target::PlayerFilter::Opponent),
+        )),
         KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),
-        KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
+        KeywordAction::Rampage(_)
+        | KeywordAction::Bushido(_)
+        | KeywordAction::BushidoValue(_)
+        | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(StaticAbility::changeling()),
         KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
@@ -5515,6 +5542,8 @@ pub(crate) fn lower_compiler_static_ability_core(
             // Keyword-action replacements bind "it" to the object performing
             // the replaced action, independently of the replacement's source.
             ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            ctx.allow_life_event_value = matches!(action,
+                crate::events::KeywordActionKind::Scry | crate::events::KeywordActionKind::Surveil);
             let (replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
             if !choices.is_empty() {
@@ -5604,6 +5633,52 @@ pub(crate) fn lower_compiler_static_ability_core(
                         except_first_of_draw_step,
                         replacement_effects,
                         display,
+                    },
+            })
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::EventReplacementWithEffects {
+            event,
+            replacement_effects,
+            display,
+            optional,
+        } => {
+            // One resolution program runs in place of the replaced event: the
+            // event supplies "that much"/"that many", and the instead-payload
+            // owner binds the affected player as "that player".
+            let mut replacement_effects = replacement_effects;
+            crate::effect_ast_normalization::normalize_effects_ast_in_place(
+                &mut replacement_effects,
+            );
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.allow_life_event_value = true;
+            ctx.iterated_player = true;
+            ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+            // Destruction and zone-change owners bind the affected object as
+            // the program's "it" ("put it on top of its owner's library").
+            if matches!(
+                event,
+                ironsmith_core::ReplacedEventSpec::Destroy { .. }
+                    | ironsmith_core::ReplacedEventSpec::ZoneChange { .. }
+                    | ironsmith_core::ReplacedEventSpec::Untap { .. }
+            ) {
+                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            }
+            let (replacement_effects, choices) =
+                crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation(
+                    "event replacement cannot announce targets".into(),
+                ));
+            }
+            Ok(StaticAbility {
+                id,
+                label,
+                payload:
+                    crate::static_abilities::StaticAbilityPayload::EventReplacementWithEffects {
+                        event,
+                        replacement_effects,
+                        display,
+                        optional,
                     },
             })
         }
@@ -5928,12 +6003,28 @@ pub(crate) fn resolve_trigger_intervening_if(
     )
 }
 
+pub(crate) fn bind_activation_value_samples(effects: &mut crate::resolution::ResolutionProgram) {
+    fn collect(effect: &Effect, samples: &mut Vec<(Value, Option<i32>)>) {
+        crate::compile_support::visit_direct_nested_effect_values(effect, &mut |value| {
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility)
+                && !samples.iter().any(|(existing, _)| existing == value) {
+                samples.push((value.clone(), None));
+            }
+        });
+        effect.visit_child_effects(&mut |child| collect(child, samples));
+    }
+    let mut samples = Vec::new();
+    for effect in effects.all_effects() { collect(effect, &mut samples); }
+    effects.activation_values = samples;
+ }
+
 fn lower_compiler_activated_ability_core(
     activated: crate::model::CompilerActivatedAbilityCore,
 ) -> Result<crate::ability::ActivatedAbility, CardTextError> {
     let has_announced_x = crate::model::costs::cost_has_announced_x(&activated.mana_cost);
-    let (effects, derived_choices) =
+    let (mut effects, derived_choices) =
         lower_compiler_resolution_program_with(activated.effects, None, has_announced_x)?;
+    bind_activation_value_samples(&mut effects);
     let mut choices = activated.choices;
     for choice in derived_choices {
         if !choices.contains(&choice) {
@@ -6283,6 +6374,27 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
+    // Join forces (an ability word, CR 207.2c): the collective payment
+    // wrapper binds no player itself; its body's own `ForPlayers` loop does
+    // ("Each player draws X cards").
+    if let Some(collect) =
+        effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(
+            &collect.effects,
+            iterated_player_bound,
+            context,
+        );
+    }
+    if let Some(bind) =
+        effect.downcast_ref::<crate::effects::BindXValueEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(
+            &bind.effects,
+            iterated_player_bound,
+            context,
+        );
+    }
     if let Some(for_players) =
         effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
     {
@@ -6389,6 +6501,29 @@ fn validate_effect_for_iterated_player(
             validate_effects_for_iterated_player(payload.effects(), bound, context)?;
         }
         return Ok(());
+    }
+    if let Some(regenerate) = effect.downcast_ref::<crate::effects::RegenerateEffect>() {
+        if !iterated_player_bound {
+            validate_unbound_iterated_player(
+                choose_spec_mentions_iterated_player(&regenerate.target),
+                &regenerate.target,
+                context,
+            )?;
+            if let Some(player) = &regenerate.follow_up_player {
+                validate_unbound_iterated_player(
+                    player.mentions_iterated_player(),
+                    player,
+                    context,
+                )?;
+            }
+        }
+        // A carried follow-up player is bound as the iterated player of the
+        // one-player loop the shield wraps around its follow-ups.
+        return validate_effects_for_iterated_player(
+            &regenerate.follow_up_effects,
+            iterated_player_bound || regenerate.follow_up_player.is_some(),
+            context,
+        );
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
         // Reflexive abilities retain the enclosing trigger's event context.

@@ -101,6 +101,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_enter_as_copy_as_enters_line(input)),
     },
     Reading {
+        id: RuleId::new("cant-cast-this-unless"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_cant_cast_this_unless(input)),
+    },
+    Reading {
+        id: RuleId::new("cant-cast-this-during-first-turns"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_cant_cast_this_during_first_turns(input)),
+    },
+    Reading {
         id: RuleId::new("early-static-marker"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -179,6 +191,21 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_cycling_cost_alternative_line(input)),
+    },
+    Reading {
+        id: RuleId::new("commander-tax-life-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(Ok(
+            super::commander_tax_life::parse_commander_tax_life_line(input.tokens)
+                .map(|ability| vec![ability.into()]),
+        )),
+    },
+    Reading {
+        id: RuleId::new("echo-cost-alternative-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_echo_cost_alternative_line(input)),
     },
     Reading {
         id: RuleId::new("quoted-granted-ability-line"),
@@ -318,10 +345,114 @@ fn read_enter_as_copy_as_enters_line(
     }
     Ok(None)
 }
+/// "You can't cast this spell during your first, second, or third turns of
+/// the game." (Serra Avenger): a cast prohibition that applies only while the
+/// caster is the active player in one of their first three turns.
+/// "You can't cast this spell unless there are seven or more cards in your
+/// graveyard." (Proft): castable only while the condition holds (CR 601.3).
+fn read_cant_cast_this_unless(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = input.tokens;
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(rest) = words
+        .strip_prefix(&["you", "can't", "cast", "this"][..])
+        .or_else(|| words.strip_prefix(&["you", "cant", "cast", "this"][..]))
+    else {
+        return Ok(None);
+    };
+    let skipped = match rest.first() {
+        Some(&("creature" | "spell" | "card" | "planeswalker")) => 5,
+        _ => 4,
+    };
+    // "unless <condition>" requires the condition; "if <condition>" (Rock
+    // Jockey: "You can't cast this if you've played a land this turn")
+    // forbids casting while it holds.
+    let negated = match words.get(skipped) {
+        Some(&"unless") => false,
+        Some(&"if") => true,
+        _ => return Ok(None),
+    };
+    let keyword = if negated { "if" } else { "unless" };
+    let Some(unless_idx) = tokens.iter().position(|token| token.is_word(keyword)) else {
+        return Ok(None);
+    };
+    let Some(condition) = super::static_condition_clause_bound(&tokens[unless_idx + 1..]) else {
+        return Ok(None);
+    };
+    let condition = if negated {
+        crate::ConditionExpr::Not(Box::new(condition))
+    } else {
+        condition
+    };
+    Ok(Some(vec![
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::only_if(condition),
+            crate::lexer::render_token_slice(tokens).trim().to_string(),
+        )
+        .into(),
+    ]))
+}
+fn read_cant_cast_this_during_first_turns(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(input.tokens);
+    let Some(rest) = words
+        .strip_prefix(&["you", "can't", "cast", "this"][..])
+        .or_else(|| words.strip_prefix(&["you", "cant", "cast", "this"][..]))
+    else {
+        return Ok(None);
+    };
+    let rest = match rest.first() {
+        Some(&("creature" | "spell" | "card" | "planeswalker")) => &rest[1..],
+        _ => rest,
+    };
+    if !rest.iter().copied().eq([
+        "during", "your", "first", "second", "or", "third", "turns", "of", "the", "game",
+    ]) {
+        return Ok(None);
+    }
+    Ok(Some(vec![
+        StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::timing(
+                ironsmith_core::ThisSpellCastTiming::NotDuringYourFirstTurns(3),
+            ),
+            "You can't cast this spell during your first, second, or third turns of the game.",
+        )
+        .into(),
+    ]))
+}
+/// "X can't be greater than the greatest toughness among creatures you
+/// control." (Soul Immolation): the announced X is bounded by a live aggregate
+/// read as the spell is cast (CR 601.2b).
+pub(crate) fn read_aggregate_x_maximum(
+    tokens: &[crate::cards::builders::OwnedLexToken],
+) -> Option<StaticAbilityAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let refs = words.to_word_refs();
+    if !matches!(
+        refs.get(..5),
+        Some(["x", "can't" | "cant", "be", "greater", "than"])
+    ) {
+        return None;
+    }
+    let range = words.token_span_for_words(5, refs.len())?;
+    let value = crate::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
+        &tokens[range],
+    )?
+    .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
+    Some(StaticAbility::this_spell_x_maximum(value, display).into())
+}
+
 fn read_early_static_marker(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(ability) = read_aggregate_x_maximum(tokens) {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(marker) = keyword_static_lines::parse_early_static_marker_tokens(tokens) {
         let ability = match marker {
             keyword_static_lines::EarlyStaticMarkerKind::XMaximumPlayerCount => {
@@ -472,6 +603,14 @@ fn read_cycling_cost_alternative_line(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(ability) = parse_cycling_cost_alternative_line(tokens)? {
+        return Ok(Some(vec![ability.into()]));
+    }
+    Ok(None)
+}
+fn read_echo_cost_alternative_line(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) = super::echo_cost_alternative::parse_echo_cost_alternative_line(input.tokens)? {
         return Ok(Some(vec![ability.into()]));
     }
     Ok(None)

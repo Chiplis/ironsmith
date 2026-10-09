@@ -106,6 +106,16 @@ pub enum GrantSource {
         source_id: ObjectId,
         counter_type: CounterType,
     },
+    /// A persistent zone grant whose permission is active only during turns
+    /// in which `player` attacked with at least `minimum` distinct creatures
+    /// matching `filter` ("During any turn you attacked with a Rogue, you may
+    /// cast that card"). The filter is read with `source_id` as its source.
+    EffectDuringTurnsAttackedWith {
+        source_id: ObjectId,
+        player: PlayerId,
+        filter: ObjectFilter,
+        minimum: u32,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -191,6 +201,7 @@ impl GrantSource {
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
+            GrantSource::EffectDuringTurnsAttackedWith { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id }
             | GrantSource::EffectWhileSourceOnBattlefield { source_id } => *source_id,
         }
@@ -288,6 +299,24 @@ impl GrantSource {
                             event.permanent == *source_id && event.counter_type == *counter_type
                         })
                 }),
+            GrantSource::EffectDuringTurnsAttackedWith {
+                source_id,
+                player,
+                filter,
+                minimum,
+            } => {
+                let filter_ctx = crate::filter::FilterContext::new(*player).with_source(*source_id);
+                let attacked = crate::turn_history::resolve_turn_history_count(
+                    game,
+                    &ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+                        player: crate::target::PlayerFilter::You,
+                        filter: filter.clone(),
+                    },
+                    &filter_ctx,
+                    None,
+                );
+                attacked >= (*minimum).max(1) as i32
+            }
         }
     }
 
@@ -332,7 +361,8 @@ impl GrantSource {
                 expires_end_of_turn,
                 ..
             } => turn_number <= *expires_end_of_turn,
-            GrantSource::EffectDuringTurnsCounterPutOnSource { .. } => true,
+            GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
+            | GrantSource::EffectDuringTurnsAttackedWith { .. } => true,
         }
     }
 }
@@ -369,6 +399,10 @@ pub enum GrantLifetime {
         source_id: ObjectId,
         counter_type: CounterType,
     },
+    DuringTurnsAttackedWith {
+        source_id: ObjectId,
+        player: PlayerId,
+    },
 }
 
 impl GrantLifetime {
@@ -381,6 +415,7 @@ impl GrantLifetime {
             GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
             GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantLifetime::DuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
+            GrantLifetime::DuringTurnsAttackedWith { source_id, .. } => *source_id,
         }
     }
 }
@@ -463,6 +498,12 @@ impl GrantSource {
             } => GrantLifetime::DuringTurnsCounterPutOnSource {
                 source_id: *source_id,
                 counter_type: *counter_type,
+            },
+            GrantSource::EffectDuringTurnsAttackedWith {
+                source_id, player, ..
+            } => GrantLifetime::DuringTurnsAttackedWith {
+                source_id: *source_id,
+                player: *player,
             },
         }
     }
@@ -1667,6 +1708,7 @@ impl GrantRegistry {
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
+                GrantSource::EffectDuringTurnsAttackedWith { source_id: sid, .. } |
                 GrantSource::EffectWhileSourceOnBattlefield { source_id: sid } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
@@ -1797,7 +1839,8 @@ impl GrantRegistry {
                 battlefield.contains(source_id)
             }
             GrantSource::EffectUntilSourceExilesAnother { .. }
-            | GrantSource::EffectDuringTurnsCounterPutOnSource { .. } => true,
+            | GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
+            | GrantSource::EffectDuringTurnsAttackedWith { .. } => true,
         });
         self.cleanup_orphaned_shared_usage();
     }
@@ -2385,6 +2428,7 @@ mod tests {
                 Zone::Graveyard,
                 alice,
                 AlternativeCastingMethod::Flashback {
+                    x_minimum: 0,
                     total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
                 },
                 source,
@@ -2451,6 +2495,7 @@ mod tests {
             Zone::Graveyard,
             player,
             AlternativeCastingMethod::Flashback {
+                x_minimum: 0,
                 total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
             },
             GrantSource::Effect {

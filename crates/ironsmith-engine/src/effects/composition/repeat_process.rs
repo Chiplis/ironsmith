@@ -42,6 +42,11 @@ impl EffectExecutor for RepeatProcessEffect {
                 let sequence = SequenceEffect::new(self.effects.clone());
                 let mut children = Vec::new();
                 let mut continuation_count = 0i64;
+                // A fresh process has chosen nothing yet.
+                for history in &self.choice_history {
+                    ctx.clear_object_tag(history.previously_chosen.as_str());
+                    ctx.clear_object_tag(history.chosen.as_str());
+                }
                 let (status, value) = loop {
                     // A failed result may itself be the authored continuation gate
                     // (for example, paying an "unless" cost records Declined and then
@@ -101,6 +106,14 @@ impl EffectExecutor for RepeatProcessEffect {
                         )?;
                         for outputs in &mut children {
                             outputs.synchronize_observations();
+                        }
+                        // The round just completed becomes history; the next
+                        // round's choice starts from nothing and may exclude
+                        // every earlier round's choice.
+                        for history in &self.choice_history {
+                            if let Some(chosen) = ctx.clear_object_tag(history.chosen.as_str()) {
+                                ctx.tag_objects_unique(history.previously_chosen.clone(), chosen);
+                            }
                         }
                         continue;
                     }

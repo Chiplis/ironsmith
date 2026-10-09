@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Crabomination",
+    "oracle_id": "5c26c30b-bc4a-4d20-8406-ef9022256e0d",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Creature — Crab Demon",
+    "oracle_text": "Emerge from artifact {5}{B}{B}\nWhen this creature enters, target opponent exiles the top card of their library, a card at random from their graveyard, and a card at random from their hand. You may cast a spell from among cards exiled this way without paying its mana cost.",
+    "power": "5",
+    "toughness": "5",
+    "text": "Mana cost: {4}{B}{B}\nType: Creature — Crab Demon\nPower/Toughness: 5/5\nEmerge from artifact {5}{B}{B}\nWhen this creature enters, target opponent exiles the top card of their library, a card at random from their graveyard, and a card at random from their hand. You may cast a spell from among cards exiled this way without paying its mana cost."
+  }
+]

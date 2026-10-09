@@ -2520,7 +2520,7 @@ pub(super) fn execute_pending_mana_ability_with_outputs(
                 return Ok(root_outputs);
             }
             drop(mana_ctx);
-            queue_triggers_for_events(game, trigger_queue, outcome.outcome.events.clone())?;
+            super::targeting::queue_triggers_for_events_including_delayed(game, trigger_queue, outcome.outcome.events.clone())?;
             root_outputs.retain_published_children([outcome]);
 
             // Execute additional effects (for complex mana abilities)
@@ -3813,6 +3813,7 @@ fn propose_spell_cast_with_origin(
                     ),
                     CastingMethod::GrantedFlashback => Some(
                         crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                            x_minimum: 0,
                             total_cost: crate::cost::TotalCost::mana(
                                 obj.mana_cost_owned().unwrap_or_default(),
                             ),
@@ -5413,6 +5414,24 @@ fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
                 );
             }
 
+            if state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| pending.stage == CastStage::ChoosingModeChooser)
+            {
+                let Some(choice) = result.first().copied() else {
+                    return Err(GameLoopError::InvalidState(
+                        "mode chooser selection requires one player".to_string(),
+                    ));
+                };
+                return apply_mode_chooser_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    choice,
+                    decision_maker,
+                );
+            }
             if state
                 .pending_cast
                 .as_ref()

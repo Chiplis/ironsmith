@@ -75,6 +75,12 @@ struct Reading {
 }
 
 pub(super) const REGISTRY: RuleId = RuleId::new("predicate-registry");
+/// Readings that only match when they consume the whole predicate with all
+/// of its qualifiers; see `read`.
+const COMPLETE_SHAPE_READINGS: &[&str] = &[
+    "each-quality-control-predicate",
+    "pronoun-attached-to-predicate",
+];
 const FALLBACK: RuleId = RuleId::new("fallback-predicate");
 
 /// The readings, in the order they were ranked.
@@ -123,6 +129,18 @@ pub(super) fn read(input: &Predicate<'_>) -> ParseOutcome<RuleMatch<PredicateAst
             },
             span,
         );
+    }
+    // A complete-shape reading that consumes every qualifier of its input
+    // owns that input: any other reading of the same words necessarily drops
+    // one of them ("a land of each basic land type" read as "a land with a
+    // basic land type"; "it's attached to a creature" read as "it's a
+    // creature").
+    if let Some(index) = candidates
+        .iter()
+        .position(|candidate| COMPLETE_SHAPE_READINGS.contains(&candidate.metadata.id.as_str()))
+    {
+        let owner = candidates.swap_remove(index);
+        candidates = vec![owner];
     }
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<PredicateAst>> = Vec::new();

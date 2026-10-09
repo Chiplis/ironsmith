@@ -1147,10 +1147,15 @@ fn pre_rule_tap_damage_this_way_followup(
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
-        direct_effects: Some(vec![EffectAst::subject_verb_tap(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::Damaged0.bind(),
-            None,
-        ))]),
+        // "Tap each creature dealt damage this way" (Aurelia's Fury): the
+        // remembered damage recipients can include players, planeswalkers and
+        // battles; only the creatures among them are tapped.
+        direct_effects: Some(vec![EffectAst::subject_verb_tap_all(
+            ObjectFilter::creature().match_tagged(
+                crate::tag::CompilerReferenceTag::Damaged0.bind(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            ),
+        )]),
         consumed_sentences: 1,
     })))
 }
@@ -2182,6 +2187,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         pre_rule_destroy_those_creatures_followup
     ),
     pre_followup_rule!("otherwise", &["otherwise"], pre_rule_otherwise_followup),
+    pre_followup_rule!("x-maximum-followup", &["x"], pre_rule_x_maximum_followup),
 ];
 
 const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
@@ -2403,6 +2409,7 @@ mod subject_verb_followups_core_programs;
 use subject_verb_followups_core_programs::{
     is_destroy_those_creatures_sentence, post_rule_numeric_result_branch_label,
     pre_rule_destroy_those_creatures_followup, pre_rule_otherwise_followup,
+    pre_rule_x_maximum_followup,
 };
 #[path = "subject_verb_followups/subject_verb_followups_choice.rs"]
 mod subject_verb_followups_choice_programs;

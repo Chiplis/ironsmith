@@ -85,6 +85,10 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::CollectManaPayments { effects: $effects }
+            | EffectAst::BindX {
+                effects: $effects,
+                ..
+            }
             | EffectAst::Sequence { effects: $effects }
             | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
@@ -264,14 +268,21 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DocumentProgram(_) => {}
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
+        EffectAst::GreatestManaValueTieBreakExile { .. } => {}
+        EffectAst::SetDayNight(_) => {}
+        EffectAst::ChoosePlayerOption(_) => {}
+        EffectAst::ControlVotesThisTurn => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType => {}
+        EffectAst::ChooseFriendsOrFoes { .. } => {}
+        EffectAst::GrantLoyaltyActivationAllowance { .. } => {}
         EffectAst::PayToEndThisEffect { .. } => {}
         EffectAst::LookAtTopCardsAsViewer { .. } => {}
         EffectAst::PlayerLooksAtTopCardsOfLibrary { .. } => {}
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::CollectManaPayments { .. } => {}
+        EffectAst::BindX { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}
@@ -319,6 +330,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::May { .. }) => {}

@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Structural Assault",
+    "oracle_id": "23cf22fe-483f-4841-882e-e1513bb1d495",
+    "text": "Mana cost: {3}{R}{R}\nType: Sorcery\nDestroy all artifacts, then Structural Assault deals damage to each creature equal to the number of artifacts that were put into graveyards from the battlefield this turn."
+  }
+]

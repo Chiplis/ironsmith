@@ -126,6 +126,8 @@ struct ChoiceWordSpan {
 enum ContainerReferenceSuffix {
     FromIt,
     FromThem,
+    /// "from among them": the looked-at or revealed group.
+    FromAmongThem,
     InIt,
     InThem,
     FromThereIn,
@@ -178,7 +180,7 @@ pub fn parse_choice_object_clause_tokens(
     references.excludes_chosen_this_way = strip_chosen_this_way_exclusion_suffix(&mut words);
     while let Some(suffix) = parse_container_reference_suffix(&words) {
         let removed = match suffix {
-            ContainerReferenceSuffix::FromThereIn => 3,
+            ContainerReferenceSuffix::FromThereIn | ContainerReferenceSuffix::FromAmongThem => 3,
             ContainerReferenceSuffix::FromIt
             | ContainerReferenceSuffix::FromThem
             | ContainerReferenceSuffix::InIt
@@ -210,6 +212,14 @@ pub fn parse_choice_object_clause_tokens(
         count = count.at_random();
         words.drain(span.first..span.end);
     }
+    // "a different nonland card": different from every card already chosen
+    // by this choice (CR 608.2c), the same running exclusion as "that
+    // hasn't been chosen".
+    if phrase_is_prefix(&string_word_refs(&words), &["different"]) && words.len() > 1 {
+        words.drain(..1);
+        references.excludes_chosen_this_way = true;
+    }
+    merge_from_among_pool(&mut words);
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
         references.source_aura_can_enchant = true;
@@ -482,6 +492,12 @@ fn strip_chosen_this_way_exclusion_suffix(words: &mut Vec<String>) -> bool {
         &["that", "wasn't", "chosen", "this", "way"],
         &["that", "was", "not", "chosen", "this", "way"],
         &["not", "chosen", "this", "way"],
+        // "a creature card in your graveyard that hasn't been chosen"
+        // (Rejoin the Fight): the same running exclusion of the cards
+        // chosen so far by this choice.
+        &["that", "hasnt", "been", "chosen"],
+        &["that", "hasn't", "been", "chosen"],
+        &["that", "has", "not", "been", "chosen"],
     ];
     let Some(suffix) = SUFFIXES.iter().find(|suffix| {
         words
@@ -501,6 +517,11 @@ fn parse_container_reference_suffix(words: &[String]) -> Option<ContainerReferen
     {
         return Some(ContainerReferenceSuffix::FromThereIn);
     }
+    if let Some(tail) = refs.get(refs.len().checked_sub(3)?..)
+        && phrase_is_whole(tail, &["from", "among", "them"])
+    {
+        return Some(ContainerReferenceSuffix::FromAmongThem);
+    }
     let tail = refs.get(refs.len().checked_sub(2)?..)?;
     for (phrase, suffix) in [
         (&["from", "it"][..], ContainerReferenceSuffix::FromIt),
@@ -513,6 +534,44 @@ fn parse_container_reference_suffix(words: &[String]) -> Option<ContainerReferen
         }
     }
     None
+}
+
+/// "up to one permanent with mana value 3 or greater from among permanents
+/// your opponents control": the pool restates the chosen noun with a player
+/// relation, which then restricts the choice. The relation is moved next to
+/// the noun ("permanent your opponents control with mana value 3 or
+/// greater") so the ordinary object-filter grammar reads one filter.
+fn merge_from_among_pool(words: &mut Vec<String>) {
+    let refs = string_word_refs(words);
+    let Some(from) = refs
+        .windows(2)
+        .position(|pair| pair[0] == "from" && pair[1] == "among")
+    else {
+        return;
+    };
+    let mut pool_start = from + 2;
+    if refs.get(pool_start) == Some(&"the") {
+        pool_start += 1;
+    }
+    if !matches!(refs.get(pool_start), Some(&("permanents" | "cards" | "creatures"))) {
+        return;
+    }
+    let relation = refs[pool_start + 1..]
+        .iter()
+        .map(|word| word.to_string())
+        .collect::<Vec<_>>();
+    if relation.is_empty() {
+        return;
+    }
+    let head = refs[..from].iter().map(|word| word.to_string()).collect::<Vec<_>>();
+    let insert_at = head
+        .iter()
+        .position(|word| word == "with")
+        .unwrap_or(head.len());
+    let mut merged = head[..insert_at].to_vec();
+    merged.extend(relation);
+    merged.extend(head[insert_at..].iter().cloned());
+    *words = merged;
 }
 
 fn parse_leading_article(words: &[&str]) -> bool {
@@ -675,7 +734,50 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
         player: Box::new(PlayerFilter::You),
         filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
         fewer: false,
+        as_you_activate: false,
     })
+}
+
+fn controlled_count_card_type_lexed(input: &mut LexStream<'_>) -> WResult<CardType> {
+    alt((
+        primitives::kw("lands").value(CardType::Land),
+        primitives::kw("creatures").value(CardType::Creature),
+        primitives::kw("artifacts").value(CardType::Artifact),
+        primitives::kw("enchantments").value(CardType::Enchantment),
+        primitives::kw("planeswalkers").value(CardType::Planeswalker),
+        primitives::kw("battles").value(CardType::Battle),
+    ))
+    .parse_next(input)
+}
+
+fn target_opponent_with_more_controlled_as_you_activate_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<PlayerFilter> {
+    primitives::phrase(&["target", "opponent", "who", "controls", "more"]).parse_next(input)?;
+    let card_type = controlled_count_card_type_lexed.parse_next(input)?;
+    primitives::phrase(&["than", "you"]).parse_next(input)?;
+    opt(primitives::kw("do")).parse_next(input)?;
+    primitives::phrase(&["as", "you", "activate", "this", "ability"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PlayerFilter::Target(Box::new(
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: Box::new(PlayerFilter::You),
+            filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
+            fewer: false,
+            as_you_activate: true,
+        },
+    )))
+}
+
+/// "target opponent who controls more creatures than you do as you activate
+/// this ability" (Keeper of the Beasts): a target player whose comparison is
+/// checked only when the target is chosen (CR 601.2c via 602.2b).
+pub fn parse_target_opponent_with_more_controlled_as_you_activate_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
+    target_opponent_with_more_controlled_as_you_activate_lexed
+        .parse(LexStream::new(tokens))
+        .ok()
 }
 
 fn parse_choice_player_filter_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {

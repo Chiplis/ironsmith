@@ -160,6 +160,9 @@ pub(crate) fn interpret_trigger_model(
             surface,
             stun_counter_reminder_surface,
         ),
+        TriggerKind::ZoneGated { trigger, zones } => crate::triggers::Trigger::new(
+            crate::triggers::ZoneGatedTrigger::new(interpret_trigger_model(*trigger)?, zones),
+        ),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
         TriggerKind::ThisAttacksWhileYouControl { filter } => {
             crate::triggers::Trigger::this_attacks_while_you_control(filter)
@@ -519,8 +522,13 @@ pub(crate) fn interpret_trigger_model(
             another,
             source_filter,
             caused_by_source_entering,
+            caused_by_source_attacking,
         } => {
-            if source_filter.is_some() || caused_by_source_entering {
+            if caused_by_source_attacking
+                && let Some(source_filter) = source_filter.clone()
+            {
+                crate::triggers::Trigger::ability_triggered_by_source_attacking(source_filter)
+            } else if source_filter.is_some() || caused_by_source_entering {
                 crate::triggers::Trigger::ability_triggered_qualified(
                     another,
                     source_filter,
@@ -1126,6 +1134,16 @@ impl super::Trigger {
                 Self::from_delayed_trigger_spec(*left),
                 Self::from_delayed_trigger_spec(*right),
             ),
+            ironsmith_core::DelayedTriggerSpec::DealsDamage { source } => {
+                Self::deals_damage(source)
+            }
+            ironsmith_core::DelayedTriggerSpec::DealsDamageTo { source, target } => {
+                Self::deals_damage_to(source, target)
+            }
+            ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
+            ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay { source_filter } => {
+                Self::new(crate::triggers::DamagePreventedThisWayTrigger { source_filter })
+            }
         }
     }
 

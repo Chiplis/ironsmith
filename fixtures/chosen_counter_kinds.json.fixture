@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Aven Courier",
+  "oracle_id": "a01746f3-8e6f-47ce-a95b-e44556d1f73e",
+  "oracle_text": "Flying\nWhenever this creature attacks, choose a counter on a permanent you control. Put a counter of that kind on target permanent you control if it doesn't have a counter of that kind on it.",
+  "text": "Mana cost: {1}{U}\nType: Creature — Bird Advisor\nPower/Toughness: 1/1\nFlying\nWhenever this creature attacks, choose a counter on a permanent you control. Put a counter of that kind on target permanent you control if it doesn't have a counter of that kind on it."
+ },
+ {
+  "name": "Contractual Safeguard",
+  "oracle_id": "8ac43884-9f03-4945-98ea-c744d0403f32",
+  "oracle_text": "Addendum — If you cast this spell during your main phase, put a shield counter on a creature you control. (If it would be dealt damage or destroyed, remove a shield counter from it instead.)\nChoose a kind of counter on a creature you control. Put a counter of that kind on each other creature you control.",
+  "text": "Mana cost: {2}{W}\nType: Instant\nAddendum — If you cast this spell during your main phase, put a shield counter on a creature you control. (If it would be dealt damage or destroyed, remove a shield counter from it instead.)\nChoose a kind of counter on a creature you control. Put a counter of that kind on each other creature you control."
+ }
+]

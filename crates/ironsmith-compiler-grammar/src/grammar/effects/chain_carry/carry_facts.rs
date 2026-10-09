@@ -12,6 +12,11 @@ pub enum RestActionShape {
     Destroy,
     Exile,
     Sacrifice,
+    /// "chooses a card in their hand and discards the rest" (Monomania).
+    Discard,
+    /// "chooses one untapped creature they control, then taps the rest"
+    /// (Regna's Sanction).
+    Tap,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +52,9 @@ pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionSh
                 semantic_kw("exile").value(RestActionShape::Exile),
                 alt((semantic_kw("sacrifice"), semantic_kw("sacrifices")))
                     .value(RestActionShape::Sacrifice),
+                alt((semantic_kw("discard"), semantic_kw("discards")))
+                    .value(RestActionShape::Discard),
+                alt((semantic_kw("tap"), semantic_kw("taps"))).value(RestActionShape::Tap),
             )),
             semantic_kw("rest"),
             semantic_finish,
@@ -59,9 +67,18 @@ pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionSh
 pub fn parse_carry_duration_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CarryDurationPrefix<'_>> {
-    let (duration, rest) = if let Some(parsed) =
-        leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)
+    let (duration, rest) = if let Some((counter_type, rest)) =
+        parse_counter_linked_duration_prefix_tokens(tokens)
     {
+        (
+            Until::ForAsLongAs(
+                ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                    counter_type,
+                ),
+            ),
+            rest,
+        )
+    } else if let Some(parsed) = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens) {
         let duration = match parsed.duration {
             leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
             leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
@@ -89,6 +106,48 @@ pub fn parse_carry_duration_prefix_tokens(
         return None;
     }
     Some(CarryDurationPrefix { duration, rest })
+}
+
+/// "For as long as that creature has a shadow counter on it, it's a Wraith
+/// in addition to its other types." (Minas Morgul, Ultima): the leading form
+/// of the counter-linked duration p05 reads as a suffix — the carried effects
+/// last while the object they affect keeps a counter of that kind
+/// (CR 611.2b). Returns the counter kind and the clauses after the comma.
+fn parse_counter_linked_duration_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::object::CounterType, &[OwnedLexToken])> {
+    let ((), after_subject) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["for", "as", "long", "as"]),
+            alt((
+                primitives::kw("it").void(),
+                (
+                    primitives::kw("that"),
+                    alt((
+                        primitives::kw("creature"),
+                        primitives::kw("land"),
+                        primitives::kw("permanent"),
+                        primitives::kw("artifact"),
+                    )),
+                )
+                    .void(),
+            )),
+            primitives::kw("has"),
+            opt(alt((primitives::kw("a"), primitives::kw("an")))),
+        )
+            .void(),
+    )?;
+    let (counter_index, (), rest) = primitives::find_prefix(after_subject, || {
+        (primitives::kw("counter"), primitives::phrase(&["on", "it"])).void()
+    })?;
+    let counter_tokens = after_subject.get(..counter_index)?;
+    if counter_tokens.is_empty() {
+        return None;
+    }
+    let counter_type = crate::grammar::filters::parse_counter_type_from_tokens(counter_tokens)?;
+    let rest = trim_lexed_commas(rest);
+    (!rest.is_empty()).then_some((counter_type, rest))
 }
 
 pub fn parse_carryable_subject_tokens(tokens: &[OwnedLexToken]) -> Option<CarryableSubjectShape> {

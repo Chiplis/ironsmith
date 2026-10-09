@@ -73,6 +73,18 @@ pub enum ManaSpendPermissionShape<'a> {
         activation_filter_tokens: Option<&'a [OwnedLexToken]>,
         source_activation_only: bool,
     },
+    /// "You may spend mana as though it were mana of any color to cast
+    /// planeswalker spells." (Oath of Nissa).
+    AnyColorToCast {
+        player: ManaSpendPlayerKind,
+        filter_tokens: &'a [OwnedLexToken],
+    },
+    /// "You may spend blue mana as though it were mana of any color to pay
+    /// the activation costs of this creature's abilities." (Quicksilver
+    /// Elemental): only mana of that color converts, only for the source.
+    SymbolAsAnyColorForSourceActivation {
+        symbol: ManaSymbol,
+    },
 }
 
 pub fn parse_mana_value_grant_tokens(tokens: &[OwnedLexToken]) -> Option<ManaValueGrantSpec<'_>> {
@@ -133,6 +145,7 @@ pub fn parse_mana_spend_permission_tokens(
         tokens,
         alt((
             parse_symbol_mana_spend_lexed,
+            parse_symbol_source_activation_mana_spend_lexed,
             parse_any_type_cast_mana_spend_lexed,
             parse_any_color_mana_spend_lexed,
         )),
@@ -358,6 +371,35 @@ fn parse_symbol_mana_spend_lexed<'a>(
     Ok(ManaSpendPermissionShape::SymbolAsAnyColorOtherAsColorless { symbol })
 }
 
+fn parse_symbol_source_activation_mana_spend_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ManaSpendPermissionShape<'a>> {
+    primitives::phrase(&["you", "may", "spend"]).parse_next(input)?;
+    let symbol = alt((
+        primitives::kw("white").value(ManaSymbol::White),
+        primitives::kw("blue").value(ManaSymbol::Blue),
+        primitives::kw("black").value(ManaSymbol::Black),
+        primitives::kw("red").value(ManaSymbol::Red),
+        primitives::kw("green").value(ManaSymbol::Green),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&[
+        "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "to", "pay",
+    ])
+    .parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::phrase(&["activation", "costs", "of", "this"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["creature's", "abilities"]),
+        primitives::phrase(&["creatures", "abilities"]),
+        primitives::phrase(&["permanent's", "abilities"]),
+        primitives::phrase(&["permanents", "abilities"]),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ManaSpendPermissionShape::SymbolAsAnyColorForSourceActivation { symbol })
+}
+
 fn parse_any_type_cast_mana_spend_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ManaSpendPermissionShape<'a>> {
@@ -412,6 +454,14 @@ fn parse_any_color_mana_spend_lexed<'a>(
             player,
             activation_filter_tokens: None,
             source_activation_only: true,
+        });
+    }
+    if peek(primitives::phrase(&["to", "cast"])).parse_next(input).is_ok() {
+        primitives::phrase(&["to", "cast"]).parse_next(input)?;
+        let filter_tokens = take_nonempty_sentence_body(input)?;
+        return Ok(ManaSpendPermissionShape::AnyColorToCast {
+            player,
+            filter_tokens: trim_lexed_commas(filter_tokens),
         });
     }
     primitives::phrase(&["to", "activate", "abilities", "of"]).parse_next(input)?;

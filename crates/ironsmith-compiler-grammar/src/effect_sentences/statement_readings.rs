@@ -60,6 +60,30 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("transform-any-number"),
+        head: HeadDiscriminator::Words(&["transform", "then"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_transform_any_number(input)),
+    },
+    Reading {
+        id: RuleId::new("counted-next-untap-steps"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_counted_next_untap_steps(input)),
+    },
+    Reading {
+        id: RuleId::new("other-chosen-player"),
+        head: HeadDiscriminator::Words(&["the"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_other_chosen_player(input)),
+    },
+    Reading {
+        id: RuleId::new("control-votes-this-turn"),
+        head: HeadDiscriminator::Words(&["you"]),
+        admits: |_| true,
+        read: |input| input.outcome(Ok(read_control_votes_this_turn(input))),
+    },
+    Reading {
         id: RuleId::new("trailing-local-action-replacement"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1266,4 +1290,150 @@ fn read_destroy_single_segment(
         return Ok(Some(vec![effect]));
     }
     Ok(None)
+}
+
+/// "You choose how each player votes this turn." (Illusion of Choice).
+fn read_control_votes_this_turn(input: &Statement<'_>) -> Option<Vec<EffectAst>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let (_, rest) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&[
+            "you", "choose", "how", "each", "player", "votes", "this", "turn",
+        ]),
+    )?;
+    rest.is_empty()
+        .then(|| vec![EffectAst::ControlVotesThisTurn])
+}
+
+/// "the other chosen player also loses that much life" (Sower of Discord):
+/// of the players this source chose, the one other than the player the
+/// triggering damage was dealt to.
+fn read_other_chosen_player(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["the", "other", "chosen", "player"]),
+    ) else {
+        return Ok(None);
+    };
+    let body = primitives::parse_prefix(rest, primitives::kw("also"))
+        .map(|(_, body)| body)
+        .unwrap_or(rest);
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let mut subject = vec![
+        OwnedLexToken::word("that", crate::cards::builders::TextSpan::synthetic()),
+        OwnedLexToken::word("player", crate::cards::builders::TextSpan::synthetic()),
+    ];
+    subject.extend_from_slice(body);
+    let effects = super::parse_effect_chain_lexed(&subject)?;
+    Ok(Some(vec![EffectAst::ForEach(
+        crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
+            filter: crate::target::PlayerFilter::excluding(
+                crate::target::PlayerFilter::TaggedPlayer(
+                    ironsmith_core::tag::SOURCE_CHOSEN_PLAYERS_TAG.into(),
+                ),
+                crate::target::PlayerFilter::DamagedPlayer,
+            ),
+            effects,
+        },
+    )]))
+}
+
+/// "It doesn't untap during its controller's next two untap steps."
+/// (Telekinesis): the ordinary next-untap-step restriction, covering that
+/// many of the controller's untap steps.
+fn read_counted_next_untap_steps(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(next) = words.iter().position(|word| *word == "next") else {
+        return Ok(None);
+    };
+    let (Some(count_word), Some(untap), Some(steps)) =
+        (words.get(next + 1), words.get(next + 2), words.get(next + 3))
+    else {
+        return Ok(None);
+    };
+    if *untap != "untap" || *steps != "steps" || next + 4 != words.len() {
+        return Ok(None);
+    }
+    let Some(count) = crate::util::parse_number_word_u32(count_word).filter(|count| *count >= 2)
+    else {
+        return Ok(None);
+    };
+    let Some(count_token) = crate::lexer::TokenWordView::new(tokens)
+        .map_word_or_end_to_token_boundary(next + 1)
+    else {
+        return Ok(None);
+    };
+    // Read the single-step sentence, then widen its duration.
+    let mut single = tokens[..count_token].to_vec();
+    single.push(OwnedLexToken::word("untap", crate::cards::builders::TextSpan::synthetic()));
+    single.push(OwnedLexToken::word("step", crate::cards::builders::TextSpan::synthetic()));
+    let mut effects = super::parse_effect_sentence_lexed(&single)?;
+    let mut widened = 0;
+    for effect in &mut effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let crate::cards::builders::SubjectVerbActionAst::Cant {
+                restriction: crate::effect::Restriction::Untap(_),
+                duration: crate::effect::Until::ControllersNextUntapStep,
+                duration_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *duration_surface = crate::effect::RestrictionDurationSurface::NextUntapSteps(count);
+            widened += 1;
+        }
+    }
+    Ok((widened == 1).then_some(effects))
+}
+
+/// "Then transform any number of Human Werewolves you control." (Tovolar,
+/// Dire Overlord): choose any number of matching permanents, then transform
+/// each chosen one (CR 701.27).
+fn read_transform_any_number(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let tokens = primitives::parse_prefix(tokens, primitives::kw("then"))
+        .map(|(_, rest)| crate::lexer::trim_lexed_commas(rest))
+        .unwrap_or(tokens);
+    let Some((_, filter_tokens)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["transform", "any", "number", "of"]),
+    ) else {
+        return Ok(None);
+    };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = crate::object_filters::parse_object_filter_lexed(filter_tokens, false)?;
+    filter.zone.get_or_insert(crate::zone::Zone::Battlefield);
+    let tag = crate::util::helper_tag_for_tokens(tokens, "transform_chosen");
+    Ok(Some(vec![
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: crate::effect::ChoiceCount::any_number(),
+            count_value: None,
+            player: crate::cards::builders::PlayerAst::You,
+            tag: tag.clone(),
+        }),
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+            tag,
+            effects: vec![EffectAst::subject_verb_transform(
+                crate::cards::builders::TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                ),
+            )],
+        }),
+    ]))
 }

@@ -79,20 +79,38 @@ pub enum KeywordMechanicShape<'a> {
         subtype: Subtype,
         count: u32,
     },
+    /// `amount: None` is "blight X": the announced X (CR 601.2b).
     Blight {
-        amount: u32,
+        amount: Option<u32>,
     },
     ManifestDread {
         repeat: KeywordRepeatShape<'a>,
         source_exiled_owner: bool,
+        /// "Its controller manifests dread." (Unwanted Remake): the
+        /// controller of the referenced object performs the action.
+        its_controller: bool,
     },
     ManifestTop {
         player: ManifestPlayerShape,
+        /// CR 701.40c: multiple cards are manifested one at a time.
+        count: u32,
+    },
+    /// "manifest the top two cards of your library" / "manifest a number of
+    /// cards from the top of your library equal to <amount>": the amount
+    /// tokens (with their "equal to" lead when `equal_to`).
+    ManifestTopCount {
+        count_tokens: &'a [OwnedLexToken],
+        equal_to: bool,
     },
     CloakTop {
         player: ManifestPlayerShape,
     },
     ManifestFromHand,
+    OpenAttractions {
+        count: u32,
+    },
+    /// "Cloak a card from your hand." (CR 701.58a)
+    CloakFromHand,
     Populate {
         repeat: KeywordRepeatShape<'a>,
     },
@@ -379,13 +397,23 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
 }
 
 fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    alt((
-        primitives::phrase(&["open", "an", "attraction"]),
-        primitives::phrase(&["opens", "an", "attraction"]),
+    alt((primitives::kw("open"), primitives::kw("opens"))).parse_next(input)?;
+    // "Open two Attractions": each Attraction is opened in turn, which puts
+    // the top card of the Attraction deck onto the battlefield each time.
+    let count = alt((
+        primitives::phrase(&["an", "attraction"]).value(1u32),
+        (
+            leaf::parse_leaf_number_prefix_lexed.verify(|count: &u32| *count > 1),
+            primitives::kw("attractions"),
+        )
+            .map(|(count, _)| count),
     ))
     .parse_next(input)?;
     let trailing = tokens_before(input, 0, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
+    if count > 1 {
+        return Ok(KeywordMechanicShape::OpenAttractions { count });
+    }
     let reminder = crate::word_primitives::parse_sequence_complete(
         &crate::lexer::parser_token_word_refs(trailing),
         &[
@@ -429,7 +457,11 @@ fn parse_behold<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'
 
 fn parse_blight<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     primitives::kw("blight").parse_next(input)?;
-    let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let amount = alt((
+        primitives::kw("x").value(None),
+        leaf::parse_leaf_number_prefix_lexed.map(Some),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::Blight { amount })
 }
@@ -467,22 +499,72 @@ fn parse_manifest_dread<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechani
     ))
     .parse_next(input)?
     .is_some();
-    alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    let its_controller = !source_exiled_owner
+        && opt(primitives::phrase(&["its", "controller"]))
+            .parse_next(input)?
+            .is_some();
+    if its_controller {
+        primitives::kw("manifests").parse_next(input)?;
+    } else {
+        alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    }
     primitives::kw("dread").parse_next(input)?;
     let repeat = repeat_tail.parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestDread {
         repeat,
         source_exiled_owner,
+        its_controller,
     })
 }
 
 fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    primitives::phrase(&["manifest", "the", "top", "card", "of", "your", "library"])
-        .parse_next(input)?;
+    primitives::phrase(&["manifest", "the", "top"]).parse_next(input)?;
+    let count = alt((
+        primitives::kw("card").value(1u32),
+        (
+            leaf::parse_leaf_number_prefix_lexed.verify(|count: &u32| *count > 1),
+            primitives::kw("cards"),
+        )
+            .map(|(count, _)| count),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["of", "your", "library"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
         player: ManifestPlayerShape::You,
+        count,
     })
+}
+
+fn parse_manifest_top_count_you<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::kw("manifest").parse_next(input)?;
+    alt((
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&["the", "top"]).parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::kw("cards").void())?;
+            primitives::phrase(&["cards", "of", "your", "library"]).parse_next(input)?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: false,
+            })
+        },
+        |input: &mut LexStream<'a>| {
+            primitives::phrase(&[
+                "a", "number", "of", "cards", "from", "the", "top", "of", "your", "library",
+            ])
+            .parse_next(input)?;
+            let count_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(KeywordMechanicShape::ManifestTopCount {
+                count_tokens,
+                equal_to: true,
+            })
+        },
+    ))
+    .parse_next(input)
 }
 
 fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
@@ -492,6 +574,12 @@ fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanic
     Ok(KeywordMechanicShape::CloakTop {
         player: ManifestPlayerShape::You,
     })
+}
+
+fn parse_cloak_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["cloak", "a", "card", "from", "your", "hand"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CloakFromHand)
 }
 
 fn parse_manifest_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
@@ -537,6 +625,7 @@ fn parse_manifest_top_that_player<'a>(
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
         player: ManifestPlayerShape::ThatPlayerOrTargetController,
+        count: 1,
     })
 }
 

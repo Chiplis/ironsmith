@@ -100,7 +100,7 @@ pub use keyword_action_costs::{
 };
 pub use keyword_activated_lines::{
     parse_channel_line_lexed, parse_craft_line_lexed, parse_cycling_line, parse_cycling_line_lexed,
-    parse_equip_line_lexed, parse_reconfigure_line_lexed,
+    parse_equip_line_lexed, parse_fortify_line_lexed, parse_reconfigure_line_lexed,
 };
 use trigger_clause_core::*;
 pub use trigger_clause_core::{

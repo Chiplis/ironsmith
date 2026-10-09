@@ -27,6 +27,11 @@ pub struct CopyModifierSpec {
     /// "except it has haste and loses soulbond": the copy is created without
     /// the soulbond pairing ability.
     pub loses_soulbond: bool,
+    /// CR 707.9b: "except its name is X" / "... named X". Lowercase parser
+    /// words; the caller recovers the authored casing from its tokens.
+    pub name_words: Option<Vec<String>>,
+    /// CR 707.9b: "it's legendary" / "a legendary <subtype>" adds the supertype.
+    pub added_supertypes: Vec<Supertype>,
 }
 
 fn last_class_location(words: &[&str], class: CreationWordClass) -> Option<usize> {

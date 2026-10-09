@@ -101,3 +101,82 @@ pub(super) fn post_rule_numeric_result_branch_label(
     // consumed into an earlier effect. Let ordinary dispatch append it.
     Ok(Some(PostParseFollowupResult::Annotated))
 }
+
+/// "You may pay {X}. If you do, draw X cards. X can't be greater than the
+/// amount of life you gained this turn." (Shanna, Purifying Blade): the
+/// trailing sentence bounds the X the paying player announces for the
+/// preceding `{X}` payment (CR 107.3a: the player chooses X). It is the
+/// typed inclusive maximum of that payment, not a separate instruction.
+pub(super) fn pre_rule_x_maximum_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence_tokens);
+    let [x, negation, be, greater, than, value_tokens @ ..] = tokens else {
+        return Ok(None);
+    };
+    if !x.is_word("x")
+        || !(negation.is_word("can't") || negation.is_word("cant") || negation.is_word("cannot"))
+        || !be.is_word("be")
+        || !greater.is_word("greater")
+        || !than.is_word("than")
+        || value_tokens.is_empty()
+    {
+        return Ok(None);
+    }
+    let Some((maximum, used)) = crate::util::parse_value(value_tokens) else {
+        return Ok(None);
+    };
+    if used != value_tokens.len() {
+        return Ok(None);
+    }
+    let Some(slot) = last_unbounded_x_payment_maximum_mut(state.effects) else {
+        return Ok(None);
+    };
+    *slot = Some(maximum);
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
+}
+
+fn is_unbounded_x_payment(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
+                cost,
+                x_value: None,
+                x_maximum: None,
+                independent_x_choice: false,
+
+            }),
+            ..
+        }) if cost.has_x()
+    )
+}
+
+fn last_unbounded_x_payment_maximum_mut(
+    effects: &mut [EffectAst],
+) -> Option<&mut Option<crate::effect::Value>> {
+    for effect in effects.iter_mut().rev() {
+        if is_unbounded_x_payment(effect) {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Mana(ManaActionAst::PayMana { x_maximum, .. }),
+                ..
+            }) = effect
+            else {
+                return None;
+            };
+            return Some(x_maximum);
+        }
+        if let Some(children) = token_copy_followup_container_effects_mut(effect)
+            && let Some(found) = last_unbounded_x_payment_maximum_mut(children)
+        {
+            return Some(found);
+        }
+    }
+    None
+}

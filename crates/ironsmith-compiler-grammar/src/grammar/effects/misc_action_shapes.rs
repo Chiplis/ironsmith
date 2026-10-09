@@ -126,7 +126,11 @@ pub fn parse_switch_power_toughness_tokens(
         .any(|expected| permission_shapes::exact_tokens(target_tokens, expected))
     {
         SwitchTargetSurface::Source(target_tokens)
-    } else if permission_shapes::exact_tokens(target_tokens, &["it"]) {
+    } else if permission_shapes::exact_tokens(target_tokens, &["it"])
+        // "switch its power and toughness" (Valakut Fireboar): the possessive
+        // names the same antecedent as "it".
+        || permission_shapes::exact_tokens(target_tokens, &["its"])
+    {
         SwitchTargetSurface::Tagged(target_tokens)
     } else {
         SwitchTargetSurface::Explicit(target_tokens)
@@ -360,6 +364,17 @@ fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
     let after_each = refs.get(start..)?;
+    // "that player mills a card for each 1 damage dealt to them" (Anowon,
+    // the Ruin Thief): one card per point of the triggering damage event.
+    if matches!(
+        after_each,
+        ["1" | "one", "damage", "dealt", "to", "them" | "that" | "you", ..]
+    ) && matches!(
+        &after_each[4..],
+        ["them"] | ["that", "player"] | ["you"]
+    ) {
+        return Some(Value::EventValue(EventValueSpec::Amount));
+    }
     if let Some(on) = permission_shapes::find_words(after_each, &["on"])
         && on > 0
     {
@@ -462,6 +477,13 @@ pub fn parse_mill_action_tokens(
             count = parse_trailing_for_each_count(trailing).ok_or_else(|| {
                 CardTextError::ParseError("unsupported trailing mill clause".to_string())
             })?;
+        } else if let Value::Fixed(per_each) = count
+            && per_each > 1
+            && let Some(each) = parse_trailing_for_each_count(trailing)
+        {
+            // "mill three cards for each time it was kicked" (Urborg
+            // Lhurgoyf): a fixed batch per counted occurrence.
+            count = Value::Scaled(Box::new(each), per_each);
         } else {
             return Err(CardTextError::ParseError(
                 "unsupported trailing mill clause".to_string(),

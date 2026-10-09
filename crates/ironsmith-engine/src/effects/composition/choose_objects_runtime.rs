@@ -156,6 +156,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::Count(filter)
         | crate::effect::Value::CountScaled(filter, _)
         | crate::effect::Value::GreatestCount(filter)
+        | crate::effect::Value::LeastCount(filter)
         | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
         | crate::effect::Value::TotalPower(filter)
         | crate::effect::Value::TotalToughness(filter)
@@ -2162,7 +2163,7 @@ fn run_choose_objects_phase_with_outputs(
                         min,
                         max,
                     );
-                    if (effect.filter.shares_name || effect.filter.shares_color || relation_cost)
+                    if (effect.filter.shares_name || effect.filter.shares_color || effect.filter.shares_card_type || relation_cost)
                         && !super::selection_relations::allows(
                             game,
                             &effect.filter,

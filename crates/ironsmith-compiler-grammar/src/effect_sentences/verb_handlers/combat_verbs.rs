@@ -549,9 +549,87 @@ pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexTok
     )
 }
 
+/// "that player and each creature that player controls" (Cerebral
+/// Eruption): a named player recipient plus a quantified object set. The
+/// player half is an ordinary player reference or target; the object half is
+/// a battlefield filter.
+pub(crate) fn parse_player_and_each_object_recipients(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<(TargetAst, ObjectFilter)>, CardTextError> {
+    let Some((and_idx, (), after)) = crate::grammar::primitives::find_prefix(target_tokens, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    if and_idx == 0
+        || after.is_empty()
+        || after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["player", "players", "opponent", "opponents"]))
+    {
+        return Ok(None);
+    }
+    let Ok(player @ (TargetAst::Player(..) | TargetAst::PlayerOrPlaneswalker(..))) =
+        parse_target_phrase(&target_tokens[..and_idx])
+    else {
+        return Ok(None);
+    };
+    let Ok(mut filter) = parse_object_filter(after, false) else {
+        return Ok(None);
+    };
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some((player, filter)))
+}
+
+/// "each creature and each planeswalker": two independently quantified
+/// object sets damaged by one simultaneous event. Player sets ("and each
+/// player/opponent") are owned by the player-damage readings instead.
+pub(crate) fn parse_each_object_set_union(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((and_idx, (), after)) = crate::grammar::primitives::find_prefix(filter_tokens, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    if and_idx == 0
+        || after.is_empty()
+        || after
+            .first()
+            .is_some_and(|token| token.is_any_word(&["player", "players", "opponent", "opponents", "other"]))
+        || crate::grammar::primitives::find_prefix(after, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let (Ok(mut left), Ok(mut right)) = (
+        parse_object_filter(&filter_tokens[..and_idx], false),
+        parse_object_filter(after, false),
+    ) else {
+        return Ok(None);
+    };
+    for branch in [&mut left, &mut right] {
+        if branch.zone.is_none() {
+            branch.zone = Some(Zone::Battlefield);
+        }
+    }
+    Ok(Some(ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        any_of: vec![left, right],
+        ..Default::default()
+    }))
+}
+
 fn parse_damage_each_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(union) = parse_each_object_set_union(filter_tokens)? {
+        return Ok(union);
+    }
     if let Some(shape) = combat_grammar::parse_combat_except_filter_shape_lexed(filter_tokens) {
         let mut included = parse_object_filter(shape.included_filter_tokens, false)?;
         let excluded = parse_object_filter(shape.excluded_filter_tokens, false)?;
@@ -803,10 +881,8 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
             span,
         ));
     };
-    add_candidate(
-        "damage-amount-relative-aggregate",
-        parse_equal_to_aggregate_filter_value(amount_tokens),
-    );
+    let relative_aggregate = parse_equal_to_aggregate_filter_value(amount_tokens);
+    add_candidate("damage-amount-relative-aggregate", relative_aggregate.clone());
     let object_count = parse_equal_to_number_of_filter_value(amount_tokens);
     add_candidate("damage-amount-object-count", object_count.clone());
     add_candidate(
@@ -833,7 +909,13 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     // same words (a bare history count, a re-derived filter count bound to
     // a nearby reference) and therefore covers only what those shapes
     // cannot prove.
-    if fixed_plus_history.is_none() && object_count.is_none() && complete_maximum.is_none() {
+    // A complete aggregate ("the total mana value of other spells you've
+    // cast this turn") likewise owns its whole phrase.
+    if fixed_plus_history.is_none()
+        && object_count.is_none()
+        && complete_maximum.is_none()
+        && relative_aggregate.is_none()
+    {
         add_candidate(
             "damage-amount-dynamic-cost-modifier",
             parse_dynamic_cost_modifier_value(amount_tokens)?,

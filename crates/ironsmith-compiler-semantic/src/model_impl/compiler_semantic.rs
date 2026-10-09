@@ -200,6 +200,10 @@ pub struct ParsedModalHeader {
     pub choose_both_control_card_types: Vec<crate::types::CardType>,
     pub choose_both_exact_life_total: Option<i32>,
     pub trigger: Option<TriggerSpec>,
+    /// CR 603.4: a triggered modal header's `if ...,` clause between the
+    /// trigger event and `choose ...` is an intervening-if condition, checked
+    /// both when the ability triggers and again on resolution.
+    pub intervening_if: Option<super::ast::PredicateAst>,
     pub activated: Option<ParsedModalActivatedHeader>,
     pub x_replacement: Option<Value>,
     pub prefix_effects_ast: Vec<EffectAst>,
@@ -210,6 +214,9 @@ pub struct ParsedModalHeader {
     /// into every mode while retaining their shared presentation boundary.
     pub common_suffix_effects_ast: Vec<EffectAst>,
     pub modal_gate: Option<ParsedModalGate>,
+    /// "An opponent chooses one —": the players one of whom chooses the
+    /// modes as the spell is cast (CR 700.2).
+    pub cast_chooser: Option<crate::target::PlayerFilter>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,4 +284,8 @@ pub enum ParsedLevelAbilityItemAst {
     StaticAbilities(Vec<StaticAbilityAst>),
     KeywordActions(Vec<KeywordAction>),
     ActivatedAbility(ParsedLevelActivatedAbilityAst),
+    /// A triggered ability printed inside a level range. It exists only while
+    /// the permanent has that many level counters (CR 711.2a), so it is gated
+    /// at event time, never re-checked as an intervening "if".
+    TriggeredAbility(ParsedLevelActivatedAbilityAst),
 }

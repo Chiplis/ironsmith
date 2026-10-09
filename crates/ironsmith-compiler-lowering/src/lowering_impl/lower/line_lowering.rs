@@ -1384,9 +1384,18 @@ fn materialize_additional_cost(
 
 fn materialize_optional_cost(
     mut builder: CardDefinitionBuilder,
-    cost: crate::cost::OptionalCost,
+    mut cost: crate::cost::OptionalCost,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let kind = cost.kind.clone();
+    // CR 702.175b: each offspring instance is paid and triggers separately,
+    // so a printed instance links only to its own payment (a granted
+    // offspring instance carries its own grant discriminator).
+    if kind == crate::cost::OptionalCostKind::Offspring {
+        cost.reference = crate::cost::OptionalCostRef::with_discriminator(
+            crate::cost::OptionalCostKind::Offspring,
+            format!("printed-{}", builder.optional_costs.len()),
+        );
+    }
     let reference = cost.cost_ref();
     builder = builder.optional_cost(cost);
     match kind {

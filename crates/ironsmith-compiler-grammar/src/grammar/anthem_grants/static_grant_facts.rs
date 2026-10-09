@@ -128,6 +128,15 @@ fn every_subtype_family(input: &mut LexStream<'_>) -> WResult<SubtypeFamily> {
     ))
     .parse_next(input)?;
     alt((primitives::kw("type"), primitives::kw("types"))).parse_next(input)?;
+    // "is every land type in addition to its other types" (Omo, Queen of
+    // Vesuva): the family is added, which is already this fact's meaning.
+    opt((
+        primitives::phrase(&["in", "addition", "to"]),
+        alt((primitives::kw("its"), primitives::kw("their"))),
+        primitives::kw("other"),
+        alt((primitives::kw("type"), primitives::kw("types"))),
+    ))
+    .parse_next(input)?;
     Ok(family)
 }
 

@@ -17,6 +17,8 @@ pub enum RestActionShape {
     Destroy,
     Exile,
     Sacrifice,
+    /// "chooses a card in their hand and discards the rest" (Monomania).
+    Discard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +40,13 @@ fn rest_action(input: &mut LexStream<'_>) -> WResult<RestActionShape> {
             &["sacrifices", "rest"],
         ])
         .value(RestActionShape::Sacrifice),
+        sequence_any_phrase(&[
+            &["discard", "the", "rest"],
+            &["discard", "rest"],
+            &["discards", "the", "rest"],
+            &["discards", "rest"],
+        ])
+        .value(RestActionShape::Discard),
     ))
     .parse_next(input)?;
     finish_sequence_words(input)?;

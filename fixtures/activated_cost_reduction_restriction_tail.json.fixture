@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Radha's Firebrand",
+  "oracle_id": "0d6d5509-41e5-4099-98a0-18ae7531df7d",
+  "oracle_text": "Whenever this creature attacks, target creature defending player controls with power less than this creature's power can't block this turn.\nDomain — {5}{R}: This creature gets +2/+2 until end of turn. This ability costs {1} less to activate for each basic land type among lands you control. Activate only once each turn.",
+  "text": "Mana cost: {1}{R}\nType: Creature — Human Warrior\nPower/Toughness: 3/1\nWhenever this creature attacks, target creature defending player controls with power less than this creature's power can't block this turn.\nDomain — {5}{R}: This creature gets +2/+2 until end of turn. This ability costs {1} less to activate for each basic land type among lands you control. Activate only once each turn."
+ },
+ {
+  "name": "The Lonely Mountain",
+  "oracle_id": "3678c06f-8a33-4a6d-bf20-5b92d5c05a95",
+  "oracle_text": "This land enters tapped unless you control an Equipment.\n{4}{R}, {T}: Create a 2/2 red Dwarf creature token. This ability costs {1} less to activate for each Equipment you control. Activate only as a sorcery.",
+  "text": "Mana cost: \nType: Land — Mountain\nThis land enters tapped unless you control an Equipment.\n{4}{R}, {T}: Create a 2/2 red Dwarf creature token. This ability costs {1} less to activate for each Equipment you control. Activate only as a sorcery."
+ }
+]

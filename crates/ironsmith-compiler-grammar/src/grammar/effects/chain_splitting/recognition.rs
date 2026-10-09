@@ -129,6 +129,9 @@ const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "earthbend",
     "harness",
     "harnesses",
+    // "draw a card and blight 1" (Sinister Gnarlbark): blight is a keyword
+    // action, so the conjunction starts a second executable arm.
+    "blight",
 ];
 const KEYWORD_ACTION_WORDS: &[&str] = &[
     "adapt",
@@ -317,6 +320,18 @@ pub fn preserve_and_reason(
     {
         return Some(AndPreservation::TokenRules);
     }
+    // "return target creature card ... to the battlefield tapped and
+    // attacking with a finality counter on it" (Grim Reaper): `tapped and
+    // attacking` is one entry modifier of a return or put as well; a later
+    // counter rider's noun is not a second instruction's verb.
+    if starts_any(
+        current,
+        &[&["return"], &["returns"], &["put"], &["puts"]],
+    ) && ends_any(current, &[&["tapped"]])
+        && starts_any(remaining, &[&["attacking"]])
+    {
+        return Some(AndPreservation::TokenRules);
+    }
     if (is_token_creation_context_tokens(current) || has_inline_token_rules_context(current))
         && starts_with_inline_token_rules_tail_tokens(remaining)
     {
@@ -409,7 +424,9 @@ pub fn preserve_and_reason(
     if is_card_type_list_boundary(current, remaining) {
         return Some(AndPreservation::CardTypeList);
     }
-    if is_creature_subtype_subject_list_boundary(current, remaining) {
+    if is_creature_subtype_subject_list_boundary(current, remaining)
+        || is_subtype_object_list_boundary(current, remaining)
+    {
         return Some(AndPreservation::CreatureSubtypeList);
     }
     if extended
@@ -636,9 +653,17 @@ pub fn starts_effect_clause_tokens(after: &[OwnedLexToken]) -> bool {
                 &["defending", "player"],
             ],
         );
+    // "Target player gains 5 life, Inspired Ultimatum deals 5 damage to any
+    // target, then ..." : a self-referential source subject ("this" or
+    // "this <noun>") followed by its deal-damage verb starts a sibling action.
+    let self_source_damage = starts_any(after, &[&["this"]])
+        && after_verb.is_some_and(|found| {
+            found.kind == super::ChainVerbKind::Deal && (1..=2).contains(&found.word_index)
+        });
     starts_any(after, &[&["can", "attack", "as", "though"]])
         || after_verb.is_some_and(|found| found.word_index == 0)
         || explicit_subject_action
+        || self_source_damage
         || has_extended_effect_head_tokens(after)
 }
 
@@ -844,6 +869,9 @@ fn starts_with_nonverb_effect_head(tokens: &[OwnedLexToken]) -> bool {
             &["target", "opponents", "chooses"],
             &["after", "this", "phase"],
             &["after", "this", "main", "phase"],
+            // "Time travel, then time travel." (The Parting of the Ways): the
+            // keyword action (CR 701.55) is an effect head without a verb.
+            &["time", "travel"],
         ],
     ) || first_word(tokens)
         .is_some_and(|word| crate::slice_primitives::contains(NONVERB_EFFECT_HEAD_WORDS, &word))
@@ -905,6 +933,52 @@ fn is_card_type_list_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexTo
     // card/spell/permanent noun still proves one object operand, including
     // relative clauses such as "cards ... that were put there this turn".
     current_last_type && contains_any(current, CARD_TYPE_WORDS)
+}
+
+/// Preserve the connectives of a serial subtype *object* list whose final arm
+/// carries a controller relative clause: `put a +1/+1 counter on each Scout,
+/// Pirate, and Rogue you control`, `untap each Frog, Rabbit, Raccoon, or
+/// Squirrel you control that entered the battlefield this turn`. The left
+/// side ends in a subtype after its verb; the right side lists only further
+/// subtypes before `<player> control(s)`. That relative verb is part of the
+/// object filter, not a coordinated action.
+pub fn is_subtype_object_list_boundary(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    if find_chain_verb_tokens(current).is_none() {
+        return false;
+    }
+    let is_subtype =
+        |word: &str| leaf::parse_leaf_subtype_flexible_complete(word).is_ok();
+    let current_words = token_word_refs(current);
+    if !current_words.last().is_some_and(|word| is_subtype(word)) {
+        return false;
+    }
+    let remaining_words = token_word_refs(remaining);
+    let Some(list_end) = remaining_words
+        .iter()
+        .position(|word| !(is_subtype(word) || matches!(*word, "or" | "and" | "and/or")))
+    else {
+        return false;
+    };
+    if list_end == 0 || !is_subtype(remaining_words[0]) {
+        return false;
+    }
+    const CONTROLLER_CLAUSES: &[&[&str]] = &[
+        &["you", "control"],
+        &["you", "own"],
+        &["an", "opponent", "controls"],
+        &["your", "opponents", "control"],
+        &["that", "player", "controls"],
+        &["target", "player", "controls"],
+        &["target", "opponent", "controls"],
+        &["defending", "player", "controls"],
+    ];
+    let tail = &remaining_words[list_end..];
+    CONTROLLER_CLAUSES
+        .iter()
+        .any(|clause| tail.starts_with(clause))
 }
 
 /// Preserve the final conjunction in a serial creature-subtype subject.

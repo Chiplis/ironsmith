@@ -1,0 +1,18 @@
+[
+ {
+  "name": "Atraxa's Skitterfang",
+  "oracle_id": "8255b408-cc8c-453f-982c-f361b5559cec",
+  "mana_cost": "{3}",
+  "type_line": "Artifact Creature — Phyrexian Insect",
+  "oracle_text": "This creature enters with three oil counters on it.\nAt the beginning of combat on your turn, you may remove an oil counter from this creature. When you do, target creature you control gains your choice of flying, vigilance, deathtouch, or lifelink until end of turn.",
+  "power": "2",
+  "toughness": "2"
+ },
+ {
+  "name": "Hunter's Axe",
+  "oracle_id": "d7d59fef-1401-464b-b1bb-ee5da92cde51",
+  "mana_cost": "{G}",
+  "type_line": "Artifact — Equipment",
+  "oracle_text": "Equipped creature gets +2/+0 and has \"Whenever this creature attacks, it gains your choice of trample or deathtouch until end of turn.\"\nEquip {2}"
+ }
+]

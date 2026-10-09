@@ -31,6 +31,10 @@ pub enum PlayerActivationRestrictionTailFact {
         filter: ObjectFilter,
         non_mana_only: bool,
     },
+    /// "block with more than <N> creature(s)" (Mirri, Weatherlight Duelist).
+    BlockWithMoreThan(usize),
+    /// "venture into the dungeon more than once each turn" (Keen-Eared Sentry).
+    VentureMoreThanOnceEachTurn,
 }
 
 pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCastRestrictionFact> {
@@ -149,7 +153,19 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
         input = rest;
     } else if !matches!(input.first().copied(), Some("spell" | "spells")) {
         let term = singular(input.first().copied()?);
-        if let Ok(card_type) = leaf::parse_leaf_card_type_complete(term) {
+        if term == "permanent" {
+            // "You can't cast permanent spells." (Codie): a permanent spell
+            // is an artifact, creature, enchantment, planeswalker or battle
+            // spell (CR 110.4); the type list is a disjunction.
+            filter.card_types.extend([
+                crate::types::CardType::Artifact,
+                crate::types::CardType::Creature,
+                crate::types::CardType::Enchantment,
+                crate::types::CardType::Planeswalker,
+                crate::types::CardType::Battle,
+            ]);
+            input = &input[1..];
+        } else if let Ok(card_type) = leaf::parse_leaf_card_type_complete(term) {
             filter = filter.with_type(card_type);
             input = &input[1..];
         } else if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(term) {
@@ -378,6 +394,24 @@ pub fn parse_card_type_list_filter_words(
 pub fn parse_player_activation_restriction_tail_words(
     words: &[&str],
 ) -> Option<PlayerActivationRestrictionTailFact> {
+    if exact(
+        words,
+        &["venture", "into", "the", "dungeon", "more", "than", "once", "each", "turn"],
+    ) {
+        return Some(PlayerActivationRestrictionTailFact::VentureMoreThanOnceEachTurn);
+    }
+    if let Some(rest) = prefix_remainder(words, &["block", "with", "more", "than"])
+        && let [count, noun] = rest
+        && matches!(*noun, "creature" | "creatures")
+    {
+        let maximum = match *count {
+            "one" | "1" => 1,
+            "two" | "2" => 2,
+            "three" | "3" => 3,
+            _ => return None,
+        };
+        return Some(PlayerActivationRestrictionTailFact::BlockWithMoreThan(maximum));
+    }
     if let Some(filter) = parse_land_play_restriction_tail_words(words) {
         return Some(PlayerActivationRestrictionTailFact::PlayLandsMatching(filter));
     }
@@ -486,6 +520,16 @@ fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) 
     if exact(comparison, &["the", "exiled", "card"]) {
         filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        });
+        return Some(filter);
+    }
+    // "... spells with the same name as that creature" (Reflector Mage):
+    // the name of the object the ability already referenced, compared
+    // against its tagged snapshot.
+    if exact_any(comparison, &[&["that", "creature"], &["that", "card"]]) {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
             relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
         });
         return Some(filter);

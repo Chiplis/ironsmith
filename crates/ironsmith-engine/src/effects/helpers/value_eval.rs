@@ -109,6 +109,14 @@ pub(crate) fn resolve_wide(
         return Err(error);
     }
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::AsYouActivateThisAbility) => {
+                context.require_execution(value, "activation samples require an execution context")
+                    .activation_values.iter().find(|(expression, _)| expression == value)
+                    .and_then(|(_, sampled)| *sampled).map(i64::from)
+                    .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                        "activation-time expression has no announced sample".into()))
+            }
         Value::SurfaceHinted { value, .. } => resolve_wide(value, context),
         Value::Fixed(n) => Ok(i64::from(*n)),
         Value::Add(left, right) => resolve_wide(left, context)?
@@ -208,6 +216,7 @@ pub(crate) fn resolve_wide(
         Value::GreatestCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, false)))
         }
+        Value::LeastCount(filter) => Ok(i64::from(context.least_per_player(filter))),
         Value::GreatestSharedCreatureTypeCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, true)))
         }
@@ -513,6 +522,28 @@ pub(crate) fn resolve_wide(
         Value::ColorsOf(target_spec) => context
             .object_number(target_spec, NumericProperty::ColorCount)
             .map(i64::from),
+        // "for each of the chosen colors it is" (Tablet of the Guilds): the
+        // referenced object's colors among the source's chosen colors.
+        Value::ChosenColorsOf(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "chosen-color counts require a resolving context",
+            );
+            let chosen = game
+                .chosen_colors(ctx.source)
+                .unwrap_or(crate::color::ColorSet::COLORLESS);
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            let colors = if let Some(object) = game.object(id) {
+                game.current_colors(id).unwrap_or_else(|| object.colors())
+            } else if let ChooseSpec::Tagged(tag) = target_spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                snapshot.colors
+            } else {
+                return Err(ExecutionError::ObjectNotFound(id));
+            };
+            Ok(i64::from(colors.intersection(chosen).count()))
+        }
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
             color,
@@ -888,6 +919,21 @@ pub(crate) fn resolve_wide(
                 }
             }
             Ok(i64::from(count))
+        }
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter } => {
+            let player_ids = context.player_ids(value, player)?;
+            let filter_ctx = context.filter_context(game);
+            let mut seen = HashSet::new();
+            for (_, snapshot) in game
+                .turn_store
+                .turn_history
+                .checked_spell_cast_history(&player_ids, None)?
+            {
+                if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
+                    seen.extend(snapshot.card_types.iter().copied());
+                }
+            }
+            Ok(seen.len() as i64)
         }
         Value::TotalManaValueOfSpellsCastThisTurnMatching {
             player,
@@ -1297,6 +1343,15 @@ pub(crate) fn resolve_wide(
             ))
         }
         Value::HalfRoundedDown(inner) => Ok(i64::from(resolve_wide(inner, context)?.div_euclid(2))),
+        Value::PowerOfTwo(inner) => {
+            let exponent = resolve_wide(inner, context)?;
+            if !(0..=62).contains(&exponent) {
+                return Err(ExecutionError::UnresolvableValue(
+                    "power-of-two exponent is outside the wide value range".into(),
+                ));
+            }
+            Ok(1i64 << exponent)
+        }
         Value::EventValue(spec) => resolve_event_value(
             game,
             context.require_execution(value, RESOLUTION_ONLY),

@@ -99,6 +99,7 @@ fn is_exiled_collection_reference_tag(tag: &str) -> bool {
 fn is_cost_exiled_reference_tag(tag: &TagKey) -> bool {
     crate::tag::CompilerCostObjectTag::Exile.matches(tag)
         || tag.as_str() == crate::tag::CompilerReferenceTag::CostExiledTop.as_str()
+        || tag.as_str() == crate::tag::CompilerReferenceTag::CostExiledFromHand.as_str()
 }
 
 pub fn is_you_player_filter(filter: &PlayerFilter) -> bool {
@@ -331,6 +332,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. } => {
             push_target_player_filter_choices(base, choices);
         }
@@ -345,7 +347,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(base, choices);
             push_target_player_filter_choices(excluded, choices);
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             push_target_player_filter_choices(base, choices);
         }
         PlayerFilter::LostLifeThisTurn { base } => {
@@ -376,6 +378,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::TaggedPlayer(_)
@@ -542,9 +545,10 @@ fn resolve_contextual_player_filter(
                 excluded: Box::new(excluded),
             }
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(resolve_contextual_player_filter(base, refs)?),
+                this_turn: *this_turn,
             }
         }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
@@ -625,6 +629,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -1085,17 +1090,41 @@ fn resolve_it_tag_inner(
         // is the stable identity needed by the follow-up move.
         resolved.zone = None;
     }
+    let exiled_this_way = refs
+        .snapshot_tag_aliases
+        .iter()
+        .filter(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+        .map(|(_, exiled)| exiled.clone())
+        .collect::<Vec<_>>();
     if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Exiled)
-        && let Some((_, exiled)) = refs
-            .snapshot_tag_aliases
-            .iter()
-            .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+        && let [exiled] = exiled_this_way.as_slice()
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag == crate::tag::CompilerReferenceTag::It.key() {
                 constraint.tag = exiled.clone();
             }
         }
+    } else if filter.prior_effect_action_surface()
+        == Some(ironsmith_core::PriorEffectAction::Exiled)
+        && exiled_this_way.len() > 1
+        && let Some(index) = resolved
+            .tagged_constraints
+            .iter()
+            .position(|constraint| constraint.tag == crate::tag::CompilerReferenceTag::It.key())
+    {
+        // One instruction exiled several groups: the object is any of them.
+        let relation = resolved.tagged_constraints.remove(index).relation;
+        resolved.any_of = exiled_this_way
+            .into_iter()
+            .map(|exiled| {
+                let mut member = ObjectFilter::default();
+                member.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                    tag: exiled,
+                    relation,
+                });
+                member
+            })
+            .collect();
     }
     let revealed_collection_tag = (filter.prior_effect_action_surface()
         == Some(ironsmith_core::PriorEffectAction::Revealed))
@@ -1583,6 +1612,13 @@ pub fn resolve_restriction_it_tag(
         Restriction::BecomeMonarch(player) => {
             Restriction::BecomeMonarch(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::VentureMoreThanOnceEachTurn(player) => {
+            Restriction::VentureMoreThanOnceEachTurn(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::BlockWithMoreThan { player, maximum } => Restriction::BlockWithMoreThan {
+            player: resolve_contextual_player_filter(player, refs)?,
+            maximum: *maximum,
+        },
         Restriction::Attack(filter) => {
             Restriction::attack(resolve_combat_actor_it_tag(filter, refs)?)
         }
@@ -1612,11 +1648,25 @@ pub fn resolve_restriction_it_tag(
             )
         }
         Restriction::MustAttack(filter) => Restriction::must_attack(resolve_it_tag(filter, refs)?),
+        Restriction::MustAttackPlayer { attackers, player } => Restriction::must_attack_player(
+            resolve_combat_actor_it_tag(attackers, refs)?,
+            resolve_contextual_player_filter(player, refs)?,
+        ),
         Restriction::MustBlock(filter) => Restriction::must_block(resolve_it_tag(filter, refs)?),
         Restriction::MustBeBlocked(filter) => {
             Restriction::must_be_blocked(resolve_it_tag(filter, refs)?)
         }
         Restriction::Untap(filter) => Restriction::untap(resolve_it_tag(filter, refs)?),
+        Restriction::BecomeUntapped(filter) => {
+            Restriction::become_untapped(resolve_it_tag(filter, refs)?)
+        }
+        Restriction::AttackBlockOrCrew(filter) => {
+            Restriction::attack_block_or_crew(resolve_it_tag(filter, refs)?)
+        }
+        Restriction::BeAttachedBy(hosts, attachments) => Restriction::be_attached_by(
+            resolve_it_tag(hosts, refs)?,
+            resolve_it_tag(attachments, refs)?,
+        ),
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),
         Restriction::BeDestroyed(filter) => {
             Restriction::be_destroyed(resolve_it_tag(filter, refs)?)
@@ -2275,6 +2325,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             *multiplier,
         )),
         Value::GreatestCount(filter) => Ok(Value::GreatestCount(resolve_it_tag(filter, refs)?)),
+        Value::LeastCount(filter) => Ok(Value::LeastCount(resolve_it_tag(filter, refs)?)),
         Value::GreatestSharedCreatureTypeCount(filter) => Ok(
             Value::GreatestSharedCreatureTypeCount(resolve_it_tag(filter, refs)?),
         ),
@@ -2405,6 +2456,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 TurnHistoryCount::Cycled(player) => {
                     TurnHistoryCount::Cycled(resolve_contextual_player_filter(player, refs)?)
                 }
+                TurnHistoryCount::LandsPlayed(player) => {
+                    TurnHistoryCount::LandsPlayed(resolve_contextual_player_filter(player, refs)?)
+                }
                 TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
                     TurnHistoryCount::KeywordActionsPerformed {
                         player: resolve_contextual_player_filter(player, refs)?,
@@ -2515,6 +2569,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ChosenColorsOf(spec) => Ok(Value::ChosenColorsOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

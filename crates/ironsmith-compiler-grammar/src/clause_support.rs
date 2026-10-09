@@ -506,6 +506,13 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
             )),
             ProtectionTargetKind::ChosenPlayer => Some(KeywordAction::ProtectionFromChosenPlayer),
+            // CR 702.16k: protection from a player is protection from each
+            // object that player controls. "That player" is the discourse
+            // player reference; reference resolution binds it to its
+            // antecedent and the runtime locks it as the grant resolves.
+            ProtectionTargetKind::ThatPlayer => Some(KeywordAction::ProtectionFromFilter(
+                ObjectFilter::default().controlled_by(PlayerFilter::IteratedPlayer),
+            )),
             ProtectionTargetKind::ChosenColor => Some(KeywordAction::ProtectionFromChosenColor),
             ProtectionTargetKind::ExiledCardTypes => {
                 let mut filter = ObjectFilter::default();
@@ -734,6 +741,9 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
         }
         if let Some(action) = parse_count_keyword("bloodthirst", KeywordAction::Bloodthirst) {
             return Some(action);
+        }
+        if matches!(words, ["bloodthirst", "x"]) {
+            return Some(KeywordAction::BloodthirstX);
         }
         if let Some(action) = parse_count_keyword("tribute", KeywordAction::Tribute) {
             return Some(action);

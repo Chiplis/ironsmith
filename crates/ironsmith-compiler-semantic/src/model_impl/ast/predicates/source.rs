@@ -45,6 +45,8 @@ pub enum SourcePredicateAst {
     SourceInGraveyardWithCardsAbove {
         filter: ObjectFilter,
         count: u32,
+        /// The single card immediately above the source must match.
+        directly_above: bool,
     },
     SourceIsInZone(Zone),
     SourceWasCast,
@@ -63,4 +65,8 @@ pub enum SourcePredicateAst {
     /// "as long as this creature is monstrous"
     SourceIsMonstrous,
     SourceIsHarnessed,
+    /// "if this creature isn't prepared"
+    SourceIsPrepared,
+    /// "it has dealt damage" since it entered (negated by "hasn't ... yet").
+    SourceHasDealtDamageSinceEntered,
 }

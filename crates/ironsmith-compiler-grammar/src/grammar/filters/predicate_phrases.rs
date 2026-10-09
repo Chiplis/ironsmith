@@ -25,6 +25,12 @@ mod advanced;
 mod capture_shapes;
 #[path = "predicate_phrases/surface.rs"]
 mod surface;
+#[path = "predicate_phrases/each_quality_control.rs"]
+mod each_quality_control;
+use each_quality_control::parse_each_quality_control_predicate;
+#[path = "predicate_phrases/pronoun_attached_to.rs"]
+mod pronoun_attached_to;
+use pronoun_attached_to::parse_pronoun_attached_to_predicate;
 
 pub use advanced::parse_predicate;
 
@@ -231,6 +237,10 @@ const PREDICATE_REFERENCE_NOUN_WORDS: &[&str] = &[
     "permanent",
     "source",
     "spell",
+    // "... instead if that target is a creature or planeswalker" (Light Up
+    // the Night, Lithomantic Barrage): the announced target, rebound to
+    // `TargetMatches` once the previous action's target is explicit.
+    "target",
     "token",
 ];
 const ENCHANTMENT_WORD: &str = "enchantment";
@@ -550,7 +560,11 @@ fn parse_source_graveyard_cards_above_predicate(
         ));
     }
     Ok(Some(PredicateAst::Source(
-        SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count },
+        SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above: false,
+        },
     )))
 }
 
@@ -851,7 +865,15 @@ fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option
     let relation = parse_has_relation_clauses(tokens)?;
     if !surface::exact_any(
         relation.subject_clause,
-        &[&["it"], &["that", "object"], &["that", "spell"]],
+        // "If that creature has infect" (Burn the Impure): the demonstrative
+        // names the same referenced object as "it".
+        &[
+            &["it"],
+            &["that", "object"],
+            &["that", "spell"],
+            &["that", "creature"],
+            &["that", "permanent"],
+        ],
     ) {
         return None;
     }
@@ -1042,7 +1064,11 @@ fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let source_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_explicit_source_state_subject_clause(source_clause) {
+    // Gendered possessives ("if her power is 4 or greater", Viv Vision) name
+    // the card itself: Oracle refers to players with "their", never "his/her".
+    if !is_explicit_source_state_subject_clause(source_clause)
+        && !surface::exact_any(source_clause, &[&["her"], &["his"]])
+    {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
@@ -1207,6 +1233,8 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
                 "tapped",
                 "untapped",
                 "saddled",
+                "prepared",
+                "monstrous",
             ]),
         ),
     ];
@@ -1312,6 +1340,28 @@ fn source_state_predicate_from_clause(
             ))))
         } else {
             Some(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))
+        };
+    }
+    // "if this creature isn't prepared" (Paradox Shaper): the source's
+    // prepared designation, which a permanent cannot hold twice.
+    if surface::exact(clause, &["prepared"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsPrepared,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsPrepared))
+        };
+    }
+    // "if this creature is monstrous" (Polis Crusher): the source's
+    // monstrosity designation (CR 701.37b).
+    if surface::exact(clause, &["monstrous"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsMonstrous,
+            ))))
+        } else {
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
         };
     }
     None
@@ -3308,6 +3358,56 @@ pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Opt
     }))
 }
 
+/// "if it wasn't the first land you played this turn" (Fastbond): the
+/// triggering land's ordinal among the lands its player played this turn
+/// (CR 305.2). Land plays can't happen while the trigger waits on the stack,
+/// so the per-turn count read at trigger and resolution time is the ordinal.
+pub fn parse_triggering_land_play_ordinal_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
+    const PLAYED_THIS_TURN_SUFFIXES: &[&[&str]] = &[
+        &["you", "played", "this", "turn"],
+        &["youve", "played", "this", "turn"],
+        &["you've", "played", "this", "turn"],
+        &["you", "have", "played", "this", "turn"],
+    ];
+    let clause = LexedClause::new(tokens);
+    for (copulas, negated) in [
+        (&[&["it", "wasnt"][..], &["it", "wasn't"], &["it", "was", "not"], &["it", "isnt"], &["it", "isn't"]][..], true),
+        (&[&["it", "was"][..], &["it's"], &["its"], &["it", "is"]][..], false),
+    ] {
+        let atoms = [
+            WinnowSequence::any_phrase(copulas),
+            WinnowSequence::optional(OPTIONAL_THE),
+            WinnowSequence::object("ordinal", WinnowCaptureKind::WordCount(1)),
+            WinnowSequence::word("land"),
+            WinnowSequence::any_phrase(PLAYED_THIS_TURN_SUFFIXES),
+        ];
+        let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
+            continue;
+        };
+        let ordinal_clause = matched.capture_clause("ordinal", clause)?;
+        let ordinal_token = ordinal_clause.tokens().first()?;
+        let ordinal = ironsmith_core::parse_ordinal_word(ordinal_token.parser_text())?;
+        if ordinal == 0 {
+            return None;
+        }
+        return Some(PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::LandsPlayed(
+                crate::target::PlayerFilter::You,
+            )),
+            operator: if negated {
+                crate::effect::ValueComparisonOperator::NotEqual
+            } else {
+                crate::effect::ValueComparisonOperator::Equal
+            },
+            right: Value::Fixed(ordinal as i32),
+        });
+    }
+    None
+}
+
 fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
     const OPTIONAL_IS: &[WinnowAtom<'static>] = &[WinnowSequence::word("is")];
@@ -4581,6 +4681,10 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
     if surface::exact_any(descriptor, &[
         &["shares", "a", "card", "type", "with", "the", "exiled", "card"],
         &["shares", "card", "type", "with", "the", "exiled", "card"],
+        // "the card exiled this way" after an exile-from-hand activation cost
+        // (Holistic Wisdom); the reference resolves to that cost's card.
+        &["shares", "a", "card", "type", "with", "the", "card", "exiled", "this", "way"],
+        &["shares", "card", "type", "with", "card", "exiled", "this", "way"],
     ]) {
         return Some(PredicateAst::ItMatches(ObjectFilter::default().shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())));
     }
@@ -4982,12 +5086,31 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         .or_else(|| words.strip_prefix(&["any", "of", "those", "results", "were"]))
     {
         (true, rest)
-    } else if let Some(rest) = words.strip_prefix(&["the", "roll", "was"]) {
+    } else if let Some(rest) = words
+        .strip_prefix(&["the", "roll", "was"])
+        .or_else(|| words.strip_prefix(&["the", "result", "is"]))
+        .or_else(|| words.strip_prefix(&["the", "result", "was"]))
+    {
         (false, rest)
     } else {
         return None;
     };
-    let number = number.strip_suffix(&["or", "higher"])?;
+    // "If the result is 3 or less" (Dissatisfied Customer, Non-Human
+    // Cannonball): the completed roll's result at most the bound.
+    let (number, operator) = if let Some(number) = number
+        .strip_suffix(&["or", "higher"])
+        .or_else(|| number.strip_suffix(&["or", "greater"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::GreaterThanOrEqual)
+    } else if !grouped
+        && let Some(number) = number
+            .strip_suffix(&["or", "less"])
+            .or_else(|| number.strip_suffix(&["or", "lower"]))
+    {
+        (number, crate::effect::ValueComparisonOperator::LessThanOrEqual)
+    } else {
+        return None;
+    };
     let value = crate::grammar::trigger_clauses::parse_roll_result_words(number)?;
     let crate::grammar::trigger_clauses::RollResultShape::Fixed(value) = value else {
         return None;
@@ -5008,7 +5131,7 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
                 )
                 .with_action(ironsmith_core::PriorEffectAction::Rolled),
             ),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            operator,
             right: Value::Fixed(value),
         }
     })

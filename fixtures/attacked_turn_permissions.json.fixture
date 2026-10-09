@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Boros Strike-Captain",
+    "oracle_id": "30b20932-0d9a-447f-b934-1daa8c44a678",
+    "mana_cost": "{1}{R/W}{R/W}",
+    "type_line": "Creature — Minotaur Soldier",
+    "oracle_text": "Battalion — Whenever this creature and at least two other creatures attack, exile the top card of your library. During any turn you attacked with three or more creatures, you may play that card.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {1}{R/W}{R/W}\nType: Creature — Minotaur Soldier\nPower/Toughness: 3/3\nBattalion — Whenever this creature and at least two other creatures attack, exile the top card of your library. During any turn you attacked with three or more creatures, you may play that card."
+  },
+  {
+    "name": "Goblin Researcher",
+    "oracle_id": "c8762dfa-a027-4e1c-a2fa-bfdab1de102a",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Goblin Wizard",
+    "oracle_text": "When this creature enters, exile the top card of your library. During any turn you attacked with this creature, you may play that card.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {3}{R}\nType: Creature — Goblin Wizard\nPower/Toughness: 3/3\nWhen this creature enters, exile the top card of your library. During any turn you attacked with this creature, you may play that card."
+  },
+  {
+    "name": "Neriv, Crackling Vanguard",
+    "oracle_id": "c8f827d7-4740-43c8-b494-c9e0479e0bf7",
+    "mana_cost": "{2}{R}{W}{B}",
+    "type_line": "Legendary Creature — Spirit Dragon",
+    "oracle_text": "Flying, deathtouch\nWhen Neriv enters, create two 1/1 red Goblin creature tokens.\nWhenever Neriv attacks, exile a number of cards from the top of your library equal to the number of differently named tokens you control. During any turn you attacked with a commander, you may play those cards.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {2}{R}{W}{B}\nType: Legendary Creature — Spirit Dragon\nPower/Toughness: 4/4\nFlying, deathtouch\nWhen Neriv enters, create two 1/1 red Goblin creature tokens.\nWhenever Neriv attacks, exile a number of cards from the top of your library equal to the number of differently named tokens you control. During any turn you attacked with a commander, you may play those cards."
+  },
+  {
+    "name": "Neyali, Suns' Vanguard",
+    "oracle_id": "4012b400-7dcd-43d6-8806-39a3cb743d8f",
+    "mana_cost": "{2}{R}{W}",
+    "type_line": "Legendary Creature — Human Rebel",
+    "oracle_text": "Attacking tokens you control have double strike.\nWhenever one or more tokens you control attack a player, exile the top card of your library. During any turn you attacked with a token, you may play that card.",
+    "power": "3",
+    "toughness": "3",
+    "text": "Mana cost: {2}{R}{W}\nType: Legendary Creature — Human Rebel\nPower/Toughness: 3/3\nAttacking tokens you control have double strike.\nWhenever one or more tokens you control attack a player, exile the top card of your library. During any turn you attacked with a token, you may play that card."
+  },
+  {
+    "name": "Robber of the Rich",
+    "oracle_id": "4df0d381-fc05-4d30-9307-48963aa2ecfd",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Human Archer Rogue",
+    "oracle_text": "Reach, haste\nWhenever this creature attacks, if defending player has more cards in hand than you, exile the top card of their library. During any turn you attacked with a Rogue, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+    "power": "2",
+    "toughness": "2",
+    "text": "Mana cost: {1}{R}\nType: Creature — Human Archer Rogue\nPower/Toughness: 2/2\nReach, haste\nWhenever this creature attacks, if defending player has more cards in hand than you, exile the top card of their library. During any turn you attacked with a Rogue, you may cast that card and you may spend mana as though it were mana of any color to cast that spell."
+  }
+]

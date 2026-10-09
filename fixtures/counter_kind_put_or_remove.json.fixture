@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Dramatist's Puppet",
+  "oracle_id": "e3473ed5-f2b2-4a41-aed9-ee37caa9d7be",
+  "oracle_text": "When this creature enters, for each kind of counter on target permanent, put another counter of that kind on it or remove one from it.",
+  "text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 2/4\nWhen this creature enters, for each kind of counter on target permanent, put another counter of that kind on it or remove one from it."
+ },
+ {
+  "name": "Quarry Hauler",
+  "oracle_id": "a55bdb73-e17a-414d-b27f-dc53af2f345c",
+  "oracle_text": "When this creature enters, for each kind of counter on target permanent, put another counter of that kind on it or remove one from it.",
+  "text": "Mana cost: {3}{G}\nType: Creature — Camel\nPower/Toughness: 4/3\nWhen this creature enters, for each kind of counter on target permanent, put another counter of that kind on it or remove one from it."
+ }
+]

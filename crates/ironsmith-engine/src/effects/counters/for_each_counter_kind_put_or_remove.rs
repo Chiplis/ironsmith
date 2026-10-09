@@ -81,6 +81,41 @@ impl ForEachCounterKindPutOrRemoveEffect {
         format!("{counter_type:?}").to_ascii_lowercase()
     }
 
+    fn put_another_of_each_kind_on_players(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        players: &[crate::ids::PlayerId],
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let mut requests = Vec::new();
+        for player_id in players {
+            let Some(player) = game.player(*player_id) else {
+                continue;
+            };
+            for counter_type in player.counter_types_with_counters() {
+                requests.push(
+                    crate::events::Event::put_player_counters(
+                        *player_id,
+                        counter_type,
+                        1,
+                        ctx.cause.clone(),
+                    )
+                    .with_provenance(ctx.provenance),
+                );
+            }
+        }
+        if requests.is_empty() {
+            return Ok(EffectOutcome::resolved());
+        }
+        let children = super::execute_counter_batch_with_outputs(game, ctx, requests)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        Ok(EffectOutcome::aggregate_summing_counts(
+            children.into_iter().map(|child| child.outcome),
+        ))
+    }
+
     fn choose_counter_kind(
         &self,
         game: &mut GameState,
@@ -123,6 +158,30 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // CR 122.1: players can have counters too. "For each kind of counter
+        // on target permanent or player, give that permanent or player
+        // another counter of that kind" puts one more of every kind the
+        // chosen player has.
+        if self.put_only
+            && self.all_kinds
+            && self.counter_source.is_none()
+            && self.fixed_counter_type.is_none()
+            && self.target.is_target()
+            && matches!(
+                self.target.base(),
+                ChooseSpec::ObjectOrPlayer(..) | ChooseSpec::Player(_)
+            )
+        {
+            let players = crate::effects::helpers::matching_player_targets_for_spec(
+                game,
+                &self.target,
+                ctx,
+            );
+            if !players.is_empty() {
+                return self.put_another_of_each_kind_on_players(game, ctx, &players);
+            }
+        }
+
         let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         if target_ids.is_empty() {
             return Ok(EffectOutcome::resolved());

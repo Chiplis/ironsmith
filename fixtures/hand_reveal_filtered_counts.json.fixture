@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Blood Oath",
+    "oracle_id": "877c34ca-6eff-42ce-b4d7-8a2071d0290a",
+    "text": "Mana cost: {3}{R}\nType: Instant\nChoose a card type. Target opponent reveals their hand. Blood Oath deals 3 damage to that player for each card of the chosen type revealed this way. (Artifact, battle, creature, enchantment, instant, kindred, land, planeswalker, and sorcery are card types.)"
+  },
+  {
+    "name": "Thought Hemorrhage",
+    "oracle_id": "5cc4ee18-675e-4707-b658-ec746a1c03d8",
+    "text": "Mana cost: {2}{B}{R}\nType: Sorcery\nChoose a nonland card name. Target player reveals their hand. Thought Hemorrhage deals 3 damage to that player for each card with the chosen name revealed this way. Search that player's graveyard, hand, and library for all cards with that name and exile them. Then that player shuffles."
+  }
+]

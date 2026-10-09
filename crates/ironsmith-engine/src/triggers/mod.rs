@@ -143,8 +143,10 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
@@ -194,8 +196,10 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
@@ -1409,6 +1413,15 @@ impl Trigger {
             source_filter,
             caused_by_source_entering,
         ))
+    }
+
+    /// "Whenever a creature you control attacking causes a triggered ability
+    /// of that creature to trigger".
+    pub fn ability_triggered_by_source_attacking(source_filter: ObjectFilter) -> Self {
+        Self::new(
+            AbilityTriggeredTrigger::new_qualified(false, Some(source_filter), false)
+                .with_caused_by_source_attacking(true),
+        )
     }
 
     /// Create a qualified "when [player] activates [ability]" trigger.

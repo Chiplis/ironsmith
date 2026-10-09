@@ -443,6 +443,7 @@ fn assert_permission_cast_with_sources(
             if setup.1 {
                 game.object_mut(spell).unwrap().alternative_casts.push(
                     crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                        x_minimum: 0,
                         total_cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(
                             vec![vec![crate::mana::ManaSymbol::Generic(1)]],
                         )),

@@ -407,10 +407,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         )
                     }
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Object(filter, None, None),
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,
@@ -486,6 +491,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         filter.excluded_subtypes.push(*subtype);
                     }
                 }
+                for card_type in &destination.excluded_card_types {
+                    if !filter.excluded_card_types.contains(card_type) {
+                        filter.excluded_card_types.push(*card_type);
+                    }
+                }
                 return Ok(wrap_return_with_delayed_timing(
                     EffectAst::subject_verb_return_all_to_hand_of_chosen_color(filter),
                     delayed_timing,
@@ -532,6 +542,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     filter.excluded_subtypes.push(*subtype);
                 }
             }
+            for card_type in &destination.excluded_card_types {
+                if !filter.excluded_card_types.contains(card_type) {
+                    filter.excluded_card_types.push(*card_type);
+                }
+            }
             if let Some(excluded) = chosen_this_way_excluded {
                 filter = if excluded {
                     filter.not_tagged(crate::tag::CompilerReferenceTag::It.bind())
@@ -551,10 +566,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         return_controller,
                     )
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Object(filter, None, None),
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,
@@ -591,7 +611,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 .as_ref()
                 .map(|choice| choice.object_tokens.clone())
                 .unwrap_or(target_tokens);
-            if !destination.excluded_subtypes.is_empty() {
+            if !destination.excluded_subtypes.is_empty()
+                || !destination.excluded_card_types.is_empty()
+            {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception on non-return-all clause (clause: '{clause_text}')"
                 )));
@@ -757,13 +779,17 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                             ReturnControllerAst::Preserve,
                         )
                     } else if let Some(attached_to) = attached_to_target {
-                        if destination.transformed || destination.converted || count_value.is_some()
-                        {
+                        // "return it to the battlefield transformed under your
+                        // control attached to target opponent" (Curse DFCs):
+                        // the transformed entry and the attachment compose
+                        // (CR 712.14a, 303.4f); converted or counted returns
+                        // remain unsupported.
+                        if destination.converted || count_value.is_some() {
                             return Err(CardTextError::ParseError(format!(
                                 "unsupported transformed/converted/dynamic return attached clause (clause: '{clause_text}')"
                             )));
                         }
-                        EffectAst::subject_verb_move_to_zone_with_attacking(
+                        let moved = EffectAst::subject_verb_move_to_zone_with_attacking(
                             target,
                             Zone::Battlefield,
                             false,
@@ -775,7 +801,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         )
                         .with_move_to_zone_verb_surface(
                             ironsmith_core::MoveToZoneVerbSurface::Return,
-                        )
+                        );
+                        if destination.transformed {
+                            moved.with_move_to_zone_transformed()
+                        } else {
+                            moved
+                        }
                     } else if destination.attacking || destination.face_down {
                         EffectAst::subject_verb_move_to_zone_with_attacking(
                             target,
@@ -807,10 +838,15 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         }
                     }
                 }
-                crate::grammar::effects::ReturnZoneShape::Graveyard => {
+                returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
+                    | crate::grammar::effects::ReturnZoneShape::Command) => {
                     EffectAst::subject_verb_move_to_zone(
                         target,
-                        Zone::Graveyard,
+                        if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
+                            Zone::Command
+                        } else {
+                            Zone::Graveyard
+                        },
                         false,
                         ReturnControllerAst::Preserve,
                         false,

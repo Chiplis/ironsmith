@@ -2967,7 +2967,8 @@ fn lookback_source_filter_context(
     source_snapshot: &ObjectSnapshot,
 ) -> crate::target::FilterContext {
     let mut filter_ctx =
-        game.filter_context_for(source_snapshot.controller, Some(source_snapshot.object_id));
+        game.filter_context_for(source_snapshot.controller, Some(source_snapshot.object_id))
+            .with_source_snapshot(Some(source_snapshot.clone()));
     let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
     else {
         return filter_ctx;
@@ -3420,6 +3421,45 @@ fn check_triggers_with_view_and_registry(
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 source_kind: TriggeredAbilitySourceKind::Object,
                 trigger_identity,
+            });
+        }
+    }
+
+    // CR 702.144a-b: each demonstrate instance granted to a spell by a typed
+    // `GrantSpellKeyword` static triggers separately when the spell is cast.
+    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
+        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
+        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+        && let Some(obj) = game.object(cast.spell)
+    {
+        for instance in crate::granted_spell_keywords::granted_spell_keywords(
+            game,
+            cast.spell,
+            cast.caster,
+            false,
+        ) {
+            if instance.keyword.kind != ironsmith_core::GrantedSpellKeywordKind::Demonstrate {
+                continue;
+            }
+            let ability = crate::granted_spell_keywords::demonstrate_triggered_ability();
+            let mut identity = DefaultHasher::new();
+            compute_trigger_identity(&ability).hash(&mut identity);
+            instance.identity.hash(&mut identity);
+            triggered.push(TriggeredAbilityEntry {
+                linked_exile_owner: None,
+                source_number_owner: None,
+                source: cast.spell,
+                controller: cast.caster,
+                x_value: entry.x_value,
+                event_value_amount: None,
+                ability,
+                triggering_event: trigger_event.clone(),
+                source_stable_id: obj.stable_id,
+                source_name: obj.name.to_string(),
+                source_snapshot: None,
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                source_kind: TriggeredAbilitySourceKind::Object,
+                trigger_identity: TriggerIdentity(identity.finish()),
             });
         }
     }
@@ -3975,6 +4015,15 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                     .get(crate::tag::DELAYED_TARGET_PLAYERS_TAG)
                     .cloned()
                     .unwrap_or_default();
+                // A delayed ability linked to a prevention shield ("prevented
+                // this way") sees only that shield's prevention events.
+                if let (Some(shield), Some(prevented)) = (
+                    delayed.prevention_shield,
+                    trigger_event.downcast::<crate::events::DamagePreventedEvent>(),
+                ) && prevented.prevention_shield != Some(shield)
+                {
+                    continue;
+                }
                 let range_source = delayed.ability_source.unwrap_or(source);
                 if !trigger_event_is_in_range(
                     game,
@@ -4038,7 +4087,13 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         })
                         .unwrap_or_else(|| "Delayed Trigger".to_string());
 
-                    let event_value_amount = delayed
+                    // A shield-linked prevention event carries its own
+                    // prevented amount; other delayed events read the total.
+                    let per_event_prevented = trigger_event
+                        .downcast::<crate::events::DamagePreventedEvent>()
+                        .filter(|_| delayed.prevention_shield.is_some())
+                        .map(|prevented| prevented.amount as i32);
+                    let event_value_amount = per_event_prevented.or_else(|| delayed
                         .prevention_shield
                         .map(|shield_id| {
                             game.effect_store
@@ -4046,7 +4101,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                 .prevented_by_shield(shield_id)
                                 as i32
                         })
-                        .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
+                        .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx)));
                     let entry = TriggeredAbilityEntry {
                         linked_exile_owner: delayed.linked_exile_owner.clone(),
                         source_number_owner: delayed.source_number_owner.clone(),
@@ -4389,6 +4444,18 @@ pub fn player_filter_matches_with_context(
                     defending_player,
                 )
         }),
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_filter_matches_with_context(
+                    base,
+                    other.id,
+                    controller,
+                    game,
+                    defending_player,
+                )
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player)
+        }),
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store
             .turn_history
@@ -4397,6 +4464,9 @@ pub fn player_filter_matches_with_context(
             .any(|snapshot| {
                 snapshot.controller == player && snapshot.card_types.contains(card_type)
             }),
+        PlayerFilter::TurnHistory(history) => {
+            crate::filter::player_turn_history_matches(game, player, *history)
+        }
         // This helper has no source object. Source-relative player history is
         // resolved by effect execution's game-aware filter context instead.
         PlayerFilter::AttackedBySourceThisTurn

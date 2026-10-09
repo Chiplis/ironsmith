@@ -131,7 +131,7 @@ pub fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedC
         PermissionSequence::word("then"),
         PermissionSequence::action(
             "sacrifice",
-            PermissionCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
+            PermissionCaptureKind::OneOf(&["sacrifice", "sacrifices", "tap", "taps"]),
         ),
         PermissionSequence::phrase(&["the", "rest"]),
     ];

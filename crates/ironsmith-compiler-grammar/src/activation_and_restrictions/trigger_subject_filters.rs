@@ -427,7 +427,70 @@ pub fn parse_trigger_subject_filter_lexed(
     if subject_facts.any_source {
         return Ok(Some(ObjectFilter::default()));
     }
+    // "Whenever a source of the chosen color deals damage to you" (Circle of
+    // Affliction): any source, restricted by the color chosen as the
+    // permanent entered (CR 607.2a links the choice to this ability).
+    if trigger_subject_grammar::parse_trigger_chosen_color_source(&subject_words) {
+        let mut filter = ObjectFilter::default();
+        filter.chosen_color = true;
+        return Ok(Some(filter));
+    }
     if subject_facts.relative_pronoun {
+        // "Whenever one or more creatures you control that entered this turn
+        // attack/deal combat damage ..." (Goro-Goro and Satoru, Whirlwind,
+        // Pick Up the Pace): the relative clause is the typed
+        // entered-the-battlefield-this-turn predicate on an ordinary subject.
+        let entered_suffix =
+            trigger_subject_grammar::parse_trigger_entered_this_turn_suffix(&subject_words);
+        let turned_face_up_suffix = trigger_subject_grammar::parse_trigger_turned_face_up_this_turn_suffix(
+            &subject_words,
+        );
+        if let Some(relative_start) = entered_suffix.or(turned_face_up_suffix)
+            && let Some(prefix_end) =
+                trigger_subject_grammar::parse_trigger_word_span(subject_tokens, relative_start)
+                    .map(|span| span.first)
+            && prefix_end > 0
+        {
+            let Some(mut filter) = parse_trigger_subject_filter_lexed(&subject_tokens[..prefix_end])?
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                )));
+            };
+            if !filter.any_of.is_empty() || filter.source {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                )));
+            }
+            if entered_suffix.is_some() {
+                filter.entered_battlefield_this_turn = true;
+            } else {
+                // CR 708.8: a turn-history fact, not the current face state.
+                filter.turned_face_up_this_turn = true;
+            }
+            filter.zone.get_or_insert(Zone::Battlefield);
+            if other {
+                filter.other = true;
+            }
+            return Ok(Some(filter));
+        }
+        // "Whenever one or more creatures that are enchanted by an Aura you
+        // control attack" (Killian, Decisive Mentor): the relative clause is
+        // the object grammar's attached-Aura predicate, which the general
+        // filter parser reads as a whole.
+        if trigger_subject_grammar::parse_trigger_enchanted_by_relative_clause(&subject_words)
+        {
+            let mut filter = parse_object_filter_lexed(subject_tokens, other).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported trigger subject filter (clause: '{}')",
+                    subject_words.join(" ")
+                ))
+            })?;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            return Ok(Some(filter));
+        }
         // "Whenever that creature deals combat damage ... this turn" (Hunter's
         // Insight): the demonstrative names the object chosen earlier.
         if let ["that", noun] = subject_words.as_slice()

@@ -599,6 +599,17 @@ fn read_and_split_exile_pair(input: &ExileClause<'_>) -> Result<Option<EffectAst
         && !before_and.is_empty()
     {
         let starts_multi_target = effect_grammar::starts_exile_multi_target_shape(after_and);
+        if starts_multi_target
+            && let Some(effect) = super::parse_explicit_target_exile_pair(
+                before_and,
+                after_and,
+                input.subject,
+                input.until_source_leaves,
+                input.face_down,
+            )?
+        {
+            return Ok(Some(effect));
+        }
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target exile clause (clause: '{}')",

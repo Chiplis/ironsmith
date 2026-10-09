@@ -44,7 +44,7 @@ fn complete_candidate_sources_require_current_envelopes_on_every_materialization
         (include_str!("../../../fixtures/residual_static_condition_cohort.json.fixture"),
             &["Deepway Navigator", "Essence Leak", "The Ur-Dragon"]),
     ];
-    assert_eq!(FORMAT_VERSION, 17);
+    assert_eq!(FORMAT_VERSION, 18);
     for &(fixture, names) in cohorts {
         for &name in names {
             let text = source(fixture, name);

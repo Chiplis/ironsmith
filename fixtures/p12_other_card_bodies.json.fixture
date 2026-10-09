@@ -1,0 +1,202 @@
+[
+ {
+  "name": "Goro-Goro and Satoru",
+  "oracle_id": "854bdd4a-d549-41d5-af43-0e2154ed017e",
+  "mana_cost": "{U}{B}{R}",
+  "type_line": "Legendary Creature — Goblin Human",
+  "oracle_text": "Whenever one or more creatures you control that entered this turn deal combat damage to a player, create a 5/5 red Dragon Spirit creature token with flying.\n{1}{R}: Creatures you control gain haste until end of turn.",
+  "text": "Mana cost: {U}{B}{R}\nType: Legendary Creature — Goblin Human\nPower/Toughness: 3/4\nWhenever one or more creatures you control that entered this turn deal combat damage to a player, create a 5/5 red Dragon Spirit creature token with flying.\n{1}{R}: Creatures you control gain haste until end of turn."
+ },
+ {
+  "name": "Whirlwind, Killer Cyclone",
+  "oracle_id": "72eabfcc-61b6-4a07-9a9c-b40a9c05cf66",
+  "mana_cost": "{2}{R}",
+  "type_line": "Legendary Creature — Mutant Villain",
+  "oracle_text": "Haste\nWhenever one or more creatures you control that entered this turn attack a player, target creature that player controls can't block this turn.",
+  "text": "Mana cost: {2}{R}\nType: Legendary Creature — Mutant Villain\nPower/Toughness: 2/3\nHaste\nWhenever one or more creatures you control that entered this turn attack a player, target creature that player controls can't block this turn."
+ },
+ {
+  "name": "Killian, Decisive Mentor",
+  "oracle_id": "9c54bd34-667d-415c-ad26-82e0eb0ff409",
+  "mana_cost": "{1}{W}{B}",
+  "type_line": "Legendary Creature — Human Warlock",
+  "oracle_text": "Whenever an enchantment you control enters, tap up to one target creature and goad it.\nWhenever one or more creatures that are enchanted by an Aura you control attack, draw a card.",
+  "text": "Mana cost: {1}{W}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 2/3\nWhenever an enchantment you control enters, tap up to one target creature and goad it.\nWhenever one or more creatures that are enchanted by an Aura you control attack, draw a card."
+ },
+ {
+  "name": "Circle of Affliction",
+  "oracle_id": "69658c2c-2c46-4d62-945e-1a5176869b05",
+  "mana_cost": "{1}{B}",
+  "type_line": "Enchantment",
+  "oracle_text": "As this enchantment enters, choose a color.\nWhenever a source of the chosen color deals damage to you, you may pay {1}. If you do, target player loses 1 life and you gain 1 life.",
+  "text": "Mana cost: {1}{B}\nType: Enchantment\nAs this enchantment enters, choose a color.\nWhenever a source of the chosen color deals damage to you, you may pay {1}. If you do, target player loses 1 life and you gain 1 life."
+ },
+ {
+  "name": "Dutiful Replicator",
+  "oracle_id": "46670c03-d7eb-489f-ba1a-c7f805c486d2",
+  "mana_cost": "{3}",
+  "type_line": "Artifact Creature — Assembly-Worker",
+  "oracle_text": "When this creature enters, you may pay {1}. When you do, create a token that's a copy of target token you control not named Dutiful Replicator.",
+  "text": "Mana cost: {3}\nType: Artifact Creature — Assembly-Worker\nPower/Toughness: 3/2\nWhen this creature enters, you may pay {1}. When you do, create a token that's a copy of target token you control not named Dutiful Replicator."
+ },
+ {
+  "name": "Ellivere of the Wild Court",
+  "oracle_id": "97f9b82f-b3cf-44ff-9abc-2d92d7cbaa27",
+  "mana_cost": "{2}{G}{W}",
+  "type_line": "Legendary Creature — Human Knight",
+  "oracle_text": "Whenever Ellivere enters or attacks, create a Virtuous Role token attached to another target creature you control.\nWhenever an enchanted creature you control deals combat damage to a player, draw a card.",
+  "text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight\nPower/Toughness: 4/4\nWhenever Ellivere enters or attacks, create a Virtuous Role token attached to another target creature you control.\nWhenever an enchanted creature you control deals combat damage to a player, draw a card."
+ },
+ {
+  "name": "Besmirch",
+  "oracle_id": "fc80380c-7d75-4556-aaf2-bf7b2c757e75",
+  "mana_cost": "{1}{R}{R}",
+  "type_line": "Sorcery",
+  "oracle_text": "Until end of turn, gain control of target creature and it gains haste. Untap and goad that creature.",
+  "text": "Mana cost: {1}{R}{R}\nType: Sorcery\nUntil end of turn, gain control of target creature and it gains haste. Untap and goad that creature."
+ },
+ {
+  "name": "Sinister Gnarlbark",
+  "oracle_id": "fcd2142e-ba84-4693-9b29-ecc43feba2b8",
+  "mana_cost": "{2}{B}",
+  "type_line": "Creature — Treefolk Warlock",
+  "oracle_text": "At the beginning of your end step, draw a card and blight 1.",
+  "text": "Mana cost: {2}{B}\nType: Creature — Treefolk Warlock\nPower/Toughness: 0/4\nAt the beginning of your end step, draw a card and blight 1."
+ },
+ {
+  "name": "And They Shall Know No Fear",
+  "oracle_id": "0ea6d165-2c30-41a4-8829-6d0510afc03f",
+  "mana_cost": "{1}{W}",
+  "type_line": "Instant",
+  "oracle_text": "Choose a creature type. Creatures you control of the chosen type get +1/+0 and gain indestructible until end of turn.",
+  "text": "Mana cost: {1}{W}\nType: Instant\nChoose a creature type. Creatures you control of the chosen type get +1/+0 and gain indestructible until end of turn."
+ },
+ {
+  "name": "Spectral Shield",
+  "oracle_id": "37d9c065-598d-4ee3-abfc-625bd6169ff1",
+  "mana_cost": "{1}{W}{U}",
+  "type_line": "Enchantment — Aura",
+  "oracle_text": "Enchant creature\nEnchanted creature gets +0/+2 and can't be the target of spells.",
+  "text": "Mana cost: {1}{W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +0/+2 and can't be the target of spells."
+ },
+ {
+  "name": "Drownyard Lurker",
+  "oracle_id": "7cf5c3dd-5c07-4eaf-8227-6f4e7f9b134d",
+  "mana_cost": "{7}",
+  "type_line": "Creature — Eldrazi Trilobite",
+  "oracle_text": "Vigilance\nWhen you cast or cycle Drownyard Lurker, create a 0/1 colorless Eldrazi Spawn creature token with \"Sacrifice this token: Add {C}.\"\nCycling {2}{U}",
+  "text": "Mana cost: {7}\nType: Creature — Eldrazi Trilobite\nPower/Toughness: 7/7\nVigilance\nWhen you cast or cycle Drownyard Lurker, create a 0/1 colorless Eldrazi Spawn creature token with \"Sacrifice this token: Add {C}.\"\nCycling {2}{U}"
+ },
+ {
+  "name": "Warped Tusker",
+  "oracle_id": "0a994401-d37c-4e30-9410-422e7ae5a715",
+  "mana_cost": "{7}",
+  "type_line": "Creature — Eldrazi Boar Beast",
+  "oracle_text": "Reach\nWhen you cast or cycle Warped Tusker, create a 0/1 colorless Eldrazi Spawn creature token with \"Sacrifice this token: Add {C}.\"\nCycling {2}{G}",
+  "text": "Mana cost: {7}\nType: Creature — Eldrazi Boar Beast\nPower/Toughness: 6/8\nReach\nWhen you cast or cycle Warped Tusker, create a 0/1 colorless Eldrazi Spawn creature token with \"Sacrifice this token: Add {C}.\"\nCycling {2}{G}"
+ },
+ {
+  "name": "Saproling Infestation",
+  "oracle_id": "dd257eb3-4112-41e5-9c7d-00d1f683dbdb",
+  "mana_cost": "{1}{G}",
+  "type_line": "Enchantment",
+  "oracle_text": "Whenever a player kicks a spell, you create a 1/1 green Saproling creature token.",
+  "text": "Mana cost: {1}{G}\nType: Enchantment\nWhenever a player kicks a spell, you create a 1/1 green Saproling creature token."
+ },
+ {
+  "name": "Jokulmorder",
+  "oracle_id": "fbf074b2-d650-43b2-b8b8-d7a778dfd27e",
+  "mana_cost": "{4}{U}{U}{U}",
+  "type_line": "Creature — Leviathan",
+  "oracle_text": "Trample\nThis creature enters tapped.\nWhen this creature enters, sacrifice it unless you sacrifice five lands.\nThis creature doesn't untap during your untap step.\nWhenever you play an Island, you may untap this creature.",
+  "text": "Mana cost: {4}{U}{U}{U}\nType: Creature — Leviathan\nPower/Toughness: 12/12\nTrample\nThis creature enters tapped.\nWhen this creature enters, sacrifice it unless you sacrifice five lands.\nThis creature doesn't untap during your untap step.\nWhenever you play an Island, you may untap this creature."
+ },
+ {
+  "name": "Benediction of Moons",
+  "oracle_id": "3ff2fc3c-0871-4ba7-9b7c-8634ec770d6b",
+  "mana_cost": "{W}",
+  "type_line": "Sorcery",
+  "oracle_text": "You gain 1 life for each player.\nHaunt\nWhen the creature this card haunts dies, you gain 1 life for each player.",
+  "text": "Mana cost: {W}\nType: Sorcery\nYou gain 1 life for each player.\nHaunt\nWhen the creature this card haunts dies, you gain 1 life for each player."
+ },
+ {
+  "name": "Breathe Your Last",
+  "oracle_id": "dc3af7cb-03b9-445f-82eb-18798ec92934",
+  "mana_cost": "{1}{B}{B}",
+  "type_line": "Instant",
+  "oracle_text": "Destroy target creature or planeswalker. You gain 1 life for each of its colors.",
+  "text": "Mana cost: {1}{B}{B}\nType: Instant\nDestroy target creature or planeswalker. You gain 1 life for each of its colors."
+ },
+ {
+  "name": "Inspired Ultimatum",
+  "oracle_id": "76ca315a-4979-4fda-8d3f-b7f4e5d3a622",
+  "mana_cost": "{U}{U}{R}{R}{R}{W}{W}",
+  "type_line": "Sorcery",
+  "oracle_text": "Target player gains 5 life, Inspired Ultimatum deals 5 damage to any target, then you draw five cards.",
+  "text": "Mana cost: {U}{U}{R}{R}{R}{W}{W}\nType: Sorcery\nTarget player gains 5 life, Inspired Ultimatum deals 5 damage to any target, then you draw five cards."
+ },
+ {
+  "name": "Wanderwine Farewell",
+  "oracle_id": "7e1da4a1-5922-4a2e-8bbc-25fbcbf20935",
+  "mana_cost": "{5}{U}{U}",
+  "type_line": "Kindred Sorcery — Merfolk",
+  "oracle_text": "Convoke\nReturn one or two target nonland permanents to their owners' hands. Then if you control a Merfolk, create a 1/1 white and blue Merfolk creature token for each permanent returned to its owner's hand this way.",
+  "text": "Mana cost: {5}{U}{U}\nType: Kindred Sorcery — Merfolk\nConvoke\nReturn one or two target nonland permanents to their owners' hands. Then if you control a Merfolk, create a 1/1 white and blue Merfolk creature token for each permanent returned to its owner's hand this way."
+ },
+ {
+  "name": "Anowon, the Ruin Thief",
+  "oracle_id": "e7e69583-8326-417e-8a9a-6b917c8ba4b6",
+  "mana_cost": "{2}{U}{B}",
+  "type_line": "Legendary Creature — Vampire Rogue",
+  "oracle_text": "Other Rogues you control get +1/+1.\nWhenever one or more Rogues you control deal combat damage to a player, that player mills a card for each 1 damage dealt to them. If the player mills at least one creature card this way, you draw a card.",
+  "text": "Mana cost: {2}{U}{B}\nType: Legendary Creature — Vampire Rogue\nPower/Toughness: 2/4\nOther Rogues you control get +1/+1.\nWhenever one or more Rogues you control deal combat damage to a player, that player mills a card for each 1 damage dealt to them. If the player mills at least one creature card this way, you draw a card."
+ },
+ {
+  "name": "Tsabo's Decree",
+  "oracle_id": "4e0de4d9-7a30-4a2b-94ba-8239baad2a0a",
+  "mana_cost": "{5}{B}",
+  "type_line": "Instant",
+  "oracle_text": "Choose a creature type. Target player reveals their hand and discards all creature cards of that type. Then destroy all creatures of that type that player controls. They can't be regenerated.",
+  "text": "Mana cost: {5}{B}\nType: Instant\nChoose a creature type. Target player reveals their hand and discards all creature cards of that type. Then destroy all creatures of that type that player controls. They can't be regenerated."
+ },
+ {
+  "name": "Void",
+  "oracle_id": "fdb28fd3-70fb-43c3-b367-9cf0d2c46e06",
+  "mana_cost": "{3}{B}{R}",
+  "type_line": "Sorcery",
+  "oracle_text": "Choose a number. Destroy all artifacts and creatures with mana value equal to that number. Then target player reveals their hand and discards all nonland cards with mana value equal to the number.",
+  "text": "Mana cost: {3}{B}{R}\nType: Sorcery\nChoose a number. Destroy all artifacts and creatures with mana value equal to that number. Then target player reveals their hand and discards all nonland cards with mana value equal to the number."
+ },
+ {
+  "name": "Rose, Cutthroat Raider",
+  "oracle_id": "5a721c27-3e02-4f60-995e-b29d678d93b3",
+  "mana_cost": "{2}{R}{R}",
+  "type_line": "Legendary Artifact Creature — Robot",
+  "oracle_text": "First strike\nRaid — At end of combat on your turn, if you attacked this turn, create a Junk token for each opponent you attacked.\nWhenever you sacrifice a Junk, add {R}.",
+  "text": "Mana cost: {2}{R}{R}\nType: Legendary Artifact Creature — Robot\nPower/Toughness: 3/2\nFirst strike\nRaid — At end of combat on your turn, if you attacked this turn, create a Junk token for each opponent you attacked.\nWhenever you sacrifice a Junk, add {R}."
+ },
+ {
+  "name": "Soul Charmer",
+  "oracle_id": "de56a8d9-faeb-4e73-bdc1-cc81a6b6d05c",
+  "mana_cost": "{2}{W}",
+  "type_line": "Creature — Human Rebel",
+  "oracle_text": "Whenever this creature deals combat damage to a creature, you gain 2 life unless that creature's controller pays {2}.",
+  "text": "Mana cost: {2}{W}\nType: Creature — Human Rebel\nPower/Toughness: 2/2\nWhenever this creature deals combat damage to a creature, you gain 2 life unless that creature's controller pays {2}."
+ },
+ {
+  "name": "Assassin's Ink",
+  "oracle_id": "a6d95d26-48d8-4a97-9a42-f492a61300c9",
+  "mana_cost": "{2}{B}{B}",
+  "type_line": "Instant",
+  "oracle_text": "This spell costs {1} less to cast if you control an artifact and {1} less to cast if you control an enchantment.\nDestroy target creature or planeswalker.",
+  "text": "Mana cost: {2}{B}{B}\nType: Instant\nThis spell costs {1} less to cast if you control an artifact and {1} less to cast if you control an enchantment.\nDestroy target creature or planeswalker."
+ },
+ {
+  "name": "Geistlight Snare",
+  "oracle_id": "45f159dc-a5f9-4335-896b-ad544c303801",
+  "mana_cost": "{2}{U}",
+  "type_line": "Instant",
+  "oracle_text": "This spell costs {1} less to cast if you control a Spirit. It also costs {1} less to cast if you control an enchantment.\nCounter target spell unless its controller pays {3}.",
+  "text": "Mana cost: {2}{U}\nType: Instant\nThis spell costs {1} less to cast if you control a Spirit. It also costs {1} less to cast if you control an enchantment.\nCounter target spell unless its controller pays {3}."
+ }
+]

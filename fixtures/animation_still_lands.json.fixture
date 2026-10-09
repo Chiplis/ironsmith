@@ -1,0 +1,26 @@
+[
+ {
+  "name": "Rude Awakening",
+  "oracle_id": "685a7f67-6809-4386-990f-c52d1846a584",
+  "oracle_text": "Choose one —\n• Untap all lands you control.\n• Until end of turn, lands you control become 2/2 creatures that are still lands.\nEntwine {2}{G}",
+  "text": "Mana cost: {4}{G}\nType: Sorcery\nChoose one —\n• Untap all lands you control.\n• Until end of turn, lands you control become 2/2 creatures that are still lands.\nEntwine {2}{G}"
+ },
+ {
+  "name": "Restless Prairie",
+  "oracle_id": "c071257a-63e7-48d0-a677-0b396a09b624",
+  "oracle_text": "This land enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: This land becomes a 3/3 green and white Llama creature until end of turn. It's still a land.\nWhenever this land attacks, other creatures you control get +1/+1 until end of turn.",
+  "text": "Mana cost: \nType: Land\nThis land enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: This land becomes a 3/3 green and white Llama creature until end of turn. It's still a land.\nWhenever this land attacks, other creatures you control get +1/+1 until end of turn."
+ },
+ {
+  "name": "Hunting Wilds",
+  "oracle_id": "e9bc324e-c200-45ef-8b9b-52a61d0f7374",
+  "oracle_text": "Kicker {3}{G}\nSearch your library for up to two Forest cards, put them onto the battlefield tapped, then shuffle.\nIf this spell was kicked, untap all Forests put onto the battlefield this way. They become 3/3 green creatures with haste that are still lands.",
+  "text": "Mana cost: {3}{G}\nType: Sorcery\nKicker {3}{G}\nSearch your library for up to two Forest cards, put them onto the battlefield tapped, then shuffle.\nIf this spell was kicked, untap all Forests put onto the battlefield this way. They become 3/3 green creatures with haste that are still lands."
+ },
+ {
+  "name": "Primal Adversary",
+  "oracle_id": "087d6330-c9de-42b7-a804-1202bc6aa682",
+  "oracle_text": "Trample\nWhen this creature enters, you may pay {1}{G} any number of times. When you pay this cost one or more times, put that many +1/+1 counters on this creature, then up to that many target lands you control become 3/3 Wolf creatures with haste that are still lands.",
+  "text": "Mana cost: {2}{G}\nType: Creature — Wolf\nPower/Toughness: 4/3\nTrample\nWhen this creature enters, you may pay {1}{G} any number of times. When you pay this cost one or more times, put that many +1/+1 counters on this creature, then up to that many target lands you control become 3/3 Wolf creatures with haste that are still lands."
+ }
+]

@@ -74,9 +74,14 @@ pub enum KeywordAction {
     Unearth(ManaCost),
     Embalm(ManaCost),
     Encore(ManaCost),
+    /// Encore whose cost is derived from the card that has it (a granted
+    /// encore, CR 702.141): its mana cost, or {X} where X is its mana value.
+    EncoreFromSourceCost { mana_value_generic: bool },
     Eternalize(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Emerge(ManaCost),
     Ninjutsu(ManaCost),
+    /// CR 702.49d: ninjutsu that also functions from the command zone.
+    CommanderNinjutsu(ManaCost),
     Backup(u32),
     Cipher,
     Dash(ManaCost),
@@ -119,6 +124,14 @@ pub enum KeywordAction {
     Amplify(u32),
     AuraSwap(ManaCost),
     Devour(u32),
+    /// "Devour [quality] N" (CR 702.82c) and "Devour X, where X is the
+    /// number of creatures devoured this way" (Thromok the Insatiable).
+    DevourVariant {
+        multiplier: u32,
+        quality: Option<ObjectFilter>,
+        multiplier_is_devoured_count: bool,
+        presentation_multiplier: u32,
+    },
     Ravenous,
     Ascend,
     Storied,
@@ -151,9 +164,15 @@ pub enum KeywordAction {
     UmbraArmor,
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    /// "Bloodthirst X" (CR 702.54c): enters with X +1/+1 counters, where X is
+    /// the total damage your opponents have been dealt this turn.
+    BloodthirstX,
     Tribute(u32),
     Rampage(u32),
     Bushido(u32),
+    /// "Bushido X, where X is ..." (Fumiko the Lowblood): the bonus is the
+    /// defined value as the trigger resolves (CR 702.45a).
+    BushidoValue(Value),
     Frenzy(u32),
     Changeling,
     HexproofFrom(ObjectFilter),
@@ -220,6 +239,15 @@ pub fn describe_soulshift_value(value: &Value) -> String {
     "that value".to_string()
 }
 
+/// The defined X of a valued keyword ("bushido X, where X is the number of
+/// attacking creatures").
+pub fn describe_defined_x_value(value: &Value) -> String {
+    match value {
+        Value::Count(filter) => format!("the number of {}", filter.description()),
+        _ => "that value".to_string(),
+    }
+}
+
 impl KeywordAction {
     /// Whether static grant syntax can carry this keyword. Some entries name
     /// triggered abilities; lowering expands those through the printed keyword
@@ -263,6 +291,9 @@ impl KeywordAction {
                 | Self::Persist
                 | Self::Prowess
                 | Self::Exalted
+                // Provoke is an attack trigger (CR 702.39); a grant ("All
+                // Sliver creatures have provoke") expands it like exalted.
+                | Self::Provoke
                 | Self::Cascade
                 | Self::Storm
                 | Self::Gravestorm
@@ -314,9 +345,11 @@ impl KeywordAction {
                 | Self::UmbraArmor
                 | Self::Landwalk(_)
                 | Self::Bloodthirst(_)
+                | Self::BloodthirstX
                 | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
+                | Self::BushidoValue(_)
                 | Self::Frenzy(_)
                 | Self::Changeling
                 | Self::HexproofFrom(_)
@@ -436,7 +469,14 @@ impl KeywordAction {
             Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
             Self::Eternalize(cost) => format!("Eternalize {}", cost.display()),
             Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
+            Self::EncoreFromSourceCost { mana_value_generic: false } => {
+                "Encore. Its encore cost is equal to its mana cost".to_string()
+            }
+            Self::EncoreFromSourceCost { mana_value_generic: true } => {
+                "Encore {X}, where X is its mana value".to_string()
+            }
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
+            Self::CommanderNinjutsu(cost) => format!("Commander ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
             Self::Dash(cost) => format!("Dash {}", cost.to_oracle()),
@@ -469,6 +509,17 @@ impl KeywordAction {
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::AuraSwap(cost) => format!("Aura swap {}", cost.to_oracle()),
             Self::Devour(amount) => format!("Devour {amount}"),
+            Self::DevourVariant {
+                multiplier,
+                quality,
+                multiplier_is_devoured_count,
+                ..
+            } => crate::effects::DevourEffect {
+                multiplier: *multiplier,
+                quality: quality.clone(),
+                multiplier_is_devoured_count: *multiplier_is_devoured_count,
+            }
+            .keyword_text(),
             Self::Ravenous => "Ravenous".to_string(),
             Self::Ascend => "Ascend".to_string(),
             Self::Storied => "Storied".to_string(),
@@ -498,9 +549,14 @@ impl KeywordAction {
             Self::UmbraArmor => "Umbra armor".to_string(),
             Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+            Self::BloodthirstX => "Bloodthirst X".to_string(),
             Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
+            Self::BushidoValue(value) => format!(
+                "Bushido X, where X is {}",
+                describe_defined_x_value(value)
+            ),
             Self::Frenzy(amount) => format!("Frenzy {amount}"),
             Self::Changeling => "Changeling".to_string(),
             Self::HexproofFrom(filter) => {

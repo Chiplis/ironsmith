@@ -53,6 +53,9 @@ pub struct VillainousChoiceStatementShape<'a> {
 pub enum VillainousChoicePlayerIteration {
     EachOpponent,
     TargetOpponent,
+    /// "that player faces a villainous choice" (Damocles Base): the player
+    /// the enclosing trigger already names faces one choice.
+    ThatPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,6 +259,9 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
                     None,
                 )
             }),
+        primitives::phrase(&["that", "player"])
+            .take()
+            .map(|tokens| (VillainousChoicePlayerIteration::ThatPlayer, tokens, None)),
     ))
     .parse_next(input)?;
     primitives::phrase(&["faces", "a", "villainous", "choice"]).parse_next(input)?;

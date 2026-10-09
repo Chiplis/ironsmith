@@ -59,10 +59,37 @@ pub enum EffectAst {
     DocumentProgram(Box<CompilerDocumentProgramAst>),
     SubjectVerb(SubjectVerbEffectAst),
     SolveCase,
+    /// "Each player exiles the top card of their library. ... If two or more
+    /// players' cards are tied for greatest, the tied players repeat this
+    /// process until the tie is broken." (Timesifter): the contenders each
+    /// exile the top card of their library until at most one has the
+    /// greatest mana value; `contenders_tag` then names that player.
+    GreatestManaValueTieBreakExile {
+        contenders_tag: TagRef,
+        exiled_tag: TagRef,
+    },
+    /// "It becomes day." / "It becomes night." (CR 731.2-731.3).
+    SetDayNight(ironsmith_core::DayNightDesignation),
+    /// One named choice per participating player ("For each player, choose
+    /// friend or foe", "Each opponent chooses fame or fortune"); the players
+    /// per option are recorded for the following instructions.
+    ChoosePlayerOption(ironsmith_core::ChoosePlayerOptionEffect),
+    /// "You choose how each player votes this turn." (Illusion of Choice).
+    ControlVotesThisTurn,
     /// "This ability still resolves if its target becomes illegal."
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."
     NoteActivationManaType,
+    /// "For each player, choose friend or foe." Tags the two player groups.
+    ChooseFriendsOrFoes {
+        friends: TagRef,
+        foes: TagRef,
+    },
+    /// Relax the loyalty-ability activation rule this turn (CR 606.3).
+    GrantLoyaltyActivationAllowance {
+        scope: ironsmith_core::LoyaltyActivationScope,
+        allowance: ironsmith_core::LoyaltyActivationAllowance,
+    },
     /// "You may pay [cost] to end this effect." (Licids): offers the
     /// resolving ability's controller a special action (CR 116.2c) that ends
     /// the continuous effects the ability's earlier instructions created.
@@ -188,6 +215,12 @@ pub enum EffectAst {
     /// Collect optional mana payments in controller-first turn order; bind
     /// their checked total as a fresh local X for the complete nested body.
     CollectManaPayments {
+        effects: Vec<EffectAst>,
+    },
+    /// A die-result row that fixes X for the program it governs ("1—9 | X is
+    /// one."): run `effects` with X equal to `value`.
+    BindX {
+        value: Value,
         effects: Vec<EffectAst>,
     },
 }
@@ -426,6 +459,31 @@ impl EffectAst {
                 allow_colorless,
                 allow_artifacts,
                 choose_card_type,
+                also_each: None,
+            }),
+        )
+    }
+
+    /// Protection of one shared choice granted to a recipient and to every
+    /// member of a quantified object set.
+    pub fn subject_verb_grant_protection_choice_with_each(
+        target: TargetAst,
+        also_each: ObjectFilter,
+        chooser: PlayerAst,
+        allow_colorless: bool,
+        allow_artifacts: bool,
+        choose_card_type: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice {
+                target,
+                chooser,
+                allow_colorless,
+                allow_artifacts,
+                choose_card_type,
+                also_each: Some(also_each),
             }),
         )
     }
@@ -608,6 +666,34 @@ impl EffectAst {
                     reflect_damage_to_source_controller,
                     reflect_source_filter: None,
                     follow_up_effects: Vec::new(),
+                    portion: ironsmith_core::NextTimeDamagePreventionPortion::All,
+                    combat_only: false,
+                },
+            ),
+        )
+    }
+
+    /// "The next time <source> would deal [combat] damage to <recipient> this
+    /// turn, prevent half that damage, rounded down / all but N of that
+    /// damage."
+    pub fn subject_verb_prevent_next_time_damage_portion(
+        source: PreventNextTimeDamageSourceAst,
+        target: PreventNextTimeDamageTargetAst,
+        portion: ironsmith_core::NextTimeDamagePreventionPortion,
+        combat_only: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage {
+                    source,
+                    target,
+                    reflect_damage_to_source_controller: false,
+                    reflect_source_filter: None,
+                    follow_up_effects: Vec::new(),
+                    portion,
+                    combat_only,
                 },
             ),
         )
@@ -670,6 +756,7 @@ impl EffectAst {
                 source_of_your_choice,
                 protect_you_and_permanents_you_control,
                 follow_up_effects,
+                divided: false,
             }),
         )
     }
@@ -811,6 +898,8 @@ impl EffectAst {
                     source_filter,
                     source_would_deal_surface: false,
                     of_chosen_color: false,
+                    source_of_your_choice: false,
+                    follow_up_effects: Vec::new(),
                 },
             ),
         )
@@ -1550,6 +1639,7 @@ impl EffectAst {
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
                 surface: None,
+                during_turns_attacked_with: None,
             }),
         )
     }
@@ -1575,6 +1665,35 @@ impl EffectAst {
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
                 surface: None,
+                during_turns_attacked_with: None,
+            }),
+        )
+    }
+
+    /// "During any turn you attacked with <filter>, you may play that card."
+    pub fn subject_verb_grant_play_tagged_during_turns_attacked_with(
+        tag: TagRef,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
+        condition: ironsmith_core::effect::AttackedWithTurnCondition,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                permission_bound_mana: false,
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: allow_any_color_for_cast.into(),
+                filter: None,
+                during_turns_counter_put_on_source: None,
+                spell_cost_increase: None,
+                lands_enter_tapped: false,
+                surface: None,
+                during_turns_attacked_with: Some(condition),
             }),
         )
     }
@@ -1600,6 +1719,7 @@ impl EffectAst {
                 spell_cost_increase,
                 lands_enter_tapped,
                 surface: None,
+                during_turns_attacked_with: None,
             }),
         )
     }
@@ -1881,6 +2001,8 @@ impl EffectAst {
                 battlefield_tapped,
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only: false,
+                battlefield_blocking: None,
                 battlefield_face_down,
                 battlefield_transformed: false,
                 attached_to,
@@ -1918,12 +2040,63 @@ impl EffectAst {
                 battlefield_tapped,
                 battlefield_attacking: false,
                 battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+                battlefield_attack_player_only: false,
+                battlefield_blocking: None,
                 battlefield_face_down: false,
                 battlefield_transformed: false,
                 attached_to,
                 all: true,
             }),
         )
+    }
+
+    /// "... onto the battlefield [tapped and] attacking that opponent / that
+    /// player or a planeswalker they control": the entering attacker's
+    /// attack-target player (CR 508.4). No-op for other effects or `None`.
+    pub fn with_battlefield_attack_target(mut self, target: Option<(PlayerAst, bool)>) -> Self {
+        if let Some((player, player_only)) = target
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_attacking,
+                battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_attacking = true;
+            *battlefield_attack_target_player_or_planeswalker_controlled_by = Some(player);
+            *battlefield_attack_player_only = player_only;
+        }
+        self
+    }
+
+    /// "onto the battlefield blocking that creature": the blocked attacker.
+    /// No-op for other effects or `None`.
+    pub fn with_battlefield_blocking(mut self, blocked: Option<TargetAst>) -> Self {
+        if let Some(blocked) = blocked
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_blocking,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_blocking = Some(blocked);
+        }
+        self
+    }
+
+    /// Narrows an entering-attacking move's attack target to the named player
+    /// itself ("attacking that opponent"). No-op for other effects.
+    pub fn with_battlefield_attack_player_only(mut self) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                battlefield_attack_player_only,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *battlefield_attack_player_only = true;
+        }
+        self
     }
 
     pub fn with_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {
@@ -2744,6 +2917,7 @@ impl EffectAst {
         granted_abilities: Vec<GrantedAbilityAst>,
         set_base_power_toughness: Option<(Value, Value)>,
         copy_exception_surface: Option<String>,
+        retain_source_colors: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2765,6 +2939,7 @@ impl EffectAst {
                 granted_abilities,
                 set_base_power_toughness,
                 copy_exception_surface,
+                retain_source_colors,
             }),
         )
     }
@@ -3200,6 +3375,7 @@ impl EffectAst {
                     protected_target: None,
                     destination: RedirectNextTimeDamageDestinationAst::TargetObject,
                     destination_target: Some(target),
+                    source_of_your_choice: false,
                 },
             ),
         )
@@ -3218,6 +3394,7 @@ impl EffectAst {
                     protected_target: Some(protected_target),
                     destination: RedirectNextTimeDamageDestinationAst::Controller,
                     destination_target: None,
+                    source_of_your_choice: false,
                 },
             ),
         )
@@ -3384,8 +3561,36 @@ impl EffectAst {
                 mode,
                 require_change,
                 copy_reference_plural: false,
+                new_target_restriction: None,
             }),
         )
+    }
+
+    /// Attach "The new target must be ..." to a stack retarget instruction.
+    /// Returns false when this effect is not a retarget.
+    pub fn set_retarget_new_target_restriction(
+        &mut self,
+        restriction: ironsmith_core::NewTargetRestriction,
+    ) -> bool {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
+                    new_target_restriction,
+                    ..
+                }),
+            ..
+        }) = self
+        {
+            *new_target_restriction = Some(restriction);
+            return true;
+        }
+        false
+    }
+
+    /// Restrict retargeting to matching objects through the shared restriction.
+    pub fn with_retarget_new_target_restriction(mut self, filter: ObjectFilter) -> Self {
+        self.set_retarget_new_target_restriction(ironsmith_core::NewTargetRestriction::Object(filter));
+        self
     }
 
     /// Preserve an authored plural copy back-reference ("the copies").
@@ -3614,6 +3819,33 @@ impl EffectAst {
                 optional: false,
                 choice_description: None,
                 counters: Vec::new(),
+                linked_exile_follow_up: Some(follow_up),
+            }),
+        )
+    }
+
+    pub fn subject_verb_register_zone_replacement_with_counters_and_linked_exile_follow_up(
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+        counters: Vec<(CounterType, u32)>,
+        follow_up: ironsmith_core::LinkedExileFollowUp,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                library_placement: None,
+                duration,
+                optional: false,
+                choice_description: None,
+                counters,
                 linked_exile_follow_up: Some(follow_up),
             }),
         )
@@ -4146,6 +4378,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_roll_to_visit_attractions(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions),
+        )
+    }
+
     pub fn subject_verb_open_attraction(player: PlayerAst, reminder: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4186,11 +4426,13 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_earthbend(counters: u32) -> Self {
+    pub fn subject_verb_earthbend(counters: impl Into<Value>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
+                counters: counters.into(),
+            }),
         )
     }
 
@@ -4695,6 +4937,7 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: false,
+                manifest: false,
                 shuffle_before: false,
             }),
         )
@@ -4715,6 +4958,30 @@ impl EffectAst {
                 tapped,
                 controller,
                 cloak: true,
+                manifest: false,
+                shuffle_before,
+            }),
+        )
+    }
+
+    /// Manifest the chosen/tagged cards (CR 701.40a): each is put onto the
+    /// battlefield face down as a 2/2 creature.
+    pub fn subject_verb_manifest_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+        shuffle_before: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+                cloak: false,
+                manifest: true,
                 shuffle_before,
             }),
         )
@@ -4970,6 +5237,26 @@ impl EffectAst {
                 count,
                 sides,
                 surface,
+                ignore_lower: false,
+            }),
+        )
+    }
+
+    /// "Roll two d20 and ignore the lower roll."
+    pub fn subject_verb_roll_dice_ignore_lower_with_surface(
+        player: PlayerAst,
+        count: u32,
+        sides: u32,
+        surface: Option<DieSurface>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult {
+                count,
+                sides,
+                surface,
+                ignore_lower: true,
             }),
         )
     }
@@ -5093,7 +5380,21 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }),
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic,
+                basic_only: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_choose_basic_land_type(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic: false,
+                basic_only: true,
+            }),
         )
     }
 
@@ -5606,6 +5907,25 @@ impl EffectAst {
         Self::subject_verb_counter_kind_put_or_remove(target, true)
     }
 
+    /// "For each kind of counter on target permanent or player, give that
+    /// permanent or player another counter of that kind" (CR 122.1: one more
+    /// counter of every kind already there, players included).
+    pub fn subject_verb_for_each_counter_kind_put_another(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source: None,
+                all_kinds: true,
+                fixed_counter_type: None,
+                optional_action: false,
+                put_only: true,
+                choose_target_per_kind: false,
+            }),
+        )
+    }
+
     pub fn subject_verb_one_counter_kind_put_or_remove(target: TargetAst) -> Self {
         Self::subject_verb_counter_kind_put_or_remove(target, false)
     }
@@ -5982,6 +6302,8 @@ impl EffectAst {
                 cost,
                 x_value: None,
                 x_maximum: None,
+                independent_x_choice: false,
+
             }),
         )
     }
@@ -5998,6 +6320,8 @@ impl EffectAst {
                 cost,
                 x_value: None,
                 x_maximum: Some(x_maximum),
+                independent_x_choice: false,
+
             }),
         )
     }
@@ -6244,7 +6568,21 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare {
+                target,
+                unprepare: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_unprepare(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare {
+                target,
+                unprepare: true,
+            }),
         )
     }
 
@@ -6283,6 +6621,31 @@ impl EffectAst {
     pub fn subject_verb_become_blocked(target: TargetAst) -> Self {
         Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked{target}))
+    }
+
+    pub fn subject_verb_reselect_attack_target(target: TargetAst, players_only: bool) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                target,
+                players_only,
+                attacked_player: None,
+            }),
+        )
+    }
+
+    /// "<attacking creatures> are now attacking <player>" (CR 506.4).
+    pub fn subject_verb_now_attacking_player(target: TargetAst, player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                target,
+                players_only: true,
+                attacked_player: Some(player),
+            }),
+        )
     }
 
     pub fn subject_verb_remove_from_combat(target: TargetAst) -> Self {

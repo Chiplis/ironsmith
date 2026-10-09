@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Conspicuous Snoop",
+    "oracle_id": "f5d1bd3c-0e65-4999-a810-881b2389b40e",
+    "text": "Mana cost: {R}{R}\nType: Creature — Goblin Rogue\nPower/Toughness: 2/2\nPlay with the top card of your library revealed.\nYou may cast Goblin spells from the top of your library.\nAs long as the top card of your library is a Goblin card, this creature has all activated abilities of that card."
+  },
+  {
+    "name": "Skill Borrower",
+    "oracle_id": "9e862e4a-254d-4d39-b2cf-4beed6db761f",
+    "text": "Mana cost: {2}{U}\nType: Artifact Creature — Human Wizard\nPower/Toughness: 1/3\nPlay with the top card of your library revealed.\nAs long as the top card of your library is an artifact or creature card, this creature has all activated abilities of that card."
+  },
+  {
+    "name": "Crown of Convergence",
+    "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+    "text": "Mana cost: {2}\nType: Artifact\nPlay with the top card of your library revealed.\nAs long as the top card of your library is a creature card, creatures you control that share a color with that card get +1/+1.\n{G}{W}: Put the top card of your library on the bottom of your library."
+  }
+]

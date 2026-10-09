@@ -383,6 +383,11 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
+    // A repeated pronoun starts an independent sibling instruction. The
+    // shared-subject reader must not absorb that subject into a become template.
+    if before_gain.ends_with(&["and", "it"]) {
+        return Ok(None);
+    }
     let get_idx = gain_shapes::find_get_verb(before_gain);
     let leading_become_subject_end_word_idx = gain_shapes::find_become_verb(before_gain)
         .map(|become_idx| subject_start_word_idx + become_idx);
@@ -888,6 +893,34 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
+    // "you and planeswalkers you control gain protection from that player"
+    // (Eon Frolicker): the player half and the controlled-permanent half each
+    // receive the same grant.
+    if !losing
+        && !real_subject_shape.you_and_permanents
+        && let Some(permanent_filter) = you_and_controlled_permanents_subject(real_subject_tokens)
+    {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            real_subject_tokens,
+            PlayerFilter::You,
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported mixed player/permanent gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects.push(EffectAst::subject_verb_grant_abilities_all(
+            permanent_filter,
+            abilities,
+            duration,
+        ));
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
     if !losing && real_subject_shape.player_any {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
@@ -1135,4 +1168,18 @@ pub fn parse_gain_ability_to_source_sentence(
     }
 
     Ok(None)
+}
+
+/// "you and planeswalkers you control": a player subject coordinated with a
+/// set of permanents that player controls. Returns the permanent half.
+fn you_and_controlled_permanents_subject(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let [you, and, rest @ ..] = tokens else {
+        return None;
+    };
+    if !you.is_word("you") || !and.is_word("and") || rest.is_empty() {
+        return None;
+    }
+    let filter = parse_object_filter_lexed(rest, false).ok()?;
+    (filter.controller == Some(PlayerFilter::You) && filter.tagged_constraints.is_empty())
+        .then_some(filter)
 }

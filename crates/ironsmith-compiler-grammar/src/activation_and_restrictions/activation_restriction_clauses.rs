@@ -12,6 +12,10 @@ fn simple_negated_object_restriction(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
+    if matches!(words, ["have", "counters", "put", "on", "them" | "it"]) {
+        return Some(Restriction::have_counters_placed(filter.clone()));
+    }
+
     // "[objects] can't have [kind] counters put on them/it" (Melira).
     if let [
         "have",
@@ -29,6 +33,34 @@ fn simple_negated_object_restriction(
             filter.clone(),
             counter_type,
         ));
+    }
+
+    // "[objects] can't become untapped" (Blossombind): every untap is
+    // prohibited, not only the untap step's.
+    if words == ["become", "untapped"] {
+        return Some(Restriction::become_untapped(filter.clone()));
+    }
+    // "can't be equipped" (Goblin Brawler) / "can't be enchanted [by other
+    // Auras]" (Anti-Magic Aura, Guardian Beast).
+    let attachment_subtype = match words {
+        ["be", "equipped"] => Some((crate::types::Subtype::Equipment, false)),
+        ["be", "enchanted"] => Some((crate::types::Subtype::Aura, false)),
+        ["be", "enchanted", "by", "other", "auras"] => Some((crate::types::Subtype::Aura, true)),
+        _ => None,
+    };
+    if let Some((subtype, other)) = attachment_subtype {
+        let mut attachments = ObjectFilter::default().with_subtype(subtype);
+        attachments.other = other;
+        return Some(Restriction::be_attached_by(filter.clone(), attachments));
+    }
+    // "[objects] can't attack, block, or crew Vehicles" (Revoke Privileges).
+    if words
+        .iter()
+        .copied()
+        .filter(|word| *word != ",")
+        .eq(["attack", "block", "or", "crew", "vehicles"])
+    {
+        return Some(Restriction::attack_block_or_crew(filter.clone()));
     }
 
     let kind = restriction_grammar::parse_simple_object_restriction_words(words)?;
@@ -694,6 +726,12 @@ fn restriction_from_player_action_fact(
                 Restriction::activate_abilities_of(filter)
             }
         }
+        PlayerActivationRestrictionTailFact::BlockWithMoreThan(maximum) => {
+            Restriction::block_with_more_than(player, maximum)
+        }
+        PlayerActivationRestrictionTailFact::VentureMoreThanOnceEachTurn => {
+            Restriction::venture_more_than_once_each_turn(player)
+        }
     }
 }
 
@@ -1312,6 +1350,24 @@ pub fn parse_negated_object_restriction_clause(
     if let Some(restriction) = source_filtered_target_restriction(&remainder_tokens, &filter)? {
         return Ok(Some(ParsedCantRestriction {
             restriction,
+            target,
+        }));
+    }
+
+    // "can't attack Jaces you control" (Jace, Multiverse Architect): a ban
+    // on choosing particular planeswalkers or battles as attack targets.
+    if remainder_words.first() == Some(&"attack")
+        && !matches!(remainder_words.get(1), Some(&"you") | Some(&"alone") | None)
+        && let Some(permanents) = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &remainder_tokens[1..],
+            false,
+        ))
+        && (!permanents.subtypes.is_empty()
+            || permanents.card_types.contains(&crate::types::CardType::Planeswalker)
+            || permanents.card_types.contains(&crate::types::CardType::Battle))
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::attack_permanents(filter, permanents),
             target,
         }));
     }

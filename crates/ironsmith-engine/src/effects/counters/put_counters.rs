@@ -39,6 +39,14 @@ impl EffectExecutor for PutCountersEffect {
         true
     }
 
+    /// "Blight X" as a cost: the number of counters is the announced X
+    /// (CR 601.2b). Putting counters has no upper bound of its own; the
+    /// spell's own "X can't be greater than ..." rule supplies one.
+    fn references_cost_x(&self) -> bool {
+        self.completion_action == Some(crate::events::KeywordActionKind::Blight)
+            && matches!(self.amount.unhinted(), Value::X)
+    }
+
     fn prepare_replacement_draw_continuation_with_outputs(
         &self,
         game: &mut GameState,
@@ -181,6 +189,11 @@ impl EffectExecutor for PutCountersEffect {
             && let Value::Fixed(count) = self.amount
         {
             return Some(format!("Blight {count}"));
+        }
+        if self.completion_action == Some(crate::events::KeywordActionKind::Blight)
+            && matches!(self.amount.unhinted(), Value::X)
+        {
+            return Some("Blight X".to_string());
         }
         if matches!(self.target.base(), ChooseSpec::Source)
             && let Value::Fixed(count) = self.amount

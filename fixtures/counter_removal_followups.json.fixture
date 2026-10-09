@@ -1,0 +1,16 @@
+[
+ {
+  "name": "Leeches",
+  "oracle_id": "0a265cb5-47c7-4e06-9030-602e17bedae5",
+  "mana_cost": "{1}{W}{W}",
+  "type_line": "Sorcery",
+  "oracle_text": "Target player loses all poison counters. Leeches deals that much damage to that player."
+ },
+ {
+  "name": "Survivor's Med Kit",
+  "oracle_id": "fa08400f-b7ca-4c5c-b7ca-a6583b783878",
+  "mana_cost": "{1}",
+  "type_line": "Artifact",
+  "oracle_text": "{1}, {T}: Choose one that hasn't been chosen —\n• Stimpak — Draw a card.\n• Fancy Lads Snack Cakes — Create a Food token.\n• RadAway — Target player loses all rad counters. Sacrifice this artifact."
+ }
+]

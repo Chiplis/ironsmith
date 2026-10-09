@@ -35,6 +35,7 @@ pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
 mod collect_mana_payments;
+mod bind_x_value;
 mod completion_phase;
 pub(crate) use completion_phase::{CompletionInput, CompletionPhase};
 mod compound;
@@ -66,6 +67,7 @@ pub(crate) use repeat_effects::{
 pub(crate) mod original_observations;
 mod repeat_process;
 mod repeat_process_prompt;
+mod player_option_choice;
 mod secret_choice;
 mod sequence;
 mod simultaneous;
@@ -112,6 +114,7 @@ pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use collect_evidence::CollectEvidenceEffect;
 pub use collect_mana_payments::CollectManaPaymentsEffect;
+pub use bind_x_value::BindXValueEffect;
 pub(crate) use compound::{
     execute_checkpoint_transaction, execute_compound, execute_decision_transaction,
     execute_error_transaction_if, execute_optional_world_transaction,
@@ -183,6 +186,10 @@ pub use target_only::TargetOnlyEffect;
 pub use unless_action::UnlessActionEffect;
 pub use unless_pays::UnlessPaysEffect;
 pub use villainous_choice::VillainousChoiceEffect;
+pub use player_option_choice::{
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
+};
 pub use vote::{
     VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult,
 };

@@ -1,3 +1,4 @@
+use crate::filter::ObjectFilterExt as _;
 use super::*;
 use crate::derived_view::DerivedGameView;
 
@@ -74,6 +75,79 @@ pub(super) fn static_abilities_for_object_with_effects(
         .unwrap_or_default()
 }
 
+/// A conditional attack requirement ("If <trigger> attacks, <required>
+/// attack if able") whose condition the proposed declaration meets.
+pub(crate) struct ActiveConditionalAttackRequirement {
+    source: ObjectId,
+    controller: PlayerId,
+    required: crate::target::ObjectFilter,
+}
+
+/// CR 508.1d with conditional requirements: whether such a requirement
+/// exists depends on the declaration itself. The proposed declaration fixes
+/// the set of active conditional requirements; every alternative declaration
+/// is then measured against that same set, so a creature that need not attack
+/// (Viashino Bey) is never forced to, while declaring it obliges the rest.
+/// Unconditional requirements keep their independent per-attacker scores.
+pub(crate) fn active_conditional_attack_requirements(
+    game: &GameState,
+    view: &DerivedGameView,
+    declarations: &[AttackerDeclaration],
+) -> Vec<ActiveConditionalAttackRequirement> {
+    let mut active = Vec::new();
+    if declarations.is_empty() {
+        return active;
+    }
+    for &source in &game.battlefield {
+        if game.is_phased_out(source)
+            || !view.object_has_static_ability_id(
+                source,
+                crate::static_abilities::StaticAbilityId::ConditionalAttackRequirement,
+            )
+        {
+            continue;
+        }
+        let Some(chars) = view.calculated_characteristics(source) else {
+            continue;
+        };
+        let controller = chars.controller;
+        let ctx = game.filter_context_for(controller, Some(source));
+        for ability in chars.static_abilities.iter() {
+            let Some((trigger, required)) = ability.conditional_attack_requirement() else {
+                continue;
+            };
+            let condition_met = declarations.iter().any(|declaration| {
+                game.object(declaration.creature)
+                    .is_some_and(|attacker| trigger.matches(attacker, &ctx, game))
+            });
+            if condition_met {
+                active.push(ActiveConditionalAttackRequirement {
+                    source,
+                    controller,
+                    required: required.clone(),
+                });
+            }
+        }
+    }
+    active
+}
+
+/// Active conditional requirements that apply to `attacker` (each is an
+/// "attack if able" requirement, independent of the attack target).
+pub(crate) fn conditional_attack_requirement_score(
+    game: &GameState,
+    attacker: &crate::object::Object,
+    active: &[ActiveConditionalAttackRequirement],
+) -> usize {
+    active
+        .iter()
+        .filter(|requirement| {
+            let ctx = game.filter_context_for(requirement.controller, Some(requirement.source));
+            requirement.required.matches(attacker, &ctx, game)
+        })
+        .count()
+}
+
 fn attack_requirement_score_for_target(
     game: &GameState,
     attacker: &crate::object::Object,
@@ -94,6 +168,8 @@ fn attack_requirement_score_for_target(
         .get(&attacker.id)
         .copied()
         .unwrap_or(0);
+
+    score += usize::from(game.has_next_combat_attack_requirement(attacker.id));
 
     score += game
         .required_attack_players_this_turn(attacker.id)
@@ -387,6 +463,11 @@ fn prepare_attacker_declarations_internal(
     let mut imposed_attack_costs = Vec::new();
     let mut requirements_obeyed = 0usize;
     let mut prepared = Vec::with_capacity(declarations.len());
+    let conditional_requirements = if enforce_requirements {
+        active_conditional_attack_requirements(game, &declaration_view, declarations)
+    } else {
+        Vec::new()
+    };
 
     for decl in declarations {
         let Some(&legal_option) = legal_attackers_by_creature.get(&decl.creature) else {
@@ -477,7 +558,8 @@ fn prepare_attacker_declarations_internal(
             }
         }
         requirements_obeyed +=
-            attack_requirement_score_for_target(game, creature, &abilities, &decl.target);
+            attack_requirement_score_for_target(game, creature, &abilities, &decl.target)
+                + conditional_attack_requirement_score(game, creature, &conditional_requirements);
 
         prepared.push(PreparedAttackerDeclaration {
             declaration: decl.clone(),
@@ -539,6 +621,10 @@ fn prepare_attacker_declarations_internal(
             .into());
         }
     }
+    crate::combat_state::planeswalker_attack_caps_hold(
+        game,
+        declarations.iter().map(|declaration| &declaration.target),
+    )?;
 
     if enforce_requirements
         && attack_declaration_obeying_more_requirements_exists(
@@ -547,6 +633,7 @@ fn prepare_attacker_declarations_internal(
             &legal_attackers,
             declarations,
             requirements_obeyed,
+            &conditional_requirements,
         )
     {
         if let Some(omitted) = legal_attackers
@@ -585,6 +672,7 @@ fn attack_declaration_obeying_more_requirements_exists(
     legal_attackers: &[crate::decision::AttackerOption],
     current_declarations: &[AttackerDeclaration],
     baseline: usize,
+    conditional_requirements: &[ActiveConditionalAttackRequirement],
 ) -> bool {
     struct ScoredAttackOption<'a> {
         option: &'a crate::decision::AttackerOption,
@@ -600,11 +688,14 @@ fn attack_declaration_obeying_more_requirements_exists(
             let attacker = game.object(option.creature)?;
             let abilities =
                 static_abilities_for_object_with_effects(game, attacker.id, view.effects());
+            let conditional_score =
+                conditional_attack_requirement_score(game, attacker, conditional_requirements);
             let target_scores = option
                 .valid_targets
                 .iter()
                 .map(|target| {
                     attack_requirement_score_for_target(game, attacker, &abilities, target)
+                        + conditional_score
                 })
                 .collect::<Vec<_>>();
             let target_requires_cost = option

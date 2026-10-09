@@ -177,7 +177,8 @@ fn rewrite_mana_restriction(restriction: &ManaUsageRestriction, change: TextChan
         }
         ManaUsageRestriction::CastSpellMatching { filter, .. }
         | ManaUsageRestriction::CastSpellWithManaBonus { filter, .. }
-        | ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter: filter } => {
+        | ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter: filter }
+        | ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter: filter } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
         ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching { spell_filter, ability_source_filter } => {

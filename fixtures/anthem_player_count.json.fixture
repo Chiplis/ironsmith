@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Blazing Sunsteel",
+  "oracle_id": "46c77100-ab2e-43eb-b1cb-c22ed114213e",
+  "oracle_text": "Equipped creature gets +1/+0 for each opponent you have.\nWhenever equipped creature is dealt damage, it deals that much damage to any target.\nEquip {4}",
+  "text": "Mana cost: {1}{R}\nType: Artifact — Equipment\nEquipped creature gets +1/+0 for each opponent you have.\nWhenever equipped creature is dealt damage, it deals that much damage to any target.\nEquip {4}"
+ }
+]

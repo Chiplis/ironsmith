@@ -78,8 +78,11 @@ pub(crate) fn can_block_with_view(
         return false;
     }
 
-    // Tapped creatures can't block.
-    if game.is_tapped(blocker.id) {
+    // Tapped creatures can't block, unless they can block as though they
+    // were untapped (CR 509.1a).
+    if game.is_tapped(blocker.id)
+        && !view.object_has_static_ability_id(blocker.id, StaticAbilityId::CanBlockAsThoughUntapped)
+    {
         return false;
     }
 
@@ -299,9 +302,15 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    // A blocker that can block landwalkers as though they didn't have
+    // landwalk ignores every landwalk evasion of this attacker (CR 702.14).
+    let blocker_ignores_landwalk = blocker_abilities
+        .iter()
+        .any(|ability| ability.id() == StaticAbilityId::CanBlockAsThoughNoLandwalk);
     for landwalk_kind in attacker_abilities
         .iter()
         .filter_map(|ability| ability.landwalk_kind())
+        .filter(|_| !blocker_ignores_landwalk)
     {
         // CR 609.4: this permission changes only this blocking check. The
         // attacker keeps landwalk for every other characteristic query.
@@ -347,6 +356,13 @@ pub(crate) fn can_block_with_view(
                     LandwalkKind::ArtifactLand => {
                         view.object_has_card_type(obj.id, CardType::Artifact)
                     }
+                    // CR 702.14c: legendary/snow landwalk look at the land's
+                    // current supertypes.
+                    LandwalkKind::LegendaryLand => supertypes().contains(&Supertype::Legendary),
+                    LandwalkKind::SnowLand => supertypes().contains(&Supertype::Snow),
+                    // Materialized when the grant resolved; an unbound choice
+                    // names no land type.
+                    LandwalkKind::ChosenType { .. } | LandwalkKind::SacrificedLandTypes => false,
                 }
             });
         if defending_has_required_land {
@@ -600,6 +616,14 @@ pub(crate) fn can_attack_target_with_view(
     {
         return false;
     }
+    if let Some(permanent) = target.attacked_permanent()
+        && !game
+            .effect_store
+            .cant_effects
+            .can_attack_permanent(creature.id, permanent)
+    {
+        return false;
+    }
     can_attack_defender_kind_with_view(
         creature,
         defending_player,
@@ -689,6 +713,7 @@ pub(crate) fn must_attack_with_view(
             .cant_effects
             .must_attack
             .contains_key(&creature.id)
+        || game.has_next_combat_attack_requirement(creature.id)
         || game.is_goaded(creature.id)
 }
 

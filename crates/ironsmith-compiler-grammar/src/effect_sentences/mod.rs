@@ -1,13 +1,30 @@
 mod ability_loss_templates;
 mod bounded_number_choice;
+mod shared_object_verb_pairs;
+mod new_target_restriction;
+mod ignore_effect_exclusion;
 mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;
 mod duration_source_prevention;
+mod prevention_source_riders;
 #[cfg(test)]
 mod temporary_prevention_binding_tests;
 pub(crate) mod life_unit_programs;
 mod temporary_attack_requirement;
+mod attacked_turn_permission;
+mod graveyard_self_cast;
+mod temporary_mana_clause;
+mod conditional_protection_list;
+mod repeated_doubling;
+pub(crate) mod guessed_free_cast;
+pub(crate) mod counted_number;
+pub(crate) mod copied_cards_cast;
+mod loyalty_activation_allowance;
+pub(crate) mod attack_player_requirement;
+pub(crate) mod now_attacking;
+pub(crate) mod turn_scoped_enter_replacement;
+pub(crate) mod turn_scoped_control_entry;
 mod timed_draw_replacement;
 use self::sentence_helpers::*;
 use super::object_filters::parse_object_filter;
@@ -86,6 +103,7 @@ mod consult_family;
 mod consult_procedure;
 mod copy_cast_procedure;
 pub(crate) mod counter_exile_permission;
+pub(crate) mod die_x_table;
 mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
@@ -98,7 +116,13 @@ mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
 mod graveyard_cast_procedure;
+mod assign_unblocked_procedure;
 mod hand_procedure;
+mod keyword_choice_procedure;
+mod player_option_choice_procedure;
+mod vote_option_set_procedure;
+mod chosen_counter_kind_procedure;
+mod search_partition_procedure;
 mod lex_chain_helpers;
 mod looked_cards_family;
 mod looked_procedure;
@@ -107,6 +131,8 @@ mod next_spell_family;
 pub(crate) mod flashback_grants;
 mod optional_companion_fanout;
 mod pair_procedure;
+mod repeat_process_variants;
+mod ordered_group_choice;
 mod local_self_replacement;
 mod toughness_assignment;
 pub(crate) fn recognizes_scalar_self_replacement_sentence(
@@ -117,6 +143,9 @@ pub(crate) fn recognizes_scalar_self_replacement_sentence(
 mod player_subject_sequences;
 mod procedures;
 mod rider_procedure;
+mod cast_spell_graveyard_rider;
+mod elliptical_conditions;
+mod unless_payment_results;
 mod statement_readings;
 pub use procedures::RIDDEN_STATEMENT;
 mod search_library;
@@ -179,6 +208,7 @@ pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_re
 pub use sequence_rules::try_parse_document_program;
 pub use subject_verb_primitives::*;
 pub use verb_handlers::parse_exiled_with_source_move_surface;
+pub(crate) use verb_handlers::{parse_each_object_set_union, parse_player_and_each_object_recipients};
 pub use verb_handlers::{
     damage_clause_has_terminal_unpreventable_rider, mark_damage_ast_unpreventable,
 };
@@ -189,5 +219,6 @@ pub use zone_counter_helpers::{
     parse_starting_life_total_value,
 };
 pub use zone_handlers::parse_destroy;
+pub(crate) use zone_handlers::apply_except_filter_exclusions;
 
 pub(crate) use bundle_rules::parse_consult_then_put_matches_battlefield_rest_bottom_bundle;

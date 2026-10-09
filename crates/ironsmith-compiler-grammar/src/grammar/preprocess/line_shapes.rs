@@ -26,6 +26,11 @@ pub struct LineVariantSplitSurface {
     pub kind: LineVariantSplitKind,
     pub first_end: usize,
     pub second_start: usize,
+    /// Start offset of a trailing activation-restriction sentence ("Activate
+    /// only as a sorcery.") that follows a split cost-adjustment sentence.
+    /// The restriction belongs to the activated ability in the first
+    /// segment (CR 602.5b), not to the cost-adjustment static.
+    pub trailing_restriction_start: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,12 +139,35 @@ pub fn parse_line_variant_split_tokens(
         )
             .map(|(period, ())| period)
     })?;
-    split_surface(
+    let mut split = split_surface(
         tokens,
         period_index,
         period,
         LineVariantSplitKind::CostAdjustmentFollowup,
-    )
+    )?;
+    // "{4}{R}, {T}: ... This ability costs {1} less to activate for each
+    // Equipment you control. Activate only as a sorcery.": the activation
+    // restriction after the cost sentence stays with the activated ability.
+    if primitives::find_prefix(&tokens[..period_index], primitives::colon).is_some() {
+        let tail_start = period_index + 1;
+        if let Some((restriction_period, _, _)) =
+            primitives::find_prefix(&tokens[tail_start..], || {
+                (
+                    primitives::period(),
+                    alt((
+                        primitives::phrase(&["activate", "only"]),
+                        primitives::phrase(&["activate", "this", "ability", "only"]),
+                    )),
+                )
+                    .map(|(period, ())| period)
+            })
+        {
+            split.trailing_restriction_start = tokens
+                .get(tail_start + restriction_period + 1)
+                .map(|token| token.span.start);
+        }
+    }
+    Some(split)
 }
 
 pub fn is_flashback_scoped_cost_adjustment_tokens(
@@ -236,6 +264,11 @@ pub fn parse_resolution_timing_tail_tokens(
 ) -> Option<ResolutionTimingTailSurface> {
     let (tail_index, _, _) =
         primitives::find_prefix(tokens, || primitives::phrase(&["as", "it", "resolves"]))?;
+    // The timing is semantic for a replacement of the resolving spell's
+    // graveyard move. Removing it turns registration into immediate exile.
+    if tokens[..tail_index].iter().any(|token| token.is_word("instead")) {
+        return None;
+    }
     if tokens
         .iter()
         .skip(tail_index.saturating_add(3))
@@ -300,6 +333,7 @@ fn split_surface(
             .get(period_index + 1)
             .map(|token| token.span.start)
             .unwrap_or(period.span.end),
+        trailing_restriction_start: None,
     })
 }
 
@@ -314,6 +348,14 @@ mod tests {
         )
         .expect("split");
         assert_eq!(split.kind, LineVariantSplitKind::AdditionalCost);
+        assert_eq!(split.trailing_restriction_start, None);
+
+        let line = "{4}{R}, {T}: Create a 2/2 red Dwarf creature token. This ability costs {1} less to activate for each Equipment you control. Activate only as a sorcery.";
+        let split = parse_line_variant_split(line).expect("cost split");
+        assert_eq!(split.kind, LineVariantSplitKind::CostAdjustmentFollowup);
+        let restriction = split.trailing_restriction_start.expect("trailing restriction");
+        assert_eq!(&line[restriction..], "Activate only as a sorcery.");
+        assert!(line[split.second_start..restriction].trim().starts_with("This ability costs"));
 
         let metadata = parse_metadata_surface("Power/Toughness: */*").expect("metadata");
         assert_eq!(metadata.kind, MetadataLineKind::PowerToughness);

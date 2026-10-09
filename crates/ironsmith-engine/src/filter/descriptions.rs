@@ -313,6 +313,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("a player {}'s", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
@@ -338,7 +339,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+        PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
+        | PlayerFilter::MaxSpeed { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
@@ -404,12 +407,14 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::TurnHistory(history) => format!("player {}", history.relative_clause()),
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}",
@@ -447,6 +452,10 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::OpponentOf(base) => {
             format!("an opponent of {}", describe_player_filter(base))
         }
+        PlayerFilter::PlayerToLeftOf(base) => match base.as_ref() {
+            PlayerFilter::IteratedPlayer => "the player to their left".to_string(),
+            base => format!("the player to the left of {}", describe_player_filter(base)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -701,6 +710,15 @@ fn object_has_ability_marker_in_view(
         .unwrap_or(object.aura_attach_filter.as_deref());
     if marker.trim().eq_ignore_ascii_case("kicked") {
         return object.optional_costs_paid.was_kicked();
+    }
+    // Kicker and its multikicker variant (CR 702.33) are kicker abilities.
+    if marker.trim().eq_ignore_ascii_case("kicker") {
+        return object.optional_costs.iter().any(|cost| {
+            matches!(
+                cost.kind,
+                crate::cost::OptionalCostKind::Kicker | crate::cost::OptionalCostKind::Multikicker
+            )
+        });
     }
     if aura_attachment_has_ability_marker(enchant_filter, marker) {
         return true;
@@ -1268,6 +1286,9 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::GreatestCount(filter) => {
                 format!("the greatest number of {}", filter.description())
+            }
+            Value::LeastCount(filter) => {
+                format!("the number of {} of the player with the fewest", filter.description())
             }
             Value::GreatestSharedCreatureTypeCount(filter) => format!(
                 "the greatest number of {} that have a creature type in common",

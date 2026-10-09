@@ -3,11 +3,15 @@ use super::*;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedEtbChoices {
     pub(crate) chosen_color: Option<crate::color::Color>,
+    /// "choose two colors": the chosen colors, recorded together.
+    pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
     pub(crate) chosen_basic_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
     pub(crate) chosen_card_type: Option<crate::types::CardType>,
     pub(crate) chosen_player: Option<PlayerId>,
+    /// "choose two players": the chosen players, in choice order.
+    pub(crate) chosen_player_set: Option<Vec<PlayerId>>,
     pub(crate) chosen_named_option: Option<String>,
     pub(crate) noted_life_total: Option<i32>,
     pub(crate) power_toughness_choices:
@@ -264,6 +268,8 @@ impl GameState {
                         tagged_objects,
                     );
                 }
+                // Applied with the copiable values as the object entered.
+                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors => {}
                 ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
                     // "When you do, tap the copied creature and it doesn't
                     // untap during its controller's untap step for as long as
@@ -1384,6 +1390,11 @@ impl GameState {
 
         // Create new object with new ID (zone change = new object per rule 400.7)
         let new_id = self.new_object_id();
+        // A replacement waiting for this card follows it onto the stack and
+        // ends on any other zone change (CR 400.7).
+        self.effect_store
+            .replacement_effects
+            .rebind_followed_object(old_id, new_id, new_zone);
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;
@@ -1932,6 +1943,7 @@ impl GameState {
             None,
             initial_enters_tapped,
             None,
+            None,
         )
     }
 
@@ -1955,6 +1967,7 @@ impl GameState {
             None,
             enters_tapped,
             None,
+            None,
         )
     }
 
@@ -1967,6 +1980,7 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         initial_enters_tapped: bool,
         choose_aura_attachment: bool,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
@@ -1978,6 +1992,7 @@ impl GameState {
             entering_controller,
             initial_enters_tapped,
             None,
+            authored_entry_definition,
         )
     }
 
@@ -1999,6 +2014,7 @@ impl GameState {
             None,
             false,
             None,
+            None,
         )
     }
 
@@ -2018,6 +2034,7 @@ impl GameState {
             initial_enters_with_counters,
             None,
             false,
+            None,
             None,
         )
     }
@@ -2040,6 +2057,7 @@ impl GameState {
             entering_controller,
             false,
             None,
+            None,
         )
     }
 
@@ -2058,6 +2076,7 @@ impl GameState {
             Vec::new(),
             None,
             false,
+            None,
             None,
         )
     }
@@ -2306,7 +2325,41 @@ impl GameState {
                 if let Some(excluded) = spec.excluded {
                     options.retain(|color| *color != excluded);
                 }
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two colors" (Seal of the Guildpact): that many
+                    // different colors, recorded together.
+                    let choice_spec =
+                        crate::decisions::specs::ManaColorsSpec::restricted_different_colors(
+                            old_id,
+                            spec.count,
+                            options.clone(),
+                        );
+                    let chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let mut set = crate::color::ColorSet::COLORLESS;
+                    for color in chosen {
+                        if options.contains(&color) && set.count() < spec.count {
+                            set = set.with(color);
+                        }
+                    }
+                    // A short answer is completed with the first unchosen
+                    // options, keeping the choice at its required size.
+                    for color in &options {
+                        if set.count() >= spec.count {
+                            break;
+                        }
+                        set = set.with(*color);
+                    }
+                    choices.chosen_color_set = Some(set);
+                } else if !options.is_empty() {
                     let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
                         old_id,
                         1,
@@ -2420,7 +2473,44 @@ impl GameState {
                     })
                     .map(|player| player.id)
                     .collect::<Vec<_>>();
-                if !options.is_empty() {
+                if spec.count > 1 && options.len() >= spec.count as usize {
+                    // "choose two players" (Sower of Discord): that many
+                    // different players, one choice at a time.
+                    let mut remaining = options.clone();
+                    let mut picked = Vec::new();
+                    while picked.len() < spec.count as usize && !remaining.is_empty() {
+                        let display_options = remaining
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(idx, player_id)| {
+                                self.player(*player_id).map(|player| {
+                                    crate::decisions::spec::DisplayOption::new(
+                                        idx,
+                                        player.name.to_string(),
+                                    )
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        let choice_spec =
+                            crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            prospective_controller,
+                            Some(old_id),
+                            choice_spec,
+                        );
+                        if decision_maker.awaiting_choice() {
+                            return Ok(None);
+                        }
+                        let index = chosen
+                            .pop()
+                            .filter(|idx| *idx < remaining.len())
+                            .unwrap_or(0);
+                        picked.push(remaining.remove(index));
+                    }
+                    choices.chosen_player_set = Some(picked);
+                } else if !options.is_empty() {
                     let display_options = options
                         .iter()
                         .enumerate()
@@ -2637,8 +2727,64 @@ impl GameState {
                                 !object.is_land()
                                     && object.name.eq_ignore_ascii_case(&canonical_name)
                             });
+                    let legal = legal
+                        && !(spec.exclude_basic_land_names
+                            && is_basic_land_card_name(&canonical_name));
                     if legal {
                         choices.chosen_named_option = Some(canonical_name);
+                    }
+                }
+                // The controller chooses which opponent participates, before
+                // that opponent names their card (CR 101.4, 608.2d).
+                let naming_opponent = if spec.opponent_also_chooses {
+                    let opponents = self.team_apnap_player_order().into_iter()
+                        .filter(|player| self.are_opponents(prospective_controller, *player))
+                        .collect::<Vec<_>>();
+                    if opponents.len() <= 1 {
+                        opponents.first().copied()
+                    } else {
+                        let options = opponents.iter().enumerate().map(|(index, player)| {
+                            crate::decisions::context::SelectableOption::new(index,
+                                self.player(*player).map(|p| p.name.clone())
+                                    .unwrap_or_else(|| format!("Player {}", player.0)))
+                        }).collect();
+                        let context = crate::decisions::context::SelectOptionsContext::new(
+                            prospective_controller, Some(old_id), "Choose an opponent to name a card",
+                            options, 1, 1,
+                        );
+                        let selected = decision_maker.decide_options(self, &context).into_iter()
+                            .find_map(|index| opponents.get(index).copied());
+                        if decision_maker.awaiting_choice() { return Ok(None); }
+                        selected
+                    }
+                } else { None };
+                if let Some(opponent) = naming_opponent {
+                    let choice_ctx = crate::decisions::context::TextInputContext::new(
+                        opponent,
+                        Some(old_id),
+                        "Choose a card name",
+                    )
+                    .with_placeholder("Enter a card name")
+                    .require_known_value(true);
+                    let opponent_name = decision_maker.decide_text(self, &choice_ctx);
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let opponent_name = opponent_name.trim();
+                    if !opponent_name.is_empty() {
+                        let mut registry = CardRegistry::new();
+                        registry.ensure_cards_loaded([opponent_name]);
+                        let canonical = registry
+                            .get(opponent_name)
+                            .map(|definition| definition.name().to_string())
+                            .unwrap_or_else(|| opponent_name.to_string());
+                        if !(spec.exclude_basic_land_names && is_basic_land_card_name(&canonical)) {
+                            choices.chosen_named_option = Some(match choices.chosen_named_option.take() {
+                                Some(mine) if mine != canonical => format!("{mine}\n{canonical}"),
+                                Some(mine) => mine,
+                                None => canonical,
+                            });
+                        }
                     }
                 }
             }
@@ -2788,6 +2934,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2810,6 +2957,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2833,6 +2981,7 @@ impl GameState {
             entering_controller,
             false,
             Some(prepared_entry),
+            None,
         )
     }
 
@@ -2859,6 +3008,7 @@ impl GameState {
             false,
             Some(prepared_entry),
             true,
+            None,
         )
     }
 
@@ -2873,6 +3023,7 @@ impl GameState {
         entering_controller: Option<PlayerId>,
         initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
             let mut published_outputs = Vec::new();
@@ -2909,6 +3060,7 @@ impl GameState {
                 initial_enters_tapped,
                 prepared_entry,
                 false,
+                authored_entry_definition,
             );
             if outcome.is_err() {
                 return outcome;
@@ -2937,6 +3089,7 @@ impl GameState {
             initial_enters_tapped,
             prepared_entry,
             false,
+            authored_entry_definition,
         )
     }
 
@@ -2952,6 +3105,7 @@ impl GameState {
         initial_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
         entry_prevalidated: bool,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
         use crate::events::processing::EventOutcome;
         let checkpoint = self.clone();
@@ -2972,6 +3126,7 @@ impl GameState {
             &mut programs,
             &mut original_verdict,
             &mut published_outputs,
+            authored_entry_definition,
         );
         if result.is_err() || decision_maker.awaiting_choice() {
             *self = checkpoint;
@@ -3011,6 +3166,7 @@ impl GameState {
         programs: &mut Vec<crate::events::processing::PreparedReplacementProgram>,
         original_verdict: &mut crate::events::processing::EventOutcome<()>,
         published_outputs: &mut Vec<crate::effects::PublishedEffectOutputs>,
+        authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<Option<EntersResult>, crate::effects::ExecutionError> {
         use crate::events::processing::EventOutcome;
         if let Some(entry) = &mut prepared_entry {
@@ -3089,6 +3245,12 @@ impl GameState {
                 None => return Ok(None),
             }
         };
+        let mut prepared_entry = prepared_entry;
+        if let Some(definition) = authored_entry_definition {
+            // Keep the face selected by the authoring action through the
+            // physical zone move; ordinary returns still use the default face.
+            prepared_entry.entry_definition = Some(definition);
+        }
         let PreparedEtbEntry {
             result,
             choices,
@@ -3270,6 +3432,9 @@ impl GameState {
             if let Some(color) = choice_store.chosen_colors.remove(&old_id) {
                 choice_store.chosen_colors.insert(new_id, color);
             }
+            if let Some(colors) = choice_store.chosen_color_sets.remove(&old_id) {
+                choice_store.chosen_color_sets.insert(new_id, colors);
+            }
             if let Some(land_type) = choice_store.chosen_land_types.remove(&old_id) {
                 choice_store.chosen_land_types.insert(new_id, land_type);
             }
@@ -3288,6 +3453,9 @@ impl GameState {
             }
             if let Some(player) = choice_store.chosen_players.remove(&old_id) {
                 choice_store.chosen_players.insert(new_id, player);
+            }
+            if let Some(players) = choice_store.chosen_player_sets.remove(&old_id) {
+                choice_store.chosen_player_sets.insert(new_id, players);
             }
             if let Some(object) = choice_store.chosen_objects.remove(&old_id) {
                 choice_store.chosen_objects.insert(new_id, object);
@@ -3455,6 +3623,13 @@ impl GameState {
                         .add_reserved_entry_effect(registration, effect)?;
                 }
             } else {
+                // CR 707.9b: "it doesn't copy that creature's color" keeps the
+                // entering object's own colors as its copiable color.
+                let retained_colors = result
+                    .copy_followups
+                    .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
+                    .then(|| self.object(new_id).map(|object| object.colors()))
+                    .flatten();
                 let copy_source = self.object(copy_source_id).cloned();
                 let effects = self.all_continuous_effects();
                 let copiable_values = crate::continuous::copiable_values_with_effects(
@@ -3469,6 +3644,9 @@ impl GameState {
                     new_obj.copy_copiable_values_from(&source_obj);
                     if let Some(values) = copiable_values.as_ref() {
                         new_obj.copy_copiable_values_from_values(values);
+                    }
+                    if let Some(colors) = retained_colors {
+                        new_obj.color_override = Some(colors);
                     }
                     if let Some(name) = &result.copy_name_override {
                         new_obj.name = name.clone().into();
@@ -3545,6 +3723,9 @@ impl GameState {
         if let Some(color) = choices.chosen_color {
             self.set_chosen_color(new_id, color);
         }
+        if let Some(colors) = choices.chosen_color_set {
+            self.set_chosen_colors(new_id, colors);
+        }
         if let Some(subtype) = choices.chosen_basic_land_type {
             self.set_chosen_basic_land_type(new_id, subtype);
         }
@@ -3559,6 +3740,9 @@ impl GameState {
         }
         if let Some(player) = choices.chosen_player {
             self.set_chosen_player(new_id, player);
+        }
+        if let Some(players) = choices.chosen_player_set.clone() {
+            self.set_chosen_players(new_id, players);
         }
         if let Some(option) = choices.chosen_named_option.clone() {
             self.set_chosen_named_option(new_id, option);
@@ -6574,6 +6758,7 @@ mod replacement_direct_entry_zone_cause_contract_tests {
                 Some(alice),
                 false,
                 true,
+                None,
             );
         assert!(result.is_ok());
         let arrival = game
@@ -6784,4 +6969,11 @@ mod player_removal_notification_public_contract_tests {
             "actual removal outcome and notification must agree"
         );
     }
+}
+
+/// CR 205.4c: the basic land card names (including snow-covered and Wastes).
+fn is_basic_land_card_name(name: &str) -> bool {
+    let name = name.trim();
+    let base = name.strip_prefix("Snow-Covered ").unwrap_or(name);
+    matches!(base, "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" | "Wastes")
 }

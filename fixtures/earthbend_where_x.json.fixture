@@ -1,0 +1,43 @@
+[
+ {
+  "name": "Beifong's Bounty Hunters",
+  "oracle_id": "8561b088-56b3-4732-82e9-8da1e3affd55",
+  "mana_cost": "{2}{B}{G}",
+  "type_line": "Creature — Human Mercenary",
+  "oracle_text": "Whenever a nonland creature you control dies, earthbend X, where X is that creature's power.",
+  "power": "4",
+  "toughness": "4"
+ },
+ {
+  "name": "Bumi's Feast Lecture",
+  "oracle_id": "41f53bb5-8a62-4e6b-b9c3-5aa530a036bc",
+  "mana_cost": "{1}{G}",
+  "type_line": "Sorcery — Lesson",
+  "oracle_text": "Create a Food token. Then earthbend X, where X is twice the number of Foods you control."
+ },
+ {
+  "name": "The Boulder, Ready to Rumble",
+  "oracle_id": "d33ee141-a880-4368-a274-a6ae2f2c624b",
+  "mana_cost": "{3}{G}",
+  "type_line": "Legendary Creature — Human Warrior Performer",
+  "oracle_text": "Whenever The Boulder attacks, earthbend X, where X is the number of creatures you control with power 4 or greater.",
+  "power": "4",
+  "toughness": "4"
+ },
+ {
+  "name": "The Legend of Kyoshi // Avatar Kyoshi",
+  "oracle_id": "e41e8754-028c-4399-b530-de9e134d04b0",
+  "mana_cost": "{4}{G}{G}",
+  "type_line": "Enchantment — Saga",
+  "oracle_text": "I — Draw cards equal to the greatest power among creatures you control.\nII — Earthbend X, where X is the number of cards in your hand. That land becomes an Island in addition to its other types.\nIII — Exile this Saga, then return it to the battlefield transformed under your control."
+ },
+ {
+  "name": "Toph, Earthbending Master",
+  "oracle_id": "ad5d3e7e-bf8c-4fa3-a81e-1523aec2585f",
+  "mana_cost": "{3}{G}",
+  "type_line": "Legendary Creature — Human Warrior Ally",
+  "oracle_text": "Landfall — Whenever a land you control enters, you get an experience counter.\nWhenever you attack, earthbend X, where X is the number of experience counters you have.",
+  "power": "2",
+  "toughness": "4"
+ }
+]

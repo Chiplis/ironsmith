@@ -1,6 +1,26 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    // "for each of the chosen colors it is" (Tablet of the Guilds): the
+    // referenced object's colors among the source's chosen colors.
+    if let ["for", "each", "of", "the", "chosen", "colors", "it", "is", ..] = words {
+        return Some((
+            Value::ChosenColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            8,
+        ));
+    }
+    // "for each player being attacked" / "for each opponent you're attacking"
+    // (Apothecary White, Amber Gristle O'Maul): the defending players of the
+    // current combat (CR 506.2), not every player in the game.
+    if let Some(len) = players_being_attacked_len(words) {
+        return Some((
+            Value::PlayersBeingAttacked.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            len,
+        ));
+    }
     if let ["for", "each", player_words @ ..] = words
         && let Some(filter) = crate::grammar::shared_util::reference_shapes::parse_hand_advantage_player(player_words)
     {
@@ -19,6 +39,19 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         {
             return Some((value, used));
         }
+    }
+    // "You gain 1 life for each player" (Benediction of Moons): the number
+    // of players in the game (CR 102.1).
+    if let ["for", "each", noun @ ("player" | "opponent")] = words {
+        let filter = if *noun == "player" {
+            PlayerFilter::Any
+        } else {
+            PlayerFilter::Opponent
+        };
+        return Some((
+            Value::CountPlayers(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            3,
+        ));
     }
     if let ["for", "each" | "every", number, "life", rest @ ..] = words
         && let Some(group) = crate::util::parse_number_word_u32(number)
@@ -114,6 +147,17 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         }
     }
 
+    // "for each of its colors" (Breathe Your Last): the colors of the object
+    // the sentence's antecedent names, read through its tagged snapshot.
+    if let ["its", "colors", ..] = &words[idx..] {
+        return Some((
+            Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 2,
+        ));
+    }
     // "for each of that spell's colors" (Ancient Cornucopia, Moonveil Regent,
     // Ramos): the colors of the referenced spell.
     if let ["that", "spell's" | "spells", "colors", ..] = &words[idx..] {
@@ -123,6 +167,17 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             )))
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             idx + 3,
+        ));
+    }
+    // "gets +2/+2 until end of turn for each of its colors" (Might of the
+    // Nephilim): the colors of the pronoun's object antecedent.
+    if let ["its", "colors", ..] = &words[idx..] {
+        return Some((
+            Value::ColorsOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            idx + 2,
         ));
     }
 
@@ -632,6 +687,16 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     filter_end,
                 ));
             }
+            // "discards a card for each poison counter they have" (Whispering
+            // Specter): the referenced player's own counters.
+            if count_words.get(counter_idx + 1..) == Some(&["they", "have"][..])
+                || count_words.get(counter_idx + 1..) == Some(&["that", "player", "has"][..])
+            {
+                return Some((
+                    Value::PlayerCounters(PlayerFilter::IteratedPlayer, counter_type),
+                    filter_end,
+                ));
+            }
             if permission_shapes::starts_at_words(count_words, counter_idx + 1, &["on"]) {
                 let reference = &count_words[counter_idx + 2..];
                 if is_source_counter_reference(reference) {
@@ -932,5 +997,43 @@ mod current_blocked_attacker_count_tests {
         assert!(!filter.blocking);
         assert!(matches!(filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if tag == crate::tag::CompilerReferenceTag::It.bind().into()));
         assert!(!filter.blocked_by_source, "do not substitute an implicit source for the antecedent");
+    }
+}
+
+/// The length of a complete "for each player being attacked" count phrase.
+fn players_being_attacked_len(words: &[&str]) -> Option<usize> {
+    const PHRASES: &[&[&str]] = &[
+        &["for", "each", "player", "being", "attacked"],
+        &["for", "each", "opponent", "being", "attacked"],
+        &["for", "each", "player", "youre", "attacking"],
+        &["for", "each", "player", "you're", "attacking"],
+        &["for", "each", "opponent", "youre", "attacking"],
+        &["for", "each", "opponent", "you're", "attacking"],
+    ];
+    PHRASES
+        .iter()
+        .copied()
+        .find(|phrase| *phrase == words)
+        .map(|phrase| phrase.len())
+}
+
+#[cfg(test)]
+mod players_being_attacked_tests {
+    use super::*;
+
+    #[test]
+    fn players_being_attacked_counts_the_defending_players() {
+        for words in [
+            &["for", "each", "player", "being", "attacked"][..],
+            &["for", "each", "opponent", "youre", "attacking"],
+        ] {
+            let (value, used) = parse_for_each_count_value_words(words).unwrap();
+            assert_eq!(used, words.len());
+            assert_eq!(value.unhinted(), &Value::PlayersBeingAttacked);
+        }
+        assert!(
+            players_being_attacked_len(&["for", "each", "player", "being", "attacked", "by", "it"])
+                .is_none()
+        );
     }
 }

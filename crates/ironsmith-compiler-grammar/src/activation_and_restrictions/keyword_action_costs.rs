@@ -474,9 +474,46 @@ fn parse_payment_clause_as_effects(
 
     let ast = match parse_effect_sentences_lexed(&trimmed) {
         Ok(ast) => ast,
-        Err(_) => return Ok(None),
+        // "Ward—Get five poison counters" (The Serpent Society): a cost is
+        // an instruction to the player who pays it, so a bare "get N
+        // poison/energy counters" names that player's counters.
+        Err(_) => match parse_payer_gets_player_counters(&trimmed) {
+            Some(effect) => vec![effect],
+            None => return Ok(None),
+        },
     };
     Ok((!ast.is_empty()).then_some(ast))
+}
+
+/// "get N poison counters" / "get N energy counters" as a payment: the
+/// counters go to the paying player.
+fn parse_payer_gets_player_counters(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use winnow::Parser;
+    use winnow::combinator::alt;
+    let (count, poison) = crate::grammar::primitives::probe_all(
+        tokens,
+        (
+            crate::grammar::primitives::kw("get"),
+            crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+            alt((
+                crate::grammar::primitives::kw("poison").value(true),
+                crate::grammar::primitives::kw("energy").value(false),
+            )),
+            alt((
+                crate::grammar::primitives::kw("counter"),
+                crate::grammar::primitives::kw("counters"),
+            )),
+            crate::grammar::primitives::sentence_end(),
+        )
+            .map(|(_, count, poison, _, _)| (count, poison)),
+        "payer gets player counters",
+    )?;
+    let count = Value::Fixed(i32::try_from(count).ok()?);
+    Some(if poison {
+        EffectAst::subject_verb_poison_counters(PlayerAst::You, count)
+    } else {
+        EffectAst::subject_verb_energy_counters(PlayerAst::You, count)
+    })
 }
 
 pub fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -995,6 +1032,18 @@ fn special_ability_phrase_action(kind: SpecialAbilityPhraseKind) -> KeywordActio
         SpecialAbilityPhraseKind::ArtifactLandwalk => {
             KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::ArtifactLand)
         }
+        SpecialAbilityPhraseKind::LegendaryLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::LegendaryLand)
+        }
+        SpecialAbilityPhraseKind::SnowLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::SnowLand)
+        }
+        SpecialAbilityPhraseKind::ChosenTypeLandwalk { snow } => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::ChosenType { snow })
+        }
+        SpecialAbilityPhraseKind::SacrificedLandTypesLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::SacrificedLandTypes)
+        }
     }
 }
 
@@ -1245,6 +1294,19 @@ pub fn parse_dynamic_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordA
     })
 }
 
+/// "bushido X, where X is ..." / "soulshift X, where X is ..." (Fumiko the
+/// Lowblood, Kodama of the Center Tree), optionally as "this creature has
+/// ...": the keyword with its defined amount.
+pub fn parse_defined_x_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    use crate::grammar::keyword_action_costs::DefinedXKeyword;
+    let shape = crate::grammar::keyword_action_costs::parse_defined_x_keyword_tokens(tokens)?;
+    let amount = crate::keyword_static::parse_value_binding_clause(shape.definition)?;
+    Some(match shape.kind {
+        DefinedXKeyword::Bushido => KeywordAction::BushidoValue(amount),
+        DefinedXKeyword::Soulshift => KeywordAction::SoulshiftValue(amount),
+    })
+}
+
 pub fn parse_dynamic_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let start = crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens)?;
     let action = parse_dynamic_keyword_amount(&tokens[start..])?;
@@ -1391,6 +1453,11 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         _ => {}
     }
 
+    // "Bloodthirst X" has a defined amount: the total damage your opponents
+    // have been dealt this turn (CR 702.54c).
+    if words.as_slice() == ["bloodthirst", "x"] {
+        return Some(KeywordAction::BloodthirstX);
+    }
     // A numeric keyword ("bushido 2"): the heads are exclusive, so the table is
     // a lookup, not a ranking.
     if let Some(action) = NUMERIC_KEYWORDS

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Fork in the Road",
+  "oracle_id": "3bc12623-3852-42f0-b458-5c67fe1b7a07",
+  "oracle_text": "Search your library for up to two basic land cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle.",
+  "text": "Mana cost: {1}{G}\nType: Sorcery\nSearch your library for up to two basic land cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle."
+ },
+ {
+  "name": "Jarad's Orders",
+  "oracle_id": "93036f4e-f553-4cc7-a747-6cd087b0994c",
+  "oracle_text": "Search your library for up to two creature cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle.",
+  "text": "Mana cost: {2}{B}{G}\nType: Sorcery\nSearch your library for up to two creature cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle."
+ }
+]

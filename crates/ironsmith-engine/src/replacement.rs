@@ -481,6 +481,10 @@ pub enum EventModification {
     /// Evaluate a signed bonus using the replacement source and controller.
     /// Appended to preserve the existing fixed Add schema.
     AddDynamic(crate::effect::Value),
+
+    /// "half that damage, rounded down" (Ghosts of the Innocent): halve the
+    /// proposed amount. Appended to preserve the existing schema.
+    Halve { round_up: bool },
 }
 
 /// Where to redirect an effect.
@@ -610,6 +614,20 @@ pub struct SuspendedReplacementEffect {
     until_end_of_turn: bool,
 }
 
+/// The card a stack replacement waits for (see
+/// `ReplacementEffectManager::followed_objects`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FollowedReplacementObject {
+    /// The current incarnation the replacement refers to.
+    pub object: ObjectId,
+    pub from_zone: Option<Zone>,
+    pub to_zone: Option<Zone>,
+    /// Whether that incarnation is the spell on the stack. A card not yet
+    /// cast at cleanup loses the replacement with the other one-shots (the
+    /// permission to cast it was "this turn"); its spell keeps it.
+    pub on_stack: bool,
+}
+
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
@@ -646,6 +664,14 @@ pub struct ReplacementEffectManager {
     /// Resolved replacements ending at a player's actual next turn start.
     until_next_turn_effects:
         std::collections::HashMap<ReplacementEffectId, (PlayerId, u32, Option<u32>)>,
+
+    /// One-shot stack replacements created for a card that was not yet a
+    /// spell ("You may cast that card this turn. If that spell would be put
+    /// into a graveyard, ..."). Each follows its card's next zone change:
+    /// onto the stack it rebinds to the new spell object; anywhere else the
+    /// card is a new object the effect no longer refers to (CR 400.7) and the
+    /// replacement ends.
+    followed_objects: std::collections::HashMap<ReplacementEffectId, FollowedReplacementObject>,
 
     /// Next effect ID to assign
     next_id: u64,
@@ -733,6 +759,60 @@ impl ReplacementEffectManager {
         }
         self.until_end_of_turn_effects.remove(&id);
         self.until_next_turn_effects.remove(&id);
+        self.followed_objects.remove(&id);
+    }
+
+    /// Add a one-shot stack replacement for a card that is not yet a spell;
+    /// it applies to that card's spell once it is cast (see
+    /// `followed_objects`). The effect's matcher is rebound when it moves.
+    pub fn add_followed_one_shot_effect(
+        &mut self,
+        effect: ReplacementEffect,
+        followed: FollowedReplacementObject,
+    ) -> ReplacementEffectId {
+        let id = self.add_one_shot_effect(effect);
+        self.followed_objects.insert(id, followed);
+        id
+    }
+
+    /// The followed card `old` became `new` in `new_zone` (CR 400.7). A move
+    /// onto the stack rebinds the replacement to that spell; any other move
+    /// (including the spell leaving the stack unreplaced) ends it.
+    pub fn rebind_followed_object(&mut self, old: ObjectId, new: ObjectId, new_zone: Zone) {
+        let affected: Vec<_> = self
+            .followed_objects
+            .iter()
+            .filter(|(_, followed)| followed.object == old)
+            .map(|(id, followed)| (*id, *followed))
+            .collect();
+        for (id, followed) in affected {
+            if new_zone == Zone::Stack && !followed.on_stack {
+                if let Some(effect) = self.effects.iter_mut().find(|effect| effect.id == id) {
+                    effect.matcher = Some(Box::new(
+                        crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                            crate::target::ObjectFilter::specific(new),
+                            followed.from_zone,
+                            followed.to_zone,
+                        ),
+                    ));
+                }
+                self.followed_objects.insert(
+                    id,
+                    FollowedReplacementObject {
+                        object: new,
+                        on_stack: true,
+                        ..followed
+                    },
+                );
+            } else {
+                self.remove_effect(id);
+            }
+        }
+    }
+
+    /// The followed-card registration of an effect, if any.
+    pub fn followed_object(&self, id: ReplacementEffectId) -> Option<FollowedReplacementObject> {
+        self.followed_objects.get(&id).copied()
     }
 
     /// Remove all effects from a specific source.
@@ -1107,17 +1187,26 @@ impl ReplacementEffectManager {
 
     /// Clear all one-shot effects (e.g., at end of turn).
     pub fn clear_one_shot_effects(&mut self) {
+        // A followed replacement whose card is already a spell on the stack
+        // still applies to that spell after this turn ends.
+        let kept: std::collections::HashSet<ReplacementEffectId> = self
+            .followed_objects
+            .iter()
+            .filter(|(_, followed)| followed.on_stack)
+            .map(|(id, _)| *id)
+            .collect();
         let one_shot_ids: Vec<_> = self
             .one_shot_effects
             .iter()
             .chain(&self.batch_one_shot_effects)
             .chain(&self.next_damage_occurrence_effects)
             .copied()
+            .filter(|id| !kept.contains(id))
             .collect();
         for id in one_shot_ids {
             self.remove_effect(id);
         }
-        self.one_shot_effects.clear();
+        self.one_shot_effects.retain(|id| kept.contains(id));
         self.batch_one_shot_effects.clear();
         self.pending_batch_one_shot_effects.clear();
         self.next_damage_occurrence_effects.clear();

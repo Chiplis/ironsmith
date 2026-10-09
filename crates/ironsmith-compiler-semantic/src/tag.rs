@@ -260,6 +260,8 @@ pub enum CompilerReferenceTag {
     Triggering,
     Enchanted,
     Equipped,
+    /// The land a Fortification source is attached to (CR 301.6).
+    Fortified,
     DivvySource,
     DivvyChosen,
     DivvyPile,
@@ -316,6 +318,10 @@ pub enum CompilerReferenceTag {
     ForMirrodinCreated,
     ExchangePlayerOne,
     ExchangePlayerTwo,
+    /// Players designated "friend" by "choose friend or foe".
+    Friends,
+    /// Players designated "foe" by "choose friend or foe".
+    Foes,
     ExchangeCreaturesOne,
     ExchangeCreaturesTwo,
     EachPlayerShuffled,
@@ -354,12 +360,18 @@ pub enum CompilerReferenceTag {
     /// Cards in exile that the source's controller exiled ("cards you
     /// exiled"), whatever source did the exiling.
     ExiledByYou,
+    /// The card on top of the source controller's library.
+    TopOfYourLibrary,
+    /// Objects chosen in earlier rounds of the enclosing repeated process.
+    PriorProcessChoices,
     MillProbe,
     EachPlayerRevealedThisWay,
     EachGraveyardChosen,
     DrawnRevealedCard,
     DelayedOwnedExiledChoice,
     CostExiledTop,
+    /// The card exiled from hand to pay an activation cost.
+    CostExiledFromHand,
     CopiedStackObject,
     ChosenHandSpellToCast,
     ChosenCastFromGraveyard,
@@ -427,6 +439,7 @@ impl CompilerReferenceTag {
             Self::Triggering => "triggering",
             Self::Enchanted => "enchanted",
             Self::Equipped => "equipped",
+            Self::Fortified => "fortified",
             Self::DivvySource => "divvy_source",
             Self::DivvyChosen => "divvy_chosen",
             Self::DivvyPile => "divvy_pile",
@@ -484,6 +497,8 @@ impl CompilerReferenceTag {
             Self::ForMirrodinCreated => "for_mirrodin_created",
             Self::ExchangePlayerOne => "exchange_player_one",
             Self::ExchangePlayerTwo => "exchange_player_two",
+            Self::Friends => "friends",
+            Self::Foes => "foes",
             Self::ExchangeCreaturesOne => "exchange_creatures_one",
             Self::ExchangeCreaturesTwo => "exchange_creatures_two",
             Self::EachPlayerShuffled => "each_player_shuffled",
@@ -511,12 +526,15 @@ impl CompilerReferenceTag {
             Self::DiscardedCardReference => "__discarded_card__",
             Self::ThoseCardsReference => "__those_cards__",
             Self::ExiledByYou => "__exiled_by_you__",
+            Self::TopOfYourLibrary => ironsmith_core::tag::TOP_OF_YOUR_LIBRARY_TAG,
+            Self::PriorProcessChoices => ironsmith_core::tag::PRIOR_PROCESS_CHOICES_TAG,
             Self::MillProbe => "__mill_probe__",
             Self::EachPlayerRevealedThisWay => "__each_player_revealed_this_way",
             Self::EachGraveyardChosen => "__each_graveyard_chosen",
             Self::DrawnRevealedCard => "__drawn_revealed_card__",
             Self::DelayedOwnedExiledChoice => "__delayed_owned_exiled_choice",
             Self::CostExiledTop => "__cost_exiled_top__",
+            Self::CostExiledFromHand => ironsmith_core::tag::COST_EXILED_FROM_HAND_TAG,
             Self::CopiedStackObject => "__copied_stack_object__",
             Self::ChosenHandSpellToCast => "__chosen_hand_spell_to_cast",
             Self::ChosenCastFromGraveyard => "__chosen_cast_from_graveyard",
@@ -590,7 +608,9 @@ impl CompilerReferenceTag {
             | Self::VotedWithYou
             | Self::VotedAgainstYou
             | Self::ExchangePlayerOne
-            | Self::ExchangePlayerTwo => (R::Chosen, D::Player),
+            | Self::ExchangePlayerTwo
+            | Self::Friends
+            | Self::Foes => (R::Chosen, D::Player),
             Self::Sacrificed0
             | Self::SourceDevoured
             | Self::ThisWaySacrificed
@@ -627,6 +647,7 @@ impl CompilerReferenceTag {
             | Self::JunkExiledCard
             | Self::IterativeLibraryExiled
             | Self::CostExiledTop
+            | Self::CostExiledFromHand
             | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
             Self::LivingWeaponCreated | Self::ForMirrodinCreated | Self::JobSelectCreated => {
                 (R::Created, D::Object)

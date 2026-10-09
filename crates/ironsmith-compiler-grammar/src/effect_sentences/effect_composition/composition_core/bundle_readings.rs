@@ -191,6 +191,51 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_reveal_until_land_put_all_graveyard_bundle(input)),
     },
     Reading {
+        id: RuleId::new("copied-cards-cast-bundle"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+            // "<exile ...>. Then copy each card exiled with this enchantment.
+            // You may cast any number of the copies ..." (Arcane Bombardment):
+            // the leading sentences are ordinary; the last two are the pair.
+            let effects = (|| -> Result<Option<Vec<EffectAst>>, CardTextError> {
+                let [leading @ .., copy, cast] = sentences.as_slice() else {
+                    return Ok(None);
+                };
+                let Some(pair) = crate::effect_sentences::copied_cards_cast::read(copy, cast)?
+                else {
+                    return Ok(None);
+                };
+                let mut effects = Vec::new();
+                for sentence in leading {
+                    effects.extend(crate::effect_sentences::parse_effect_sentence_lexed(sentence)?);
+                }
+                effects.extend(pair);
+                Ok(Some(effects))
+            })();
+            input.outcome(effects)
+        },
+    },
+    Reading {
+        id: RuleId::new("counted-number-bundle"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+            input.outcome(crate::effect_sentences::counted_number::read(&sentences, None))
+        },
+    },
+    Reading {
+        id: RuleId::new("guessed-wrong-free-cast-bundle"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+            input.outcome(crate::effect_sentences::guessed_free_cast::read(&sentences))
+        },
+    },
+    Reading {
         id: RuleId::new("bid-life-for-control-bundle"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -219,6 +264,12 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_regenerate_then_gain_control(input)),
+    },
+    Reading {
+        id: RuleId::new("regenerate-then-when-regenerates"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_regenerate_then_when_regenerates(input)),
     },
     Reading {
         id: RuleId::new("consult-then-put-matches-battlefield-rest-bottom"),
@@ -441,6 +492,51 @@ fn read_resolving_card_exile_then_return_next_end_step(
                 Zone::Exile,
                 ZoneReplacementDurationAst::OneShot,
                 ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep,
+            ),
+        ]));
+    }
+    // "exile that spell instead of putting it into your graveyard as it
+    // resolves. If you do, it becomes plotted." (Lilah, Undefeated
+    // Slickshot): the plot happens only if the replacement exiles it.
+    if sentences.len() == 2
+        && bundle_grammar::is_resolving_spell_exile_instead_shape(sentences[0])
+        && bundle_grammar::is_if_you_do_it_becomes_plotted_shape(sentences[1])
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_register_zone_replacement_with_linked_exile_follow_up(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                ironsmith_core::LinkedExileFollowUp::BecomePlotted,
+            ),
+        ]));
+    }
+    // "exile that card with three time counters on it instead of putting it
+    // into your graveyard as it resolves. Then if the exiled card doesn't
+    // have suspend, it gains suspend." (Gandalf of the Secret Fire): the
+    // suspend grant applies to the exiled card, after the replacement.
+    if sentences.len() == 2
+        && bundle_grammar::is_resolving_spell_exile_instead_shape(sentences[0])
+        && bundle_grammar::is_then_if_exiled_card_lacks_suspend_it_gains_suspend_shape(
+            sentences[1],
+        )
+    {
+        let counters = bundle_grammar::dispatch_entry_shapes::parse_future_zone_counter_tokens(
+            sentences[0],
+        )
+        .map(|shape| vec![(shape.counter_type, shape.count)])
+        .unwrap_or_default();
+        return Ok(Some(vec![
+            EffectAst::subject_verb_register_zone_replacement_with_counters_and_linked_exile_follow_up(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::OneShot,
+                counters,
+                ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing,
             ),
         ]));
     }
@@ -679,6 +775,31 @@ fn read_regenerate_then_gain_control(
         && let Some(effects) =
             parse_regenerate_then_gain_control_if_regenerates_bundle(sentences[0], sentences[1])
     {
+        return Ok(Some(effects));
+    }
+    Ok(None)
+}
+fn read_regenerate_then_when_regenerates(
+    input: &Bundle<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &input.sentences;
+    if sentences.len() == 2 {
+        return parse_regenerate_then_when_regenerates_bundle(sentences[0], sentences[1]);
+    }
+    // "Choose target opponent. Regenerate this creature. When it regenerates
+    // this way, that player may draw a card." (Soldevi Sentry): a leading
+    // target declaration names the trigger's "that player".
+    if sentences.len() == 3
+        && crate::lexer::token_word_refs(sentences[0]).first() == Some(&"choose")
+        && crate::lexer::token_word_refs(sentences[0]).contains(&"target")
+        && let Some(bundle) =
+            parse_regenerate_then_when_regenerates_bundle(sentences[1], sentences[2])?
+    {
+        let mut effects = effect_sentences::parse_effect_sentence_lexed(sentences[0])?;
+        if effects.is_empty() {
+            return Ok(None);
+        }
+        effects.extend(bundle);
         return Ok(Some(effects));
     }
     Ok(None)

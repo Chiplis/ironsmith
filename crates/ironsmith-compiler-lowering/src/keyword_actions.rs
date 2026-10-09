@@ -72,7 +72,21 @@ pub fn apply_keyword_action(
         KeywordAction::Emerge(cost) => builder.emerge(cost),
         KeywordAction::Vanishing(amount) => builder.vanishing(amount),
         KeywordAction::Bloodthirst(amount) => builder.bloodthirst(amount),
+        KeywordAction::BloodthirstX => {
+            builder.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::DamageDealtToPlayersThisTurn(
+                        crate::target::PlayerFilter::Opponent,
+                    ),
+                ),
+            ))
+        }
         KeywordAction::Ninjutsu(cost) => builder.ninjutsu(cost),
+        KeywordAction::CommanderNinjutsu(cost) => builder.commander_ninjutsu(cost),
+        KeywordAction::EncoreFromSourceCost { mana_value_generic } => {
+            builder.encore_from_source_cost(mana_value_generic)
+        }
         KeywordAction::Backup(amount) => builder.backup(amount),
         KeywordAction::Dash(cost) => builder.dash(cost),
         KeywordAction::Blitz(cost) => builder.blitz(cost),
@@ -125,6 +139,19 @@ pub fn apply_keyword_action(
         KeywordAction::Conspire => builder.conspire(),
         KeywordAction::Amplify(amount) => builder.amplify(amount),
         KeywordAction::Devour(multiplier) => builder.devour(multiplier),
+        KeywordAction::DevourVariant {
+            multiplier,
+            quality,
+            multiplier_is_devoured_count,
+            presentation_multiplier,
+        } => builder.devour_variant(
+            crate::effects::DevourEffect {
+                multiplier,
+                quality,
+                multiplier_is_devoured_count,
+            },
+            presentation_multiplier,
+        ),
         KeywordAction::AuraSwap(cost) => builder.aura_swap(cost),
         KeywordAction::Ravenous => builder.ravenous(),
         KeywordAction::Ascend => builder.ascend(),
@@ -183,6 +210,7 @@ pub fn apply_keyword_action(
         KeywordAction::Ripple(amount) => builder.ripple(amount),
         KeywordAction::Rampage(amount) => builder.rampage(amount),
         KeywordAction::Bushido(amount) => builder.bushido(amount),
+        KeywordAction::BushidoValue(amount) => builder.bushido_value(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),
         KeywordAction::ProtectionFrom(colors) => builder.protection_from(colors),
         KeywordAction::ProtectionFromOwnColors => builder.with_ability(

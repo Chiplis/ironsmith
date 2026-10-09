@@ -1846,6 +1846,9 @@ fn parse_villainous_choice_statement_chunk(
             semantic_grammar::VillainousChoicePlayerIteration::TargetOpponent => {
                 (PlayerFilter::target_opponent(), "target opponent")
             }
+            semantic_grammar::VillainousChoicePlayerIteration::ThatPlayer => {
+                (PlayerFilter::IteratedPlayer, "that player")
+            }
         };
         let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
             player,
@@ -1880,6 +1883,8 @@ fn parse_villainous_choice_statement_chunk(
                     effects: body,
                 })]
             }
+            // The enclosing trigger already names "that player": one choice, no loop.
+            semantic_grammar::VillainousChoicePlayerIteration::ThatPlayer => vec![choice],
             semantic_grammar::VillainousChoicePlayerIteration::TargetOpponent => vec![
                 EffectAst::subject_verb_target_only(TargetAst::Player(
                     PlayerFilter::target_opponent(),

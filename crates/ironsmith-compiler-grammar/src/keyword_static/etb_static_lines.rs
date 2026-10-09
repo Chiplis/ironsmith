@@ -869,6 +869,22 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }
+    // "... as you activate this ability": an activation-time sampling clause
+    // on the whole binding, not part of the counted noun phrase.
+    {
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let view = crate::grammar::primitives::TokenWordView::new(trimmed);
+        let words = view.word_refs();
+        const SUFFIX: &[&str] = &["as", "you", "activate", "this", "ability"];
+        if let Some(start) = words.len().checked_sub(SUFFIX.len())
+            && start > 3
+            && words.get(start..) == Some(SUFFIX)
+            && let Some(&token_start) = view.token_start_indices().get(start)
+        {
+            return parse_value_binding_clause(&trimmed[..token_start])
+                .map(|value| value.with_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility));
+        }
+    }
     let clause = LexedClause::new(tokens);
     let word_view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
@@ -1471,6 +1487,18 @@ mod where_x_count_readings;
 
 pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "where X is the number of opponents being attacked" (Dimir
+    // Strandcatcher): the defending players of this combat (CR 506.2).
+    let counted = words
+        .strip_prefix(&["where", "x", "is"][..])
+        .unwrap_or(&words);
+    if matches!(
+        counted,
+        ["the", "number", "of", "opponents" | "players", "being", "attacked"]
+            | ["the", "number", "of", "opponents" | "players", "youre" | "you're", "attacking"]
+    ) {
+        return Some(Value::PlayersBeingAttacked);
+    }
     if words.iter().any(|word| matches!(*word, "plus" | "minus"))
         || crate::word_primitives::sequence_occurs(&words, &["in", "excess", "of"])
     {
@@ -1728,6 +1756,11 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
 pub fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // A permission plus its "if you cast this way" entry rider is scoped
+    // to that permission. It must not also become an unrestricted ETB rule.
+    if matches!(parse_play_from_permission_with_enter_tapped_this_way_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     // Both complete readers describe the same unfiltered replacement. Keep
     // one canonical payload instead of competing AllPermanents/Filter forms.
     if is_permanents_enter_tapped_line_lexed(tokens) {
@@ -1790,6 +1823,16 @@ pub fn parse_enters_tapped_for_filter_line(
         )));
     }
     let before_enter = entry_clause.filter_tokens;
+    // The rule is reachable from any subject head, so a bare pronoun
+    // ("It enters tapped", "They enter tapped") must stay with the source
+    // and resolution-sentence grammars instead of falling back to the
+    // source-ETB replacement below.
+    if matches!(
+        crate::lexer::token_word_refs(before_enter).as_slice(),
+        ["it"] | ["they"]
+    ) {
+        return Ok(None);
+    }
     let before_word_len = LexedClause::new(before_enter).word_len();
     let played_suffix = etb_grammar::parse_etb_played_by_opponent_suffix_tokens(before_enter);
     let controller_override = played_suffix.map(|_| PlayerFilter::Opponent);
@@ -1858,7 +1901,11 @@ pub fn parse_enters_untapped_for_filter_line(
     if before_enter.is_empty() {
         return Ok(None);
     }
-    let filter = parse_object_filter(before_enter, false)?;
+    // Reachable from any subject head: an unparseable subject is not this
+    // rule's line, so decline rather than report a filter error.
+    let Ok(filter) = parse_object_filter(before_enter, false) else {
+        return Ok(None);
+    };
     Ok(Some(StaticAbility::enters_untapped_for_filter(filter)))
 }
 
@@ -2878,7 +2925,19 @@ fn parse_filtered_etb_counter_otherwise_count(
 pub fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // Entry text inside a quoted grant belongs to the granted ability,
+    // not to the outer filtered instruction. Reading through quotes can
+    // discard sibling grants and change which permanent owns the effect.
+    if tokens.iter().any(OwnedLexToken::is_quote) {
+        return Ok(None);
+    }
     if let Some(branches) = split_filtered_etb_counter_if_otherwise(tokens) {
+        // Own an entry-counter instruction before interpreting its condition.
+        let Some(primary) =
+            parse_enters_with_additional_counter_for_filter_line(&branches.primary_tokens)?
+        else {
+            return Ok(None);
+        };
         let condition =
             parse_entering_object_value_comparison_condition(&branches.condition_tokens)
                 .or_else(|| parse_enters_with_counter_condition_clause(&branches.condition_tokens))
@@ -2898,11 +2957,6 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
                         ))
                     })
                 })?;
-        let Some(primary) =
-            parse_enters_with_additional_counter_for_filter_line(&branches.primary_tokens)?
-        else {
-            return Ok(None);
-        };
         let Some((otherwise_counter, otherwise_count)) =
             parse_filtered_etb_counter_otherwise_count(&branches.otherwise_tokens)?
         else {

@@ -59,6 +59,11 @@ pub enum DamagePreventionActionAst {
         /// matches this filter at that time.
         reflect_source_filter: Option<ObjectFilter>,
         follow_up_effects: Vec<EffectAst>,
+        /// "prevent half that damage, rounded down" / "prevent all but 1 of
+        /// that damage": the part of the next damage the shield prevents.
+        portion: ironsmith_core::NextTimeDamagePreventionPortion,
+        /// "would deal combat damage".
+        combat_only: bool,
     },
     ReplaceNextDamageToTarget {
         target: TargetAst,
@@ -73,6 +78,8 @@ pub enum DamagePreventionActionAst {
         source_of_your_choice: bool,
         protect_you_and_permanents_you_control: bool,
         follow_up_effects: Vec<EffectAst>,
+        /// "... to any number of targets, divided as you choose" (CR 601.2d).
+        divided: bool,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -94,6 +101,13 @@ pub enum DamagePreventionActionAst {
         source_filter: ObjectFilter,
         source_would_deal_surface: bool,
         of_chosen_color: bool,
+        /// "a [red] source of your choice": one source matching
+        /// `source_filter` is chosen as the effect resolves (CR 609.7a).
+        source_of_your_choice: bool,
+        /// "If [damage from a <quality> source is] prevented this way, ...":
+        /// the additional part of the prevention effect, run with each
+        /// prevented amount (CR 615.5).
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,
@@ -123,6 +137,9 @@ pub enum DamagePreventionActionAst {
         protected_target: Option<TargetAst>,
         destination: RedirectNextTimeDamageDestinationAst,
         destination_target: Option<TargetAst>,
+        /// "that a source of your choice would deal" (CR 609.7a): only the
+        /// chosen source's damage is redirected.
+        source_of_your_choice: bool,
     },
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,

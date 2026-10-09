@@ -10,6 +10,7 @@ pub(super) fn parse_redirect_next_damage_lexed<'a>(
         parse_all_to_target_by_choice,
         parse_next_time,
         parse_next_amount,
+        parse_next_amount_by_chosen_source,
     ))
     .parse_next(input)
 }

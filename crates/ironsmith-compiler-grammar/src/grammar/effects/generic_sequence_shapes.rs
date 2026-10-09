@@ -320,6 +320,14 @@ fn flashback_cost<'a>(input: &mut LexStream<'a>) -> WResult<()> {
             "mana",
             "cost",
         ]),
+        // "The flashback cost is equal to that card's mana cost." (Sphinx of
+        // Forgotten Lore): the same derived cost named by the card.
+        primitives::phrase(&[
+            "the", "flashback", "cost", "is", "equal", "to", "that", "card's", "mana", "cost",
+        ]),
+        primitives::phrase(&[
+            "the", "flashback", "cost", "is", "equal", "to", "that", "cards", "mana", "cost",
+        ]),
     ))
     .void()
     .parse_next(input)
@@ -336,6 +344,56 @@ pub fn parse_flashback_grant_shape<'a>(
     }
     let target_tokens = trimmed(&first[..gain_idx]);
     (!target_tokens.is_empty()).then_some(FlashbackGrantShape { target_tokens })
+}
+
+/// "<target> gains escape until end of turn. The escape cost is equal to
+/// its mana cost plus exile N other cards from your graveyard." (Confession
+/// Dial): a derived escape grant (CR 702.138a).
+#[derive(Debug, Clone, Copy)]
+pub struct EscapeGrantShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub exile_count: u32,
+}
+
+fn escape_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["escape", "until", "end", "of", "turn"])
+        .void()
+        .parse_next(input)
+}
+
+fn escape_cost_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&[
+        "the", "escape", "cost", "is", "equal", "to", "its", "mana", "cost", "plus", "exile",
+    ])
+    .void()
+    .parse_next(input)
+}
+
+fn escape_cost_exiled_cards<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["other", "cards", "from", "your", "graveyard"])
+        .void()
+        .parse_next(input)
+}
+
+pub fn parse_escape_grant_shape<'a>(
+    first: &'a [OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Option<EscapeGrantShape<'a>> {
+    let first = trimmed(first);
+    let (gain_idx, (), after_gain) = primitives::find_prefix(first, || gain_marker)?;
+    if !exact_unit(after_gain, escape_tail) {
+        return None;
+    }
+    let ((), after_head) = primitives::parse_prefix(trimmed(second), escape_cost_head)?;
+    let (exile_count, used) = crate::util::parse_number(after_head)?;
+    if exile_count == 0 || !exact_unit(&after_head[used..], escape_cost_exiled_cards) {
+        return None;
+    }
+    let target_tokens = trimmed(&first[..gain_idx]);
+    (!target_tokens.is_empty()).then_some(EscapeGrantShape {
+        target_tokens,
+        exile_count,
+    })
 }
 
 fn each_player_shuffle_intro<'a>(input: &mut LexStream<'a>) -> WResult<()> {

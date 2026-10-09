@@ -44,12 +44,12 @@ pub(crate) fn rewrite_choose_spec_words(spec: &ChooseSpec, change: TextChange) -
 pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextChange) -> RewriteResult<PlayerFilter> {
     let mut rewritten = player.clone();
     match &mut rewritten {
-        PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::OpponentOf(base) | PlayerFilter::Target(base)
+        | PlayerFilter::OpponentOf(base) | PlayerFilter::PlayerToLeftOf(base) | PlayerFilter::Target(base)
         | PlayerFilter::AliasedTarget(base) => **base = rewrite_player_filter_words(base, change)?,
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
@@ -72,7 +72,8 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
         | PlayerFilter::Active | PlayerFilter::Defending | PlayerFilter::Attacking
         | PlayerFilter::DamagedPlayer | PlayerFilter::EffectController | PlayerFilter::Specific(_)
         | PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied | PlayerFilter::MostCardsInHand
-        | PlayerFilter::CastCardTypeThisTurn(_) | PlayerFilter::AttackedBySourceThisTurn
+        | PlayerFilter::CastCardTypeThisTurn(_) | PlayerFilter::TurnHistory(_)
+        | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer | PlayerFilter::TaggedPlayer(_) | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {}
@@ -124,7 +125,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         unblocked, is_target_object, in_combat_with_source, attacking_same_defender_as_source,
         could_be_enchanted_by_source, in_combat_with, entered_since_your_last_turn_ended,
         controlled_continuously_since_turn_began, didnt_enter_battlefield_this_turn,
-        entered_battlefield_this_turn, entered_battlefield_controller,
+        entered_battlefield_this_turn, entered_battlefield_controller, turned_face_up_this_turn,
         put_onto_battlefield_with_source, put_onto_battlefield_with_source_surface,
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,
@@ -240,7 +241,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
     let mut rewritten = value.clone();
     match &mut rewritten {
         Value::SurfaceHinted { value, .. } | Value::Scaled(value, _)
-        | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => {
+        | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => {
             **value = rewrite_value_words(value, change)?;
         }
         Value::Add(left, right) | Value::Min(left, right) => {
@@ -248,6 +250,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
             **right = rewrite_value_words(right, change)?;
         }
         Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter) | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter) | Value::TotalToughness(filter) | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter) | Value::GreatestToughness(filter) | Value::GreatestManaValue(filter)
@@ -286,12 +289,14 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::PlayersWhoControlMoreThanYou { players: player, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou { players: player, filter, .. }
         | Value::SpellsCastThisTurnMatching { player, filter, .. }
-        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
+        | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { player, filter } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
-        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::CountersOn(spec, _)
+        | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::ChosenColorsOf(spec)
+        | Value::CountersOn(spec, _)
         | Value::ObjectVoteCount(spec) | Value::KicksPaidOf(spec) | Value::BasePowerOf(spec) => {
             **spec = rewrite_choose_spec_words(spec, change)?;
         }
@@ -383,7 +388,9 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
         | AnthemCountExpression::CountersOnSourceWithSurface { .. }
         | AnthemCountExpression::CountersOnSourceWithPronoun { .. }
         | AnthemCountExpression::StickersOnSource { .. } | AnthemCountExpression::CountersOnAffected(_)
-        | AnthemCountExpression::BlockingSource => {}
+        | AnthemCountExpression::BlockingSource
+        | AnthemCountExpression::PlayersLostGame
+        | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_) => {}
     }
     Ok(rewritten)
 }
@@ -400,6 +407,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
         | TurnHistoryCount::OpponentsAttacked(player) | TurnHistoryCount::PlayersAttackedThisCombat(player)
         | TurnHistoryCount::PlayersDiscarded(player) | TurnHistoryCount::PlayersDealtDamage(player)
         | TurnHistoryCount::DiscardedOrCycled(player) | TurnHistoryCount::Cycled(player)
+        | TurnHistoryCount::LandsPlayed(player)
         | TurnHistoryCount::CardsDrawn(player) | TurnHistoryCount::PlayersLostLife(player)
         | TurnHistoryCount::UntappedLandsAtTurnStart(player) | TurnHistoryCount::Descended(player)
         | TurnHistoryCount::KeywordActionsPerformed { player, .. }
@@ -477,6 +485,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         }
         Condition::YouControl(filter) | Condition::OpponentControls(filter)
         | Condition::YouHaveCardInHandMatching(filter) | Condition::ObjectEnteredBattlefieldThisTurn(filter)
+        | Condition::TopCardOfYourLibraryMatches(filter)
         | Condition::ObjectEnteredBattlefieldLastTurn(filter)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
         | Condition::SourceCrewedByExactly { filter, .. } | Condition::SourceMatches(filter)
@@ -539,7 +548,9 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
                 AttachmentConditionHost::Source | AttachmentConditionHost::SourceAttachedObject => {}
             }
         }
-        Condition::CountComparison { count, .. } | Condition::CountParity { count, .. } => {
+        Condition::CountComparison { count, .. }
+        | Condition::CountParity { count, .. }
+        | Condition::MaxActivationsPerTurnCount(count) => {
             *count = rewrite_anthem_count_words(count, change)?;
         }
         Condition::TurnHistory(condition) => *condition = rewrite_turn_history_condition_words(condition, change)?,
@@ -568,9 +579,10 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::TriggeringSpellWasKicked | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures | Condition::TargetManaValueLteColorsSpentToCastThisSpell
         | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::SourceControllersMainPhase
-        | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceIsTapped
+        | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::OpponentsEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
-        | Condition::SourceIsHarnessed | Condition::SourceIsRenowned | Condition::SourceIsFaceDown
+        | Condition::SourceHasDealtDamageSinceEntered
+        | Condition::SourceIsHarnessed | Condition::SourceIsPrepared | Condition::SourceIsRenowned | Condition::SourceIsFaceDown
         | Condition::SourceHasNoCounter(_) | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceHasCountersAtLeast(_) | Condition::SourcePowerAtLeast(_)
         | Condition::SourceDealtCombatDamageToPlayerThisTurn | Condition::ManaSpentToCastThisSpellAtLeast { .. }

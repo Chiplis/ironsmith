@@ -393,7 +393,48 @@ pub(crate) fn compute_legal_attackers_with_view(
         }
     }
 
+    propagate_conditional_attack_requirements(game, view, &mut options);
     options
+}
+
+/// "If <creature> attacks, <creatures> attack if able" (CR 508.1d): when a
+/// creature that must attack meets the condition, every legal declaration
+/// activates the requirement, so the required creatures must attack too.
+/// Marking them keeps every "declare only the creatures that must attack"
+/// default (fallback strategies, replay and UI auto-declare) legal.
+fn propagate_conditional_attack_requirements(
+    game: &GameState,
+    view: &DerivedGameView<'_>,
+    options: &mut [AttackerOption],
+) {
+    loop {
+        let forced = options
+            .iter()
+            .filter(|option| option.must_attack)
+            .filter_map(|option| {
+                option.valid_targets.first().map(|target| AttackerDeclaration {
+                    creature: option.creature,
+                    target: target.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        let active = crate::game_loop::active_conditional_attack_requirements(game, view, &forced);
+        if active.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        for option in options.iter_mut().filter(|option| !option.must_attack) {
+            if game.object(option.creature).is_some_and(|creature| {
+                crate::game_loop::conditional_attack_requirement_score(game, creature, &active) > 0
+            }) {
+                option.must_attack = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            return;
+        }
+    }
 }
 
 /// Compute legal blockers for the defending player.

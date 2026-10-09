@@ -1,0 +1,12 @@
+[
+  {
+    "name": "The Seventh Doctor",
+    "oracle_id": "43e1b053-2cb9-4b1d-9e38-100cfa7267b6",
+    "mana_cost": "{3}{W}{U}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "Whenever The Seventh Doctor attacks, choose a card in your hand. Defending player guesses whether that card's mana value is greater than the number of artifacts you control. If they guessed wrong, you may cast it without paying its mana cost. If you don't cast a spell this way, investigate.",
+    "power": "3",
+    "toughness": "6",
+    "text": "Mana cost: {3}{W}{U}\nType: Legendary Creature — Time Lord Doctor\nPower/Toughness: 3/6\nWhenever The Seventh Doctor attacks, choose a card in your hand. Defending player guesses whether that card's mana value is greater than the number of artifacts you control. If they guessed wrong, you may cast it without paying its mana cost. If you don't cast a spell this way, investigate."
+  }
+]

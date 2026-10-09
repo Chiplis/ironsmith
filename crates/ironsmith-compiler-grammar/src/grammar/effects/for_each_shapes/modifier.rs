@@ -172,6 +172,16 @@ pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<
             action: ModifierTailAction::WhereX(tail),
         };
     }
+    // "gets -2/-2 until end of turn if that opponent controls no other
+    // creatures" (Skulking Killer): a resolution condition on the pump
+    // (CR 608.2c).
+    if let Some(condition) = crate::grammar::structure::parse_trailing_if_predicate_lexed(tail) {
+        return ModifierTailShape {
+            duration,
+            condition: Some(condition),
+            action: ModifierTailAction::Complete,
+        };
+    }
     ModifierTailShape {
         duration,
         condition: None,

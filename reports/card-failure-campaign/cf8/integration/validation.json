@@ -1,0 +1,241 @@
+{
+  "source": {
+    "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+    "status": "",
+    "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+  },
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "build": {
+    "source": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d",
+      "status": ""
+    },
+    "binary_sha256": "f3b12054fccc10c9885653d17d3c6e2bf868d6b2a9f9c9cdec87fe8c35aa5913",
+    "build_command": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "ironsmith-tools",
+      "--bin",
+      "sync_card_status_db",
+      "--jobs",
+      "2"
+    ],
+    "build_log": "compiler-build.log"
+  },
+  "corpus_summary": {
+    "canonical_card_count": 32209,
+    "diagnostic_group_count": 643,
+    "diagnostic_route_record_count": 2086,
+    "failing_card_count": 1083,
+    "failure_category_counts": {
+      "allow_unsupported_fallback": 1,
+      "lossy_compilation": 4,
+      "parser_failure": 1042,
+      "semantic_output_failure": 31,
+      "strict_compiled": 31126,
+      "unsupported_mechanic": 5
+    },
+    "parse_lossy_card_count": 1047,
+    "parse_status_counts": {
+      "compiled_with_allow_unsupported": 1,
+      "parse_failed": 1078,
+      "strict_compiled": 31130
+    },
+    "parser_route_count": null,
+    "parser_route_count_note": "The status DB does not record parser-route identities; diagnostic groups are not routes.",
+    "semantic_mismatch_card_count": 465,
+    "supported_card_count": 31126
+  },
+  "comparison_summary": {
+    "schema_version": 1,
+    "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+    "current_commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+    "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "total_card_count": 32209,
+    "baseline_failing_card_count": 3238,
+    "resolved_baseline_card_count": 2175,
+    "remaining_baseline_card_count": 1063,
+    "regression_card_count": 157,
+    "compile_campaign_complete": false,
+    "note": "Compile acceptance and semantic-score checks do not prove runtime behavior; focused engine tests remain required."
+  },
+  "proposed_cards": 746,
+  "proposed_supported": 653,
+  "proposed_categories": {
+    "strict_compiled": 653,
+    "semantic_output_failure": 13,
+    "parser_failure": 74,
+    "outside_corpus": 1,
+    "lossy_compilation": 3,
+    "allow_unsupported_fallback": 1,
+    "unsupported_mechanic": 1
+  },
+  "package_results": [
+    {
+      "package": "p01-lossy-semantic-markers",
+      "source_proposals": 64,
+      "strict_supported": 57,
+      "categories": {
+        "strict_compiled": 57,
+        "lossy_compilation": 3,
+        "semantic_output_failure": 4
+      }
+    },
+    {
+      "package": "p02-linefamily-a",
+      "source_proposals": 62,
+      "strict_supported": 57,
+      "categories": {
+        "strict_compiled": 57,
+        "parser_failure": 4,
+        "semantic_output_failure": 1
+      }
+    },
+    {
+      "package": "p03-linefamily-b",
+      "source_proposals": 54,
+      "strict_supported": 50,
+      "categories": {
+        "strict_compiled": 50,
+        "parser_failure": 3,
+        "semantic_output_failure": 1
+      }
+    },
+    {
+      "package": "p04-noverb-a",
+      "source_proposals": 73,
+      "strict_supported": 62,
+      "categories": {
+        "strict_compiled": 62,
+        "parser_failure": 9,
+        "semantic_output_failure": 2
+      }
+    },
+    {
+      "package": "p05-noverb-b",
+      "source_proposals": 64,
+      "strict_supported": 56,
+      "categories": {
+        "strict_compiled": 56,
+        "unsupported_mechanic": 1,
+        "parser_failure": 5,
+        "semantic_output_failure": 2
+      }
+    },
+    {
+      "package": "p06-predicates",
+      "source_proposals": 79,
+      "strict_supported": 72,
+      "categories": {
+        "strict_compiled": 72,
+        "parser_failure": 5,
+        "semantic_output_failure": 2
+      }
+    },
+    {
+      "package": "p07-other",
+      "source_proposals": 54,
+      "strict_supported": 49,
+      "categories": {
+        "strict_compiled": 49,
+        "parser_failure": 4,
+        "outside_corpus": 1
+      }
+    },
+    {
+      "package": "p08-other",
+      "source_proposals": 71,
+      "strict_supported": 58,
+      "categories": {
+        "parser_failure": 13,
+        "strict_compiled": 58
+      }
+    },
+    {
+      "package": "p09-other",
+      "source_proposals": 59,
+      "strict_supported": 49,
+      "categories": {
+        "strict_compiled": 49,
+        "allow_unsupported_fallback": 1,
+        "parser_failure": 8,
+        "semantic_output_failure": 1
+      }
+    },
+    {
+      "package": "p10-other",
+      "source_proposals": 39,
+      "strict_supported": 37,
+      "categories": {
+        "strict_compiled": 37,
+        "parser_failure": 2
+      }
+    },
+    {
+      "package": "p11-other",
+      "source_proposals": 62,
+      "strict_supported": 57,
+      "categories": {
+        "strict_compiled": 57,
+        "parser_failure": 5
+      }
+    },
+    {
+      "package": "p12-other",
+      "source_proposals": 70,
+      "strict_supported": 54,
+      "categories": {
+        "strict_compiled": 54,
+        "parser_failure": 16
+      }
+    }
+  ],
+  "workspace_check": {
+    "command": "cargo check --workspace --all-targets --keep-going",
+    "passed": true,
+    "log": "workspace-check.log"
+  },
+  "broader_tests": {
+    "targets": 142,
+    "passed_tests": 220,
+    "failed_tests": 158,
+    "failed_targets": 116,
+    "source": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    },
+    "command_file": "broader-test-command.json",
+    "results_file": "broader-test-results.json",
+    "log_file": "broader-tests.log.gz",
+    "exit_code": 101
+  },
+  "artifact_tests": {
+    "passed": 21,
+    "failed": 0,
+    "source": {
+      "commit": "e3ce2aafbfb08d7060c4669f609ba72d127182b3",
+      "status": "",
+      "tree": "e72cf35525f44a866ad630ecfca4fafe145f5f5d"
+    },
+    "log": "artifact-golden-tests.log",
+    "golden_updates_enabled": false
+  },
+  "focused_tests": {
+    "passed": 40,
+    "failed": 0,
+    "note": "34 static composition/runtime tests, five p02 timing/exclusion tests, and one conditional-branch unit regression.",
+    "logs": [
+      "focused-tests.log",
+      "conditional-exclusion-test.log"
+    ]
+  },
+  "dataset_archive": {
+    "file": "frozen-cards.json.gz",
+    "uncompressed_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "archive_sha256": "05718630b3a55ff6de8345937ca64b8d042dc3d0ed90decda94771cc51b84759"
+  }
+}

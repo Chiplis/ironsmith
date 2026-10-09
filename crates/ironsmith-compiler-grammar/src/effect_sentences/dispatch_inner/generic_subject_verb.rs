@@ -259,6 +259,8 @@ struct GenericChoiceComplementProgram {
     keep_count: ChoiceCount,
     distinct_slots: bool,
     aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+    /// "... then taps the rest" (Regna's Sanction) instead of sacrificing.
+    tap_rest: bool,
 }
 
 impl GenericChoiceComplementProgram {
@@ -293,10 +295,16 @@ impl GenericChoiceComplementProgram {
                 }));
             }
         }
-        effects.push(EffectAst::subject_verb_sacrifice_all(
-            PlayerAst::That,
-            self.base_filter.not_tagged(self.keep_tag),
-        ));
+        if self.tap_rest {
+            effects.push(EffectAst::subject_verb_tap_all(
+                self.base_filter.not_tagged(self.keep_tag),
+            ));
+        } else {
+            effects.push(EffectAst::subject_verb_sacrifice_all(
+                PlayerAst::That,
+                self.base_filter.not_tagged(self.keep_tag),
+            ));
+        }
         match self.chooser_scope {
             PlayerAst::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
             PlayerAst::Any | PlayerAst::Implicit => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
@@ -811,7 +819,7 @@ const CHOICE_COMPLEMENT_PATTERN: effect_grammar::EffectSequence<'static> =
         effect_grammar::EffectSequence::word("then"),
         effect_grammar::EffectSequence::action(
             "sacrifice",
-            effect_grammar::EffectCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
+            effect_grammar::EffectCaptureKind::OneOf(&["sacrifice", "sacrifices", "tap", "taps"]),
         ),
         effect_grammar::EffectSequence::phrase(&["the", "rest"]),
     ]);
@@ -1541,6 +1549,12 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
                 "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
                 "this", "way",
             ],
+            // Klaw, Master of Sound: the singular spell cast from the same
+            // exiled card.
+            &[
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "a", "spell",
+                "this", "way",
+            ],
         ],
     );
     matches.then(|| {
@@ -1795,7 +1809,7 @@ pub fn parse_target_gets_unblockable_subject_verb(
     ]))
 }
 
-fn parse_cant_blocked_then_base_pt_subject_verb(
+pub(super) fn parse_cant_blocked_then_base_pt_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_cant_blocked_base_power_toughness_tokens(tokens) else {
@@ -2378,6 +2392,11 @@ fn parse_generic_consult_reveal_until_subject_verb(
         return Ok(None);
     }
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
+    if super::consult_family::consult_subject_is_each_opponent(&sentence_tokens) {
+        return Ok(Some(super::consult_family::wrap_each_opponent_consult(
+            parts.effects,
+        )));
+    }
     Ok(Some(parts.effects))
 }
 
@@ -2885,6 +2904,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_count: shape.count_per_slot,
                 distinct_slots: true,
                 aggregate_constraint: None,
+                tap_rest: false,
             }
             .lower(),
         ));
@@ -2899,6 +2919,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_count: shape.count,
                 distinct_slots: false,
                 aggregate_constraint: Some(shape.constraint),
+                tap_rest: false,
             }
             .lower(),
         ));
@@ -2928,6 +2949,15 @@ pub fn parse_choice_complement_subject_verb(
     let clause_display = crate::lexer::render_token_slice(clause.tokens())
         .trim()
         .to_string();
+    // "... then taps the rest": the unchosen objects are tapped rather than
+    // sacrificed; the choice itself is the same.
+    let tap_rest = crate::word_primitives::parse_sequence_suffix(
+        &clause.word_refs(),
+        &["the", "rest"],
+    ) && {
+        let words = clause.word_refs();
+        words.len() >= 3 && matches!(words[words.len() - 3], "tap" | "taps")
+    };
 
     let choice_clause = choice_clause.trimmed();
     let choice_tokens = choice_clause.tokens();
@@ -2942,6 +2972,7 @@ pub fn parse_choice_complement_subject_verb(
             keep_filters: [CardType::Artifact, CardType::Battle, CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker]
                 .into_iter().map(|kind| ObjectFilter::default().with_type(kind)).collect(),
             keep_count: ChoiceCount::exactly(1), distinct_slots: false, aggregate_constraint: None,
+            tap_rest,
         }.lower()));
     }
     if find_from_among(choice_tokens).is_none()
@@ -2970,6 +3001,7 @@ pub fn parse_choice_complement_subject_verb(
                     keep_count,
                     distinct_slots: false,
                     aggregate_constraint: None,
+                    tap_rest,
                 }
                 .lower(),
             ));
@@ -3051,6 +3083,7 @@ pub fn parse_choice_complement_subject_verb(
             keep_count: ChoiceCount::exactly(1),
             distinct_slots: false,
             aggregate_constraint: None,
+            tap_rest,
         }
         .lower(),
     ))
@@ -3085,7 +3118,8 @@ pub fn parse_for_each_type_slot_choice_clause(
     }
 
     let choice_tokens = trim_commas(&tokens[choose_idx + 1..]);
-    if find_from_among(&choice_tokens) != Some(0)
+    let from_among = find_from_among(&choice_tokens);
+    if from_among.is_none()
         || !choice_tokens.iter().any(|token| token.is_word("and"))
         || choice_tokens
             .iter()
@@ -3093,11 +3127,28 @@ pub fn parse_for_each_type_slot_choice_clause(
     {
         return Ok(None);
     }
-    let Some(list_start) = find_list_start(&choice_tokens[2..]).map(|idx| idx + 2) else {
-        return Ok(None);
+    let pool_first = from_among == Some(0);
+    let (base_tokens, list_tokens) = if pool_first {
+        let Some(list_start) = find_list_start(&choice_tokens[2..]).map(|idx| idx + 2) else {
+            return Ok(None);
+        };
+        (
+            trim_commas(choice_tokens.get(2..list_start).unwrap_or_default()),
+            trim_commas(choice_tokens.get(list_start..).unwrap_or_default()),
+        )
+    } else {
+        // "chooses an artifact, a creature, and a land from among the
+        // permanents controlled by the player to their left": the type slots
+        // come first and the shared pool after them.
+        let from_among = from_among.unwrap_or_default();
+        if find_list_start(&choice_tokens[..from_among]) != Some(0) {
+            return Ok(None);
+        }
+        (
+            trim_commas(choice_tokens.get(from_among + 2..).unwrap_or_default()),
+            trim_commas(choice_tokens.get(..from_among).unwrap_or_default()),
+        )
     };
-    let base_tokens = trim_commas(choice_tokens.get(2..list_start).unwrap_or_default());
-    let list_tokens = trim_commas(choice_tokens.get(list_start..).unwrap_or_default());
     if base_tokens.is_empty() || list_tokens.is_empty() {
         return Ok(None);
     }
@@ -3106,7 +3157,14 @@ pub fn parse_for_each_type_slot_choice_clause(
     if base_filter.controller.is_none() {
         base_filter.controller = Some(PlayerFilter::IteratedPlayer);
     }
-    let keep_tag = crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind();
+    // The pool-first form feeds a complement ("sacrifices the rest"); the
+    // slots-first form feeds "each permanent chosen this way", the shared
+    // chosen set of every player's choices.
+    let keep_tag = if pool_first {
+        crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind()
+    } else {
+        crate::tag::CompilerReferenceTag::ChosenObjects.bind()
+    };
     let mut choices = Vec::new();
     for segment in split_choose_list(&list_tokens) {
         let segment = strip_leading_articles(&segment);

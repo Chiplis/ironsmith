@@ -470,14 +470,16 @@ fn parse_draw_for_each_player_condition(
     });
     let predicate = match iterated_life_loss {
         Some(predicate) => predicate,
-        None => bind_loop_player_predicate(
-            parse_who_player_predicate_lexed(inner_tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing predicate in draw for-each clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?,
-        ),
+        None => {
+            // A player predicate this loop can't express ("who was dealt
+            // combat damage this turn") may still be a turn-history count
+            // ("draw a card for each player who ..."): leave it to the
+            // dynamic-count reading instead of failing the clause.
+            let Some(predicate) = parse_who_player_predicate_lexed(inner_tokens) else {
+                return Ok(None);
+            };
+            bind_loop_player_predicate(predicate)
+        }
     };
 
     let mut draw_effect = draw_effect;
@@ -589,6 +591,9 @@ fn parse_draw_for_each_object_filter_value(
     let Some(filter_tokens) = zone_move_grammar::strip_draw_for_each_prefix(tokens) else {
         return Ok(None);
     };
+    if let Some(value) = parse_card_types_among_spells_cast_value(filter_tokens) {
+        return Ok(Some(value));
+    }
     // "draw a card for each graveyard with seven or more cards in it" (The
     // Master of Lake-town) counts graveyards, not the cards in them.
     let mut counted_words = vec!["for", "each"];
@@ -602,13 +607,16 @@ fn parse_draw_for_each_object_filter_value(
                     value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
                 ));
             }
-            // "draw a card for each of that spell's colors" (Moonveil Regent)
-            // and "for each creature it devoured" (Skullmulcher).
+            // "draw a card for each of that spell's colors" (Moonveil Regent),
+            // "for each creature it devoured" (Skullmulcher) and "for each
+            // player being attacked" (Amber Gristle O'Maul).
             Value::SurfaceHinted {
                 value: ref inner, ..
             } if matches!(
                 inner.as_ref(),
-                Value::ColorsOf(_) | Value::SourceDevouredCreatureCount
+                Value::ColorsOf(_)
+                    | Value::SourceDevouredCreatureCount
+                    | Value::PlayersBeingAttacked
             ) =>
             {
                 return Ok(Some(value));
@@ -664,6 +672,15 @@ pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
         return Ok(None);
     };
     let words = crate::lexer::token_word_refs(tokens);
+    // "that player discards cards equal to the damage" (Jagged Poppet): the
+    // amount of the triggering damage event. Trigger compatibility is
+    // validated where event-derived amounts are lowered.
+    if matches!(
+        words.as_slice(),
+        ["equal", "to", "the" | "that", "damage"]
+    ) {
+        return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
+    }
     if crate::word_primitives::sequence_occurs(&words, &["differently", "named"])
         && let Some(value) = parse_equal_to_number_of_filter_value(tokens)
     {
@@ -796,8 +813,84 @@ fn counter_with_payment_payer(
     }
 }
 
+/// "Counter target spell if it has the same mana value as the discarded card"
+/// (Hisoka, Minamo Sensei), "counter that spell if it has the same mana value
+/// as the revealed card" (Counterbalance): a resolution-time comparison with
+/// the cost-discarded or just-revealed card. The spell is any spell when it is
+/// targeted; the condition is checked as the ability resolves (CR 608.2c), so
+/// it is not a targeting restriction.
+fn parse_counter_if_same_mana_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((if_index, (), reference)) = grammar::find_prefix(tokens, || {
+        grammar::phrase(&["if", "it", "has", "the", "same", "mana", "value", "as"])
+    }) else {
+        return Ok(None);
+    };
+    let reference = crate::util::trim_edge_punctuation_tokens(reference);
+    let tag = if grammar::probe_all(
+        reference,
+        grammar::phrase(&["the", "discarded", "card"]),
+        "discarded cost card",
+    )
+    .is_some()
+    {
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
+    } else if grammar::probe_all(
+        reference,
+        winnow::combinator::alt((
+            grammar::phrase(&["the", "revealed", "card"]),
+            grammar::phrase(&["that", "card"]),
+        )),
+        "revealed card",
+    )
+    .is_some()
+    {
+        crate::tag::CompilerReferenceTag::It.bind()
+    } else {
+        return Ok(None);
+    };
+    let spell_tokens = &tokens[..if_index];
+    let targeted = spell_tokens.first().is_some_and(|token| token.is_word("target"));
+    let triggering = grammar::probe_all(
+        spell_tokens,
+        grammar::phrase(&["that", "spell"]),
+        "triggering spell",
+    )
+    .is_some();
+    if !targeted && !triggering {
+        return Ok(None);
+    }
+    let target = parse_counter_target_phrase(spell_tokens)?;
+    let mut filter = ObjectFilter::default();
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: tag.into(),
+        relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
+    });
+    // "that spell" in a cast trigger is the triggering spell (CR 603.7c).
+    let predicate = if targeted {
+        crate::cards::builders::PredicateAst::TargetMatches(filter)
+    } else {
+        crate::cards::builders::PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            filter,
+        )
+    };
+    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: vec![EffectAst::subject_verb_counter(target)],
+        if_false: Vec::new(),
+    })))
+}
+
 pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_counter_if_same_mana_value(tokens)? {
         return Ok(effect);
     }
 
@@ -1229,4 +1322,33 @@ mod counted_transfer_shape_tests {
             assert!(parse_move(&crate::lexer::lex_line(text, 0).unwrap()).is_err(), "{text}");
         }
     }
+}
+
+/// "draw a card for each card type among spells you've cast this turn"
+/// (April O'Neil, Hacktivist): distinct card types (CR 205.2a) among the
+/// spells counted by the ordinary cast-history quantity. The cast-history
+/// reading of the remainder supplies the player and spell filter; dropping
+/// the "card type among" head would silently count spells instead.
+fn parse_card_types_among_spells_cast_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(filter_tokens);
+    let rest = match words.as_slice() {
+        ["card", "type" | "types", "among", rest @ ..] if !rest.is_empty() => rest,
+        _ => return None,
+    };
+    let mut counted_words = vec!["for", "each"];
+    counted_words.extend_from_slice(rest);
+    let (value, used) = crate::util::parse_for_each_count_value_words(&counted_words)?;
+    if used != counted_words.len() {
+        return None;
+    }
+    let (player, filter) = match value.unhinted() {
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast { player, filter, .. })
+        | Value::SpellsCastThisTurnMatching { player, filter, .. } => (player.clone(), filter.clone()),
+        Value::SpellsCastThisTurn(player) => (player.clone(), ObjectFilter::default()),
+        _ => return None,
+    };
+    Some(
+        Value::CardTypesAmongSpellsCastThisTurn { player, filter }
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+    )
 }

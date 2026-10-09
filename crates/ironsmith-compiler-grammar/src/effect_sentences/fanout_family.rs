@@ -1037,6 +1037,14 @@ pub fn parse_compound_damage_fanout_sentence(
     }
     let tokens =
         super::super::grammar::effects::zone_counter_shapes::strip_trailing_instead(tokens);
+    // "If the gift was promised, instead Wildfire Howl deals 1 damage to any
+    // target and 2 damage to each creature." The leading replacement marker
+    // belongs to the enclosing self-replacement (read from the sentence
+    // surface), not to the damage source.
+    let tokens = match tokens.first() {
+        Some(first) if first.is_word("instead") => &tokens[1..],
+        _ => tokens,
+    };
 
     if let Some(serial) = parse_serial_damage_fanout_tokens(tokens)? {
         let source_words = non_article_token_word_refs(&serial.source);
@@ -1054,12 +1062,27 @@ pub fn parse_compound_damage_fanout_sentence(
             if target_tokens.is_empty() {
                 return Ok(None);
             }
-            let Some(target_part) = parse_damage_part(&target_tokens, player_context.clone())?
+            if let Some(target_part) = parse_damage_part(&target_tokens, player_context.clone())? {
+                player_context = target_context_for_damage_part(&target_part);
+                effects.push(compound_damage_part_to_effect(target_part, part.amount));
+                continue;
+            }
+            // "... and 1 damage to you and each creature you control" (Hail
+            // Storm): one amount shared by a recipient and an each-set.
+            let Some((left_tokens, right_tokens)) =
+                fanout_grammar::split_damage_part_recipient_set(&target_tokens)
             else {
                 return Ok(None);
             };
-            player_context = target_context_for_damage_part(&target_part);
-            effects.push(compound_damage_part_to_effect(target_part, part.amount));
+            let Some(left) = parse_damage_part(&left_tokens, player_context.clone())? else {
+                return Ok(None);
+            };
+            let right_context = target_context_for_damage_part(&left).or(player_context.clone());
+            let Some(right) = parse_each_damage_part(&right_tokens, right_context)? else {
+                return Ok(None);
+            };
+            player_context = target_context_for_damage_part(&left);
+            effects.extend(compound_damage_effects(part.amount, left, right));
         }
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(Some(vec![EffectAst::Coordinated {

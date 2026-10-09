@@ -1183,6 +1183,18 @@ impl GameState {
             && self.player(player).is_some()
     }
 
+    /// Whether an active battlefield static ability makes this player skip
+    /// their untap step (CR 502, Stasis).
+    pub fn player_skips_untap_step(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            ability
+                .skips_untap_step_for_player(self, source, controller, player)
+                .then_some(true)
+        })
+        .unwrap_or(false)
+            && self.player(player).is_some()
+    }
+
     /// Whether an active battlefield static ability replaces this player's
     /// next extra turn with skipping that turn. The query is evaluated when
     /// the queued turn would begin, so removing the source restores later
@@ -1360,6 +1372,64 @@ impl GameState {
         self.battlefield_flags_mut()
             .fully_unlocked_rooms
             .insert(object_id);
+    }
+
+    /// CR 709.5c: lock the only unlocked door of a Room, leaving it with
+    /// neither door unlocked. Returns false if the Room had no unlocked door
+    /// or both doors unlocked.
+    pub(crate) fn lock_room_only_unlocked_door(&mut self, object_id: ObjectId) -> bool {
+        if self.is_room_fully_unlocked(object_id) || self.room_has_no_unlocked_door(object_id) {
+            return false;
+        }
+        let changed = self
+            .battlefield_flags_mut()
+            .rooms_with_no_unlocked_door
+            .insert(object_id);
+        if changed {
+            self.mark_continuous_state_dirty();
+        }
+        changed
+    }
+
+    /// CR 709.5c: lock one door of a fully unlocked Room. The fused
+    /// characteristics of both halves are dropped by re-showing a single half:
+    /// locking the linked door re-shows the current half; locking the current
+    /// door shows the linked half, which then stays the unlocked one.
+    pub(crate) fn lock_door_of_fully_unlocked_room(
+        &mut self,
+        object_id: ObjectId,
+        lock_current_half: bool,
+    ) -> bool {
+        if !self.is_room_fully_unlocked(object_id) {
+            return false;
+        }
+        let Some(linked) = self.object(object_id).and_then(|object| {
+            self.linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+        }) else {
+            return false;
+        };
+        let Some(current) = self.linked_face_definition_by_name_or_id(
+            linked.card.other_face_name.as_deref(),
+            linked.card.other_face,
+        ) else {
+            return false;
+        };
+        let handles = self.object_store.shared_handles_for_definition(&current);
+        let Some(object) = self.object_mut(object_id) else {
+            return false;
+        };
+        object.apply_definition_face_with_shared(&current, &handles);
+        self.battlefield_flags_mut()
+            .fully_unlocked_rooms
+            .remove(&object_id);
+        self.mark_continuous_state_dirty();
+        if lock_current_half {
+            return self.switch_room_to_linked_half(object_id);
+        }
+        true
     }
 
     fn required_sacrifice_count_for_cost(&self, cost: &crate::costs::Cost) -> usize {
@@ -1795,6 +1865,18 @@ impl GameState {
                                 .is_some_and(|source_obj| source_obj.zone == Zone::Battlefield)
                                 && self.is_face_down(source_id)
                         }))
+                    || (reason == crate::costs::PaymentReason::UnlockDoor
+                        && payment_source.is_some_and(|source_id| {
+                            self.object_is_room_unlock_payment_source(source_id)
+                        }))
+            }
+            crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter } => {
+                (reason == crate::costs::PaymentReason::CastSpell
+                    && self.cast_spell_filter_matches_payment_source(
+                        unit,
+                        spell_filter,
+                        payment_source,
+                    ))
                     || (reason == crate::costs::PaymentReason::UnlockDoor
                         && payment_source.is_some_and(|source_id| {
                             self.object_is_room_unlock_payment_source(source_id)

@@ -38,7 +38,16 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ChooseNamedOptionEffect" => {
             decode_as::<ironsmith_core::ChooseNamedOptionEffect>(payload).map(Some)
         }
+        "ChoosePlayerOptionEffect" => {
+            decode_as::<ironsmith_core::ChoosePlayerOptionEffect>(payload).map(Some)
+        }
+        "ControlVotesThisTurnEffect" => {
+            decode_as::<ironsmith_core::ControlVotesThisTurnEffect>(payload).map(Some)
+        }
         "ChoosePlayerEffect" => decode_as::<ironsmith_core::ChoosePlayerEffect>(payload).map(Some),
+        "ChooseFriendsOrFoesEffect" => {
+            decode_as::<ironsmith_core::ChooseFriendsOrFoesEffect>(payload).map(Some)
+        }
         "ControlCombatChoicesThisTurnEffect" => {
             decode_as::<ironsmith_core::ControlCombatChoicesThisTurnEffect>(payload).map(Some)
         }
@@ -107,6 +116,10 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         }
         "PayAnyEnergyEffect" => decode_as::<ironsmith_core::PayAnyEnergyEffect>(payload).map(Some),
         "PayAnyLifeEffect" => decode_as::<ironsmith_core::PayAnyLifeEffect>(payload).map(Some),
+        "TagPlayersEffect" => decode_as::<ironsmith_core::TagPlayersEffect>(payload).map(Some),
+        "KeepGreatestManaValuePlayersEffect" => {
+            decode_as::<ironsmith_core::KeepGreatestManaValuePlayersEffect>(payload).map(Some)
+        }
         "PayEnergyEffect" => decode_as::<ironsmith_core::PayEnergyEffect>(payload).map(Some),
         "PlaySubgameEffect" => {
             decode_as::<ironsmith_core::PlaySubgameEffect<wire::WireEffect>>(payload).map(Some)
@@ -153,6 +166,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "WinTheGameEffect" => decode_as::<ironsmith_core::WinTheGameEffect>(payload).map(Some),
         "RevealChosenSubtypeEffect" => {
             decode_as::<ironsmith_core::RevealChosenSubtypeEffect>(payload).map(Some)
+        }
+        "GrantLoyaltyActivationAllowanceEffect" => {
+            decode_as::<ironsmith_core::GrantLoyaltyActivationAllowanceEffect>(payload).map(Some)
         }
         "GrantEndThisEffectPaymentEffect" => {
             decode_as::<ironsmith_core::GrantEndThisEffectPaymentEffect>(payload).map(Some)
@@ -220,8 +236,20 @@ pub(super) fn map_card_ids(
             ironsmith_core::ChooseNamedOptionEffect,
         >(payload, context)
         .map(Some),
+        "ChoosePlayerOptionEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChoosePlayerOptionEffect,
+        >(payload, context)
+        .map(Some),
+        "ControlVotesThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ControlVotesThisTurnEffect,
+        >(payload, context)
+        .map(Some),
         "ChoosePlayerEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ChoosePlayerEffect,
+        >(payload, context)
+        .map(Some),
+        "ChooseFriendsOrFoesEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ChooseFriendsOrFoesEffect,
         >(payload, context)
         .map(Some),
         "ControlCombatChoicesThisTurnEffect" => super::card_graph::map_payload_as::<
@@ -320,6 +348,14 @@ pub(super) fn map_card_ids(
             ironsmith_core::PayAnyEnergyEffect,
         >(payload, context)
         .map(Some),
+        "TagPlayersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TagPlayersEffect,
+        >(payload, context)
+        .map(Some),
+        "KeepGreatestManaValuePlayersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::KeepGreatestManaValuePlayersEffect,
+        >(payload, context)
+        .map(Some),
         "PayAnyLifeEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::PayAnyLifeEffect>(payload, context)
                 .map(Some)
@@ -403,6 +439,10 @@ pub(super) fn map_card_ids(
         }
         "RevealChosenSubtypeEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RevealChosenSubtypeEffect,
+        >(payload, context)
+        .map(Some),
+        "GrantLoyaltyActivationAllowanceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::GrantLoyaltyActivationAllowanceEffect,
         >(payload, context)
         .map(Some),
         "GrantEndThisEffectPaymentEffect" => super::card_graph::map_payload_as::<

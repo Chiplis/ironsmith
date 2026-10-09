@@ -54,7 +54,11 @@ fn complete_pregame_body_keeps_its_owner_without_probe_loss() {
         let StaticAbilityAst::Static(ability) = &abilities[0] else {
             panic!("pregame cannot be reinterpreted as a battlefield conditional: {abilities:?}");
         };
-        let Some(crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec)) = ability.pregame_action_kind() else {
+        let ironsmith_core::StaticAbilityPayload::PregameAction {
+            kind: ironsmith_core::PregameActionKind::BeginOnBattlefield(spec),
+            ..
+        } = &ability.payload
+        else {
             panic!("expected pregame owner: {ability:?}");
         };
         assert_eq!(spec.require_not_starting_player, nonstarting);

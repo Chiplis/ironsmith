@@ -295,6 +295,75 @@ pub fn parse_outside_game_wish_shape(tokens: &[OwnedLexToken]) -> Option<Outside
     })
 }
 
+/// "[You may] put a card you own from outside the game into your hand"
+/// (Mastermind's Acquisition, North Wind Avatar) or "... on top of your
+/// library" (The Raven's Warning): an owned card from outside the game
+/// (CR 400.11; the sideboard) moved directly, without a reveal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutsideGamePutShape {
+    pub optional: bool,
+    pub filter_tokens: Vec<OwnedLexToken>,
+    pub to_library_top: bool,
+}
+
+pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGamePutShape> {
+    let tokens = trim_lexed_commas(tokens);
+    let words = parser_token_word_refs(tokens);
+    let (optional, put_word) = match words.as_slice() {
+        ["you", "may", "put", ..] => (true, 2),
+        ["put", ..] => (false, 0),
+        _ => return None,
+    };
+    if !matches!(words.get(put_word + 1), Some(&("a" | "an"))) {
+        return None;
+    }
+    let own_word = sequence_offset(
+        &words,
+        &["you", "own", "from", "outside", "the", "game"],
+    )?;
+    if own_word <= put_word + 2 {
+        return None;
+    }
+    let tail = &words[own_word + 6..];
+    let to_library_top = match tail {
+        ["into", "your", "hand"] => false,
+        ["on", "top", "of", "your", "library"] => true,
+        _ => return None,
+    };
+    let filter_tokens = token_slice_for_words(tokens, put_word + 1..own_word)?.to_vec();
+    Some(OutsideGamePutShape {
+        optional,
+        filter_tokens,
+        to_library_top,
+    })
+}
+
+/// "Shuffle up to four cards you own from outside the game into your
+/// library" (Research): a bounded owned choice from outside the game.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutsideGameShuffleShape {
+    pub maximum: u32,
+    pub filter_tokens: Vec<OwnedLexToken>,
+}
+
+pub fn parse_outside_game_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGameShuffleShape> {
+    let tokens = trim_lexed_commas(tokens);
+    let words = parser_token_word_refs(tokens);
+    let ["shuffle", "up", "to", count, ..] = words.as_slice() else {
+        return None;
+    };
+    let maximum = crate::util::parse_number_word_u32(count)?;
+    let own_word = sequence_offset(&words, &["you", "own", "from", "outside", "the", "game"])?;
+    if own_word <= 4 || words[own_word + 6..] != ["into", "your", "library"] {
+        return None;
+    }
+    let filter_tokens = token_slice_for_words(tokens, 4..own_word)?.to_vec();
+    Some(OutsideGameShuffleShape {
+        maximum,
+        filter_tokens,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForEachChosenShape<'a> {
     pub body: &'a [OwnedLexToken],
@@ -601,7 +670,16 @@ pub struct LifeBidShape<'a> {
 
 pub fn parse_life_bid_shape(tokens: &[OwnedLexToken]) -> Option<LifeBidShape<'_>> {
     let sentences = split_lexed_sentences(tokens);
-    let [first, start, top, stands, reward] = sentences.as_slice() else {
+    parse_life_bid_sentences(&sentences)
+}
+
+/// The five sentences of a life auction for control of a target (Illicit
+/// Auction), read together: the bid, the opening bid, the rounds, the end of
+/// the bidding and the high bidder's payment and reward.
+pub fn parse_life_bid_sentences<'a>(
+    sentences: &[&'a [OwnedLexToken]],
+) -> Option<LifeBidShape<'a>> {
+    let &[first, start, top, stands, reward] = sentences else {
         return None;
     };
     let first_words = parser_token_word_refs(first);

@@ -124,6 +124,35 @@ pub fn is_still_land_followup(tokens: &[OwnedLexToken]) -> bool {
         "still land followup",
     )
     .is_ok()
+        || is_still_subtyped_land_followup(tokens)
+}
+
+/// "It's still a Cave land." (Cavernous Maw): the land-subtype words restate
+/// what the animated land keeps. CR 205.1b retains every prior card type,
+/// subtype, and supertype, so this is the same retention as "still a land".
+fn is_still_subtyped_land_followup(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let Some(rest) = [
+        &["it's", "still"][..],
+        &["its", "still"][..],
+        &["it", "s", "still"][..],
+    ]
+    .into_iter()
+    .find_map(|prefix| words.strip_prefix(prefix)) else {
+        return false;
+    };
+    let rest = match rest.first() {
+        Some(&"a") | Some(&"an") => &rest[1..],
+        _ => rest,
+    };
+    let Some((last, subtypes)) = rest.split_last() else {
+        return false;
+    };
+    *last == "land"
+        && !subtypes.is_empty()
+        && subtypes.iter().all(|word| {
+            crate::util::parse_subtype_word(word).is_some_and(|subtype| subtype.is_land_subtype())
+        })
 }
 
 /// "It's still an enchantment." after an animation of a noncreature

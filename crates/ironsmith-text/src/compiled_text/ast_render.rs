@@ -209,6 +209,7 @@ enum DelegatedPartitionSet {
 enum DelegatedPartitionMove {
     Hand(DelegatedPartitionSet),
     Library(DelegatedPartitionSet),
+    Battlefield(DelegatedPartitionSet),
 }
 
 fn delegated_partition_set(spec: &ChooseSpec) -> Option<DelegatedPartitionSet> {
@@ -247,14 +248,14 @@ fn delegated_partition_move(effect: &Effect) -> Option<DelegatedPartitionMove> {
     let effect = structural_unwrap_render_wrappers(effect);
     if let Some(movement) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let set = delegated_partition_set(&movement.target)?;
-        if movement.zone != Zone::Hand
-            || movement.to_top
-            || movement.library_order.is_some()
-            || movement.enters_tapped
-        {
+        if movement.to_top || movement.library_order.is_some() || movement.enters_tapped {
             return None;
         }
-        return Some(DelegatedPartitionMove::Hand(set));
+        return match movement.zone {
+            Zone::Hand => Some(DelegatedPartitionMove::Hand(set)),
+            Zone::Battlefield => Some(DelegatedPartitionMove::Battlefield(set)),
+            _ => None,
+        };
     }
     let shuffle = effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     let set = delegated_partition_set(&shuffle.target)?;
@@ -282,6 +283,7 @@ fn describe_cross_segment_delegated_search_partition_program(
         choose_effect,
         first_move,
         second_move,
+        trailing @ ..
     ] = effects.as_slice()
     else {
         return None;
@@ -329,6 +331,14 @@ fn describe_cross_segment_delegated_search_partition_program(
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(second)),
         ) if first == chosen && second.as_str() == "rest" => (Zone::Hand, Zone::Library),
+        // "Shuffle the chosen cards into your library and put the rest onto
+        // the battlefield." (Ecological Appreciation)
+        (
+            DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
+            DelegatedPartitionMove::Battlefield(DelegatedPartitionSet::Difference { pool, excluded }),
+        ) if first == chosen && pool == search.tag && excluded == chosen => {
+            (Zone::Library, Zone::Battlefield)
+        }
         (
             DelegatedPartitionMove::Library(DelegatedPartitionSet::Tagged(first)),
             DelegatedPartitionMove::Hand(DelegatedPartitionSet::Tagged(second)),
@@ -353,7 +363,11 @@ fn describe_cross_segment_delegated_search_partition_program(
             selection.push_str(" you own");
         }
     }
-    let origin = describe_search_origin_zones(search)?;
+    // A searched set an opponent then partitions is printed "your library
+    // and graveyard" (Ecological Appreciation), not the optional-zone
+    // "and/or" of a single-card multi-zone search.
+    let origin = describe_search_origin_zones(search)?
+        .replace("library and/or graveyard", "library and graveyard");
     let search_line = match first_sequence.surface {
         ironsmith_core::SequenceSurface::CommaThen => {
             format!("Search {origin} for {selection}, then reveal those cards")
@@ -375,11 +389,23 @@ fn describe_cross_segment_delegated_search_partition_program(
         (Zone::Library, Zone::Hand) => {
             "Shuffle the chosen cards into your library and put the rest into your hand"
         }
+        (Zone::Library, Zone::Battlefield) => {
+            "Shuffle the chosen cards into your library and put the rest onto the battlefield"
+        }
         _ => return None,
     };
-    Some(format!(
-        "{search_line}. An opponent chooses two of {choice_object}. {movement}"
-    ))
+    let mut rendered =
+        format!("{search_line}. An opponent chooses two of {choice_object}. {movement}");
+    for effect in trailing {
+        let text = describe_effect(effect);
+        let text = text.trim().trim_end_matches('.');
+        if text.is_empty() {
+            return None;
+        }
+        rendered.push_str(". ");
+        rendered.push_str(&capitalize_first(text));
+    }
+    Some(rendered)
 }
 
 fn exact_guided_library_category_choice(
@@ -694,6 +720,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
         || permission.while_on_top_of_library
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.max_plays.is_some()
@@ -926,7 +953,8 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
 pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &str) -> String {
     if !line.starts_with("Eminence — ")
         || !(line.contains("if this source is in the command zone or on the battlefield")
-            || line.contains("if this creature is in the command zone or on the battlefield"))
+            || line.contains("if this creature is in the command zone or on the battlefield")
+            || line.contains("As long as this source is in the command zone or on the battlefield"))
     {
         return line.to_string();
     }
@@ -941,6 +969,10 @@ pub(super) fn rewrite_eminence_source_zone_surface(def: &CardDefinition, line: &
     .replace(
         "if this creature is in the command zone or on the battlefield",
         &format!("if {source} is in the command zone or on the battlefield"),
+    )
+    .replace(
+        "As long as this source is in the command zone or on the battlefield",
+        &format!("As long as {source} is in the command zone or on the battlefield"),
     )
     .replace("target cat", "target Cat")
     .replace("another spell Vampire", "another Vampire spell")
@@ -2286,6 +2318,20 @@ fn render_color_conditional_keyword_grants(
 }
 
 fn ability_level_range_prefix(ability: &Ability) -> Option<String> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind {
+        let qualified = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()?;
+        let range = qualified.surface.strip_prefix("__ironsmith_level_range:")?;
+        let (min, max) = range.split_once(':')?;
+        return Some(if max == "+" {
+            format!("Level {min}+")
+        } else if min == max {
+            format!("Level {min}")
+        } else {
+            format!("Level {min}-{max}")
+        });
+    }
     let AbilityKind::Activated(activated) = &ability.kind else {
         return None;
     };
@@ -13830,6 +13876,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -13959,6 +14006,7 @@ fn describe_cross_segment_filtered_exile_cast_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -14379,6 +14427,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -15845,6 +15894,7 @@ mod relative_player_target_consult_program_tests {
                     player: Box::new(PlayerFilter::Active),
                     filter: Box::new(ObjectFilter::creature()),
                     fewer: false,
+                    as_you_activate: false,
                 },
             )))
             .with_chooser(PlayerFilter::Active),
@@ -17659,6 +17709,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -20603,6 +20654,7 @@ fn describe_you_life_change_exile_then_play_program(
         || permission.while_on_top_of_library
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
+        || permission.during_turns_attacked_with.is_some()
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.cast_pool_is_plural
@@ -32779,10 +32831,13 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Awaken { amount, cost, .. } => {
             format!("Awaken {amount}—{}", cost.to_oracle())
         }
-        AlternativeCastingMethod::Flashback { total_cost } => {
+        AlternativeCastingMethod::Flashback {
+            total_cost,
+            x_minimum,
+        } => {
             let costs = method.non_mana_costs();
             let mana_cost = total_cost.mana_cost().map(|cost| cost.to_oracle());
-            if costs.is_empty() {
+            let rendered = if costs.is_empty() {
                 format!(
                     "Flashback—{}",
                     mana_cost.unwrap_or_else(|| "{0}".to_string())
@@ -32794,6 +32849,14 @@ pub(super) fn describe_alternative_cast_line(
                 } else {
                     format!("Flashback—{extra}")
                 }
+            };
+            if *x_minimum > 0 {
+                format!(
+                    "{rendered}. If you cast this spell this way, X can't be {}",
+                    x_minimum - 1
+                )
+            } else {
+                rendered
             }
         }
         AlternativeCastingMethod::Harmonize { total_cost } => {
@@ -36362,11 +36425,29 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     };
 
     let additional_costs = def.additional_non_mana_costs();
+    // A mandatory Waterbend additional cost is stored as a scoped mana
+    // component of the spell's additional cost, so it never appears among the
+    // non-mana components. Render its typed payment surface ("waterbend {5}",
+    // "waterbend {X}") instead of silently dropping the obligation.
+    let waterbend_additional_cost = def
+        .additional_cost
+        .as_all()
+        .and_then(|_| def.additional_cost.mana_cost())
+        .filter(|cost| cost.has_waterbend_obligation())
+        .map(|cost| lowercase_first(&cost.payment_surface()));
+    let mut additional_cost_parts = Vec::new();
+    if let Some(waterbend) = waterbend_additional_cost {
+        additional_cost_parts.push(waterbend);
+    }
     if !additional_costs.is_empty() {
-        let additional_cost_text = describe_additional_costs(&additional_costs);
+        additional_cost_parts.push(lowercase_first(&describe_additional_costs(
+            &additional_costs,
+        )));
+    }
+    if !additional_cost_parts.is_empty() {
         out.push(format!(
             "As an additional cost to cast this spell, {}",
-            lowercase_first(&additional_cost_text)
+            additional_cost_parts.join(" and ")
         ));
     }
     if !spell_like_card {
@@ -38248,7 +38329,7 @@ fn describe_source_line_attached_animation_group(members: &[Ability]) -> Option<
     let mut subject_filter: Option<ObjectFilter> = None;
     let mut same_subject = |filter: &ObjectFilter| -> bool {
         let attached = filter.tagged_constraints.iter().any(|constraint| {
-            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         });
         if !attached {
@@ -47417,6 +47498,7 @@ mod flashback_non_mana_cost_surface_tests {
     #[test]
     fn effect_only_flashback_omits_invented_zero_mana_cost() {
         let effect_only = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::from_cost(sacrifice_creature_cost()),
         };
         assert_eq!(
@@ -47428,6 +47510,7 @@ mod flashback_non_mana_cost_surface_tests {
     #[test]
     fn explicit_zero_and_mixed_flashback_costs_keep_their_mana_surface() {
         let explicit_zero = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::free(),
         };
         assert_eq!(
@@ -47436,6 +47519,7 @@ mod flashback_non_mana_cost_surface_tests {
         );
 
         let mixed = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(crate::mana::ManaCost::from_symbols(vec![
                     crate::mana::ManaSymbol::Generic(1),

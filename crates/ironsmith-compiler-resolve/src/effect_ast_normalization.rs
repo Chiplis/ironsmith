@@ -614,6 +614,8 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
             | Restriction::BeRegenerated(filter)
             | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::MaximumBlockers { filter, .. }
             | Restriction::HaveCountersPlaced(filter)
             | Restriction::BeTargeted(filter)
@@ -886,6 +888,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_all_players_subtype_choices_to_destroy_exclusion(effects);
     bind_all_players_subtype_choices_to_return_inclusion(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
+    bind_quantified_choice_collections_to_pronoun_followups(effects);
     bind_counted_set_followups(effects);
     bind_drawn_cards_to_reveal_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
@@ -2224,6 +2227,114 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
     }
 }
 
+/// "Starting with you, each player chooses up to one permanent ... Exile
+/// those permanents.": a plural pronoun right after a choice made by every
+/// player names the union of their choices, as "chosen this way" does. The
+/// producer gets the durable accumulating chosen-set tag and the consumer's
+/// pronoun is bound to it.
+fn bind_quantified_choice_collections_to_pronoun_followups(effects: &mut [EffectAst]) {
+    fn consumer_target_mut(effect: &mut EffectAst) -> Option<&mut TargetAst> {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } => match effects.as_mut_slice() {
+                [effect] => consumer_target_mut(effect),
+                _ => None,
+            },
+            EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    target, ..
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                    target,
+                    ..
+                }) => Some(target),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn pronoun_target_mut(target: &mut TargetAst) -> Option<&mut TargetAst> {
+        let is_pronoun = matches!(
+            &*target,
+            TargetAst::Tagged(tag, _)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        );
+        if is_pronoun {
+            return Some(target);
+        }
+        match target {
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                pronoun_target_mut(inner)
+            }
+            _ => None,
+        }
+    }
+    /// "each card chosen this way": the producer's pronoun constraint on a
+    /// chosen-object noun.
+    fn chosen_this_way_filter_mut(target: &mut TargetAst) -> Option<&mut crate::filter::ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, _, _)
+                if filter.prior_effect_action_surface()
+                    == Some(ironsmith_core::PriorEffectAction::Chosen) =>
+            {
+                Some(filter)
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                chosen_this_way_filter_mut(inner)
+            }
+            _ => None,
+        }
+    }
+    for consumer_index in 1..effects.len() {
+        if choice_collection_producer_is_quantified(&effects[consumer_index - 1]) != Some(true)
+            || !choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1])
+        {
+            continue;
+        }
+        let durable_tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
+        let Some(target) = consumer_target_mut(&mut effects[consumer_index]) else {
+            continue;
+        };
+        fn is_pronoun(target: &TargetAst) -> bool {
+            match target {
+                TargetAst::Tagged(tag, _) => {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                }
+                TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                    is_pronoun(inner)
+                }
+                _ => false,
+            }
+        }
+        if is_pronoun(target) {
+            let Some(pronoun) = pronoun_target_mut(target) else {
+                continue;
+            };
+            let span = match &*pronoun {
+                TargetAst::Tagged(_, span) => *span,
+                _ => None,
+            };
+            *pronoun = TargetAst::Tagged(durable_tag.clone(), span);
+        } else if let Some(filter) = chosen_this_way_filter_mut(target) {
+            let mut rebound = false;
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                {
+                    constraint.tag = durable_tag.clone().into();
+                    rebound = true;
+                }
+            }
+            if !rebound {
+                continue;
+            }
+        } else {
+            continue;
+        }
+        retag_choice_collection_producer(&mut effects[consumer_index - 1], &durable_tag);
+    }
+}
+
 fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SourceSentence { effects, .. } => {
@@ -2790,17 +2901,27 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
     }
 
     let last_index = effects.len() - 1;
+    // A registered multi-sentence program (for example a grouped coin flip)
+    // keeps each authored sentence in its own one-effect SourceSentence. The
+    // result consumer that ends the process is then wrapped; peel it so the
+    // continuation is found at the same index it will occupy in the body.
+    let last_effect = peel_single_source_sentence(&effects[last_index]);
     let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate,
         effects: tail_effects,
-    }) = &effects[last_index]
+    }) = last_effect
     else {
         return None;
     };
-    let marker_is_direct = matches!(
+    let excludes_prior_choices = matches!(
         tail_effects.last(),
-        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
+        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices))
     );
+    let marker_is_direct = excludes_prior_choices
+        || matches!(
+            tail_effects.last(),
+            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
+        );
     let marker_is_coordinated = matches!(
         tail_effects.last(),
         Some(EffectAst::Coordinated { effects, .. })
@@ -2832,6 +2953,15 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
                 effects.as_slice(),
                 [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. }), EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)]
             )
+    ) || matches!(
+        tail_effects.last(),
+        Some(EffectAst::Coordination(coordination))
+            if matches!(
+                coordination.members.as_slice(),
+                [payment, repeat]
+                    if matches!(payment.effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })])
+                        && matches!(repeat.effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)])
+            )
     );
     let continue_effect_index = if repeat_follows_unless_payment {
         last_index
@@ -2844,6 +2974,7 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
         predicate.clone()
     };
     let mut body = effects.to_vec();
+    body[last_index] = last_effect.clone();
     let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) =
         &mut body[last_index]
     else {
@@ -2866,12 +2997,55 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
     if effects.is_empty() {
         body.pop();
     }
+    // "except that <player> can't choose a card already chosen for <this>":
+    // every object choice of the process excludes the objects the process
+    // chose in its earlier rounds. Without a choice to constrain, the
+    // exception has no meaning, so the reading is refused.
+    if excludes_prior_choices
+        && exclude_prior_process_choices(&mut body[..continue_effect_index]) == 0
+    {
+        return None;
+    }
 
     Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: body,
         continue_effect_index,
         continue_predicate,
     })])
+}
+
+/// Constrain every object choice in a repeated process body to objects not
+/// chosen in an earlier round (`PriorProcessChoices`). Returns how many
+/// choices were constrained.
+fn exclude_prior_process_choices(effects: &mut [EffectAst]) -> usize {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let mut constrained = 0;
+    for effect in effects.iter_mut() {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) =
+            effect
+        {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::PriorProcessChoices.bind().into(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            constrained += 1;
+            continue;
+        }
+        super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+            constrained += exclude_prior_process_choices(nested);
+        });
+    }
+    constrained
+}
+
+/// The single effect of a one-effect authored sentence wrapper (recursively).
+fn peel_single_source_sentence(effect: &EffectAst) -> &EffectAst {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => {
+            peel_single_source_sentence(&effects[0])
+        }
+        _ => effect,
+    }
 }
 
 fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {

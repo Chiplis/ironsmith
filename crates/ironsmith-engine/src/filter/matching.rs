@@ -150,6 +150,17 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // CR 708.8: turning a permanent face up doesn't change its identity, so
+    // the turn's history names the same object.
+    if filter.turned_face_up_this_turn
+        && !game
+            .turn_store
+            .turn_history
+            .object_turned_face_up_this_turn(subject.stable_id(), subject.object_id())
+    {
+        return false;
+    }
+
     if subject.is_live()
         && (filter.entered_battlefield_this_turn || filter.entered_battlefield_controller.is_some())
     {
@@ -479,6 +490,19 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // "share a color with the spell most recently cast this turn" (Mana
+    // Maze): the turn's latest completed cast; none yet means no match.
+    if filter.shares_color_with_last_spell_cast_this_turn
+        && !game
+            .turn_store
+            .turn_history
+            .spell_cast_snapshot_history()
+            .last()
+            .is_some_and(|last| !last.colors.intersection(object_colors).is_empty())
+    {
+        return false;
+    }
+
     if filter.first_spell_cast_each_turn
         && !first_matching_spell_cast_each_turn_matches(
             filter,
@@ -731,10 +755,12 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.chosen_color {
-        let Some(chosen_color) = ctx.source.and_then(|source| game.chosen_color(source)) else {
+        // "of the chosen color" / "at least one of the chosen colors": a
+        // multi-color choice (Tablet of the Guilds) matches any chosen color.
+        let Some(chosen_colors) = ctx.source.and_then(|source| game.chosen_colors(source)) else {
             return false;
         };
-        if !object_colors.contains(chosen_color) {
+        if object_colors.intersection(chosen_colors).is_empty() {
             return false;
         }
     }
@@ -778,6 +804,25 @@ pub(super) fn matches_subject(
     // Multicolored check
     if filter.multicolored && object_colors.count() < 2 {
         return false;
+    }
+
+    // "double-faced card" (CR 712.1): a second face that isn't a split or
+    // flip half printed on the same face.
+    if filter.double_faced {
+        let (other_face, layout) = match subject {
+            ObjectSubject::Live(object) => (object.other_face, object.linked_face_layout),
+            ObjectSubject::Snapshot(snapshot) => {
+                (snapshot.other_face, snapshot.linked_face_layout)
+            }
+        };
+        if other_face.is_none()
+            || matches!(
+                layout,
+                crate::card::LinkedFaceLayout::Split | crate::card::LinkedFaceLayout::Flip
+            )
+        {
+            return false;
+        }
     }
 
     // Monocolored check

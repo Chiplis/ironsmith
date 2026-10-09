@@ -39,6 +39,7 @@ fn player_filter_references_identity(
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             player_filter_references_identity(inner, identity)
         }
@@ -175,6 +176,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -252,6 +254,8 @@ fn restriction_references_identity(
     match restriction {
         Restriction::AdditionalLandPlays(player, _)
         | Restriction::NoMaximumHandSize(player)
+        | Restriction::DrawFromBottom(player)
+        | Restriction::ActivateAbilities(player)
         | Restriction::GainLife(player)
         | Restriction::SearchLibraries(player)
         | Restriction::SearchOwnLibraryFromOwnEffects(player)
@@ -268,18 +272,26 @@ fn restriction_references_identity(
         | Restriction::LoseGameForZeroLife(player)
         | Restriction::WinGame(player)
         | Restriction::BecomeMonarch(player)
+        | Restriction::VentureMoreThanOnceEachTurn(player)
+        | Restriction::BlockWithMoreThan { player, .. }
         | Restriction::LoseUnspentMana(player, _)
         | Restriction::BeTargetedPlayer(player) => {
             player_filter_references_identity(player, identity)
         }
         Restriction::PlayLandsMatching(player, filter)
         | Restriction::CastSpellsMatching(player, filter)
-        | Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
+        | Restriction::CastMoreThanOneSpellEachTurn(player, filter)
+        | Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
-        | Restriction::AttackPlayer { attackers, player } => {
+        | Restriction::AttackPlayer { attackers, player }
+        | Restriction::MustAttackPlayer { attackers, player } => {
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }
@@ -290,7 +302,12 @@ fn restriction_references_identity(
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
-        | Restriction::BeTargetedFrom(blockers, attacker) => {
+        | Restriction::BeTargetedFrom(blockers, attacker)
+        | Restriction::BeAttachedBy(blockers, attacker)
+        | Restriction::AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
         }
@@ -313,6 +330,8 @@ fn restriction_references_identity(
         | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
@@ -335,6 +354,7 @@ fn restriction_references_identity(
         Restriction::PreventDamageFrom { sources, .. } => {
             object_filter_references_identity(sources, identity)
         }
+        Restriction::AttackTax(rule) => object_filter_references_identity(&rule.attackers, identity),
         Restriction::PreventDamage
         | Restriction::PreventCombatDamage
         | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => false,

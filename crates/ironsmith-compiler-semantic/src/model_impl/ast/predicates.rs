@@ -130,6 +130,9 @@ pub enum PredicateAst {
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     /// "if you have a card in hand matching this"
     YouHaveCardInHandMatching(ObjectFilter),
+    /// "the top card of your library is a creature card" (Mul Daya
+    /// Channelers): the controller's library top matches the filter.
+    TopCardOfYourLibraryMatches(ObjectFilter),
     /// "during your first turn of the game"
     YourFirstTurnsOfTheGameOrFewer(u32),
     /// "as long as equipped creature is attacking"
@@ -160,6 +163,8 @@ pub enum PredicateAst {
     MaxActivationsPerTurn(u32),
     /// Lifetime activation cap for the current object instance and ability.
     MaxActivationsPerObject(u32),
+    /// "Activate no more times each turn than the number of <objects>."
+    MaxActivationsPerTurnCount(crate::static_abilities::AnthemCountExpression),
     /// "if that turn is an extra turn"
     CurrentTurnIsExtra,
     /// How often the ability may fire, as the text states it — "only once each

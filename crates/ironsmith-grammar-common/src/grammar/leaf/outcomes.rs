@@ -228,6 +228,14 @@ pub fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTarge
                 | "cards"
                 | "creature"
                 | "creatures"
+                // Singular card-type nouns head the same bare selection as
+                // "creature" ("put a phylactery counter on an artifact you
+                // control" once its article is consumed).
+                | "artifact"
+                | "enchantment"
+                | "land"
+                | "planeswalker"
+                | "battle"
                 | "permanent"
                 | "permanents"
                 | "all"

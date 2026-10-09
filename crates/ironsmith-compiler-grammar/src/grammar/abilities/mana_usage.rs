@@ -104,6 +104,7 @@ pub fn parse_mana_usage_restriction_sentence_lexed(
     parse_generic_mana_transaction(tokens)
         .or_else(|| mana_usage_payment_branches::parse(tokens))
         .or_else(|| parse_cast_unlock_turn_face_up(tokens))
+        .or_else(|| parse_cast_and_unlock_doors(tokens))
         .or_else(|| parse_cast_or_activate_source(tokens))
         .or_else(|| parse_cast_or_activate_any_ability(tokens))
         .or_else(|| parse_activate_any_ability_or_cast(tokens))
@@ -557,6 +558,26 @@ fn parse_cast_unlock_turn_face_up(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     Some(ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter })
 }
 
+/// "Spend this mana only to cast Room spells and unlock doors" (Smoky
+/// Lounge): the spells plus the unlock special action's cost (CR 709.5e).
+fn parse_cast_and_unlock_doors(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let prefix_end = parse_any_prefix_word_count(&words, SPEND_MANA_CAST_PREFIXES)?;
+    let tail_start = words.len().checked_sub(3)?;
+    if tail_start <= prefix_end
+        || !matches!(
+            words.get(tail_start..)?,
+            ["and", "unlock", "doors"] | ["or", "unlock", "doors"]
+        )
+    {
+        return None;
+    }
+    let spell_tokens = token_slice_for_words(tokens, &view, prefix_end, tail_start)?;
+    let spell_filter = parse_mana_usage_spell_filter(spell_tokens)?;
+    Some(ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter })
+}
+
 fn parse_cast_or_activate_source(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
     const SEPARATORS: &[&[&str]] = &[
         &["or", "activate", "an", "ability", "of"],
@@ -597,7 +618,11 @@ fn parse_cant_be_spent_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsage
     let start = parse_any_prefix_word_count(&words, PREFIXES)?;
     (start < words.len()).then_some(())?;
     let spec = token_slice_for_words(tokens, &view, start, words.len())?;
-    let forbidden_filter = if matches_any_exact_tokens(
+    // "This mana can't be spent to cast spells." (Thran Turbine): no spell at
+    // all; abilities and other costs may still use it (CR 106.6).
+    let forbidden_filter = if matches_any_exact_tokens(spec, &[&["spells"], &["a", "spell"]]) {
+        ObjectFilter::default()
+    } else if matches_any_exact_tokens(
         spec,
         &[
             &["a", "nonartifact", "spell"],

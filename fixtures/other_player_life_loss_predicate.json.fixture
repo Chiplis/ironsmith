@@ -1,0 +1,11 @@
+[
+ {
+  "name": "Ludevic, Necro-Alchemist",
+  "oracle_id": "3b9d587c-39d2-44a2-9802-e4217ed389c0",
+  "mana_cost": "{1}{U}{R}",
+  "type_line": "Legendary Creature — Human Wizard",
+  "oracle_text": "At the beginning of each player's end step, that player may draw a card if a player other than you lost life this turn.\nPartner",
+  "power": "1",
+  "toughness": "4"
+ }
+]

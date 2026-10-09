@@ -30,6 +30,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "FightEffect" => decode_as::<ironsmith_core::FightEffect>(payload).map(Some),
         "GoadEffect" => decode_as::<ironsmith_core::GoadEffect>(payload).map(Some),
         "ClearGoadEffect" => decode_as::<ironsmith_core::ClearGoadEffect>(payload).map(Some),
+        "MustAttackPlayerThisTurnEffect" => {
+            decode_as::<ironsmith_core::MustAttackPlayerThisTurnEffect>(payload).map(Some)
+        }
         "GrantAbilitiesTargetEffect" => decode_as::<
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
         >(payload)
@@ -70,6 +73,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "BecomeBlockedEffect" => decode_as::<ironsmith_core::BecomeBlockedEffect>(payload).map(Some),
         "RemoveFromCombatEffect" => {
             decode_as::<ironsmith_core::RemoveFromCombatEffect>(payload).map(Some)
+        }
+        "ReselectAttackTargetEffect" => {
+            decode_as::<ironsmith_core::ReselectAttackTargetEffect>(payload).map(Some)
         }
         "ReplaceNextDamageToTargetEffect" => {
             decode_as::<ironsmith_core::ReplaceNextDamageToTargetEffect<wire::WireEffect>>(payload)
@@ -128,6 +134,10 @@ pub(super) fn map_card_ids(
             super::card_graph::map_payload_as::<ironsmith_core::ClearGoadEffect>(payload, context)
                 .map(Some)
         }
+        "MustAttackPlayerThisTurnEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::MustAttackPlayerThisTurnEffect,
+        >(payload, context)
+        .map(Some),
         "GrantAbilitiesTargetEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
         >(payload, context)
@@ -178,6 +188,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "RemoveFromCombatEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RemoveFromCombatEffect,
+        >(payload, context)
+        .map(Some),
+        "ReselectAttackTargetEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ReselectAttackTargetEffect,
         >(payload, context)
         .map(Some),
         "ReplaceNextDamageToTargetEffect" => super::card_graph::map_payload_as::<

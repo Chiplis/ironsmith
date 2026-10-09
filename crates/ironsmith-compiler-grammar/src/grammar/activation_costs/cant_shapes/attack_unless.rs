@@ -67,6 +67,9 @@ pub enum AttackUnlessSurface {
     SacrificeIslands,
     ReturnEnchantment,
     PayPerPlusOnePlusOneCounter,
+    /// Any other complete static condition ("unless a creature died under
+    /// your control this turn").
+    GeneralCondition,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -194,7 +197,10 @@ fn parse_requirement_lexed(
             parse_attacking_group_requirement,
             parse_opponent_damaged,
             parse_attack_cost_requirement,
-            parse_controller_control_requirement,
+            alt((
+                parse_controller_control_requirement,
+                parse_general_condition_requirement,
+            )),
         ))
         .parse_next(input),
         AttackUnlessScope::AttackOrBlock
@@ -212,9 +218,23 @@ fn parse_requirement_lexed(
             parse_controller_control_requirement,
             alt((parse_there_are_exile_count, parse_there_are_filtered_cards)),
             )),
+            parse_general_condition_requirement,
         ))
         .parse_next(input),
     }
+}
+
+/// The fallback: the whole remaining clause read by the shared static
+/// condition grammar, held as the source's own condition.
+fn parse_general_condition_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let tokens = take_remaining_tokens(input)?;
+    let condition = crate::keyword_static::parse_static_condition_clause(tokens).map_err(|_| {
+        primitives::backtrack_err("general requirement", "a complete static condition")
+    })?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::GeneralCondition,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(condition),
+    })
 }
 
 fn parse_player_condition_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {

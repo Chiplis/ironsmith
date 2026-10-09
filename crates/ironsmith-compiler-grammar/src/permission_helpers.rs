@@ -1,3 +1,5 @@
+#[path = "permission_helpers/collection_casts.rs"]
+pub(crate) mod collection_casts;
 pub(crate) mod effect_cast_prices;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
@@ -567,6 +569,9 @@ fn parse_permission_lead_tokens(
         permission_tagged_facts::PermissionActor::AnyPlayer => PlayerAst::Any,
         permission_tagged_facts::PermissionActor::ItsOwner => PlayerAst::ItsOwner,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
+        permission_tagged_facts::PermissionActor::TriggeringCreatureController => {
+            PlayerAst::TriggeringSourceController
+        }
     };
     Some((
         PermissionLead {
@@ -613,7 +618,8 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         permission_tagged_facts::PermissionActor::You => PlayerAst::You,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
         permission_tagged_facts::PermissionActor::AnyPlayer
-        | permission_tagged_facts::PermissionActor::ItsOwner => return None,
+        | permission_tagged_facts::PermissionActor::ItsOwner
+        | permission_tagged_facts::PermissionActor::TriggeringCreatureController => return None,
     };
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => {
@@ -1119,6 +1125,9 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some(spec) = filtered_zone_permissions::parse_shared_hand_top_free_cast(tokens)? {
         return Ok(Some(spec));
     }
+    if let Some(spec) = filtered_zone_permissions::parse_once_per_turn_hand_free_cast(tokens)? {
+        return Ok(Some(spec));
+    }
     if let Some(spec) = filtered_zone_permissions::parse_timed_top_look_and_permission(tokens)? {
         return Ok(Some(spec));
     }
@@ -1201,7 +1210,11 @@ pub fn parse_permission_clause_spec_lexed(
         && prefixed_lifetime.is_none()
         && let Some(parsed) =
             permission_source_exiled_facts::parse_spells_from_source_exiled_tokens(rest_tokens)
-        && trim_lexed_commas(parsed.tail_tokens).is_empty()
+        && crate::grammar::primitives::probe_all(
+            parsed.tail_tokens,
+            crate::grammar::primitives::sentence_end(),
+            "source-linked static permission tail",
+        ).is_some()
     {
         let Some(mut filter) =
             permission_subject_facts::parse_cast_permission_filter_tokens(parsed.subject_tokens)?
@@ -1264,6 +1277,28 @@ pub fn parse_permission_clause_spec_lexed(
                 },
                 tail,
                 None,
+            ))
+        })
+        .or_else(|| {
+            // "cards you own exiled with this artifact": the same pool,
+            // narrowed to the permission player's own cards.
+            let (reference, tail) =
+                permission_source_exiled_facts::parse_owned_cards_from_source_exiled_tokens(
+                    rest_tokens,
+                )?;
+            Some((
+                TaggedPermissionTarget {
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                    as_copy: false,
+                    max_plays: None,
+                    surface: Some(
+                        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                            source: reference.surface,
+                        },
+                    ),
+                },
+                tail,
+                Some(ObjectFilter::default().owned_by(PlayerFilter::You)),
             ))
         })
         .or_else(|| {
@@ -1693,11 +1728,10 @@ pub fn parse_unsupported_play_cast_permission_clause_lexed(
     }
 
     match unsupported_permission_shape(tokens) {
+        // The complete "any number of lands on each of your turns" line is
+        // the static additional-land-play rule's (unlimited count).
         Some(UnsupportedPermissionShape::AdditionalLandEachTurn) => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported additional-land-play permission clause (clause: '{}')",
-                clause_refs.join(" ")
-            )));
+            return Ok(None);
         }
         Some(UnsupportedPermissionShape::ForAsLongAsPlayCast) => {
             if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
@@ -1737,7 +1771,7 @@ pub fn parse_until_end_of_turn_may_play_tagged_clause(
             surface,
             max_plays,
             ..
-        }) if player == PlayerAst::You => Ok(Some(build_temporary_tagged_permission_effect(
+        }) if matches!(player, PlayerAst::You | PlayerAst::TriggeringSourceController) => Ok(Some(build_temporary_tagged_permission_effect(
             &trimmed,
             tag,
             player,
@@ -1837,6 +1871,19 @@ fn next_turn_permission_grant_duration(
 ) -> Result<crate::grant::GrantDuration, CardTextError> {
     // The shared permission lifetime historically groups both next-turn
     // boundaries. Retain the actual grammatical duration when lowering a grant.
+    // "until the beginning of your next upkeep": nothing can be played during
+    // the untap step (CR 502.4), so the permission ends with your next
+    // turn's start.
+    if crate::grammar::primitives::parse_prefix(
+        trim_lexed_commas(tokens),
+        crate::grammar::primitives::phrase(&[
+            "until", "the", "beginning", "of", "your", "next", "upkeep",
+        ]),
+    )
+    .is_some()
+    {
+        return Ok(crate::grant::GrantDuration::UntilYourNextTurn);
+    }
     Ok(
         match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
             Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,
@@ -2355,8 +2402,27 @@ pub fn parse_cast_or_play_tagged_clause(
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
                 |(target_ref, tail_tokens)| {
                     let tail = parse_conditional_tagged_free_cast_tail_tokens(tail_tokens)?;
-                    let (operator, right) =
-                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)?;
+                    let predicate = if let Some((operator, right)) =
+                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)
+                    {
+                        PredicateAst::ValueComparison {
+                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                                target_ref.tag.clone(),
+                            ))),
+                            operator,
+                            right,
+                        }
+                    } else {
+                        // "You may play the exiled card without paying its
+                        // mana cost if each player has no cards in hand"
+                        // (Howltooth Hollow): a game-state condition checked
+                        // as the ability resolves (CR 608.2c).
+                        let (_, condition) = crate::grammar::primitives::parse_prefix(
+                            tail.condition_tokens,
+                            crate::grammar::primitives::kw("if"),
+                        )?;
+                        crate::grammar::filters::parse_condition_predicate_lexed(condition).ok()?
+                    };
                     let inner = if tail.lifetime == PermissionLifetime::Immediate {
                         EffectAst::subject_verb_cast_tagged(
                             crate::tag::TagRef::of(target_ref.tag.clone()),
@@ -2376,13 +2442,7 @@ pub fn parse_cast_or_play_tagged_clause(
                         )
                     };
                     Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                        predicate: PredicateAst::ValueComparison {
-                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                                target_ref.tag.clone(),
-                            ))),
-                            operator,
-                            right,
-                        },
+                        predicate,
                         if_true: vec![inner],
                         if_false: Vec::new(),
                     }))
@@ -2503,12 +2563,23 @@ pub fn parse_cast_or_play_tagged_clause(
             surface,
             max_plays,
             ..
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+        }) if matches!(
+            player,
+            PlayerAst::Implicit | PlayerAst::You | PlayerAst::TriggeringSourceController
+        ) => {
             let surface = with_mana_reference_surface(surface, mana_reference);
+            // A permission granted to another player ("that creature's
+            // controller may play that card", CR 611.2) keeps its grantee;
+            // "you" stays the implicit controller.
+            let grantee = if player == PlayerAst::TriggeringSourceController {
+                player
+            } else {
+                PlayerAst::Implicit
+            };
             Ok(Some(build_temporary_tagged_permission_effect(
                 &trimmed,
                 tag,
-                PlayerAst::Implicit,
+                grantee,
                 allow_land,
                 without_paying_mana_cost,
                 mana_spend_mode,
@@ -2664,7 +2735,14 @@ pub fn parse_cast_or_play_tagged_clause(
                 surface,
             ),
         )),
-        _ => Ok(conditional_tagged_permission),
+        _ => match conditional_tagged_permission {
+            Some(effect) => Ok(Some(effect)),
+            // "You may cast any number of spells from among cards exiled
+            // this way without paying their mana costs": a one-shot cast
+            // from a named collection, read only after every permission
+            // shape above declined.
+            None => collection_casts::parse_collection_cast_clause(tokens),
+        },
     }
 }
 

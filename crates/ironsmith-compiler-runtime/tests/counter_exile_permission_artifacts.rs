@@ -149,7 +149,7 @@ fn triggered_artifact_keeps_the_entire_atomic_counter_body() {
     let definition = CardDefinitionBuilder::new(CardId::from_raw(0), "Triggered counter artifact control")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
-        .with_ability(Ability::triggered(ironsmith::triggers::Trigger::this_is_turned_face_up(),
+        .with_ability(Ability::triggered(ironsmith::triggers::Trigger::from_model(ironsmith_core::trigger_model::Trigger::this_is_turned_face_up()).unwrap(),
             vec![Effect::new(model)]))
         .build();
     let envelope = artifact(&definition);

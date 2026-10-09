@@ -156,6 +156,7 @@ fn parse_combat_damage_trigger_lexed(
             player: Box::new(PlayerFilter::You),
             filter: Box::new(ObjectFilter::default().with_type(card_type)),
             fewer: false,
+            as_you_activate: false,
         }),
         // "Whenever a creature deals combat damage to its owner": the damaged
         // player is the damage source's own owner/controller.
@@ -165,6 +166,11 @@ fn parse_combat_damage_trigger_lexed(
         ["its", "controller"] if source_filter.is_some() => Some(PlayerFilter::ControllerOf(
             crate::filter::ObjectRef::FilterCandidate,
         )),
+        // "Whenever this creature deals combat damage to defending player"
+        // (Electryte, Latulla's Orders): the defending player of the current
+        // combat (CR 506.2). Trigger matching resolves it from the combat
+        // state of the damage event.
+        ["defending", "player"] | ["the", "defending", "player"] => Some(PlayerFilter::Defending),
         _ => None,
     };
     if let Some(player) =
@@ -327,6 +333,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             return Ok(TriggerSpec::ThisPhasesOut);
         }
 
+        // "a creature you control attacking causes a triggered ability of
+        // that creature to trigger" (Firebender Ascension): an ability of that
+        // source triggered on its own attack (CR 508.1m).
+        if let Some(attacking_idx) =
+            crate::slice_primitives::select_position(&words, |word| *word == "attacking")
+            && attacking_idx > 0
+            && words.get(attacking_idx + 1..).is_some_and(|tail| {
+                crate::word_primitives::parse_sequence_complete(
+                    tail,
+                    &[
+                        "causes", "a", "triggered", "ability", "of", "that", "creature", "to",
+                        "trigger",
+                    ],
+                )
+            })
+        {
+            let attacking_token_idx = trigger_word_token_start(tokens, attacking_idx)
+                .ok_or_else(|| CardTextError::ParseError("missing attacking source".to_string()))?;
+            let source_tokens = strip_leading_articles(&tokens[..attacking_token_idx]);
+            let source_filter = parse_object_filter_lexed(&source_tokens, false)?;
+            return Ok(TriggerSpec::AbilityTriggered {
+                another: false,
+                source_filter: Some(source_filter),
+                caused_by_source_entering: false,
+                caused_by_source_attacking: true,
+            });
+        }
+
         if let Some(entering_idx) =
             crate::slice_primitives::select_position(&words, |word| *word == "entering")
             && entering_idx > 0
@@ -360,6 +394,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 another: false,
                 source_filter: Some(source_filter),
                 caused_by_source_entering: true,
+                caused_by_source_attacking: false,
             });
         }
     }
@@ -1345,6 +1380,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             {
                 return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
             }
+            // "Whenever you play an Island" (Jokulmorder): CR 305.1 — only a
+            // land is played, so a land-subtype noun names the played land.
+            if let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
+                && !filter.subtypes.is_empty()
+                && filter.subtypes.iter().all(|subtype| subtype.is_land_subtype())
+                && filter.card_types.is_empty()
+                && filter.any_of.is_empty()
+            {
+                return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
+            }
         }
     }
 
@@ -1485,6 +1530,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             another: true,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
         });
     }
     if crate::word_primitives::parse_any_sequence_complete(
@@ -1498,6 +1544,28 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             another: false,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
+        });
+    }
+
+    // "Whenever an ability of equipped creature is activated" (Battlemage's
+    // Bracers): the passive form names no activator, so any player's
+    // activation of an ability whose source matches counts (CR 602.2).
+    if let [.., "is", "activated"] = &words[..]
+        && words.len() > 2
+        && let Some(is_token) =
+            trigger_word_token_start(tokens, words.len() - 2)
+        && let Some((filter, non_mana_only)) = parse_ability_of_object_trigger_tail_lexed(
+            &tokens[..is_token],
+            &words[..words.len() - 2],
+        )?
+    {
+        return Ok(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::Any,
+            filter,
+            non_mana_only,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
         });
     }
 
@@ -1811,6 +1879,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter) {
+        // "Whenever a nontoken creature you control enters during combat"
+        // (The Blue Spirit): the entering event is restricted to the combat
+        // phase (CR 506), like "dies during combat".
+        if enters_word_idx > 0
+            && enters_word_idx + 3 == words.len()
+            && crate::word_primitives::parse_sequence_suffix(&words, &["during", "combat"])
+        {
+            let enters_token_idx =
+                trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
+            let mut subject_tokens = &tokens[..enters_token_idx];
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            let subject_words =
+                ActivationRestrictionCompatWords::new(subject_tokens).to_word_refs();
+            let mut trigger = crate::triggers::ZoneChangeTrigger::new()
+                .to(Zone::Battlefield)
+                .during_combat();
+            if is_source_reference_words(&subject_words) {
+                trigger = trigger.this();
+            } else {
+                let filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported enters-during-combat trigger subject filter (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+                trigger = trigger.filter(filter);
+            }
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            return Ok(TriggerSpec::ZoneChange(trigger));
+        }
         let enters_during_turn = trigger_pattern_accepts(&words, DURING_YOUR_TURN_TRIGGER_SUFFIX)
             .then_some(PlayerFilter::You);
         let subject_number = enter_trigger_subject_number(words[enters_word_idx]);

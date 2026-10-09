@@ -2256,6 +2256,12 @@ pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpe
     if let Some(trigger) = try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(tokens) {
         return Ok(trigger);
     }
+    if let Some(trigger) = try_parse_cast_or_cycle_this_trigger_lexed(tokens) {
+        return Ok(trigger);
+    }
+    if let Some(trigger) = try_parse_kicks_a_spell_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
     // Beginning-of-combat clauses are a small, complete phase-event grammar.
     // Recognize that shape before entering the legacy aggregate matcher,
     // whose large filter temporaries otherwise dominate this hot path's
@@ -2299,6 +2305,53 @@ fn try_parse_cast_or_activate_trigger_lexed(tokens: &[OwnedLexToken]) -> Option<
     }
     (is_kind(&left, true) && is_kind(&right, false))
         .then(|| TriggerSpec::Either(Box::new(left), Box::new(right)))
+}
+
+/// "Whenever a player kicks a spell" (Saproling Infestation). CR 702.33d: a
+/// spell is kicked when its kicker cost was paid as it was cast, so the
+/// event is exactly the cast of a kicked spell by that player.
+fn try_parse_kicks_a_spell_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let trimmed = trim_edge_punctuation_tokens(strip_leading_trigger_intro(tokens));
+    let Some(kick_idx) = trimmed
+        .iter()
+        .position(|token| token.is_any_word(&["kicks", "kick"]))
+    else {
+        return Ok(None);
+    };
+    if kick_idx == 0
+        || crate::lexer::token_word_refs(&trimmed[kick_idx + 1..]) != ["a", "spell"]
+    {
+        return Ok(None);
+    }
+    let mut rewritten = trimmed[..kick_idx].to_vec();
+    rewritten.extend(crate::lexer::synthetic_word_tokens([
+        "casts", "a", "kicked", "spell",
+    ]));
+    parse_trigger_clause_lexed(&rewritten).map(Some)
+}
+
+/// "When you cast or cycle Drownyard Lurker" (Warped Tusker): one trigger
+/// for either the cast of this spell (CR 601.2i, from the stack) or the
+/// cycling of this card (CR 702.29c, observed after the card is cycled).
+fn try_parse_cast_or_cycle_this_trigger_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    let words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(
+        strip_leading_trigger_intro(tokens),
+    ));
+    let ["you", "cast", "or", "cycle", source @ ..] = words.as_slice() else {
+        return None;
+    };
+    if source.is_empty() || !is_source_reference_words(source) {
+        return None;
+    }
+    Some(TriggerSpec::Either(
+        Box::new(TriggerSpec::YouCastThisSpell),
+        Box::new(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::Cycle,
+            player: PlayerFilter::You,
+        }),
+    ))
 }
 
 fn try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(
@@ -2391,6 +2444,21 @@ fn try_parse_simple_end_of_combat_trigger_lexed(
 ) -> Option<TriggerSpec> {
     let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
     let words = crate::lexer::token_word_refs(tokens);
+    // "At end of combat on your turn" (Rose, Cutthroat Raider): the end-of-
+    // combat step event qualified by whose turn it is (CR 511.1).
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &["end", "of", "combat", "on", "your", "turn"],
+            &["the", "end", "of", "combat", "on", "your", "turn"],
+        ],
+    ) {
+        return Some(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::EndOfCombat),
+            condition: crate::cards::builders::PredicateAst::YourTurn,
+            surface: "on your turn".to_string(),
+        });
+    }
     crate::word_primitives::parse_any_sequence_complete(
         &words,
         &[&["end", "of", "combat"], &["the", "end", "of", "combat"]],

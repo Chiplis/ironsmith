@@ -26,6 +26,44 @@ pub fn parse_onto_battlefield_destination_shape(
             .saturating_sub(index);
         destination_tail.drain(index..index + consumed);
     }
+    // "attacking that opponent" / "attacking that player or a planeswalker
+    // they control": the attack target of the entering attacker.
+    const ATTACK_TARGETS: [(&[&str], bool); 4] = [
+        (&["that", "player", "or", "a", "planeswalker", "they", "control"], false),
+        (&["that", "opponent", "or", "a", "planeswalker", "they", "control"], false),
+        (&["that", "opponent"], true),
+        (&["that", "player"], true),
+    ];
+    let mut attack_target = None;
+    if attacking {
+        for (phrase, player_only) in ATTACK_TARGETS {
+            let Some((index, (), rest)) =
+                primitives::find_prefix(&destination_tail, || primitives::phrase(phrase))
+            else {
+                continue;
+            };
+            if index == 0 || !destination_tail[index - 1].is_word("attacking") || !rest.is_empty()
+            {
+                continue;
+            }
+            destination_tail.truncate(index);
+            attack_target = Some((crate::cards::builders::PlayerAst::Defending, player_only));
+            break;
+        }
+    }
+    // "blocking that creature" (Aetherplasm): the blocked attacker.
+    let mut blocking_tokens = None;
+    if let Some(index) = destination_tail.iter().position(|token| token.is_word("blocking"))
+        && destination_tail
+            .get(index + 1)
+            .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        let reference = destination_tail[index + 1..].to_vec();
+        if reference.len() <= 2 {
+            blocking_tokens = Some(reference);
+            destination_tail.truncate(index);
+        }
+    }
     let mut cleaned = Vec::new();
     for token in destination_tail {
         if !token_is_ignored(&token) {
@@ -89,5 +127,7 @@ pub fn parse_onto_battlefield_destination_shape(
         controller,
         relative_controller,
         supported_tail,
+        attack_target,
+        blocking_tokens,
     })
 }

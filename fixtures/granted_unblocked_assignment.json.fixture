@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Predatory Focus",
+  "oracle_id": "c5866507-ef3b-446a-99ea-d31d974bdb01",
+  "oracle_text": "You may have creatures you control assign their combat damage this turn as though they weren't blocked.",
+  "text": "Mana cost: {3}{G}{G}\nType: Sorcery\nYou may have creatures you control assign their combat damage this turn as though they weren't blocked."
+ },
+ {
+  "name": "Siege Behemoth",
+  "oracle_id": "cadf7be1-4a74-4163-bb2f-6bfbbb557973",
+  "oracle_text": "Hexproof\nAs long as this creature is attacking, for each creature you control, you may have that creature assign its combat damage as though it weren't blocked.",
+  "text": "Mana cost: {5}{G}{G}\nType: Creature — Beast\nPower/Toughness: 7/4\nHexproof\nAs long as this creature is attacking, for each creature you control, you may have that creature assign its combat damage as though it weren't blocked."
+ }
+]

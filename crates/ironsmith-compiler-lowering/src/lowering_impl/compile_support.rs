@@ -88,6 +88,8 @@ mod prepared_effects;
 use ironsmith_compiler_resolve::tag_support;
 #[path = "compile_support/trigger_support.rs"]
 mod trigger_support;
+#[path = "compile_support/trailing_if_antecedent.rs"]
+mod trailing_if_antecedent;
 
 #[cfg(test)]
 use crate::cards::builders::ParseAnnotations;
@@ -969,8 +971,9 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base } => {
             bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
         }
@@ -1022,6 +1025,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
@@ -1066,6 +1070,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::LandsPlayed(player)
                 | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
@@ -1195,6 +1200,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
@@ -3097,6 +3103,9 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::CursedRole => {
             crate::cards::tokens::cursed_role_token_definition()
         }
+        token_grammar::BuiltinTokenShape::VirtuousRole => {
+            crate::cards::tokens::virtuous_role_token_definition()
+        }
         token_grammar::BuiltinTokenShape::Blood => crate::cards::tokens::blood_token_definition(),
         token_grammar::BuiltinTokenShape::Powerstone => {
             crate::cards::tokens::powerstone_token_definition()
@@ -3559,6 +3568,16 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
                 builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
             }
             Some(apply_embedded_token_rules(builder, &shape.token_rules).build())
+        }
+        TokenDefinitionSpec::Land(shape) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+                .token()
+                .card_types(vec![CardType::Land])
+                .subtypes(shape.subtypes);
+            if shape.legendary {
+                builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+            }
+            Some(builder.build())
         }
         TokenDefinitionSpec::Angel => Some(
             CardDefinitionBuilder::new(CardId::new(), "Angel")

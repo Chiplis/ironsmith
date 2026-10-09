@@ -551,6 +551,7 @@ fn link_unproduced_result_references_in_children(
     relink_lists!(crate::effects::ReflexiveTriggerEffect, effects);
     relink_lists!(crate::effects::MayEffect<Effect>, effects);
     relink_lists!(crate::effects::CollectManaPaymentsEffect<Effect>, effects);
+    relink_lists!(crate::effects::BindXValueEffect<Effect>, effects);
     relink_lists!(crate::effects::ForPlayersEffect<Effect>, effects);
     relink_lists!(crate::effects::ForEachObject, effects);
     None
@@ -1256,9 +1257,67 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::GreatestManaValueTieBreakExile {
+        contenders_tag,
+        exiled_tag,
+    } = effect
+    {
+        // CR 608.2c: the round is repeated, by the tied players only, while
+        // two or more of them share the greatest mana value.
+        let contenders: crate::tag::TagKey = contenders_tag.clone().into();
+        let exiled: crate::tag::TagKey = exiled_tag.clone().into();
+        let card_tag = ctx.next_tag("tie_break_card");
+        let round = Effect::for_players(
+            crate::target::PlayerFilter::TaggedPlayer(contenders.clone()),
+            vec![Effect::exile_top_of_library_player(
+                Value::Fixed(1),
+                crate::target::PlayerFilter::IteratedPlayer,
+                card_tag,
+                Some(exiled.clone()),
+            )],
+        );
+        let narrow_id = ctx.next_effect_id();
+        let narrow = Effect::with_id(
+            narrow_id.0,
+            Effect::new(crate::effects::KeepGreatestManaValuePlayersEffect::new(
+                contenders.clone(),
+                exiled,
+            )),
+        );
+        let repeat = Effect::new(crate::effects::RepeatProcessEffect::new(
+            vec![round, narrow],
+            narrow_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(1)),
+        ));
+        return Ok((
+            vec![
+                Effect::new(crate::effects::TagPlayersEffect::new(
+                    crate::target::PlayerFilter::Any,
+                    contenders,
+                )),
+                repeat,
+            ],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::SolveCase = effect {
         return Ok((
             vec![Effect::new(crate::effects::SolveCaseEffect::new())],
+            Vec::new(),
+        ));
+    }
+    if let EffectAst::ChoosePlayerOption(choice) = effect {
+        return Ok((vec![Effect::new(choice.clone())], Vec::new()));
+    }
+    if let EffectAst::ControlVotesThisTurn = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::ControlVotesThisTurnEffect::new())],
+            Vec::new(),
+        ));
+    }
+    if let EffectAst::SetDayNight(designation) = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::SetDayNightEffect::new(*designation))],
             Vec::new(),
         ));
     }
@@ -1302,8 +1361,26 @@ fn compile_effect_inner(
         choices.extend(viewer.into_choices());
         return Ok((vec![Effect::new(look)], choices));
     }
+    if let EffectAst::GrantLoyaltyActivationAllowance { scope, allowance } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(
+                scope.clone(),
+                *allowance,
+            ))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
+    }
+    if let EffectAst::ChooseFriendsOrFoes { friends, foes } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::ChooseFriendsOrFoesEffect::new(
+                friends.key().clone(),
+                foes.key().clone(),
+            ))],
+            Vec::new(),
+        ));
     }
     if let EffectAst::PayToEndThisEffect { cost } = effect {
         return Ok((
@@ -1403,6 +1480,14 @@ fn compile_effect_inner(
     if let EffectAst::CollectManaPayments { effects } = effect {
         let (effects, choices) = compile_effects(effects, ctx)?;
         return Ok((vec![Effect::new(crate::effects::CollectManaPaymentsEffect::new(effects))], choices));
+    }
+    if let EffectAst::BindX { value, effects } = effect {
+        let value = resolve_value_it_tag(value, &current_reference_env(ctx))?;
+        let (effects, choices) = compile_effects(effects, ctx)?;
+        return Ok((
+            vec![Effect::new(crate::effects::BindXValueEffect::new(value, effects))],
+            choices,
+        ));
     }
     if let EffectAst::Sequence { effects } = effect {
         let (mut effects, choices) = compile_effects(effects, ctx)?;
@@ -1837,6 +1922,7 @@ fn compile_effect_inner(
         effect,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
             | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+            | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
             | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
     ) {
         return Err(CardTextError::ParseError(
@@ -2495,6 +2581,8 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         battlefield_tapped: false,
         battlefield_attacking: false,
         battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+        battlefield_attack_player_only: false,
+        battlefield_blocking: None,
         battlefield_face_down: false,
         battlefield_transformed: false,
         attached_to: None,
@@ -2568,6 +2656,7 @@ fn compile_become_copy(
         granted_abilities,
         set_base_power_toughness,
         copy_exception_surface,
+        retain_source_colors,
     }) = &subject_verb.action
     else {
         unreachable!("typed copy route requires a BecomeCopy action")
@@ -2683,6 +2772,12 @@ fn compile_become_copy(
     if !remove_supertypes.is_empty() {
         apply = apply.with_additional_modification(
             crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),
+        );
+    }
+    if *retain_source_colors {
+        // CR 707.9b: the copy keeps the colors the source has now.
+        apply = apply.with_additional_runtime_modification(
+            crate::effects::continuous::RuntimeModification::RetainSourceColors,
         );
     }
     if !add_colors.is_empty() {
@@ -3099,6 +3194,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
@@ -3193,6 +3289,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
         _ => {}
@@ -3281,6 +3378,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())

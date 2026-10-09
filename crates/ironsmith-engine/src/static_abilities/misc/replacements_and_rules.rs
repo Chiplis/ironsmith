@@ -213,6 +213,57 @@ impl MinimumDamageAmountReplacement {
     }
 }
 
+/// The recipient-side relation "shares a color with the damage's source",
+/// carried as a tagged constraint on the damage source reference.
+fn split_damage_source_color_relation(filter: &ObjectFilter) -> (std::borrow::Cow<'_, ObjectFilter>, bool) {
+    let is_pair_relation = |constraint: &crate::filter::TaggedObjectConstraint| {
+        constraint.tag.as_str() == "triggering_source"
+            && constraint.relation == TaggedOpbjectRelation::SharesColorWithTagged
+    };
+    if !filter.tagged_constraints.iter().any(is_pair_relation) {
+        return (std::borrow::Cow::Borrowed(filter), false);
+    }
+    let mut stripped = filter.clone();
+    stripped.tagged_constraints.retain(|constraint| !is_pair_relation(constraint));
+    (std::borrow::Cow::Owned(stripped), true)
+}
+
+/// Whether a damage source other than the recipient shares a color with it,
+/// both as they are when the damage would be dealt (the source's last-known
+/// information when it has left).
+fn damage_source_shares_color_with_recipient(
+    damage: &DamageEvent,
+    recipient: &crate::object::Object,
+    ctx: &crate::events::context::EventContext<'_>,
+) -> bool {
+    if damage.source == recipient.id {
+        return false;
+    }
+    let recipient_colors =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            recipient, ctx.game,
+        )
+        .colors;
+    let source_colors = if let Some(source) = ctx
+        .game
+        .object(damage.source)
+        .filter(|_| !ctx.game.is_phased_out(damage.source))
+    {
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            source, ctx.game,
+        )
+        .colors
+    } else if let Some(snapshot) = ctx
+        .event_source_snapshot
+        .filter(|snapshot| snapshot.object_id == damage.source)
+    {
+        snapshot.colors
+    } else {
+        return false;
+    };
+    !recipient_colors.intersection(source_colors).is_empty()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DamageAmountReplacementMatcher {
     pub(crate) source_filter: ObjectFilter,
@@ -239,7 +290,7 @@ impl DamageAmountReplacementMatcher {
         // other attachment filters use the explicit inverse relation. Neither
         // form may fall through to historical or intrinsic attachment evidence.
         let requires_current_attachment = self.source_filter.tagged_constraints.iter().any(|constraint| {
-            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }) || self.source_filter.with_attached_object.as_deref().is_some_and(|filter| filter.source);
         if requires_current_attachment {
@@ -309,9 +360,19 @@ impl DamageAmountReplacementMatcher {
                 let Some(filter) = &self.target_object_filter else {
                     return false;
                 };
-                ctx.game
-                    .object(object_id)
-                    .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game))
+                let Some(object) = ctx.game.object(object_id) else {
+                    return false;
+                };
+                // "... by another creature if they share a color" (Well-Laid
+                // Plans): a relation between this damage's source and its
+                // recipient, not a property of either alone.
+                let (filter, pair_shares_color) = split_damage_source_color_relation(filter);
+                if pair_shares_color
+                    && !damage_source_shares_color_with_recipient(damage, object, ctx)
+                {
+                    return false;
+                }
+                filter.matches(object, &ctx.filter_ctx, ctx.game)
             }
         }
     }

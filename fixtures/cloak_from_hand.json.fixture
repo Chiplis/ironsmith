@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Vannifar, Evolved Enigma",
+    "oracle_id": "e8aa0d7d-e5f6-4d66-bdc1-315483e1b256",
+    "mana_cost": "{2}{G}{U}",
+    "type_line": "Legendary Creature — Elf Ooze Wizard",
+    "oracle_text": "At the beginning of combat on your turn, choose one —\n• Cloak a card from your hand.\n• Put a +1/+1 counter on each colorless creature you control.",
+    "power": "3",
+    "toughness": "4",
+    "text": "Mana cost: {2}{G}{U}\nType: Legendary Creature — Elf Ooze Wizard\nPower/Toughness: 3/4\nAt the beginning of combat on your turn, choose one —\n• Cloak a card from your hand.\n• Put a +1/+1 counter on each colorless creature you control."
+  }
+]

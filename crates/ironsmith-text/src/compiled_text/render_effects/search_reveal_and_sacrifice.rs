@@ -3097,6 +3097,7 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
+        || grant.during_turns_attacked_with.is_some()
         || grant.cast_pool_is_plural
         || !surface.leading_duration
         || surface.object != Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
@@ -5178,6 +5179,15 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
         }
         PlayerFilter::OpponentOf(base) if matches!(base.as_ref(), PlayerFilter::IteratedPlayer) => {
             Some("Each of that player's opponents")
+        }
+        // Friend-or-foe player sets recorded by a per-player option choice.
+        PlayerFilter::TaggedPlayer(tag)
+            if *tag == crate::effects::player_option_choice_tag("friend") =>
+        {
+            Some("Each friend")
+        }
+        PlayerFilter::TaggedPlayer(tag) if *tag == crate::effects::player_option_choice_tag("foe") => {
+            Some("Each foe")
         }
         _ => None,
     }

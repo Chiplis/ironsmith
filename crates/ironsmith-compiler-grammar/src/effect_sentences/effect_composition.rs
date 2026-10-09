@@ -576,11 +576,22 @@ fn parse_exile_top_library_then_play_bundle(
                     during_turns_counter_put_on_source,
                     spell_cost_increase,
                     lands_enter_tapped,
+                    during_turns_attacked_with,
                     ..
                 }),
             ..
         }) => {
-            if spell_cost_increase.is_some() || lands_enter_tapped {
+            if let Some(condition) = during_turns_attacked_with {
+                // "During any turn you attacked with ..." keeps its turn
+                // scope when the bundle relinks the permission's tag.
+                EffectAst::subject_verb_grant_play_tagged_during_turns_attacked_with(
+                    permission_tag,
+                    player,
+                    allow_land,
+                    allow_any_color_for_cast,
+                    condition,
+                )
+            } else if spell_cost_increase.is_some() || lands_enter_tapped {
                 EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
                     permission_tag,
                     player,
@@ -1025,6 +1036,76 @@ pub(super) fn parse_reveal_from_outside_game_to_hand(
     }
 
     Ok(Some(outer))
+}
+
+/// "[You may] put a card you own from outside the game into your hand / on
+/// top of your library": choose one owned card from outside the game (the
+/// sideboard, CR 400.11) and move it. No reveal is instructed.
+pub(super) fn parse_put_from_outside_game(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(shape) = bundle_grammar::parse_outside_game_shuffle_shape(tokens) {
+        let mut filter = parse_object_filter_lexed(&shape.filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported outside-game shuffle filter in clause '{}'",
+                words(&trim_commas(tokens)).join(" ")
+            ))
+        })?;
+        filter.owner = Some(PlayerFilter::You);
+        filter.zone = Some(Zone::OutsideGame);
+        let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
+        return Ok(Some(vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count: ChoiceCount::up_to(shape.maximum as usize),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+                zones: vec![Zone::OutsideGame],
+                search_mode: None,
+            }),
+            EffectAst::subject_verb_shuffle_objects_into_library(
+                PlayerAst::You,
+                TargetAst::Tagged(tag, span_from_tokens(tokens)),
+            ),
+        ]));
+    }
+    let Some(shape) = bundle_grammar::parse_outside_game_put_shape(tokens) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&shape.filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported outside-game put filter in clause '{}'",
+            words(&trim_commas(tokens)).join(" ")
+        ))
+    })?;
+    filter.owner = Some(PlayerFilter::You);
+    filter.zone = Some(Zone::OutsideGame);
+    let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
+    let effects = vec![
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+            zones: vec![Zone::OutsideGame],
+            search_mode: None,
+        }),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(tag, span_from_tokens(tokens)),
+            if shape.to_library_top { Zone::Library } else { Zone::Hand },
+            shape.to_library_top,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+    ];
+    Ok(Some(if shape.optional {
+        vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]
+    } else {
+        effects
+    }))
 }
 
 fn parse_choose_objects_then_for_each_of_those_bundle(
@@ -1898,7 +1979,10 @@ use bundle_rules_reference_programs::{
 };
 #[path = "effect_composition/composition_object_action.rs"]
 mod bundle_rules_object_action_programs;
-use bundle_rules_object_action_programs::parse_regenerate_then_gain_control_if_regenerates_bundle;
+use bundle_rules_object_action_programs::{
+    parse_regenerate_then_gain_control_if_regenerates_bundle,
+    parse_regenerate_then_when_regenerates_bundle,
+};
 #[path = "effect_composition/composition_resource.rs"]
 mod bundle_rules_resource_programs;
 use bundle_rules_resource_programs::{

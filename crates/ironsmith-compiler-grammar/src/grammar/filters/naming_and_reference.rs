@@ -729,6 +729,27 @@ pub(super) fn try_apply_controlled_continuously_since_turn_began_clause(
     true
 }
 
+/// "a creature you control that was turned face up this turn" (Kaust, Eyes
+/// of the Glade): a turn-history predicate, never the current face state.
+pub(super) fn strip_turned_face_up_this_turn_words(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) {
+    const PHRASES: [&[&str]; 4] = [
+        &["that", "was", "turned", "face", "up", "this", "turn"],
+        &["that", "were", "turned", "face", "up", "this", "turn"],
+        &["that's", "been", "turned", "face", "up", "this", "turn"],
+        &["turned", "face", "up", "this", "turn"],
+    ];
+    for phrase in PHRASES {
+        if let Some(start) = find_phrase_start(all_words.as_slice(), phrase) {
+            filter.turned_face_up_this_turn = true;
+            all_words.drain(start..start + phrase.len());
+            return;
+        }
+    }
+}
+
 pub(super) fn strip_object_filter_face_state_words(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -811,6 +832,19 @@ pub(super) fn try_apply_card_type_count_phrase(
     let Some((index, count, consumed)) = found else {
         return false;
     };
+    // "any number of cards ... with four or more card types among them"
+    // (Winter, Cynical Opportunist) constrains the chosen set as a whole
+    // (CR 205.2a types counted across the selection), not each card.
+    if all_words.get(index + consumed..index + consumed + 2) == Some(&["among", "them"][..]) {
+        filter.target_set_aggregate_constraint = Some(Box::new(
+            ironsmith_core::ChoiceAggregateConstraint::at_least(
+                ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes,
+                count as i32,
+            ),
+        ));
+        all_words.drain(index..index + consumed + 2);
+        return true;
+    }
     filter.card_type_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
     all_words.drain(index..index + consumed);
     true

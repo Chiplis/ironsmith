@@ -4893,6 +4893,7 @@ fn filter_applicability_cacheable(filter: &ObjectFilter, layer: Layer) -> bool {
 fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
+        || filter.has_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -4922,10 +4923,12 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::MostCardsInHand
-        | PlayerFilter::CastCardTypeThisTurn(_) => true,
+        | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_) => true,
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
         | PlayerFilter::LostLifeThisTurn { base } => player_filter_source_independent(base),
         // The comparison reads the current battlefield and may contain
@@ -5612,6 +5615,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.didnt_enter_battlefield_this_turn
         || filter.entered_battlefield_this_turn
         || filter.entered_battlefield_controller.is_some()
+        || filter.turned_face_up_this_turn
         || filter.entered_graveyard_this_turn
         || filter.entered_graveyard_from_battlefield_this_turn
         || filter.entered_graveyard_from_library_this_turn
@@ -5641,6 +5645,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.shares_land_type
         || filter.shares_name
         || filter.shares_color
+        || filter.shares_card_type
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()

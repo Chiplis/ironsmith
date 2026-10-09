@@ -1855,6 +1855,20 @@ fn player_has_card_in_hand_matching(
     })
 }
 
+/// CR 401.1: the top of a library is the last entry of its sequence.
+fn top_card_of_library_matches(
+    game: &GameState,
+    player: PlayerId,
+    filter: &crate::target::ObjectFilter,
+    filter_source: Option<ObjectId>,
+) -> bool {
+    let filter_ctx = game.filter_context_for(player, filter_source);
+    game.player(player)
+        .and_then(|state| state.library.last().copied())
+        .and_then(|top| game.object(top))
+        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+}
+
 fn player_life_compares_to_half_starting(
     game: &GameState,
     player: PlayerId,
@@ -1956,7 +1970,7 @@ fn evaluate_value_comparison(
         .and_then(|id| game.object(id))
     {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
-        for tag in ["enchanted", "equipped"] {
+        for tag in ["enchanted", "equipped", "fortified"] {
             ctx.set_tagged_objects(tag, vec![snapshot.clone()]);
         }
     }
@@ -2984,7 +2998,7 @@ fn evaluate_turn_history_condition(
                 .and_then(|id| game.object(id))
             {
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
-                for tag in ["enchanted", "equipped"] {
+                for tag in ["enchanted", "equipped", "fortified"] {
                     filter_ctx
                         .tagged_objects
                         .insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
@@ -3794,6 +3808,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::ControlsMost { .. }
         | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
+        | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
@@ -3812,6 +3827,7 @@ fn resolve_condition_player_simple(
         }
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
         | PlayerFilter::LostLifeThisTurn { .. }
@@ -4883,11 +4899,18 @@ fn evaluate_condition_in_context(
             Ok(game.devoured_count(ctx.source) >= *count)
         }
         Condition::SourceIsHarnessed => Ok(!ctx.is_cast_time() && game.is_harnessed(ctx.source)),
+        Condition::SourceIsPrepared => Ok(!ctx.is_cast_time() && game.is_prepared(ctx.source)),
         Condition::SourceIsMonstrous => {
             if ctx.is_cast_time() {
                 return Ok(false);
             }
             Ok(game.is_monstrous(ctx.source))
+        }
+        Condition::SourceHasDealtDamageSinceEntered => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.has_dealt_damage_since_entered(ctx.source))
         }
         Condition::SourceIsFaceDown => {
             if ctx.is_cast_time() {
@@ -5521,6 +5544,36 @@ fn evaluate_condition_in_context(
                         game.is_active_player(ctx.controller)
                             && game.turn.phase != crate::game_state::Phase::Ending
                     }
+                    crate::ability::ActivationTiming::AnyTimeByOpponents => game
+                        .current_controller(ctx.source)
+                        .is_some_and(|source_controller| {
+                            game.are_opponents(ctx.controller, source_controller)
+                        }),
+                    crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+                        game.current_controller(ctx.source).is_some_and(|source_controller| {
+                            game.are_opponents(ctx.controller, source_controller)
+                        }) && game.is_active_player(ctx.controller)
+                            && matches!(
+                                game.turn.phase,
+                                crate::game_state::Phase::FirstMain
+                                    | crate::game_state::Phase::NextMain
+                            )
+                            && game.stack_is_empty()
+                    }
+                    crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+                        game.turn.phase == crate::game_state::Phase::Combat
+                            && game.turn.step
+                                == Some(crate::game_state::Step::DeclareAttackers)
+                            && game.combat.as_ref().is_some_and(|combat| {
+                                combat.attackers.iter().any(|info| {
+                                    info.creature == ctx.source
+                                        && info.target
+                                            == crate::combat_state::AttackTarget::Player(
+                                                ctx.controller,
+                                            )
+                                })
+                            })
+                    }
                     crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                         game.object(ctx.source)
                             .is_some_and(|object| game.is_active_player(object.owner))
@@ -5571,6 +5624,25 @@ fn evaluate_condition_in_context(
                 };
                 game.ability_activation_count_this_turn(ctx.source, ability_index) < limit
             })
+        }
+        Condition::MaxActivationsPerTurnCount(count) => {
+            let Some(external) = ctx.external() else {
+                return Ok(false);
+            };
+            if external.options.ignore_activation_limits {
+                return Ok(true);
+            }
+            let Some(ability_index) = external.ability_index else {
+                return Ok(false);
+            };
+            let limit = crate::static_abilities::resolve_anthem_count_expression_checked(
+                count,
+                game,
+                ctx.source,
+                ctx.controller,
+            )?;
+            Ok(i64::from(game.ability_activation_count_this_turn(ctx.source, ability_index))
+                < i64::from(limit))
         }
         Condition::MaxActivationsPerObject(limit) => {
             let Some(ctx) = ctx.external() else {
@@ -5950,6 +6022,12 @@ fn evaluate_condition_in_context(
             .player(shared.controller)
             .map(|p| p.hand.len() as i32 >= *threshold)
             .unwrap_or(false)),
+        Condition::TopCardOfYourLibraryMatches(filter) => Ok(top_card_of_library_matches(
+            game,
+            shared.controller,
+            filter,
+            shared.filter_source,
+        )),
         Condition::YouHaveCardInHandMatching(filter) => Ok(player_has_card_in_hand_matching(
             game,
             shared.controller,
@@ -5967,6 +6045,10 @@ fn evaluate_condition_in_context(
             && matches!(game.turn.phase, crate::game_state::Phase::Combat)),
         Condition::SourceControllersEndStep => Ok(game.is_active_player(shared.controller)
             && game.turn.phase == crate::game_state::Phase::Ending),
+        Condition::OpponentsEndStep => Ok(game
+            .are_opponents(shared.controller, game.turn.active_player)
+            && game.turn.phase == crate::game_state::Phase::Ending
+            && game.turn.step == Some(crate::game_state::Step::End)),
         Condition::SourceIsRenowned => Ok(game.is_renowned(shared.source)),
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             Ok(game.is_active_player(shared.controller)
@@ -6082,7 +6164,11 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
             .unwrap_or(false)),
-        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+        Condition::SourceInGraveyardWithCardsAbove {
+            filter,
+            count,
+            directly_above,
+        } => {
             Ok(game.object(shared.source).is_some_and(|source| {
                 if source.zone != crate::zone::Zone::Graveyard {
                     return false;
@@ -6096,6 +6182,12 @@ fn evaluate_condition_in_context(
                     return false;
                 };
                 let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
+                if *directly_above {
+                    return graveyard.get(source_index + 1).is_some_and(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    });
+                }
                 graveyard[source_index + 1..]
                     .iter()
                     .filter(|id| {

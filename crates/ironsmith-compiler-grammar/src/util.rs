@@ -779,6 +779,13 @@ fn compiler_activation_cost_component_reference(
                 (crate::tag::CompilerReferenceTag::CostExiledTop.bind()).into(),
             ))
         }
+        // "Exile a card from your hand: ... the card exiled this way"
+        // (Holistic Wisdom): cost payment publishes the exiled card.
+        CompilerCost::ExileFromHand { .. } => {
+            Some(CompilerActivationCostObjectReference::Tagged(
+                (crate::tag::CompilerReferenceTag::CostExiledFromHand.bind()).into(),
+            ))
+        }
         CompilerCost::ReturnChosenToHand { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;
@@ -2234,6 +2241,24 @@ fn restore_distinct_combat_damage_controller_target(
 }
 
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    if let Some(filter) =
+        crate::grammar::choices::parse_target_opponent_with_more_controlled_as_you_activate_tokens(
+            tokens,
+        )
+    {
+        return Ok(TargetAst::Player(filter, span_from_tokens(tokens)));
+    }
+    // "any target chosen at random" / "target opponent chosen at random"
+    // (Goblin Test Pilot, Witch Hunt): the target is still announced as the
+    // ability is put on the stack, but the game picks it at random among the
+    // legal choices (CR 115.7 contrasted with player choice; CR 601.2c).
+    if let Some(head_end) = chosen_at_random_target_suffix(tokens) {
+        let inner = parse_target_phrase(&trim_edge_punctuation_tokens(tokens)[..head_end])?;
+        return Ok(match inner {
+            TargetAst::WithCount(inner, count) => TargetAst::WithCount(inner, count.at_random()),
+            other => TargetAst::WithCount(Box::new(other), ChoiceCount::exactly(1).at_random()),
+        });
+    }
     // A plural historical graveyard target has an embedded `put` verb that
     // belongs to the object filter, not to the surrounding action chain.
     // Preserve this exact target envelope before the generic target-head
@@ -2861,6 +2886,10 @@ pub fn parse_flashback_line(
         }
         Some(FlashbackCostClause::Cost(cost_tokens)) => cost_tokens,
     };
+    // "Flashback—{3}{R}, Remove X loyalty counters from among planeswalkers
+    // you control. If you cast this spell this way, X can't be 0." (Light Up
+    // the Night): the trailing sentence limits X for this method only.
+    let (cost_tokens, x_minimum) = split_flashback_x_cant_be_zero(cost_tokens);
 
     let total_cost = match parse_leading_mana_and_payment_total_cost(cost_tokens)? {
         Some(total_cost) => total_cost,
@@ -2878,7 +2907,28 @@ pub fn parse_flashback_line(
         },
     };
 
-    Ok(Some(AlternativeCastingMethod::Flashback { total_cost }))
+    Ok(Some(AlternativeCastingMethod::Flashback {
+        total_cost,
+        x_minimum,
+    }))
+}
+
+fn split_flashback_x_cant_be_zero(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], u32) {
+    const TAIL: &[&str] = &[
+        "if", "you", "cast", "this", "spell", "this", "way", "x", "cant", "be", "0",
+    ];
+    let Some(period) = tokens.iter().position(|token| token.kind == TokenKind::Period) else {
+        return (tokens, 0);
+    };
+    let tail_words = crate::lexer::parser_token_word_refs(&tokens[period + 1..])
+        .into_iter()
+        .map(|word| word.replace(['\'', '’'], ""))
+        .collect::<Vec<_>>();
+    if tail_words.iter().map(String::as_str).eq(TAIL.iter().copied()) {
+        (&tokens[..period], 1)
+    } else {
+        (tokens, 0)
+    }
 }
 
 /// Parse an alternative cost whose leading mana symbols are followed by a
@@ -2925,7 +2975,7 @@ mod mixed_flashback_cost_tests {
         )
         .unwrap();
         let method = parse_flashback_line(&tokens).unwrap().unwrap();
-        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+        let AlternativeCastingMethod::Flashback { total_cost, .. } = method else {
             panic!("expected flashback");
         };
         assert_eq!(total_cost.mana_cost().unwrap().to_oracle(), "{1}{U}");
@@ -2947,7 +2997,7 @@ mod mixed_flashback_cost_tests {
         let method = parse_flashback_line(&tokens)
             .expect("mixed flashback cost should parse")
             .expect("flashback should be recognized");
-        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+        let AlternativeCastingMethod::Flashback { total_cost, .. } = method else {
             panic!("expected flashback alternative cost: {method:#?}");
         };
         assert_eq!(
@@ -3137,12 +3187,15 @@ pub fn parse_reinforce_line(
             words_all.join(" ")
         )));
     };
-    let Value::Fixed(amount) = amount_value else {
+    // "Reinforce X—{X}{G}{G}" (Wren's Run Hydra): CR 702.77a puts N
+    // counters, and an X amount is the X paid in the reinforce cost itself
+    // (CR 107.3), so it is only meaningful when that cost contains {X}.
+    if !matches!(amount_value, Value::Fixed(_) | Value::X) {
         return Err(CardTextError::ParseError(format!(
             "unsupported reinforce amount (clause: '{}')",
             words_all.join(" ")
         )));
-    };
+    }
 
     if fact.cost_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -3159,6 +3212,12 @@ pub fn parse_reinforce_line(
             words_all.join(" ")
         )));
     };
+    if amount_value == Value::X && !base_mana_cost.has_x() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported reinforce amount (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
     let base_cost =
         ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(base_mana_cost.clone());
     let mut merged_costs = base_cost.costs().to_vec();
@@ -3170,7 +3229,7 @@ pub fn parse_reinforce_line(
 
     let effect = crate::cards::builders::EffectAst::subject_verb_put_counters(
         CounterType::PlusOnePlusOne,
-        Value::Fixed(amount),
+        amount_value,
         // Reinforce's keyword definition targets a creature even though the
         // compact keyword line does not spell out the word `target`.  Retain
         // that semantic choice in the same typed slot used by an explicit
@@ -3483,4 +3542,19 @@ pub(crate) fn restore_authored_damage_source_surface(
             restore_authored_damage_source_surface(nested, surface);
         });
     }
+}
+
+/// Token index where a trailing "chosen at random" begins on a target phrase.
+fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let suffix_start = words.len().checked_sub(3)?;
+    if words.get(suffix_start..) != Some(&["chosen", "at", "random"][..])
+        || suffix_start == 0
+        || !matches!(words.first(), Some(&("target" | "any")))
+    {
+        return None;
+    }
+    view.token_start_indices().get(suffix_start).copied()
 }

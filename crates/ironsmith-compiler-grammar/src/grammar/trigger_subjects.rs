@@ -328,6 +328,57 @@ pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerRefe
     PossessivePlayerReference::Any
 }
 
+/// Recognizes the terminal relative clause "that entered this turn" (or the
+/// long form "that entered the battlefield this turn") on a trigger subject,
+/// e.g. "one or more creatures you control that entered this turn". Returns
+/// the word index where the relative clause begins; the remaining prefix is
+/// an ordinary trigger subject.
+pub fn parse_trigger_entered_this_turn_suffix(words: &[&str]) -> Option<usize> {
+    const SUFFIXES: [&[&str]; 2] = [
+        &["that", "entered", "this", "turn"],
+        &["that", "entered", "the", "battlefield", "this", "turn"],
+    ];
+    SUFFIXES.into_iter().find_map(|suffix| {
+        (words.len() > suffix.len() && words.ends_with(suffix))
+            .then(|| words.len() - suffix.len())
+    })
+}
+
+/// Recognizes a relative "that are/is enchanted by <Aura filter>" clause on a
+/// trigger subject ("creatures that are enchanted by an Aura you control").
+pub fn parse_trigger_enchanted_by_relative_clause(words: &[&str]) -> bool {
+    words.windows(4).any(|window| {
+        matches!(
+            window,
+            ["that", "are" | "is", "enchanted", "by"]
+        )
+    }) || words
+        .windows(3)
+        .any(|window| matches!(window, ["that's" | "thats", "enchanted", "by"]))
+}
+
+/// "a source of the chosen color" as a complete damage-source subject.
+pub fn parse_trigger_chosen_color_source(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["a" | "any", "source", "of", "the", "chosen", "color"]
+            | ["source", "of", "the", "chosen", "color"]
+    )
+}
+
+/// "... that was turned face up this turn" on a trigger subject (Kaust):
+/// returns the word index where the relative clause begins.
+pub fn parse_trigger_turned_face_up_this_turn_suffix(words: &[&str]) -> Option<usize> {
+    const SUFFIXES: [&[&str]; 2] = [
+        &["that", "was", "turned", "face", "up", "this", "turn"],
+        &["that", "were", "turned", "face", "up", "this", "turn"],
+    ];
+    SUFFIXES.into_iter().find_map(|suffix| {
+        (words.len() > suffix.len() && words.ends_with(suffix))
+            .then(|| words.len() - suffix.len())
+    })
+}
+
 pub fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerControlSuffix> {
     for suffix_words in [3usize, 2usize] {
         if words.len() < suffix_words {

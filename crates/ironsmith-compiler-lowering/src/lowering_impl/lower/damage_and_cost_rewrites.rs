@@ -101,6 +101,14 @@ fn static_ability_uses_persistent_chosen_object(
         crate::static_abilities::StaticAbilityPayload::Conditional { ability, .. } => {
             static_ability_uses_persistent_chosen_object(ability)
         }
+        // "has all activated and triggered abilities of the last chosen card"
+        // (Koh, the Face Stealer).
+        crate::static_abilities::StaticAbilityPayload::CopyActivatedAbilities(copy) => {
+            filter_uses_persistent_chosen_object(&copy.filter)
+        }
+        crate::static_abilities::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
+            filter_uses_persistent_chosen_object(&copy.filter)
+        }
         _ => false,
     }
 }
@@ -235,6 +243,9 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
     enum ChoiceContainer {
         Triggered,
         AsEnters,
+        /// "Pay 1 life: Choose a creature card exiled with Koh." — an
+        /// activated choice remembered for a later reference.
+        Activated,
     }
 
     let choices = builder
@@ -245,6 +256,9 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
             let (container, program) = match &ability.kind {
                 AbilityKind::Triggered(triggered) => {
                     (ChoiceContainer::Triggered, &triggered.effects)
+                }
+                AbilityKind::Activated(activated) => {
+                    (ChoiceContainer::Activated, &activated.effects)
                 }
                 AbilityKind::Static(static_ability) => {
                     let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
@@ -280,6 +294,16 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 .into_iter()
         })
         .collect::<Vec<_>>();
+    // An activated choice is a candidate only when no triggered or as-enters
+    // choice competes with it, so existing single-choice cards are unchanged.
+    let choices = if choices.len() > 1 {
+        choices
+            .into_iter()
+            .filter(|(_, _, _, container, _)| !matches!(container, ChoiceContainer::Activated))
+            .collect::<Vec<_>>()
+    } else {
+        choices
+    };
     let [(ability_index, segment_index, effect_index, container, choice)] = choices.as_slice()
     else {
         return;
@@ -318,6 +342,13 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 return;
             };
             &mut triggered.effects.segments[*segment_index].default_effects[*effect_index]
+        }
+        ChoiceContainer::Activated => {
+            let AbilityKind::Activated(activated) = &mut builder.abilities[*ability_index].kind
+            else {
+                return;
+            };
+            &mut activated.effects.segments[*segment_index].default_effects[*effect_index]
         }
         ChoiceContainer::AsEnters => {
             let AbilityKind::Static(static_ability) = &mut builder.abilities[*ability_index].kind
@@ -433,7 +464,8 @@ pub fn lower_normalized_card_ast_with_facts(
             }
             NormalizedCardItem::LevelAbility(level) => {
                 let _references = level.items.iter().find_map(|item| match item {
-                    crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                    crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated)
+                    | crate::model::ParsedLevelAbilityItemAst::TriggeredAbility(activated) => {
                         line_reference_scope(&symbols, activated.info.display_line_index)
                     }
                     _ => None,
@@ -491,6 +523,11 @@ pub fn lower_normalized_card_ast_with_facts(
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
     let mut definition = builder.build();
+    for ability in &mut definition.abilities {
+        if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
+            crate::lowering_support::bind_activation_value_samples(&mut activated.effects);
+        }
+    }
     super::linked_exile::bind_scalar_linked_exile(&mut definition);
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);

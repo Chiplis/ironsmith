@@ -78,6 +78,8 @@ pub struct BecomeCopyExceptionShape {
     pub granted_ability_tokens: Option<Vec<OwnedLexToken>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub surface: Option<String>,
+    /// "it doesn't copy that creature's color" (CR 707.9b).
+    pub retain_source_colors: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +99,8 @@ pub enum BecomeExactKind {
     Colorless,
     Saddled,
     Prepared,
+    /// "becomes unprepared": the prepared designation is removed.
+    Unprepared,
     Plotted,
 }
 

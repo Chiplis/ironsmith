@@ -29,6 +29,20 @@ impl EffectExecutor for PrepareEffect {
             let Some(object) = game.object(object_id) else {
                 continue;
             };
+            if self.unprepare {
+                // Becoming unprepared removes the designation (and its exiled
+                // prepare-spell copy); an unprepared permanent is unchanged.
+                // The removal and copy cleanup commit together.
+                if object.zone == Zone::Battlefield
+                    && crate::effects::composition::execute_world_checkpoint_transaction(
+                        game,
+                        |game| Ok::<bool, ExecutionError>(game.clear_prepared(object_id)),
+                    )?
+                {
+                    count += 1;
+                }
+                continue;
+            }
             // A permanent without a prepare spell can't become prepared, and one
             // that already is doesn't prepare a second copy.
             if object.zone != Zone::Battlefield || !game.has_prepare_spell(object_id) {

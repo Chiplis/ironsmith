@@ -126,20 +126,27 @@ fn is_named_deck_construction(words: &[&str]) -> bool {
     let prefix = &[
         "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
     ];
-    phrase_is_prefix(words, prefix) && words.len() > prefix.len()
-}
-
-fn is_first_equip_alternative(words: &[&str]) -> bool {
-    phrase_is_prefix(words, &["you", "may", "pay"])
-        && phrase_is_present(
-            words,
-            &[
-                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-                "ability", "you", "activate",
-            ],
-        )
-        && (phrase_is_suffix(words, &["each", "turn"])
-            || phrase_is_suffix(words, &["during", "each", "of", "your", "turns"]))
+    if phrase_is_prefix(words, prefix) && words.len() > prefix.len() {
+        return true;
+    }
+    // "A deck can have up to nine cards named Nazgûl." (Nazgûl, Seven
+    // Dwarves): a bounded copy-count exception to CR 100.2a. Deck
+    // validation reads the limit back out of the rule text.
+    let bounded_prefix = &["a", "deck", "can", "have", "up", "to"];
+    if !phrase_is_prefix(words, bounded_prefix) {
+        return false;
+    }
+    let Some((count, used)) = words
+        .get(bounded_prefix.len()..)
+        .and_then(leaf::parse_leaf_number_prefix_words)
+        .and_then(|number| number.into_fixed())
+    else {
+        return false;
+    };
+    let tail_start = bounded_prefix.len() + used;
+    count > 0
+        && phrase_is_prefix(words.get(tail_start..).unwrap_or_default(), &["cards", "named"])
+        && words.len() > tail_start + 2
 }
 
 pub fn parse_static_special_line_tokens(
@@ -172,11 +179,11 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::DraftRule)
     } else if is_named_deck_construction(&words) {
         Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
-    } else if is_first_equip_alternative(&words) {
+    } else if super::parse_first_keyword_cost_alternative_tokens(tokens).is_some() {
         Some(StaticSpecialLineShape::FirstEquipCostAlternative)
     } else if let Some(prefix) =
         crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens)
-        && is_first_equip_alternative(&parser_token_word_refs(prefix.remainder_tokens))
+        && super::parse_first_keyword_cost_alternative_tokens(prefix.remainder_tokens).is_some()
     {
         // "As long as you have an enduring story, you may pay {0} rather than
         // pay the equip cost …" (Kíli the Resourceful).
@@ -234,6 +241,12 @@ pub fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Opti
     let words = parser_token_word_refs(tokens);
     if !phrase_is_prefix(&words, &["you", "may", "play"]) {
         return None;
+    }
+    if phrase_is_exact(
+        words.get(3..)?,
+        &["any", "number", "of", "lands", "on", "each", "of", "your", "turns"],
+    ) {
+        return Some(u32::MAX);
     }
     let (number, used) = leaf::parse_leaf_number_prefix_words(words.get(3..)?)?.into_fixed()?;
     let tail = words.get(3 + used..)?;

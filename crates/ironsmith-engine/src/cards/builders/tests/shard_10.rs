@@ -2858,13 +2858,13 @@ pub(super) fn render_granted_counter_subject_preserves_counter_clause() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn render_subject_with_power_or_toughness_cant_be_blocked_preserves_filter() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
         .parse_text("Creatures you control with power or toughness 1 or less can't be blocked.")
-        .expect_err("power/toughness unblockable static line should fail loudly");
-    let joined = format!("{err:?}").to_ascii_lowercase();
+        .expect("power/toughness unblockable static line parses");
+    let joined = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("unsupported power-or-toughness cant-be-blocked subject"),
-        "expected explicit unsupported parse error, got {joined}"
+        joined.contains("power or toughness 1 or less"),
+        "expected the either-characteristic filter to render, got {joined}"
     );
 }
 

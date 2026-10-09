@@ -46,13 +46,17 @@ impl EffectExecutor for EarthbendEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
+                // A dynamic amount is locked in once, as the instruction
+                // resolves (CR 107.3a), before the land is animated.
+                let counters = crate::effects::helpers::resolve_value(game, &self.counters, ctx)?
+                    .max(0) as u32;
                 let target = resolve_single_object_for_effect(game, ctx, &self.target)?;
                 if self.awaken {
                     return execute_land_animation_with_outputs(
                         game,
                         ctx,
                         target,
-                        self.counters,
+                        counters,
                         true,
                         None,
                     );
@@ -64,7 +68,7 @@ impl EffectExecutor for EarthbendEffect {
                     KeywordActionKind::Earthbend,
                     ctx.controller,
                     ctx.source,
-                    self.counters,
+                    counters,
                 )
                 .with_snapshot(
                     keyword_object_snapshot(game, ctx.source)?

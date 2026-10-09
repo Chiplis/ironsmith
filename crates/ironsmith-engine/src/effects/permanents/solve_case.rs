@@ -5,6 +5,26 @@ use crate::zone::Zone;
 
 pub use ironsmith_core::SetClassLevelEffect;
 pub use ironsmith_core::SolveCaseEffect;
+pub use ironsmith_core::{DayNightDesignation, SetDayNightEffect};
+
+impl EffectExecutor for SetDayNightEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let daytime = self.designation == DayNightDesignation::Day;
+        // CR 731.2: setting the designation it already has changes nothing;
+        // a real change queues "day becomes night"/"night becomes day" and
+        // transforms day/nightbound permanents (CR 702.145). The designation
+        // change is one atomic world action.
+        crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
+            let already = game.has_day_night() && game.is_daytime() == daytime;
+            game.set_daytime(daytime);
+            Ok(EffectOutcome::count(i32::from(!already)))
+        })
+    }
+}
 
 impl EffectExecutor for SetClassLevelEffect {
     fn execute(

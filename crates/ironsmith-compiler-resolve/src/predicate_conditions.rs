@@ -716,9 +716,11 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
             filter,
             count,
+            directly_above,
         }) => Condition::SourceInGraveyardWithCardsAbove {
             filter: filter.clone(),
             count: *count,
+            directly_above: *directly_above,
         },
         PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => {
             Condition::SourceIsInZone(*zone)
@@ -796,6 +798,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::YouHaveCardInHandMatching(filter) => {
             Condition::YouHaveCardInHandMatching(filter.clone())
         }
+        PredicateAst::TopCardOfYourLibraryMatches(filter) => {
+            Condition::TopCardOfYourLibraryMatches(filter.clone())
+        }
         PredicateAst::YourFirstTurnsOfTheGameOrFewer(count) => {
             Condition::YourFirstTurnsOfTheGameOrFewer(*count)
         }
@@ -827,7 +832,11 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceIsAttacking) => Condition::SourceIsAttacking,
         PredicateAst::Source(SourcePredicateAst::SourceIsUntapped) => Condition::SourceIsUntapped,
         PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous) => Condition::SourceIsMonstrous,
+        PredicateAst::Source(SourcePredicateAst::SourceHasDealtDamageSinceEntered) => {
+            Condition::SourceHasDealtDamageSinceEntered
+        }
         PredicateAst::Source(SourcePredicateAst::SourceIsHarnessed) => Condition::SourceIsHarnessed,
+        PredicateAst::Source(SourcePredicateAst::SourceIsPrepared) => Condition::SourceIsPrepared,
         PredicateAst::EquippedCreatureAttacking => Condition::EquippedCreatureAttacking,
         PredicateAst::EquippedCreatureTapped => Condition::EquippedCreatureTapped,
         PredicateAst::EquippedCreatureUntapped => Condition::EquippedCreatureUntapped,
@@ -848,6 +857,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::ActivationTiming(timing) => Condition::ActivationTiming(*timing),
         PredicateAst::MaxActivationsPerTurn(limit) => Condition::MaxActivationsPerTurn(*limit),
         PredicateAst::MaxActivationsPerObject(limit) => Condition::MaxActivationsPerObject(*limit),
+        PredicateAst::MaxActivationsPerTurnCount(count) => {
+            Condition::MaxActivationsPerTurnCount(count.clone())
+        }
         PredicateAst::CurrentTurnIsExtra => Condition::CurrentTurnIsExtra,
         PredicateAst::TriggerFrequency(frequency) => match frequency {
             TriggerFrequencyPredicateAst::FirstTimeThisTurn => Condition::FirstTimeThisTurn,

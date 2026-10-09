@@ -1663,7 +1663,9 @@ fn coordinated_apply_prefers_where_x(apply: &crate::effects::ApplyContinuousEffe
             _ => false,
         };
 
-    apply
+    apply.target_spec.as_ref().is_some_and(|spec|
+        choose_spec_dynamic_count_value_where_clause(spec).is_some())
+        || apply
         .modification
         .as_ref()
         .is_some_and(modification_prefers_where_x)
@@ -10267,6 +10269,21 @@ pub(crate) fn describe_static_ability_with_subject(
             "{subject} enters with {} on it unless {}",
             describe_put_counter_phrase(count, *counter),
             lowercase_first(&describe_condition(condition))
+        );
+    }
+    if let Some(ironsmith_core::StaticAbilityPayload::ConditionalAttackRequirement {
+        trigger,
+        required,
+    }) = static_ability.compiled_model().map(|model| &model.payload)
+    {
+        let trigger_text = if trigger.source {
+            "this creature".to_string()
+        } else {
+            with_indefinite_article(&trigger.description())
+        };
+        return format!(
+            "If {trigger_text} attacks, all {} attack if able",
+            required.description()
         );
     }
     if let Some(ironsmith_core::StaticAbilityPayload::GoadMatching { filter }) =

@@ -867,6 +867,17 @@ pub(super) fn compile_grant_abilities_all_action(
         let crate::continuous::Modification::AddAbility(ability) = modification else {
             continue;
         };
+        // "planeswalkers you control gain protection from that player": the
+        // player reference names the instruction's antecedent player, which
+        // the runtime then locks as the grant resolves.
+        if let ironsmith_core::StaticAbilityPayload::Protection(
+            ironsmith_core::ProtectionFrom::Permanents(protected_from),
+        ) = &mut ability.payload
+            && protected_from.mentions_iterated_player()
+        {
+            *protected_from = resolve_it_tag(protected_from, &current_reference_env(ctx))?;
+            continue;
+        }
         let ironsmith_core::StaticAbilityPayload::Protection(
             ironsmith_core::ProtectionFrom::ColorsOf(spec),
         ) = &mut ability.payload
@@ -1109,13 +1120,34 @@ pub(super) fn compile_cant_action(
         let crate::effect::Restriction::Untap(filter) = &restriction else {
             return Err(CardTextError::ParseError("a named next untap step requires an untap rule".into()));
         };
-        let Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) = &filter.controller else {
-            return Err(CardTextError::ParseError("named next untap step has no explicit player antecedent".into()));
+        // "Tap all creatures target player controls. Those creatures don't
+        // untap during that player's next untap step." (Sleep): the tagged
+        // set carries no controller of its own, so "that player" is the
+        // declared target player the preceding instruction already bound.
+        let player = match &filter.controller {
+            Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) => {
+                player.clone()
+            }
+            None if !filter.tagged_constraints.is_empty() => match ctx.last_player_filter.as_ref() {
+                Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) => {
+                    player.clone()
+                }
+                _ => {
+                    return Err(CardTextError::ParseError(
+                        "named next untap step has no explicit player antecedent".into(),
+                    ));
+                }
+            },
+            _ => {
+                return Err(CardTextError::ParseError(
+                    "named next untap step has no explicit player antecedent".into(),
+                ));
+            }
         };
         if condition.is_some() {
             return Err(CardTextError::ParseError("conditional named next untap rule is not represented".into()));
         }
-        Some(crate::effect::Until::PlayersNextUntapStep { player: player.clone() })
+        Some(crate::effect::Until::PlayersNextUntapStep { player })
     } else { None };
     let duration = named_step_duration.as_ref().unwrap_or(duration);
     if let Some(condition) = condition {
@@ -1529,6 +1561,23 @@ pub(super) fn compile_subject_verb_middle(
                 }
                 return Ok(Some((vec![Effect::new(cast)], Vec::new())));
             }
+            // "you may cast this card from your graveyard" (Syrix, Sproutback
+            // Trudge): the ability's own card, cast from wherever it is now.
+            if tag.as_str() == crate::tag::CompilerReferenceTag::SourceObject.as_str()
+                && matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                && !*allow_land
+                && !*as_copy
+                && additional_mana_cost.is_none()
+                && cost_reduction.is_none()
+                && alternative_payment.is_none()
+                && alternative_cost.is_none()
+            {
+                let mut cast = crate::effects::CastSourceEffect::new();
+                if *without_paying_mana_cost {
+                    cast = cast.without_paying_mana_cost();
+                }
+                return Ok(Some((vec![Effect::new(cast)], Vec::new())));
+            }
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
@@ -1766,6 +1815,7 @@ pub(super) fn compile_subject_verb_middle(
             spell_cost_increase,
             lands_enter_tapped,
             surface,
+            during_turns_attacked_with,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1793,6 +1843,7 @@ pub(super) fn compile_subject_verb_middle(
                 if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
                     || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
                     || *without_paying_mana_cost || during_turns_counter_put_on_source.is_some()
+                    || during_turns_attacked_with.is_some()
                 { return Err(CardTextError::ParseError("marked exile permission lost its exact producer".into())); }
                 grant_play.permission_bound_mana = true;
             }
@@ -1806,6 +1857,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             if let Some(counter_type) = during_turns_counter_put_on_source {
                 grant_play = grant_play.during_turns_counter_put_on_source(*counter_type);
+            }
+            if let Some(condition) = during_turns_attacked_with.clone() {
+                grant_play = grant_play.during_turns_attacked_with(condition);
             }
             if let Some(cost) = spell_cost_increase.clone() {
                 grant_play = grant_play.with_spell_cost_increase(cost);
@@ -2264,6 +2318,8 @@ pub(super) fn compile_subject_verb_middle(
             battlefield_tapped,
             battlefield_attacking,
             battlefield_attack_target_player_or_planeswalker_controlled_by,
+            battlefield_attack_player_only,
+            battlefield_blocking,
             battlefield_face_down,
             battlefield_transformed,
             attached_to,
@@ -2385,6 +2441,22 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 None
             };
+            // CR 509.4: the attacker an entering creature blocks.
+            let resolved_blocking_spec = if let Some(blocked) = battlefield_blocking {
+                if *zone != Zone::Battlefield {
+                    return Err(CardTextError::ParseError(
+                        "blocking battlefield destination requires zone battlefield".to_string(),
+                    ));
+                }
+                let (blocked_spec, blocked_choices) =
+                    resolve_target_spec_with_choices(blocked, &current_reference_env(ctx))?;
+                for choice in blocked_choices {
+                    push_choice(&mut choices, choice);
+                }
+                Some(blocked_spec)
+            } else {
+                None
+            };
             let attach_destination_is_plural = resolved_attach_spec
                 .as_ref()
                 .and_then(selected_object_filter)
@@ -2454,7 +2526,17 @@ pub(super) fn compile_subject_verb_middle(
                         *attack_player,
                         &current_reference_env(ctx),
                     )?;
-                    move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                    if *battlefield_attack_player_only {
+                        move_effect.attacking_player_only(attack_player_filter)
+                    } else {
+                        move_effect
+                            .attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                    }
+                } else {
+                    move_effect
+                };
+                let move_effect = if let Some(blocked_spec) = &resolved_blocking_spec {
+                    move_effect.blocking(blocked_spec.clone())
                 } else {
                     move_effect
                 };
@@ -2617,7 +2699,16 @@ pub(super) fn compile_subject_verb_middle(
             {
                 let attack_player_filter =
                     resolve_non_target_player_filter(*attack_player, &current_reference_env(ctx))?;
-                move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                if *battlefield_attack_player_only {
+                    move_effect.attacking_player_only(attack_player_filter)
+                } else {
+                    move_effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter)
+                }
+            } else {
+                move_effect
+            };
+            let move_effect = if let Some(blocked_spec) = &resolved_blocking_spec {
+                move_effect.blocking(blocked_spec.clone())
             } else {
                 move_effect
             };
@@ -3997,6 +4088,8 @@ pub(super) fn compile_subject_verb_middle(
             set_base_power_toughness_to_source_totals,
             starting_loyalty,
             granted_abilities,
+            set_name,
+            added_supertypes,
         }) => {
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
@@ -4056,7 +4149,9 @@ pub(super) fn compile_subject_verb_middle(
                 && set_base_power_toughness.is_none()
                 && !*set_base_power_toughness_to_source_totals
                 && starting_loyalty.is_none()
-                && granted_abilities.is_empty();
+                && granted_abilities.is_empty()
+                && set_name.is_none()
+                && added_supertypes.is_empty();
             source_spec = with_target_reference_surface_hint(source_spec, source);
             let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
                 Some(
@@ -4138,6 +4233,9 @@ pub(super) fn compile_subject_verb_middle(
             for supertype in removed_supertypes {
                 effect = effect.removed_supertype(*supertype);
             }
+            // CR 707.9b: name/supertype exceptions are copiable values.
+            effect.set_name = set_name.clone();
+            effect.added_supertypes = added_supertypes.clone();
             if let Some((power, toughness)) = set_base_power_toughness {
                 effect = effect.set_base_power_toughness(*power, *toughness);
             }
@@ -4223,6 +4321,7 @@ pub(super) fn compile_subject_verb_middle(
             mode,
             require_change,
             copy_reference_plural,
+            new_target_restriction,
         }) => {
             let refs = current_reference_env(ctx);
             if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
@@ -4270,6 +4369,9 @@ pub(super) fn compile_subject_verb_middle(
 
             if *require_change {
                 effect = effect.require_change();
+            }
+            if let Some(restriction) = new_target_restriction {
+                effect = effect.with_restriction(restriction.clone());
             }
 
             let compiled_mode = match mode {

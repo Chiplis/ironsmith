@@ -357,11 +357,14 @@ fn parse_day_night_marker(tokens: &[OwnedLexToken]) -> bool {
         && find_semantic(tokens, || {
             (
                 semantic_phrase(&["as", "this"]),
-                alt((
+                // A named source ("as Vadrik enters", "as The Celestus
+                // enters") normalizes to a bare or typed self reference.
+                opt(alt((
                     semantic_kw("creature"),
                     semantic_kw("permanent"),
                     semantic_kw("object"),
-                )),
+                    semantic_kw("artifact"),
+                ))),
                 semantic_kw("enters"),
             )
                 .void()

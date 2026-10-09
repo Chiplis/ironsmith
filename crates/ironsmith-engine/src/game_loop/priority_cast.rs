@@ -46,141 +46,23 @@ pub(super) fn x_defined_mode_count_range(
     needs_x.then_some((min_x as usize, (max_x as usize).max(min_x as usize)))
 }
 
-fn static_ability_is_granted_conspire_marker(
-    ability: &crate::static_abilities::StaticAbility,
+/// Keywords granted to the spell being cast by typed `GrantSpellKeyword`
+/// statics (replicate, offspring, conspire) are announced as its optional
+/// costs (CR 601.2b) and paid with its other costs (CR 601.2f-h).
+fn ensure_granted_spell_keyword_optional_costs(
+    game: &mut GameState,
+    pending: &mut PendingCast,
 ) -> bool {
-    ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-        && ability.display().eq_ignore_ascii_case("Conspire")
-}
-
-fn granted_conspire_count(game: &GameState, spell_id: ObjectId, caster: PlayerId) -> usize {
-    let Some(object) = game.object(spell_id) else {
-        return 0;
-    };
-    let attached_count = object
-        .abilities
-        .iter()
-        .filter(|ability| ability.functions_in(&Zone::Stack))
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability)
-                if static_ability_is_granted_conspire_marker(static_ability) =>
-            {
-                Some(())
-            }
-            _ => None,
-        })
-        .count();
-    let mut object_for_filter = object.clone();
-    if let Some(chars) = game.current_characteristics(spell_id) {
-        object_for_filter.name = chars.name;
-        object_for_filter.card_types = chars.card_types;
-        object_for_filter.subtypes = chars.subtypes;
-        object_for_filter.supertypes = chars.supertypes;
-        object_for_filter.color_override = Some(chars.colors);
-    }
-
-    let effect_count = game
-        .all_continuous_effects()
-        .into_iter()
-        .filter(|effect| match &effect.modification {
-            crate::continuous::Modification::AddAbility(ability) => {
-                static_ability_is_granted_conspire_marker(ability)
-            }
-            // A conspire marker granted through the generic representation is
-            // the same marker one level in.
-            crate::continuous::Modification::AddAbilityGeneric(granted) => {
-                matches!(&granted.kind, crate::ability::AbilityKind::Static(ability)
-                    if static_ability_is_granted_conspire_marker(ability))
-            }
-            _ => false,
-        })
-        .filter(|effect| match &effect.applies_to {
-            crate::continuous::EffectTarget::Specific(id) => *id == spell_id,
-            crate::continuous::EffectTarget::Source => effect.source == spell_id,
-            crate::continuous::EffectTarget::Filter(filter) => {
-                let filter_ctx = game
-                    .filter_context_for(effect.controller, Some(effect.source))
-                    .with_caster(Some(caster));
-                filter.matches_non_recursive(&object_for_filter, &filter_ctx, game)
-            }
-            crate::continuous::EffectTarget::AllPermanents
-            | crate::continuous::EffectTarget::AllCreatures
-            | crate::continuous::EffectTarget::AttachedTo(_) => false,
-        })
-        .count();
-    if attached_count + effect_count > 0 {
-        return attached_count + effect_count;
-    }
-
-    if object.zone != Zone::Stack
-        || game.controller_of(object) != caster
-        || !(game.object_has_card_type(spell_id, crate::types::CardType::Instant)
-            || game.object_has_card_type(spell_id, crate::types::CardType::Sorcery))
-    {
-        return 0;
-    }
-
-    let spell_colors = object_for_filter.colors();
-    let is_red_or_green = spell_colors.contains(crate::color::Color::Red)
-        || spell_colors.contains(crate::color::Color::Green);
-    if !is_red_or_green {
-        return 0;
-    }
-
-    game.battlefield
-        .iter()
-        .filter_map(|id| game.object(*id))
-        .filter(|permanent| game.controller_of(permanent) == caster)
-        .flat_map(|permanent| permanent.abilities.iter())
-        .filter_map(|ability| match &ability.kind {
-            crate::ability::AbilityKind::Static(static_ability)
-                if ability.functions_in(&Zone::Battlefield) =>
-            {
-                Some(static_ability.display())
-            }
-            _ => None,
-        })
-        .filter(|display| {
-            let normalized = display.to_ascii_lowercase();
-            normalized.contains("instant")
-                && normalized.contains("sorcery")
-                && normalized.contains("you cast")
-                && normalized.contains("have conspire")
-        })
-        .count()
-}
-
-fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut PendingCast) -> bool {
-    let conspire_count = granted_conspire_count(game, pending.spell_id, pending.caster);
-    if conspire_count == 0 {
+    if !crate::granted_spell_keywords::ensure_granted_spell_keyword_optional_costs(
+        game,
+        pending.spell_id,
+        pending.caster,
+    ) {
         return false;
     }
-
-    let existing_count = game
-        .object(pending.spell_id)
-        .map(|spell| {
-            spell
-                .optional_costs
-                .iter()
-                .filter(|cost| cost.source_label == "Granted Conspire")
-                .count()
-        })
-        .unwrap_or(0);
-    let missing_count = conspire_count.saturating_sub(existing_count);
-    if missing_count == 0 {
-        return false;
-    }
-    let Some(spell) = game.object_mut(pending.spell_id) else {
+    let Some(spell) = game.object(pending.spell_id) else {
         return false;
     };
-    for _ in 0..missing_count {
-        spell.optional_costs.push(crate::cost::OptionalCost::custom(
-            "Granted Conspire",
-            crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
-                crate::effects::ConspireCostEffect::new(),
-            )),
-        ));
-    }
     pending
         .optional_costs_paid
         .reset_costs(&spell.optional_costs);
@@ -944,7 +826,23 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
         return (false, 0, 0);
     }
 
-    let min_x = min_x_from_static_abilities(game, caster, stack_id).unwrap_or(0);
+    // "If you cast this spell this way, X can't be 0" binds only the method
+    // that carries it (Light Up the Night's flashback).
+    let method_min_x = match casting_method {
+        CastingMethod::Alternative(index) => spell
+            .alternative_casts
+            .get(*index)
+            .map_or(0, |method| match method {
+                crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                    x_minimum, ..
+                } => *x_minimum,
+                _ => 0,
+            }),
+        _ => 0,
+    };
+    let min_x = min_x_from_static_abilities(game, caster, stack_id)
+        .unwrap_or(0)
+        .max(method_min_x);
     // A zero-component exile FromZone alternative is the complete free price.
     // Unlike an independent AlternativePrice it has no cast_price receipt,
     // but it still fixes printed mana-cost X to zero (CR 107.3b). An X that
@@ -1286,6 +1184,49 @@ pub(super) fn check_modes_or_continue(
     // Check if the spell has modal effects (with context for conditional effects like Akroma's Will)
     if let Some(modal_spec) = extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
     {
+        let mut pending = pending;
+        // CR 700.2 / 601.2b: "An opponent chooses one —" — that opponent
+        // chooses the modes now, as the spell is cast. When several players
+        // are eligible, the caster chooses which one.
+        if let Some(filter) = modal_spec.cast_chooser.as_ref()
+            && pending.mode_chooser.is_none()
+        {
+            let candidates =
+                target_chooser_candidates(game, pending.caster, pending.spell_id, filter);
+            match candidates.as_slice() {
+                [] => {
+                    return Err(GameLoopError::InvalidState(
+                        "No player can choose this spell's modes".to_string(),
+                    ));
+                }
+                [only] => pending.mode_chooser = Some(*only),
+                _ => {
+                    let subject = game
+                        .object(pending.spell_id)
+                        .map(|o| o.name.to_string())
+                        .unwrap_or_else(|| "spell".to_string());
+                    let ctx = mode_chooser_context(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        subject,
+                        &candidates,
+                    );
+                    pending.stage = CastStage::ChoosingModeChooser;
+                    pending.pending_mode_chooser_candidates = candidates;
+                    state.pending_cast = Some(pending);
+                    return Ok(GameProgress::NeedsDecisionCtx(
+                        crate::decisions::context::DecisionContext::SelectOptions(ctx),
+                    ));
+                }
+            }
+        }
+        // The mode chooser is the spell's chosen player: "that player" in
+        // its modes and target restrictions names them from here on.
+        if let Some(chooser) = pending.mode_chooser {
+            game.set_chosen_player(pending.spell_id, chooser);
+        }
+        let mode_player = pending.mode_chooser.unwrap_or(pending.caster);
         let player = pending.caster;
         let source = pending.spell_id;
         let spell_effects = game
@@ -1362,14 +1303,13 @@ pub(super) fn check_modes_or_continue(
             .collect();
 
         // Set up pending cast for modes stage
-        let mut pending = pending;
         pending.stage = CastStage::ChoosingModes;
         state.pending_cast = Some(pending);
 
         Ok(GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::Modes(
                 crate::decisions::context::ModesContext {
-                    player,
+                    player: mode_player,
                     source: Some(source),
                     spell_name,
                     spec: crate::decisions::ModesSpec::new(
@@ -2804,9 +2744,9 @@ pub(super) fn check_optional_costs_or_continue(
     // state so its first characteristics query uses the batched game cache.
     game.refresh_continuous_state()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    if ensure_granted_conspire_optional_costs(game, &mut pending) {
-        // Conspire discovery mutates the stack object; optional-life discovery
-        // immediately performs another derived-characteristics query.
+    if ensure_granted_spell_keyword_optional_costs(game, &mut pending) {
+        // Granted-keyword discovery mutates the stack object; optional-life
+        // discovery immediately performs another derived-characteristics query.
         game.refresh_continuous_state()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     }
@@ -3749,6 +3689,61 @@ fn target_chooser_candidates(
         .collect()
 }
 
+/// "Choose an opponent to choose the mode": the caster picks which eligible
+/// player chooses the spell's modes (CR 700.2).
+fn mode_chooser_context(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    subject: String,
+    candidates: &[PlayerId],
+) -> crate::decisions::context::SelectOptionsContext {
+    let options = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, player)| {
+            crate::decisions::context::SelectableOption::new(
+                index,
+                game.player(*player)
+                    .map(|candidate| candidate.name.to_string())
+                    .unwrap_or_else(|| format!("Player {}", player.0)),
+            )
+        })
+        .collect();
+    crate::decisions::context::SelectOptionsContext::new(
+        controller,
+        Some(source),
+        format!("Choose a player to choose the mode for {subject}"),
+        options,
+        1,
+        1,
+    )
+}
+
+/// Apply the caster's choice of which player chooses the spell's modes, then
+/// ask that player for the modes.
+pub(super) fn apply_mode_chooser_response(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    choice: usize,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let mut pending = state.pending_cast.take().ok_or_else(|| {
+        GameLoopError::InvalidState("No pending cast for a mode chooser".to_string())
+    })?;
+    let Some(chooser) = pending.pending_mode_chooser_candidates.get(choice).copied() else {
+        state.pending_cast = Some(pending);
+        return Err(GameLoopError::InvalidState(
+            "Invalid mode chooser".to_string(),
+        ));
+    };
+    pending.pending_mode_chooser_candidates.clear();
+    pending.mode_chooser = Some(chooser);
+    pending.stage = CastStage::ChoosingModes;
+    check_modes_or_continue(game, trigger_queue, state, pending, decision_maker)
+}
+
 fn target_chooser_context(
     game: &GameState,
     controller: PlayerId,
@@ -4037,6 +4032,11 @@ pub(super) fn continue_to_targets_or_mana_payment(
             chooser,
             &mut pending.remaining_requirements[..requirement_count],
         );
+        // Random targets are picked by the game and stored on the pending
+        // requirement, so validation of the announcement sees the same pick.
+        for requirement in &mut pending.remaining_requirements[..requirement_count] {
+            crate::targeting::narrow_requirement_to_random_targets(game, requirement);
+        }
         let requirements = pending.remaining_requirements[..requirement_count].to_vec();
         pending.stage = CastStage::ChoosingTargets;
         pending.active_target_requirement_count = requirements.len();
@@ -6615,6 +6615,9 @@ pub(super) fn append_target_distribution_requirements(
     source: ObjectId,
     player: PlayerId,
     x_value: Option<u32>,
+    // CR 601.2b precedes 601.2d: an announced kicker can change the amount
+    // being divided ("If this spell was kicked, ... instead").
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
     all_targets: &[Target],
     all_assignments: &[crate::game_state::TargetAssignment],
     requirements: &[TargetRequirement],
@@ -6633,6 +6636,9 @@ pub(super) fn append_target_distribution_requirements(
         .with_targets(resolved_targets)
         .with_target_assignments(all_assignments.to_vec());
     ctx.x_value = x_value;
+    if let Some(paid) = optional_costs_paid {
+        ctx.optional_costs_paid = paid.clone();
+    }
 
     for (requirement, assignment) in requirements.iter().zip(new_assignments) {
         let Some(value) = requirement.distribution_value.as_ref() else {
@@ -7561,6 +7567,26 @@ pub(super) fn continue_activation(
             );
         }
 
+        // Sample once targets and modes are announced, before any cost is paid.
+        // The pending program carries these samples into the stack and checkpoints.
+        if matches!(pending.stage, ActivationStage::ChoosingNextCost | ActivationStage::ProcessingCosts | ActivationStage::PayingMana | ActivationStage::ReadyToFinalize)
+            && pending.effects.activation_values.iter().any(|(_, sample)| sample.is_none()) {
+            let mut ctx = crate::effects::ExecutionContext::new(pending.source, pending.activator, decision_maker);
+            ctx.source_snapshot = Some(pending.source_snapshot.clone());
+            ctx.x_value = pending.x_value.map(|x| x as u32);
+            ctx.targets = pending.chosen_targets.iter().map(|target| match target {
+                Target::Object(object) => crate::effects::ResolvedTarget::Object(*object),
+                Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
+            }).collect();
+            ctx.tagged_objects = pending.tagged_objects.clone();
+            for (expression, sample) in &mut pending.effects.activation_values {
+                if sample.is_none() {
+                    *sample = Some(crate::effects::helpers::resolve_value(game, expression.unhinted(), &ctx)
+                        .map_err(|error| GameLoopError::InvalidState(format!("activation sample: {error}")))?);
+                }
+            }
+        }
+
         if pending.targeting_announcement.is_none()
             && matches!(
                 pending.stage,
@@ -8127,6 +8153,9 @@ pub(super) fn continue_activation(
                         chooser,
                         &mut pending.remaining_requirements[..requirement_count],
                     );
+                    for requirement in &mut pending.remaining_requirements[..requirement_count] {
+                        crate::targeting::narrow_requirement_to_random_targets(game, requirement);
+                    }
                     let requirements = pending.remaining_requirements[..requirement_count].to_vec();
                     pending.stage = ActivationStage::ChoosingTargets;
                     pending.active_target_requirement_count = requirements.len();

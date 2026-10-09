@@ -57,6 +57,9 @@ pub enum DerivedAlternativeCast<C> {
         condition: Option<ThisSpellCostCondition>,
         exiles_after_resolution: bool,
     },
+    /// Madness (CR 702.35a) whose cost is the card's mana cost ("The madness
+    /// cost is equal to its mana cost."). Appended for wire compatibility.
+    MadnessFromCardManaCost,
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -72,6 +75,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::LifeEqualManaValueFromHand { .. } => "Pay life equal to mana value",
             Self::LifeEqualManaValueFromZone { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
+            Self::MadnessFromCardManaCost => "Madness",
         }
     }
 
@@ -127,6 +131,7 @@ impl<C> DerivedAlternativeCast<C> {
                 condition,
                 exiles_after_resolution,
             },
+            Self::MadnessFromCardManaCost => DerivedAlternativeCast::MadnessFromCardManaCost,
         })
     }
 }
@@ -1220,6 +1225,9 @@ where
                     "Any player who cast one or more {} spells this turn may",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("Any player {} may", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     "A player this creature attacked this turn may".to_string()
                 }
@@ -1243,7 +1251,9 @@ where
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     "That player may".to_string()
                 }
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
@@ -1637,14 +1647,15 @@ where
             let mut suffix = cast_this_way_ability_suffix();
             let Some(surface) = self.source_exiled_surface.as_ref().and_then(|surface| surface.mana_rider)
                 else { return suffix; };
-            let noun = match self.cast_mana_spend_mode {
+            let (mana, noun) = match self.cast_mana_spend_mode {
                 crate::value_model::ManaSpendMode::Normal => return suffix,
-                crate::value_model::ManaSpendMode::AnyColor => "color",
-                crate::value_model::ManaSpendMode::AnyType => "type",
+                crate::value_model::ManaSpendMode::AnyColor => ("mana", "color"),
+                crate::value_model::ManaSpendMode::AnyType => ("mana", "type"),
+                crate::value_model::ManaSpendMode::ColorlessAsAnyColor => ("colorless mana", "color"),
             };
             suffix.push_str(&match surface {
-                SourceExiledManaRiderSurface::ConditionalCast => format!(". If you cast a spell this way, you may spend mana as though it were mana of any {noun} to cast it"),
-                SourceExiledManaRiderSurface::InlineCastSpells => format!(", and you may spend mana as though it were mana of any {noun} to cast those spells"),
+                SourceExiledManaRiderSurface::ConditionalCast => format!(". If you cast a spell this way, you may spend {mana} as though it were mana of any {noun} to cast it"),
+                SourceExiledManaRiderSurface::InlineCastSpells => format!(", and you may spend {mana} as though it were mana of any {noun} to cast those spells"),
             });
             suffix
         };

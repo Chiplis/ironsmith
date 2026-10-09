@@ -58,6 +58,10 @@ use crate::zone::Zone;
 use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
 pub(crate) mod replacements_and_rules;
+pub(crate) mod event_replacement_with_effects;
+pub use event_replacement_with_effects::{EventReplacementWithEffects, ReplacedEventMatcher};
+pub(crate) mod event_amount_replacement;
+pub use event_amount_replacement::{AmountEventMatcher, EventAmountReplacement};
 pub use replacements_and_rules::*;
 pub(crate) use replacements_and_rules::DamageAmountReplacementMatcher;
 
@@ -1083,6 +1087,33 @@ impl FirstEquipCostAlternative {
 impl StaticAbilityKind for FirstEquipCostAlternative {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::FirstEquipCostAlternative
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+}
+
+/// "You may pay {0} rather than pay the echo cost for permanents you
+/// control." (Thick-Skinned Goblin). The payment itself reads the compiled
+/// model's filter and price when an echo trigger resolves (CR 118.9,
+/// 702.30a); this leaf carries the identity and display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EchoCostAlternative {
+    pub display_text: String,
+}
+
+impl EchoCostAlternative {
+    pub fn new(display_text: impl Into<String>) -> Self {
+        Self {
+            display_text: display_text.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for EchoCostAlternative {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EchoCostAlternative
     }
 
     fn display(&self) -> String {
@@ -2534,11 +2565,22 @@ impl StaticAbilityKind for DamageNotRemovedDuringCleanup {
 pub struct ChooseColorAsEnters {
     pub excluded: Option<Color>,
     pub display: String,
+    /// Number of different colors chosen ("choose two colors").
+    pub count: u32,
 }
 
 impl ChooseColorAsEnters {
     pub fn new(excluded: Option<Color>, display: String) -> Self {
-        Self { excluded, display }
+        Self {
+            excluded,
+            display,
+            count: 1,
+        }
+    }
+
+    pub fn with_count(mut self, count: u32) -> Self {
+        self.count = count.max(1);
+        self
     }
 }
 
@@ -2554,6 +2596,7 @@ impl StaticAbilityKind for ChooseColorAsEnters {
     fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         Some(ChooseColorAsEntersSpec {
             excluded: self.excluded,
+            count: self.count,
         })
     }
 }
@@ -2589,11 +2632,17 @@ impl StaticAbilityKind for ChooseColorAsBecomesAttached {
 pub struct ChoosePlayerAsEnters {
     pub filter: crate::target::PlayerFilter,
     pub display: String,
+    /// Number of different players chosen ("choose two players").
+    pub count: u32,
 }
 
 impl ChoosePlayerAsEnters {
     pub fn new(filter: crate::target::PlayerFilter, display: String) -> Self {
-        Self { filter, display }
+        Self {
+            filter,
+            display,
+            count: 1,
+        }
     }
 }
 
@@ -2609,6 +2658,7 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec {
             filter: self.filter.clone(),
+            count: self.count,
         })
     }
 }
@@ -2710,6 +2760,8 @@ pub struct ChooseCardNameAsEnters {
     pub display: String,
     pub reveal_opponents_hands: bool,
     pub require_nonland_from_revealed_opponents: bool,
+    pub opponent_also_chooses: bool,
+    pub exclude_basic_land_names: bool,
 }
 
 impl ChooseCardNameAsEnters {
@@ -2722,6 +2774,8 @@ impl ChooseCardNameAsEnters {
             display,
             reveal_opponents_hands: spec.reveal_opponents_hands,
             require_nonland_from_revealed_opponents: spec.require_nonland_from_revealed_opponents,
+            opponent_also_chooses: spec.opponent_also_chooses,
+            exclude_basic_land_names: spec.exclude_basic_land_names,
         }
     }
 }
@@ -2739,6 +2793,8 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
         Some(ChooseCardNameAsEntersSpec {
             reveal_opponents_hands: self.reveal_opponents_hands,
             require_nonland_from_revealed_opponents: self.require_nonland_from_revealed_opponents,
+            opponent_also_chooses: self.opponent_also_chooses,
+            exclude_basic_land_names: self.exclude_basic_land_names,
         })
     }
 }
@@ -4792,6 +4848,44 @@ impl StaticAbilityKind for PlayerSkipsDrawStep {
     }
 
     fn skips_draw_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.player
+            .matches_player(player, &game.filter_context_for(controller, Some(source)))
+    }
+}
+
+/// CR 502: the matching player skips each of their untap steps while this
+/// ability is active (Stasis).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayersSkipUntapStep {
+    pub player: PlayerFilter,
+}
+
+impl PlayersSkipUntapStep {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+impl StaticAbilityKind for PlayersSkipUntapStep {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayersSkipUntapStep
+    }
+
+    fn display(&self) -> String {
+        match self.player {
+            PlayerFilter::You => "Skip your untap step".to_string(),
+            PlayerFilter::Any => "Players skip their untap steps".to_string(),
+            _ => "Matching players skip their untap steps".to_string(),
+        }
+    }
+
+    fn skips_untap_step_for_player(
         &self,
         game: &GameState,
         source: ObjectId,

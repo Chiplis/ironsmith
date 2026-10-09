@@ -1,0 +1,9 @@
+[
+ {
+  "name": "Corrupted Resolve",
+  "oracle_id": "87837a94-05db-48fe-b810-26d8f92cfc58",
+  "mana_cost": "{1}{U}",
+  "type_line": "Instant",
+  "oracle_text": "Counter target spell if its controller is poisoned."
+ }
+]

@@ -334,8 +334,15 @@ fn finalize_rewrite_activated_effect_sentences(
         } else if is_standalone_x_definition_sentence(&tokens) {
             continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens)
-            || crate::grammar::abilities::parse_activate_only_timing_lexed(&tokens)
-                == Some(ActivationTiming::AnyTimeByEnchantedCreatureController)
+            || matches!(
+                crate::grammar::abilities::parse_activate_only_timing_lexed(&tokens),
+                Some(
+                    ActivationTiming::AnyTimeByEnchantedCreatureController
+                        | ActivationTiming::AnyTimeByOpponents
+                        | ActivationTiming::SorcerySpeedByOpponents
+                        | ActivationTiming::DeclareAttackersStepByAttackedPlayer
+                )
+            )
         {
             restrictions
                 .activation

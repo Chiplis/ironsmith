@@ -24,6 +24,9 @@ pub(super) struct GraveyardCastGroup {
     cast_this_way: bool,
     /// No exile rider follows the permission.
     permission_only: bool,
+    /// "Target opponent mills nine cards, then you may cast ..." (Sorcerous
+    /// Squall): the instruction before ", then", read as its own clause.
+    leading_effects: Vec<EffectAst>,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -58,6 +61,27 @@ pub(super) fn open(
             }
             _ => (crate::util::trim_commas(sentence.lowered()), false),
         };
+    let mut leading_effects = Vec::new();
+    let mut permission = permission;
+    if !when_result
+        && effect_grammar::parse_graveyard_cast_permission_shape(&permission).is_none()
+        && let Some(then) = (1..permission.len()).find(|&index| {
+            permission[index].is_word("then")
+                && crate::word_primitives::parse_sequence_prefix(
+                    &crate::lexer::token_word_refs(&permission[index + 1..]),
+                    &["you", "may", "cast"],
+                )
+        })
+    {
+        let rest = crate::util::trim_commas(&permission[then + 1..]);
+        if effect_grammar::parse_graveyard_cast_permission_shape(&rest).is_some()
+            && is_replacement_follow_up(next)
+        {
+            let leading = crate::util::trim_commas(&permission[..then]);
+            leading_effects = super::parse_effect_sentence_lexed(&leading)?;
+            permission = rest;
+        }
+    }
     let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };
@@ -91,6 +115,7 @@ pub(super) fn open(
         cast_this_way,
         replaced: permission_only,
         permission_only,
+        leading_effects,
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -136,12 +161,23 @@ pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
     } else {
         effects
     };
-    if group.when_result {
+    let effects = if group.when_result {
         vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: IfResultPredicate::Did,
             effects,
         })]
     } else {
         effects
-    }
+    };
+    let mut all = group.leading_effects;
+    all.extend(effects);
+    all
+}
+
+fn is_replacement_follow_up(next: Option<&SentenceInput>) -> bool {
+    next.is_some_and(|next| {
+        effect_grammar::is_graveyard_cast_replacement_sentence(&crate::util::trim_commas(
+            next.lowered(),
+        ))
+    })
 }

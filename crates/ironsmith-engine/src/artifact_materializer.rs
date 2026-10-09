@@ -151,6 +151,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ChooseNewTargetsEffect" => decode_as::<T, ironsmith_core::ChooseNewTargetsEffect>(effect),
         "ChooseObjectsEffect" => decode_as::<T, ironsmith_core::ChooseObjectsEffect>(effect),
         "ChoosePlayerEffect" => decode_as::<T, ironsmith_core::ChoosePlayerEffect>(effect),
+        "ChooseFriendsOrFoesEffect" => {
+            decode_as::<T, ironsmith_core::ChooseFriendsOrFoesEffect>(effect)
+        }
         "ChooseSpellCastHistoryEffect" => {
             decode_as::<T, ironsmith_core::ChooseSpellCastHistoryEffect>(effect)
         }
@@ -303,6 +306,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CollectManaPaymentsEffect" => {
             decode_as::<T, ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(effect)
         }
+        "BindXValueEffect" => {
+            decode_as::<T, ironsmith_core::BindXValueEffect<wire::WireEffect>>(effect)
+        }
         "ForPlayersEffect" => {
             decode_as::<T, ironsmith_core::ForPlayersEffect<wire::WireEffect>>(effect)
         }
@@ -400,8 +406,15 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "NinjutsuEffect" => decode_as::<T, ironsmith_core::NinjutsuEffect>(effect),
         "NoteLifeTotalEffect" => decode_as::<T, ironsmith_core::NoteLifeTotalEffect>(effect),
         "OpenAttractionEffect" => decode_as::<T, ironsmith_core::OpenAttractionEffect>(effect),
+        "RollToVisitAttractionsEffect" => {
+            decode_as::<T, ironsmith_core::RollToVisitAttractionsEffect>(effect)
+        }
         "PayAnyEnergyEffect" => decode_as::<T, ironsmith_core::PayAnyEnergyEffect>(effect),
         "PayAnyLifeEffect" => decode_as::<T, ironsmith_core::PayAnyLifeEffect>(effect),
+        "TagPlayersEffect" => decode_as::<T, ironsmith_core::TagPlayersEffect>(effect),
+        "KeepGreatestManaValuePlayersEffect" => {
+            decode_as::<T, ironsmith_core::KeepGreatestManaValuePlayersEffect>(effect)
+        }
         "PayEnergyEffect" => decode_as::<T, ironsmith_core::PayEnergyEffect>(effect),
         "PayLifeEffect" => decode_as::<T, ironsmith_core::PayLifeEffect>(effect),
         "PayManaEffect" => decode_as::<T, ironsmith_core::PayManaEffect>(effect),
@@ -430,6 +443,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ProliferateEffect" => decode_as::<T, ironsmith_core::ProliferateEffect>(effect),
         "PutCounterOfChosenKindEffect" => {
             decode_as::<T, ironsmith_core::PutCounterOfChosenKindEffect>(effect)
+        }
+        "PutCounterOfKindChosenFromEffect" => {
+            decode_as::<T, ironsmith_core::PutCounterOfKindChosenFromEffect>(effect)
         }
         "PutCountersEffect" => decode_as::<T, ironsmith_core::PutCountersEffect>(effect),
         "PutOntoBattlefieldEffect" => {
@@ -614,10 +630,23 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "SneakCostEffect" => decode_as::<T, ironsmith_core::SneakCostEffect>(effect),
         "SolveCaseEffect" => decode_as::<T, ironsmith_core::SolveCaseEffect>(effect),
         "SetClassLevelEffect" => decode_as::<T, ironsmith_core::SetClassLevelEffect>(effect),
+        "SetDayNightEffect" => decode_as::<T, ironsmith_core::SetDayNightEffect>(effect),
+        "ChoosePlayerOptionEffect" => {
+            decode_as::<T, ironsmith_core::ChoosePlayerOptionEffect>(effect)
+        }
+        "ControlVotesThisTurnEffect" => {
+            decode_as::<T, ironsmith_core::ControlVotesThisTurnEffect>(effect)
+        }
         "SoulbondPairEffect" => decode_as::<T, ironsmith_core::SoulbondPairEffect>(effect),
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
         "BecomePlottedEffect" => decode_as::<T, ironsmith_core::BecomePlottedEffect>(effect),
+        "GrantLoyaltyActivationAllowanceEffect" => {
+            decode_as::<T, ironsmith_core::GrantLoyaltyActivationAllowanceEffect>(effect)
+        }
+        "MustAttackPlayerThisTurnEffect" => {
+            decode_as::<T, ironsmith_core::MustAttackPlayerThisTurnEffect>(effect)
+        }
         "PrepareEffect" => decode_as::<T, ironsmith_core::PrepareEffect>(effect),
         "SuspectEffect" => decode_as::<T, ironsmith_core::SuspectEffect>(effect),
         "TagAttachedToSourceEffect" => {
@@ -651,6 +680,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "TicketCountersEffect" => decode_as::<T, ironsmith_core::TicketCountersEffect>(effect),
         "TransformEffect" => decode_as::<T, ironsmith_core::TransformEffect>(effect),
         "TurnFaceDownEffect" => decode_as::<T, ironsmith_core::TurnFaceDownEffect>(effect),
+        "ReselectAttackTargetEffect" => {
+            decode_as::<T, ironsmith_core::ReselectAttackTargetEffect>(effect)
+        }
         "TurnFaceUpEffect" => decode_as::<T, ironsmith_core::TurnFaceUpEffect>(effect),
         "UnattachObjectsEffect" => decode_as::<T, ironsmith_core::UnattachObjectsEffect>(effect),
         "UnearthEffect" => decode_as::<T, ironsmith_core::UnearthEffect>(effect),
@@ -903,6 +935,9 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             wire::WireRuntimeModification::RemoveThisAbility => {
                 crate::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            wire::WireRuntimeModification::RetainSourceColors => {
+                crate::effects::continuous::RuntimeModification::RetainSourceColors
+            }
             wire::WireRuntimeModification::SetAuraAttachmentFilter(filter) => {
                 crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)
             }
@@ -1128,6 +1163,9 @@ fn convert_derived_alternative_cast(
         }
         wire::WireDerivedAlternativeCast::ManaValueAsGenericFromHand => {
             crate::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
+        }
+        wire::WireDerivedAlternativeCast::MadnessFromCardManaCost => {
+            crate::grant::DerivedAlternativeCast::MadnessFromCardManaCost
         }
         wire::WireDerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
             crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
@@ -1484,6 +1522,8 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::NoteActivationManaTypeEffect,
             crate::effects::PayAnyEnergyEffect,
             crate::effects::PayAnyLifeEffect,
+            crate::effects::TagPlayersEffect,
+            crate::effects::KeepGreatestManaValuePlayersEffect,
             crate::effects::PayEnergyEffect,
             crate::effects::PayLifeEffect,
             crate::effects::PayManaEffect,
@@ -1530,6 +1570,10 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::SearchLibrarySlotsEffect,
             crate::effects::SetBasePowerToughnessEffect,
             crate::effects::SetClassLevelEffect,
+            crate::effects::SetDayNightEffect,
+            crate::effects::ChoosePlayerOptionEffect,
+            crate::effects::ControlVotesThisTurnEffect,
+            crate::effects::PutCounterOfKindChosenFromEffect,
             crate::effects::ShuffleLibraryEffect,
             crate::effects::ShuffleObjectsIntoLibraryEffect,
             crate::effects::SneakCostEffect,
@@ -1548,6 +1592,8 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TransformEffect,
             crate::effects::TurnFaceDownEffect,
             crate::effects::TurnFaceUpEffect,
+            crate::effects::ReselectAttackTargetEffect,
+            crate::effects::ChooseFriendsOrFoesEffect,
             crate::effects::UnattachObjectsEffect,
             crate::effects::UnearthEffect,
             crate::effects::UntapEffect,
@@ -1632,6 +1678,7 @@ pub fn encode_runtime_effect(
             until: payload.duration.clone(), damage_filter: payload.damage_filter.clone(),
             source_of_your_choice: payload.source_of_your_choice,
             protect_you_and_permanents_you_control: payload.protect_you_and_permanents_you_control,
+            divided: payload.divided,
             follow_up_effects: payload.follow_up_effects.iter().cloned()
                 .map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
         };
@@ -1691,6 +1738,15 @@ pub fn encode_runtime_effect(
         );
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::BindXValueEffect>() {
+        let converted = ironsmith_core::BindXValueEffect::new(
+            payload.value.clone(),
+            payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        );
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("BindXValueEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     if let Some(payload) = effect.downcast_ref::<crate::effects::SequenceEffect>() {

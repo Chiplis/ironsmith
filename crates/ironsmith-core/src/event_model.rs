@@ -88,6 +88,18 @@ pub enum KeywordActionKind {
     CumulativeUpkeepPaid,
     /// An accepted and completed echo payment, including a zero cost.
     EchoCostPaid,
+    /// A player mills N cards (CR 701.17). Proposed only so replacement
+    /// effects can modify the number milled ("they mill twice that many
+    /// cards instead"); milled cards are observed as card-milled events.
+    Mill,
+    /// A player draws N (two or more) cards through one instruction. Proposed
+    /// only so replacements can watch the whole instruction ("would draw two
+    /// or more cards"); each card is still drawn as its own event (CR 121.2).
+    DrawCards,
+    /// A player copies a spell N times through one instruction (CR 707.10).
+    /// Proposed only so replacements can change the number of copies
+    /// ("copy it that many times plus an additional time").
+    CopySpell,
 }
 
 impl KeywordActionKind {
@@ -247,6 +259,9 @@ impl KeywordActionKind {
             Self::TakeInitiative => "take the initiative",
             Self::Mentor => "mentor",
             Self::BecomeSaddled => "become saddled",
+            Self::Mill => "mill cards",
+            Self::DrawCards => "draw cards",
+            Self::CopySpell => "copy a spell",
         }
     }
 
@@ -323,6 +338,9 @@ impl KeywordActionKind {
             Self::TakeInitiative => "takes the initiative",
             Self::Mentor => "mentors",
             Self::BecomeSaddled => "becomes saddled",
+            Self::Mill => "mills cards",
+            Self::DrawCards => "draws cards",
+            Self::CopySpell => "copies a spell",
         }
     }
 }

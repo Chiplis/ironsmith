@@ -23,8 +23,10 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceRef
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
+mod base_toughness;
 mod grants;
 
+pub use base_toughness::*;
 pub use grants::*;
 
 #[cfg(test)]
@@ -41,6 +43,7 @@ fn attached_subject(filter: &ObjectFilter) -> Option<String> {
         match constraint.tag.as_str() {
             "enchanted" => Some("enchanted"),
             "equipped" => Some("equipped"),
+            "fortified" => Some("fortified"),
             _ => None,
         }
     })?;
@@ -66,7 +69,7 @@ fn filter_for_attached_subject_match(filter: &ObjectFilter) -> ObjectFilter {
     if attached_subject(filter).is_some() {
         stripped.tagged_constraints.retain(|constraint| {
             constraint.relation != TaggedOpbjectRelation::IsTaggedObject
-                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         });
     }
     stripped
@@ -387,7 +390,7 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
                     .iter()
                     .position(|constraint| {
                         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                            && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                     })
                 else {
                     attachments.clear();
@@ -441,7 +444,7 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         && let Some(attachment) = filter.tagged_constraints.iter().find_map(|constraint| {
             (constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
                 .then_some(constraint.tag.as_str())
-                .filter(|tag| matches!(*tag, "enchanted" | "equipped"))
+                .filter(|tag| matches!(*tag, "enchanted" | "equipped" | "fortified"))
         })
     {
         let without_article = strip_plural_subject_article(&subject);
@@ -1342,6 +1345,10 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             format!("{} attached to it", strip_article(filter.description()))
         }
         AnthemCountExpression::ColorsOfAffected => "color it has".to_string(),
+        AnthemCountExpression::PlayersLostGame => "player who has lost the game".to_string(),
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
+            format!("{} mana symbol in its mana cost", color.name())
+        }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             "time it has attacked this turn".to_string()
         }
@@ -1564,6 +1571,13 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             strip_article(filter.description())
         )),
         AnthemCountExpression::ColorsOfAffected => Some("of its colors".to_string()),
+        AnthemCountExpression::PlayersLostGame => {
+            Some("player who has lost the game".to_string())
+        }
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => Some(format!(
+            "{} mana symbol in its mana cost",
+            color.name()
+        )),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
@@ -2650,7 +2664,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 let subject = match player {
                     crate::target::PlayerFilter::ControllerOf(
                         crate::filter::ObjectRef::Tagged(tag),
-                    ) if matches!(tag.as_str(), "enchanted" | "equipped") => "its controller",
+                    ) if matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") => "its controller",
                     _ => describe_static_player(player),
                 };
                 return format!("as long as {subject} has {comparison} cards in their graveyard");
@@ -2799,10 +2813,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::OpponentOf(_)
+            | crate::target::PlayerFilter::PlayerToLeftOf(_)
             | crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
+            crate::target::PlayerFilter::CastCardTypeThisTurn(_)
+            | crate::target::PlayerFilter::TurnHistory(_) => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::AttackedBySourceThisTurn => {
@@ -3301,6 +3317,25 @@ pub(crate) fn resolve_anthem_count_expression(
             .calculated_characteristics(source)
             .map(|chars| chars.colors.count() as i32)
             .unwrap_or(0),
+        // CR 104.3 / 800.4: a player who lost has left the game but stays in
+        // the player list.
+        AnthemCountExpression::PlayersLostGame => {
+            game.players.iter().filter(|player| player.has_lost).count() as i32
+        }
+        // Chroma (CR 702.49): mana symbols of that color in the affected
+        // object's mana cost; a hybrid symbol of that color counts.
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
+            let symbol = crate::mana::ManaSymbol::from_color(*color);
+            game.object(source)
+                .and_then(|object| object.mana_cost.as_deref())
+                .map(|cost| {
+                    cost.pips()
+                        .iter()
+                        .filter(|pip| pip.contains(&symbol))
+                        .count() as i32
+                })
+                .unwrap_or(0)
+        }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             game.creature_attack_count_this_turn(source) as i32
         }

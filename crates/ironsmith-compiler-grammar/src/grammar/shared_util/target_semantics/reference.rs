@@ -264,6 +264,18 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         crate::recognition::ParseOutcome::Error(diagnostic) => {
             return Err(diagnostic.into_card_text_error());
         }
+        // A caller that already consumed the article/count ("put two loyalty
+        // counters on a planeswalker you control" hands over only
+        // "planeswalker you control") leaves a bare singular object noun.
+        // `creature`/`permanent`/`card` already commit the head; every other
+        // card-type, supertype, or subtype noun heads the same non-targeted
+        // object selection, so parse it through the same prefix grammar.
+        crate::recognition::ParseOutcome::NoMatch
+            if bare_singular_object_noun_head(tokens)
+                && parse_object_filter(tokens, false).is_ok() =>
+        {
+            leaf::parse_leaf_target_head_tokens(tokens)?
+        }
         crate::recognition::ParseOutcome::NoMatch => {
             return Err(CardTextError::ParseError(format!(
                 "unrecognized target or selection phrase '{}'",
@@ -486,6 +498,49 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::lost_life_this_turn(PlayerFilter::Any),
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
+    // "target player dealt damage by this creature this turn" (Wicked Akuba):
+    // this exact source dealt that player positive damage this turn.
+    if let Some(source_words) = remaining_words
+        .strip_prefix(&["player", "dealt", "damage", "by"][..])
+        .or_else(|| {
+            remaining_words.strip_prefix(&["player", "who", "was", "dealt", "damage", "by"][..])
+        })
+        .and_then(|rest| rest.strip_suffix(&["this", "turn"][..]))
+        && crate::util::is_source_reference_words(source_words)
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::was_dealt_damage_by_source_this_turn(PlayerFilter::Any),
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
+    // "target opponent previously dealt damage by it" (Diseased Vermin): a
+    // player this object has dealt damage to earlier this game, object-
+    // instance relative (CR 400.7).
+    if let [noun @ ("opponent" | "player"), "previously", "dealt", "damage", "by", source_words @ ..] =
+        remaining_words.as_slice()
+        && (source_words == ["it"] || crate::util::is_source_reference_words(source_words))
+    {
+        let base = if *noun == "opponent" {
+            PlayerFilter::Opponent
+        } else {
+            PlayerFilter::Any
+        };
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::WasDealtDamageBySourceThisGame {
+                    base: Box::new(base),
+                    this_turn: false,
+                },
                 target_span,
             ),
             target_count,
@@ -1093,6 +1148,27 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
 
     let mixed_object_player_target =
         matches_surface(&remaining_words, MIXED_PLAYER_PLANESWALKER_TOKEN_PATTERN);
+    // "target creature token, player, or planeswalker" (Coalborn Entity): one
+    // target drawn from three domains. The object arm is the union of
+    // creature tokens and planeswalkers on the battlefield.
+    if mixed_object_player_target
+        && primitives::parse_word_sequence_complete(
+            &remaining_words,
+            &["creature", "token", "player", "or", "planeswalker"],
+        )
+        .is_some()
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.any_of = vec![
+            ObjectFilter::creature().token(),
+            ObjectFilter::default().with_type(CardType::Planeswalker),
+        ];
+        filter.other = other;
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, target_span),
+            target_count,
+        ));
+    }
     if mixed_object_player_target {
         return Err(CardTextError::ParseError(format!(
             "unsupported creature-token/player/planeswalker target phrase (clause: '{}')",
@@ -1193,8 +1269,9 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     filter.target_set_same_controller = target_set_same_controller;
     filter.target_set_different_controllers = target_set_different_controllers;
     filter.target_set_shared_creature_type = target_set_shared_creature_type;
-    filter.target_set_aggregate_constraint =
-        lift_total_mana_value_choice_constraint(remaining, &mut filter).map(Box::new);
+    if let Some(constraint) = lift_total_mana_value_choice_constraint(remaining, &mut filter) {
+        filter.target_set_aggregate_constraint = Some(Box::new(constraint));
+    }
     if filter.with_counter.is_none()
         && remaining_words
             .first()
@@ -1312,4 +1389,22 @@ pub(crate) fn attachment_state_as_attached_object(filter: &mut ObjectFilter) {
     for branch in &mut filter.any_of {
         attachment_state_as_attached_object(branch);
     }
+}
+
+/// A singular object noun with no article, count, or `target` marker, whose
+/// head word is a card type, supertype, subtype, or the commander
+/// designation ("planeswalker you control", "Snail you control",
+/// "commander creature you control"). Plural heads are already admitted by
+/// the bare-plural fallback above.
+fn bare_singular_object_noun_head(tokens: &[OwnedLexToken]) -> bool {
+    let Some(word) = tokens.first().map(OwnedLexToken::parser_text) else {
+        return false;
+    };
+    if crate::word_primitives::strip_word_suffix(word, "s").is_some() {
+        return false;
+    }
+    word == "commander"
+        || crate::util::parse_card_type(word).is_some()
+        || crate::util::parse_supertype_word(word).is_some()
+        || parse_subtype_flexible(word).is_some()
 }

@@ -361,6 +361,24 @@ impl GameState {
         self.battlefield_flags.monstrous.contains(&id)
     }
 
+    /// Whether this permanent has dealt damage since it entered.
+    pub fn has_dealt_damage_since_entered(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.dealt_damage_since_entered.contains(&id)
+    }
+
+    /// Record that a battlefield permanent dealt (unprevented) damage.
+    pub fn mark_dealt_damage_since_entered(&mut self, id: ObjectId) {
+        if !self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            return;
+        }
+        if self.battlefield_flags_mut().dealt_damage_since_entered.insert(id) {
+            self.mark_source_designation_changed(id, Self::condition_reads_damage_dealt_state);
+        }
+    }
+
     /// Mark a creature as monstrous.
     pub fn set_monstrous(&mut self, id: ObjectId) {
         if self.battlefield_flags_mut().monstrous.insert(id) {
@@ -1936,6 +1954,7 @@ impl GameState {
             flags.damage_marked.remove(&id);
             flags.battle_protectors.remove(&id);
             flags.monstrous.remove(&id);
+            flags.dealt_damage_since_entered.remove(&id);
             flags.suspected.remove(&id);
             flags.dealt_deathtouch_damage_since_sba.remove(&id);
             flags.regeneration_shields.remove(&id);
@@ -1970,6 +1989,7 @@ impl GameState {
         {
             let choices = self.choice_store_mut();
             choices.chosen_colors.remove(&id);
+            choices.chosen_color_sets.remove(&id);
             choices.chosen_basic_land_types.remove(&id);
             choices.chosen_land_types.remove(&id);
             choices.chosen_creature_types.remove(&id);
@@ -1977,6 +1997,7 @@ impl GameState {
             choices.chosen_creature_type_sets.remove(&id);
             choices.chosen_card_types.remove(&id);
             choices.chosen_players.remove(&id);
+            choices.chosen_player_sets.remove(&id);
             choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
             choices
@@ -2377,6 +2398,27 @@ impl GameState {
         self.choice_store.chosen_colors.get(&permanent_id).copied()
     }
 
+    /// Record several chosen colors for a permanent ("choose two colors").
+    pub fn set_chosen_colors(&mut self, permanent_id: ObjectId, colors: crate::color::ColorSet) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_color_sets
+            .insert(permanent_id, colors);
+    }
+
+    /// Every color chosen for a permanent: a multi-color choice, or the single
+    /// chosen color as a one-color set.
+    pub fn chosen_colors(&self, permanent_id: ObjectId) -> Option<crate::color::ColorSet> {
+        let set = self.choice_store.chosen_color_sets.get(&permanent_id).copied();
+        let single = self
+            .chosen_color(permanent_id)
+            .map(crate::color::ColorSet::from_color);
+        match (set, single) {
+            (Some(set), Some(single)) => Some(set.union(single)),
+            (set, single) => set.or(single),
+        }
+    }
+
     // === Chosen basic land type helpers ===
 
     /// Record a chosen basic land type for a permanent.
@@ -2521,6 +2563,23 @@ impl GameState {
     /// Get a chosen player for a permanent, if any.
     pub fn chosen_player(&self, permanent_id: ObjectId) -> Option<PlayerId> {
         self.choice_store.chosen_players.get(&permanent_id).copied()
+    }
+
+    /// Record several chosen players for a permanent ("choose two players").
+    pub fn set_chosen_players(&mut self, permanent_id: ObjectId, players: Vec<PlayerId>) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_player_sets
+            .insert(permanent_id, players);
+    }
+
+    /// Every player chosen by a permanent: a multi-player choice, else the
+    /// single chosen player.
+    pub fn chosen_players(&self, permanent_id: ObjectId) -> Vec<PlayerId> {
+        if let Some(players) = self.choice_store.chosen_player_sets.get(&permanent_id) {
+            return players.clone();
+        }
+        self.chosen_player(permanent_id).into_iter().collect()
     }
 
     // === Chosen object helpers ===

@@ -1289,13 +1289,13 @@ fn parse_verb_leading_line_keeps_all_typed_effects() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_choose_leading_line_does_not_fallback_to_static_clause() {
+    // The copy-exception keywords are owned (p12); the line now compiles to
+    // a target declaration plus token copies, never a partial static.
     let result = CardDefinitionBuilder::new(CardId::new(), "Rebuild City Variant").parse_text(
             "Choose target land. Create three tokens that are copies of it, except they're 3/3 creatures in addition to their other types and they have vigilance and menace.",
         );
-    assert!(
-        result.is_err(),
-        "unsupported choose-leading spell text should fail parse instead of falling back to a partial static ability"
-    );
+    let debug = format!("{:?}", result.expect("choose-leading copy line should parse"));
+    assert!(debug.contains("CreateTokenCopy"), "expected token copies, got {debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

@@ -96,7 +96,19 @@ pub fn parse_copular_animation_shape(
         }
         (tokens.get(..copula)?, animation_tokens)
     };
-    let animation_body = leaf::parse_leaf_leading_indefinite_article_tokens(animation_tokens).rest;
+    // "Each of those lands is an 8/8 green Elemental creature for as long as
+    // it has an awakening counter on it" (Liege of the Tangle): a trailing
+    // counter-linked duration (CR 611.2b) bounds the animation, so the
+    // descriptor checks see only the body before it. The become reader owns
+    // the duration itself.
+    let (descriptor_tokens, counter_linked_duration) =
+        match crate::grammar::effects::parse_affected_object_counter_duration_suffix(
+            animation_tokens,
+        ) {
+            Some((_, body)) => (body, true),
+            None => (animation_tokens, false),
+        };
+    let animation_body = leaf::parse_leaf_leading_indefinite_article_tokens(descriptor_tokens).rest;
     let descriptor_words = parser_token_word_refs(animation_body);
     let omitted_creature_subtype_animation =
         become_shapes::parse_become_leading_pt_shape(&descriptor_words, animation_body)
@@ -108,6 +120,14 @@ pub fn parse_copular_animation_shape(
                     become_shapes::strip_become_addition_tail_words(
                         &descriptor_words[shape.value_word_count..],
                     );
+                // "Each of them is a 1/1 Spirit with flying in addition to
+                // its other types" (Storm of Souls): the granted keywords
+                // follow the subtype; the become reader owns that suffix.
+                let descriptor = descriptor
+                    .iter()
+                    .position(|word| *word == "with")
+                    .filter(|index| *index > 0)
+                    .map_or(descriptor, |index| &descriptor[..index]);
                 preserves_other_types
                     && become_shapes::parse_become_creature_descriptor_words(descriptor).is_some()
             });
@@ -120,15 +140,16 @@ pub fn parse_copular_animation_shape(
         })
         .is_some_and(|(power, toughness)| {
             matches!((power, toughness), (Value::Fixed(_), Value::Fixed(_)))
-                && (primitives::find_prefix(animation_tokens, || {
+                && (primitives::find_prefix(descriptor_tokens, || {
                     alt((primitives::kw("creature"), primitives::kw("creatures")))
                 })
                 .is_some()
                     || omitted_creature_subtype_animation)
-                && primitives::find_prefix(animation_tokens, || {
-                    primitives::phrase(&["in", "addition", "to"])
-                })
-                .is_some()
+                && (counter_linked_duration
+                    || primitives::find_prefix(descriptor_tokens, || {
+                        primitives::phrase(&["in", "addition", "to"])
+                    })
+                    .is_some())
         });
     let simple_descriptor = !matches!(
         become_shapes::parse_become_simple_descriptor_words(&descriptor_words),
@@ -146,6 +167,92 @@ pub fn parse_copular_animation_shape(
         subject_tokens,
         animation_tokens: trim_lexed_commas(animation_tokens),
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopularPredicatePairShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub first_tokens: &'a [OwnedLexToken],
+    pub second_tokens: &'a [OwnedLexToken],
+}
+
+/// "That creature is black and is a Nightmare in addition to its other
+/// creature types.": one subject, two copular predicates joined by
+/// "and is" / "and are" with the same copula.
+pub fn parse_copular_predicate_pair_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CopularPredicatePairShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (copula, copula_word, after_copula) = primitives::find_prefix(tokens, || {
+        alt((
+            primitives::kw("is").value("is"),
+            primitives::kw("are").value("are"),
+        ))
+    })?;
+    if copula == 0 {
+        return None;
+    }
+    let (second_copula, (), second_tokens) = primitives::find_prefix(after_copula, || {
+        (
+            opt(primitives::comma()),
+            primitives::kw("and"),
+            primitives::kw(copula_word),
+        )
+            .void()
+    })?;
+    let first_tokens = trim_lexed_commas(after_copula.get(..second_copula)?);
+    let second_tokens = trim_lexed_commas(second_tokens);
+    if first_tokens.is_empty() || second_tokens.is_empty() {
+        return None;
+    }
+    Some(CopularPredicatePairShape {
+        subject_tokens: trim_lexed_commas(&tokens[..copula]),
+        first_tokens,
+        second_tokens,
+    })
+}
+
+/// "It's a Forest land." / "He's a Spirit in addition to his other types." /
+/// "They're black Zombies in addition to their other colors and types.":
+/// split a contracted pronoun copula into the pronoun subject the become
+/// grammar reads ("it" / "they") and the descriptor. A gendered possessive
+/// ("his"/"her" other types) names the same object as the subject and is
+/// read as "its". "It's still a ..." restates retained types and belongs to
+/// the preceding animation, so it is not a copula here.
+pub fn parse_contracted_pronoun_copula_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let tokens = trim_lexed_commas(tokens);
+    let (head, rest) = tokens.split_first()?;
+    let subject = if head.is_any_word(&["it's", "it’s", "he's", "he’s", "she's", "she’s"]) {
+        "it"
+    } else if head.is_any_word(&["they're", "they’re"]) {
+        "they"
+    } else {
+        return None;
+    };
+    let rest = trim_lexed_commas(rest);
+    if rest.is_empty()
+        || rest
+            .first()
+            .is_some_and(|token| token.is_any_word(&["still", "no", "not"]))
+    {
+        return None;
+    }
+    let animation = rest
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            let gendered_possessive = token.is_any_word(&["his", "her"])
+                && rest.get(index + 1).is_some_and(|next| next.is_word("other"));
+            if gendered_possessive {
+                OwnedLexToken::synthetic_word("its")
+            } else {
+                token.clone()
+            }
+        })
+        .collect();
+    Some((vec![OwnedLexToken::synthetic_word(subject)], animation))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

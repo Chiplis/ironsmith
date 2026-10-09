@@ -32,6 +32,20 @@ pub fn parse_discard(
         ));
     }
 
+    // "discard cards equal to that creature's toughness" / "... equal to the
+    // damage": the same dynamic count grammar as "draw cards equal to ...".
+    if tokens.first().is_some_and(|token| token.is_word("cards"))
+        && tokens.get(1).is_some_and(|token| token.is_word("equal"))
+        && let Some(count) =
+            crate::effect_sentences::verb_handlers::parse_draw_card_prefixed_count_value(
+                &tokens[1..],
+            )?
+    {
+        return Ok(EffectAst::subject_verb_discard(
+            player, count, false, false, None, None,
+        ));
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let clause_shape = sacrifice_discard_grammar::parse_discard_clause_shape(tokens).map_err(
         |error| match error {
@@ -236,7 +250,21 @@ pub fn parse_discard(
     }
     let trailing_shape = sacrifice_discard_grammar::parse_discard_trailing_shape(trailing_tokens);
     let random = trailing_shape == sacrifice_discard_grammar::DiscardTrailingShape::Random;
-    if trailing_shape != sacrifice_discard_grammar::DiscardTrailingShape::Empty && !random {
+    if trailing_shape == sacrifice_discard_grammar::DiscardTrailingShape::ChosenCreatureType {
+        // "discards all creature cards of that type" (Tsabo's Decree): the
+        // chosen creature type further restricts the card qualifier; it
+        // never replaces it.
+        let mut filter = discard_filter.take().unwrap_or_default();
+        filter.chosen_creature_type = true;
+        filter.zone = Some(Zone::Hand);
+        if uses_all_count
+            && let Some(owner) = discard_subject_owner_filter(subject)
+            && filter.owner.is_none()
+        {
+            filter.owner = Some(owner);
+        }
+        discard_filter = Some(filter);
+    } else if trailing_shape != sacrifice_discard_grammar::DiscardTrailingShape::Empty && !random {
         let additional_cost_colors =
             sacrifice_discard_grammar::parse_additional_cost_object_colors_surface(trailing_tokens);
         let trailing_filter = if let Some(surface) = additional_cost_colors {
@@ -247,7 +275,27 @@ pub fn parse_discard(
             filter.set_additional_cost_object_surface(Some(surface));
             Some(filter)
         } else if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
-            Some(filter)
+            // "discards all nonland cards with mana value equal to the
+            // number" (Void): the trailing relation qualifies the card
+            // phrase. Read the complete phrase so the leading qualifier
+            // ("nonland") is not replaced by the trailing filter.
+            if discard_filter.is_some() {
+                let phrase_start = tokens.len().checked_sub(
+                    cards_shape.qualifier_tokens.len() + 1 + cards_shape.trailing_tokens.len(),
+                );
+                let combined = phrase_start
+                    .and_then(|start| parse_object_filter(&tokens[start..], false).ok())
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported qualified trailing discard clause (clause: '{}')",
+                            clause_words.join(" ")
+                        ))
+                    })?;
+                discard_filter = None;
+                Some(combined)
+            } else {
+                Some(filter)
+            }
         } else {
             match trailing_shape {
                 sacrifice_discard_grammar::DiscardTrailingShape::ChosenName => {

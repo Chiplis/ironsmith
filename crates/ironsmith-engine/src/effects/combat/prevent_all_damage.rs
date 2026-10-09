@@ -113,6 +113,11 @@ impl ExecuteBoundPrevention for PreventAllDamageEffect {
             match selection {
                 SourceChoiceSelection::Chosen(source) => {
                     damage_filter.from_specific_source = Some(source);
+                    // CR 609.7a: the descriptor ("a red source of your
+                    // choice") only limits the choice made on resolution; the
+                    // shield then follows that object even if its
+                    // characteristics change afterwards.
+                    damage_filter.from_source = None;
                 }
                 SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
                 SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
@@ -131,7 +136,9 @@ impl ExecuteBoundPrevention for PreventAllDamageEffect {
         for source in sources {
             let mut filter = damage_filter.clone();
             filter.from_specific_source = source;
-            register_prevention_shield(
+            // A following "whenever damage is prevented this way" delayed
+            // trigger links to this shield (CR 603.7, 615.5).
+            ctx.last_prevention_shield = Some(register_prevention_shield(
                 game,
                 ctx,
                 protected.clone(),
@@ -141,7 +148,7 @@ impl ExecuteBoundPrevention for PreventAllDamageEffect {
                 self.follow_up_effects.clone(),
                 ctx.targets.clone(),
                 ctx.target_assignments.clone(),
-            );
+            ));
             if self.protect_source_target {
                 let source = source.ok_or_else(|| {
                     ExecutionError::UnresolvableValue(

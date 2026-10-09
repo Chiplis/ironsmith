@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Liege of the Tangle",
+    "oracle_id": "a85b845c-a196-43db-b740-6ce191345097",
+    "mana_cost": "{6}{G}{G}",
+    "type_line": "Creature — Elemental",
+    "oracle_text": "Trample\nWhenever this creature deals combat damage to a player, you may choose any number of target lands you control and put an awakening counter on each of them. Each of those lands is an 8/8 green Elemental creature for as long as it has an awakening counter on it. They're still lands.",
+    "power": "8",
+    "toughness": "8",
+    "text": "Mana cost: {6}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 8/8\nTrample\nWhenever this creature deals combat damage to a player, you may choose any number of target lands you control and put an awakening counter on each of them. Each of those lands is an 8/8 green Elemental creature for as long as it has an awakening counter on it. They're still lands."
+  },
+  {
+    "name": "Minas Morgul, Dark Fortress",
+    "oracle_id": "867dbd5a-c3cf-41ce-980b-c9babc6f30f2",
+    "mana_cost": "",
+    "type_line": "Legendary Land",
+    "oracle_text": "Minas Morgul enters tapped.\n{T}: Add {B}.\n{3}{B}, {T}: Put a shadow counter on target creature. For as long as that creature has a shadow counter on it, it's a Wraith in addition to its other types.",
+    "text": "Mana cost: \nType: Legendary Land\nMinas Morgul enters tapped.\n{T}: Add {B}.\n{3}{B}, {T}: Put a shadow counter on target creature. For as long as that creature has a shadow counter on it, it's a Wraith in addition to its other types."
+  },
+  {
+    "name": "Ultima, Origin of Oblivion",
+    "oracle_id": "baa337ce-edc6-4ee5-a898-68e9dbb4ab93",
+    "mana_cost": "{5}",
+    "type_line": "Legendary Creature — God",
+    "oracle_text": "Flying\nWhenever Ultima attacks, put a blight counter on target land. For as long as that land has a blight counter on it, it loses all land types and abilities and has \"{T}: Add {C}.\"\nWhenever you tap a land for {C}, add an additional {C}.",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {5}\nType: Legendary Creature — God\nPower/Toughness: 4/4\nFlying\nWhenever Ultima attacks, put a blight counter on target land. For as long as that land has a blight counter on it, it loses all land types and abilities and has \"{T}: Add {C}.\"\nWhenever you tap a land for {C}, add an additional {C}."
+  }
+]

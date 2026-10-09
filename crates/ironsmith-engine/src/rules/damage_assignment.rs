@@ -190,6 +190,11 @@ pub(crate) fn commit_prepared_damage_original_with_outputs(
             completion_frozen: false,
         });
     }
+    // The damage is being dealt (prevention already happened during
+    // preparation): its source permanent now has a damage history.
+    if prepared.amount > 0 {
+        game.mark_dealt_damage_since_entered(ctx.source);
+    }
     let mut consequences = Vec::new();
     for removal in prepared.removals {
         let receipt =

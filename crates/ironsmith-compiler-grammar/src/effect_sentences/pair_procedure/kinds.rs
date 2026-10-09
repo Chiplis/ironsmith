@@ -71,6 +71,21 @@ pub(super) fn open_flashback_grant(
         };
         return Ok(Some(Pair::FlashbackGrant(effect)));
     }
+    if let Some(shape) =
+        sequence_grammar::parse_escape_grant_shape(sentence.lowered(), next.lowered())
+    {
+        let grantable = crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::escape_from_cards_mana_cost(
+                shape.exile_count,
+            ),
+        );
+        let effect = EffectAst::subject_verb_grant_to_target(
+            crate::effect_sentences::parse_target_phrase(shape.target_tokens)?,
+            grantable,
+            crate::grant::GrantDuration::UntilEndOfTurn,
+        );
+        return Ok(Some(Pair::FlashbackGrant(effect)));
+    }
     Ok(None)
 }
 

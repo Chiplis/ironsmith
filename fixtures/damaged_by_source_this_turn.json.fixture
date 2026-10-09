@@ -1,0 +1,8 @@
+[
+ {
+  "name": "Wicked Akuba",
+  "oracle_id": "1cc00abb-b130-48a2-95f9-f1f986cd75d4",
+  "oracle_text": "{B}: Target player dealt damage by this creature this turn loses 1 life.",
+  "text": "Mana cost: {B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\n{B}: Target player dealt damage by this creature this turn loses 1 life."
+ }
+]

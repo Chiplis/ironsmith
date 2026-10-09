@@ -179,6 +179,7 @@ fn encode_runtime_modification(modification: RuntimeModification)
         RuntimeModification::ModifyPowerToughness { power, toughness } => W::ModifyPowerToughness { power, toughness },
         RuntimeModification::RemoveAllAbilities => W::RemoveAllAbilities,
         RuntimeModification::RemoveThisAbility => W::RemoveThisAbility,
+        RuntimeModification::RetainSourceColors => W::RetainSourceColors,
         RuntimeModification::SetAuraAttachmentFilter(filter) => W::SetAuraAttachmentFilter(filter),
         RuntimeModification::ModifyPower { .. } | RuntimeModification::ModifyToughness { .. } => {
             return Err(unsupported("single-axis runtime P/T modification has no exact compiled variant"));

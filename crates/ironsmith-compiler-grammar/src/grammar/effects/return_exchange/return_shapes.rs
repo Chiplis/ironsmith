@@ -13,6 +13,9 @@ pub enum ReturnZoneShape {
     Hand,
     Battlefield,
     Graveyard,
+    /// "to the command zone" (CR 408): commanders and other objects whose
+    /// owner may keep them there.
+    Command,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +50,8 @@ pub struct ReturnDestinationShape {
     pub has_unparsed_timing_words: bool,
     pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
     pub excluded_subtypes: Vec<Subtype>,
+    /// "except for Giants, Wizards, and lands": excluded card types.
+    pub excluded_card_types: Vec<crate::types::CardType>,
     /// Counters the returned object enters with, as authored after `with`.
     pub entry_counter_tokens: Option<Vec<OwnedLexToken>>,
 }
@@ -116,6 +121,7 @@ fn zone_word<'a>(input: &mut LexStream<'a>) -> WResult<ReturnZoneShape> {
         primitives::kw("battlefield").value(ReturnZoneShape::Battlefield),
         alt((primitives::kw("graveyard"), primitives::kw("graveyards")))
             .value(ReturnZoneShape::Graveyard),
+        primitives::phrase(&["command", "zone"]).value(ReturnZoneShape::Command),
     ))
     .parse_next(input)
 }
@@ -168,7 +174,11 @@ fn first_word_offset(tokens: &[OwnedLexToken], expected: &'static str) -> Option
     taken.len().checked_sub(1)
 }
 
-fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<usize> {
+/// The end of the returned-object phrase and the start of the destination
+/// phrase. Usually both sit around the last "to <zone>"; a return that names
+/// only "under <player>'s control" (Meathook Massacre II) starts its
+/// destination at "under".
+fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     let mut idx = tokens.len();
     while idx > 0 {
         idx -= 1;
@@ -176,10 +186,32 @@ fn last_destination_split(tokens: &[OwnedLexToken]) -> Option<usize> {
             continue;
         }
         if first_zone(tokens.get(idx + 1..)?).is_some() {
-            return Some(idx);
+            return Some((idx, idx + 1));
         }
     }
-    None
+    let under = controller_only_destination_start(tokens)?;
+    Some((under, under))
+}
+
+/// "return that card under your control with a finality counter on it": no
+/// "to"/"onto" and no zone word, but a controller phrase. Only a permanent
+/// has a controller (CR 108.4), so this destination is the battlefield.
+fn controller_only_destination_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    if tokens
+        .iter()
+        .any(|token| token_is(token, "to") || token_is(token, "onto"))
+        || first_zone(tokens).is_some()
+    {
+        return None;
+    }
+    let (start, _, _) = crate::grammar::primitives::find_prefix(tokens, || {
+        (
+            primitives::kw("under"),
+            repeat_till::<_, _, (), _, _, _, _>(0..4, any.void(), primitives::kw("control")),
+        )
+            .void()
+    })?;
+    (start > 0).then_some(start)
 }
 
 fn remove_at_random(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
@@ -303,6 +335,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
             (without_attachment, None)
         };
     let mut excluded_subtypes = Vec::new();
+    let mut excluded_card_types = Vec::new();
     for token in exception_tokens.unwrap_or_default() {
         if token_is(token, "and") || token_is(token, "or") {
             continue;
@@ -310,18 +343,34 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         let Some(word) = token.as_word() else {
             continue;
         };
-        let subtype = parse_subtype_flexible(word)?;
-        if excluded_subtypes
-            .iter()
-            .all(|existing| existing != &subtype)
-        {
-            excluded_subtypes.push(subtype);
+        if let Some(subtype) = parse_subtype_flexible(word) {
+            if excluded_subtypes
+                .iter()
+                .all(|existing| existing != &subtype)
+            {
+                excluded_subtypes.push(subtype);
+            }
+            continue;
+        }
+        let card_type = crate::util::parse_card_type(word).or_else(|| {
+            crate::word_primitives::strip_word_suffix(word, "s")
+                .and_then(crate::util::parse_card_type)
+        })?;
+        if !excluded_card_types.contains(&card_type) {
+            excluded_card_types.push(card_type);
         }
     }
-    if exception_tokens.is_some() && excluded_subtypes.is_empty() {
+    if exception_tokens.is_some() && excluded_subtypes.is_empty() && excluded_card_types.is_empty() {
         return None;
     }
-    let (_, zone) = first_zone(destination_head)?;
+    let zone = match first_zone(destination_head) {
+        Some((_, zone)) => zone,
+        // Controller-only destination (see `controller_only_destination_start`).
+        None if primitives::parse_prefix(destination_head, primitives::kw("under")).is_some() => {
+            ReturnZoneShape::Battlefield
+        }
+        None => return None,
+    };
     let destination_player_surface = if marker_anywhere(
         destination_head,
         alt((
@@ -417,6 +466,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         has_unparsed_timing_words,
         attached_to_tokens,
         excluded_subtypes,
+        excluded_card_types,
         entry_counter_tokens,
     })
 }

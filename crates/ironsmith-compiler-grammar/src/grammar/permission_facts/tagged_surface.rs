@@ -19,6 +19,9 @@ pub enum PermissionActor {
     AnyPlayer,
     ItsOwner,
     Implicit,
+    /// "that creature's controller": in a triggered ability, the controller
+    /// of the creature that caused the event (the trigger's event source).
+    TriggeringCreatureController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -452,6 +455,8 @@ fn parse_permission_lead_lexed<'a>(
                 primitives::kw("you").value(PermissionActor::You),
                 primitives::phrase(&["any", "player"]).value(PermissionActor::AnyPlayer),
                 primitives::phrase(&["its", "owner"]).value(PermissionActor::ItsOwner),
+                primitives::phrase(&["that", "creature's", "controller"])
+                    .value(PermissionActor::TriggeringCreatureController),
             )),
             primitives::kw("may"),
             parse_permission_verb_lexed,
@@ -479,6 +484,19 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        // "You may play lands and cast spells from among cards exiled this
+        // way without paying their mana costs." (Gix, Magus of the Mind):
+        // to play a card is to play a land or cast a spell (CR 305.1, 601.1), so
+        // the permission covers exactly those exiled cards.
+        primitives::phrase(&[
+            "lands", "and", "cast", "spells", "from", "among", "cards", "exiled", "this", "way",
+        ])
+        .value((
+            TaggedPermissionReference::LastTagged,
+            false,
+            TaggedPermissionTargetSurface::ThoseCards,
+            None,
+        )),
         primitives::any_phrase(&[
             &["lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards"],
             &["lands", "and", "cast", "spells", "from", "among", "those", "cards"],
@@ -494,6 +512,25 @@ fn parse_tagged_permission_target_lexed<'a>(
             TaggedPermissionTargetSurface::ThisCard,
             None,
         )),
+        // "you may play a card exiled with Raphael": one play shared by the
+        // source-linked exile pool.
+        (
+            primitives::phrase(&["a", "card", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"],
+                &["artifact"],
+                &["enchantment"],
+                &["permanent"],
+                &["card"],
+                &["land"],
+            ])),
+        )
+            .value((
+                TaggedPermissionReference::SourceExiled,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                Some(1),
+            )),
         (
             primitives::phrase(&["cards", "exiled", "with", "this"]),
             opt(primitives::any_phrase(&[
@@ -503,6 +540,27 @@ fn parse_tagged_permission_target_lexed<'a>(
                 &["permanent"],
                 &["card"],
                 &["land"],
+                &["saga"],
+            ])),
+        )
+            .value((
+                TaggedPermissionReference::SourceExiled,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                None,
+            )),
+        // "you may cast spells from among cards exiled with this Saga" (King
+        // Narfi's Betrayal): the source-linked exile pool; "cast spells"
+        // excludes lands.
+        (
+            primitives::phrase(&["spells", "from", "among", "cards", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"],
+                &["artifact"],
+                &["enchantment"],
+                &["permanent"],
+                &["card"],
+                &["saga"],
             ])),
         )
             .value((
@@ -573,21 +631,43 @@ fn parse_tagged_permission_target_lexed<'a>(
                 TaggedPermissionTargetSurface::Other,
                 Some(1),
             )),
-            primitives::any_phrase(&[
-                &["spells", "from", "among", "them"],
-                &["them"],
-                &["the", "exiled", "cards"],
-                &["exiled", "cards"],
-                &["those", "spells"],
-                &["that", "exiled", "card"],
-                &["the", "card"],
-                &["the", "cards"],
-            ])
-            .value((
-                TaggedPermissionReference::LastTagged,
-                false,
-                TaggedPermissionTargetSurface::Other,
-                None,
+            alt((
+                // "You may play up to two of those cards until the end of your
+                // next turn." (March of Reckless Joy): the collection keeps a
+                // shared use budget; no card is selected when the grant is made.
+                (
+                    primitives::phrase(&["up", "to"]),
+                    primitives::number_token,
+                    primitives::kw("of"),
+                    alt((
+                        primitives::phrase(&["those", "cards"]).void(),
+                        primitives::kw("them").void(),
+                    )),
+                )
+                    .map(|(_, count, _, ())| {
+                        (
+                            TaggedPermissionReference::LastTagged,
+                            false,
+                            TaggedPermissionTargetSurface::Other,
+                            Some(count),
+                        )
+                    }),
+                primitives::any_phrase(&[
+                    &["spells", "from", "among", "them"],
+                    &["them"],
+                    &["the", "exiled", "cards"],
+                    &["exiled", "cards"],
+                    &["those", "spells"],
+                    &["that", "exiled", "card"],
+                    &["the", "card"],
+                    &["the", "cards"],
+                ])
+                .value((
+                    TaggedPermissionReference::LastTagged,
+                    false,
+                    TaggedPermissionTargetSurface::Other,
+                    None,
+                )),
             )),
         )),
         alt((
@@ -747,11 +827,25 @@ fn parse_allow_any_color_for_cast_lexed<'a>(
             "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast",
         ])
         .value(ironsmith_core::value_model::ManaSpendMode::AnyType),
-        primitives::phrase(&[
-            "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-            "any", "color", "to", "cast",
-        ])
-        .value(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+        // "and you/they may spend [colorless] mana as though it were mana of
+        // any color to cast": "they" names the permitted player; with
+        // "colorless" only colorless mana converts (CR 609.4b).
+        (
+            primitives::kw("and"),
+            alt((primitives::kw("you"), primitives::kw("they"))),
+            primitives::phrase(&["may", "spend"]),
+            opt(primitives::kw("colorless")),
+            primitives::phrase(&[
+                "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "to", "cast",
+            ]),
+        )
+            .map(|(_, _, (), colorless, ())| {
+                if colorless.is_some() {
+                    ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor
+                } else {
+                    ironsmith_core::value_model::ManaSpendMode::AnyColor
+                }
+            }),
     ))
     .parse_next(input)?;
     let reference = alt((
@@ -796,6 +890,22 @@ fn parse_permission_tail_lexed<'a>(
             .map(|(_, duration, ())| (duration, true)),
         (parse_permission_lifetime_lexed, primitives::sentence_end())
             .map(|(lifetime, ())| (lifetime, false)),
+        // "You may play them without paying their mana costs for as long as
+        // they remain exiled." (Extract Power): the free price and the exile
+        // lifetime in either order.
+        (
+            parse_without_paying_mana_cost_lexed,
+            parse_permission_lifetime_lexed,
+            primitives::sentence_end(),
+        )
+            .map(|((), lifetime, ())| (lifetime, true)),
+        (
+            parse_permission_lifetime_lexed,
+            opt(primitives::comma()),
+            parse_without_paying_mana_cost_lexed,
+            primitives::sentence_end(),
+        )
+            .map(|(lifetime, _, (), ())| (lifetime, true)),
         (
             parse_without_paying_mana_cost_lexed,
             primitives::sentence_end(),
@@ -812,6 +922,23 @@ fn parse_permission_turn_duration_lexed<'a>(
     alt((
         primitives::phrase(&["until", "your", "next", "end", "step"])
             .value(PermissionLifetimeFact::UntilYourNextEndStep),
+        // "Until the beginning of your next upkeep, you may play that card."
+        // (Elkin Bottle): no player receives priority during the untap step
+        // (CR 502.4), so a play permission ending as your next upkeep begins
+        // ends exactly as one ending as your next turn begins.
+        primitives::phrase(&["until", "the", "beginning", "of", "your", "next", "upkeep"])
+            .value(PermissionLifetimeFact::UntilYourNextTurn),
+        // "They may play those cards until the end of their next turn." /
+        // "its owner may play it until the end of their next turn.": in a
+        // permission tail, the possessive names the permission holder (the
+        // subject of "may play"), exactly what "your" names when the holder
+        // is "you". The grant's next-turn lifetime is computed for that
+        // holder, so it is the same holder-relative lifetime.
+        primitives::any_phrase(&[
+            &["until", "the", "end", "of", "their", "next", "turn"],
+            &["until", "end", "of", "their", "next", "turn"],
+        ])
+        .value(PermissionLifetimeFact::UntilYourNextTurn),
         leaf::parse_leaf_turn_duration_phrase_lexed.map(lifetime_from_turn_duration),
     ))
     .parse_next(input)

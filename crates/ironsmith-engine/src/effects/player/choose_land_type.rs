@@ -8,20 +8,20 @@ use crate::game_state::GameState;
 use crate::types::Subtype;
 pub use ironsmith_core::ChooseLandTypeEffect;
 
-fn land_type_options(exclude_basic: bool) -> Vec<Subtype> {
+fn land_type_options(exclude_basic: bool, basic_only: bool) -> Vec<Subtype> {
     Subtype::all_land_types()
         .iter()
         .copied()
         .filter(|subtype| {
-            !exclude_basic
-                || !matches!(
-                    subtype,
-                    Subtype::Plains
-                        | Subtype::Island
-                        | Subtype::Swamp
-                        | Subtype::Mountain
-                        | Subtype::Forest
-                )
+            let basic = matches!(
+                subtype,
+                Subtype::Plains
+                    | Subtype::Island
+                    | Subtype::Swamp
+                    | Subtype::Mountain
+                    | Subtype::Forest
+            );
+            !(exclude_basic && basic) && (!basic_only || basic)
         })
         .collect()
 }
@@ -34,7 +34,7 @@ impl EffectExecutor for ChooseLandTypeEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let subtype_options = land_type_options(self.exclude_basic);
+        let subtype_options = land_type_options(self.exclude_basic, self.basic_only);
         if subtype_options.is_empty() {
             return Ok(EffectOutcome::resolved());
         }
@@ -46,6 +46,8 @@ impl EffectExecutor for ChooseLandTypeEffect {
             .collect::<Vec<_>>();
         let prompt = if self.exclude_basic {
             "Choose a nonbasic land type"
+        } else if self.basic_only {
+            "Choose a basic land type"
         } else {
             "Choose a land type"
         };

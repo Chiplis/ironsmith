@@ -22,6 +22,9 @@ pub fn static_ability_zone_defaults(
     }
     match id {
         Some(Dredge) => vec![Zone::Graveyard],
+        // Commander tax is determined as the commander is cast from the
+        // command zone (CR 903.8, 601.2f).
+        Some(CommanderTaxLifeSubstitution) => vec![Zone::Command],
         Some(ExileToExileInsteadOfGraveyard | ExileWouldDieInstead) if source_only => vec![
             Zone::Battlefield,
             Zone::Stack,

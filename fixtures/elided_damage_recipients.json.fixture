@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Tropical Storm",
+    "oracle_id": "9b3b0bef-cdbb-41c2-b8f1-ddda9903b43a",
+    "mana_cost": "{X}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Tropical Storm deals X damage to each creature with flying and 1 additional damage to each blue creature.",
+    "text": "Mana cost: {X}{G}\nType: Sorcery\nTropical Storm deals X damage to each creature with flying and 1 additional damage to each blue creature."
+  },
+  {
+    "name": "Hail Storm",
+    "oracle_id": "73eacb1f-3d35-4ead-bead-f85e6cfc17ab",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Hail Storm deals 2 damage to each attacking creature and 1 damage to you and each creature you control.",
+    "text": "Mana cost: {1}{G}{G}\nType: Instant\nHail Storm deals 2 damage to each attacking creature and 1 damage to you and each creature you control."
+  },
+  {
+    "name": "Neonate's Rush",
+    "oracle_id": "721aeedc-1de5-40d0-a04c-a2ebc056d06a",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "This spell costs {1} less to cast if you control a Vampire.\nNeonate's Rush deals 1 damage to target creature and 1 damage to its controller. Draw a card.",
+    "text": "Mana cost: {2}{R}\nType: Instant\nThis spell costs {1} less to cast if you control a Vampire.\nNeonate's Rush deals 1 damage to target creature and 1 damage to its controller. Draw a card."
+  },
+  {
+    "name": "The Fall of Kroog",
+    "oracle_id": "bfd8d447-7253-40d0-a153-78e9700045d7",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose target opponent. Destroy target land that player controls. The Fall of Kroog deals 3 damage to that player and 1 damage to each creature they control.",
+    "text": "Mana cost: {4}{R}{R}\nType: Sorcery\nChoose target opponent. Destroy target land that player controls. The Fall of Kroog deals 3 damage to that player and 1 damage to each creature they control."
+  },
+  {
+    "name": "Wildfire Howl",
+    "oracle_id": "04fd8c1f-80e5-4b3d-b63e-7af6ccafbbaa",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Gift a card\nWildfire Howl deals 2 damage to each creature. If the gift was promised, instead Wildfire Howl deals 1 damage to any target and 2 damage to each creature.",
+    "text": "Mana cost: {1}{R}{R}\nType: Sorcery\nGift a card\nWildfire Howl deals 2 damage to each creature. If the gift was promised, instead Wildfire Howl deals 1 damage to any target and 2 damage to each creature."
+  }
+]

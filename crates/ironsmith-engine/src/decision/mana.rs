@@ -95,6 +95,56 @@ fn shared_spell_characteristic_count(
         .filter(|object| intersection.comparison.matches(object, &filter_ctx, game))
         .collect::<Vec<_>>();
 
+    // "for each card with the same name as that spell in your graveyard"
+    // (Locket of Yesterdays): one per comparison object sharing the
+    // characteristic, not per distinct shared value.
+    if intersection.count_matching_objects {
+        let spell_name = game
+            .current_name(spell.id)
+            .unwrap_or_else(|| spell.name.to_string());
+        let spell_colors = game
+            .current_colors(spell.id)
+            .unwrap_or_else(|| spell.colors());
+        let spell_types = game
+            .current_card_types(spell.id)
+            .unwrap_or_else(|| spell.card_types.to_vec());
+        return comparison_objects
+            .iter()
+            .filter(|object| object.id != spell.id)
+            .filter(|object| match intersection.characteristic {
+                crate::ObjectCharacteristic::Name => crate::filter::names_share(
+                    &spell_name,
+                    spell.split_other_half_name(),
+                    &game
+                        .current_name(object.id)
+                        .unwrap_or_else(|| object.name.to_string()),
+                    object.split_other_half_name(),
+                ),
+                crate::ObjectCharacteristic::Color => !game
+                    .current_colors(object.id)
+                    .unwrap_or_else(|| object.colors())
+                    .intersection(spell_colors)
+                    .is_empty(),
+                crate::ObjectCharacteristic::CardType
+                | crate::ObjectCharacteristic::PermanentType => game
+                    .current_card_types(object.id)
+                    .unwrap_or_else(|| object.card_types.to_vec())
+                    .iter()
+                    .any(|card_type| spell_types.contains(card_type)),
+                crate::ObjectCharacteristic::Subtype(family) => {
+                    let spell_subtypes = game.calculated_subtypes(spell.id);
+                    game.calculated_subtypes(object.id)
+                        .into_iter()
+                        .filter(|subtype| subtype.belongs_to_family(family))
+                        .any(|subtype| spell_subtypes.contains(&subtype))
+                }
+                crate::ObjectCharacteristic::ManaValue => {
+                    object.subject_mana_value() == spell.subject_mana_value()
+                }
+            })
+            .count() as i32;
+    }
+
     match intersection.characteristic {
         crate::ObjectCharacteristic::CardType => {
             let comparison = comparison_objects
@@ -149,6 +199,14 @@ fn shared_spell_characteristic_count(
                 .filter(|subtype| comparison.contains(subtype))
                 .count() as i32
         }
+        crate::ObjectCharacteristic::Color if intersection.against_source_chosen_colors => game
+            .current_colors(spell.id)
+            .unwrap_or_else(|| spell.colors())
+            .intersection(
+                game.chosen_colors(source)
+                    .unwrap_or(crate::color::ColorSet::COLORLESS),
+            )
+            .count() as i32,
         crate::ObjectCharacteristic::Color => {
             let comparison = comparison_objects.iter().fold(
                 crate::color::ColorSet::COLORLESS,
@@ -1473,14 +1531,22 @@ pub(crate) fn violates_any_cast_limit(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> bool {
-    game.effect_store
-        .cant_effects
-        .cast_limit_filters_for_player(player)
+    let cant = &game.effect_store.cant_effects;
+    cant.cast_limit_filters_for_player(player)
         .is_some_and(|filters| {
             filters
                 .iter()
                 .any(|spell_filter| violates_cast_limit(game, player, spell, spell_filter))
         })
+        || cant
+            .counted_cast_limits_for_player(player)
+            .is_some_and(|limits| {
+                limits.iter().any(|(spell_filter, maximum)| {
+                    spell_matches_cast_filter(game, spell, spell_filter)
+                        && spells_cast_this_turn_matching_filter(game, player, spell_filter)
+                            >= *maximum
+                })
+            })
 }
 
 pub(crate) fn violates_any_cant_cast_restriction(
@@ -1897,6 +1963,10 @@ pub(crate) fn this_spell_cast_timing_allows(
         }
         ThisSpellCastTiming::DuringYourTurn => game.is_active_player(player),
         ThisSpellCastTiming::DuringOpponentsTurn => opponents_turn,
+        // Count the caster's own turns taken, including the current one.
+        ThisSpellCastTiming::NotDuringYourFirstTurns(count) => {
+            !(game.is_active_player(player) && game.turns_taken_by(player) <= count)
+        }
         ThisSpellCastTiming::DuringDeclareAttackersStep => {
             matches!(game.turn.phase, Phase::Combat)
                 && game.turn.step == Some(Step::DeclareAttackers)
@@ -1965,6 +2035,36 @@ pub(crate) fn this_spell_cast_timing_allows(
         ThisSpellCastTiming::AfterCombat => {
             matches!(game.turn.phase, Phase::NextMain | Phase::Ending)
         }
+        ThisSpellCastTiming::BeforeBlockersAreDeclared => match game.turn.phase {
+            Phase::Beginning | Phase::FirstMain => true,
+            Phase::Combat => matches!(
+                game.turn.step,
+                Some(Step::BeginCombat | Step::DeclareAttackers)
+            ),
+            Phase::NextMain | Phase::Ending => false,
+        },
+        ThisSpellCastTiming::DuringYourDeclareAttackersStep => {
+            game.is_active_player(player)
+                && matches!(game.turn.phase, Phase::Combat)
+                && game.turn.step == Some(Step::DeclareAttackers)
+        }
+        ThisSpellCastTiming::DuringDeclareBlockersStepOnOpponentsTurn => {
+            opponents_turn
+                && matches!(game.turn.phase, Phase::Combat)
+                && game.turn.step == Some(Step::DeclareBlockers)
+                && game
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.block_declaration_complete)
+        }
+        ThisSpellCastTiming::DuringOpponentsTurnBeforeAttackersAreDeclared => {
+            opponents_turn
+                && match game.turn.phase {
+                    Phase::Beginning | Phase::FirstMain => true,
+                    Phase::Combat => game.turn.step == Some(Step::BeginCombat),
+                    Phase::NextMain | Phase::Ending => false,
+                }
+        }
     }
 }
 
@@ -2032,6 +2132,9 @@ pub(crate) fn this_spell_cast_condition_allows(
                 })
             })
         }
+        crate::static_abilities::ThisSpellCastCondition::CreatureDiedThisTurn => {
+            game.turn_store.turn_history.total_creatures_died_this_turn() > 0
+        }
         crate::static_abilities::ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(name) => {
             !game.battlefield.iter().any(|&id| {
                 game.object(id)
@@ -2052,6 +2155,8 @@ pub(crate) fn this_spell_cast_condition_allows(
                 .count()
                 >= *count as usize
         }
+        // Evaluated by `spell_cast_restrictions_allow`, which knows the spell.
+        crate::static_abilities::ThisSpellCastCondition::Condition(_) => true,
         crate::static_abilities::ThisSpellCastCondition::YouControlFewerCreaturesThanEachOpponent => {
             let your_creatures = game.creatures_controlled_by(player).len();
             game.players
@@ -2091,6 +2196,30 @@ pub(crate) fn spell_cast_restrictions_allow(
             let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
                 return true;
             };
+            // "You may cast this card from your graveyard, but not from
+            // anywhere else" (Haakon): where the card is cast from is checked
+            // at the proposal, against the zone the card is in (CR 601.3e),
+            // never against the stack it is moving to.
+            if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(
+                ironsmith_core::Condition::SourceIsInZone(zone),
+            )) = &kind.condition
+            {
+                return kind
+                    .timing
+                    .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing))
+                    && spell.zone == *zone;
+            }
+            // A typed condition reads the spell itself as its source.
+            if let Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) =
+                &kind.condition
+            {
+                return kind
+                    .timing
+                    .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing))
+                    && crate::condition_eval::evaluate_condition_cast_time(
+                        game, condition, player, spell.id,
+                    );
+            }
             this_spell_cast_restriction_allows(game, player, &kind)
         })
 }
@@ -8383,6 +8512,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     if game.controller_of(object) != player
         || object.zone != Zone::Battlefield
         || !ability.functions_in(&object.zone)
+        || !game.can_activate_abilities(player)
     {
         return None;
     }

@@ -69,12 +69,15 @@ mod tests {
             )
             .is_none()
         );
+        // Any permanent (not only nonland) is its own exact mode now.
+        let any_permanent = parse_pair(
+            "Each opponent may sacrifice a permanent of their choice or discard a card.",
+            "Then this creature deals damage equal to its power to each opponent who didn't sacrifice a permanent or discard a card this way.",
+        )
+        .expect("any-permanent sacrifice mode should parse");
         assert!(
-            parse_pair(
-                "Each opponent may sacrifice a permanent of their choice or discard a card.",
-                "Then this creature deals damage equal to its power to each opponent who didn't sacrifice a permanent or discard a card this way.",
-            )
-            .is_none()
+            format!("{any_permanent:?}").contains("Sacrifice a permanent"),
+            "{any_permanent:?}"
         );
     }
 }

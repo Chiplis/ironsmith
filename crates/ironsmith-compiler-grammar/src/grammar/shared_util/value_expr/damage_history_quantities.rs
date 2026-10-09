@@ -84,8 +84,19 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     if words.get(offset..offset + 2) != Some(&["dealt", "to"][..]) {
         return None;
     }
-    let (recipient, used) = object_reference(words.get(offset + 2..)?)?;
-    offset += 2 + used;
+    // "the damage dealt to you so far this turn by artifacts" (Reverse
+    // Polarity): damage to a player is a player-recipient history query.
+    let recipients = if words.get(offset + 2) == Some(&"you") {
+        offset += 3;
+        DamageHistoryRecipients::Players(PlayerFilter::You)
+    } else {
+        let (recipient, used) = object_reference(words.get(offset + 2..)?)?;
+        offset += 2 + used;
+        DamageHistoryRecipients::Reference(Box::new(recipient))
+    };
+    if words.get(offset..offset + 2) == Some(&["so", "far"][..]) {
+        offset += 2;
+    }
     if words.get(offset..offset + 2) != Some(&["this", "turn"][..]) {
         return None;
     }
@@ -109,6 +120,17 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
                     ObjectFilter::default().other().named(name.join(" ")),
                 )
             }
+            // "by artifacts" / "by creatures": sources of one card type.
+            [plural]
+                if plural
+                    .strip_suffix('s')
+                    .and_then(crate::util::parse_card_type)
+                    .is_some() =>
+            {
+                offset = words.len();
+                let card_type = plural.strip_suffix('s').and_then(crate::util::parse_card_type)?;
+                DamageHistorySources::Matching(ObjectFilter::default().with_type(card_type))
+            }
             _ => return None,
         }
     } else {
@@ -117,7 +139,7 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     Some((
         Value::DamageHistory(Box::new(DamageHistoryQuery {
             sources,
-            recipients: DamageHistoryRecipients::Reference(Box::new(recipient)),
+            recipients,
             combat,
             reduction: DamageHistoryReduction::Total,
         })),

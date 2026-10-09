@@ -43,6 +43,9 @@ pub enum RuntimeModification {
     RemoveAllAbilities,
     /// Remove the activated ability currently resolving.
     RemoveThisAbility,
+    /// Keep the source's colors as the effect begins: "except it doesn't copy
+    /// that creature's color" (CR 707.9b). Resolved to a layer-5 color set.
+    RetainSourceColors,
     /// Set the Aura attachment restriction while this effect applies.
     SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
     /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
@@ -209,6 +212,60 @@ fn lock_targets_for_filter(
             .map(|obj| obj.id)
             .collect(),
     }
+}
+
+/// The land types the sacrificed cost land had as it was sacrificed
+/// (last-known information, CR 608.2h).
+pub(crate) fn sacrificed_cost_land_types(ctx: &ExecutionContext) -> Vec<crate::types::Subtype> {
+    use ironsmith_core::tag::SacrificeCostTag;
+    let sacrificed = [
+        SacrificeCostTag::OriginalResult(0).key(),
+        SacrificeCostTag::Selected(0).key(),
+        crate::tag::TagKey::from("sacrificed_0"),
+    ]
+    .into_iter()
+    .find_map(|tag| {
+        ctx.get_tagged_all(&tag)
+            .filter(|snapshots| !snapshots.is_empty())
+            .cloned()
+    })
+    .unwrap_or_default();
+    let mut land_types = Vec::new();
+    for snapshot in &sacrificed {
+        for subtype in &snapshot.subtypes {
+            if crate::types::Subtype::all_land_types().contains(subtype)
+                && !land_types.contains(subtype)
+            {
+                land_types.push(*subtype);
+            }
+        }
+    }
+    land_types
+}
+
+/// "landwalk of each of the land types of the sacrificed land" (Excavator):
+/// one landwalk grant per land type of the sacrificed cost land (CR 702.14a).
+fn expand_sacrificed_land_type_landwalk_modifications(
+    mods: Vec<Modification>,
+    ctx: &ExecutionContext,
+) -> Vec<Modification> {
+    let mut expanded = Vec::with_capacity(mods.len());
+    for modification in mods {
+        match &modification {
+            Modification::AddAbility(ability)
+                if ability.landwalk_kind()
+                    == Some(crate::static_abilities::LandwalkKind::SacrificedLandTypes) =>
+            {
+                expanded.extend(sacrificed_cost_land_types(ctx).into_iter().map(|subtype| {
+                    Modification::AddAbility(crate::static_abilities::StaticAbility::landwalk(
+                        subtype,
+                    ))
+                }));
+            }
+            _ => expanded.push(modification),
+        }
+    }
+    expanded
 }
 
 fn resolve_set_pt_modification(
@@ -459,6 +516,9 @@ fn resolve_runtime_modification(
         RuntimeModification::SetAuraAttachmentFilter(filter) => {
             Ok(Modification::SetAuraAttachmentFilter(filter.clone().into()))
         }
+        RuntimeModification::RetainSourceColors => Ok(Modification::SetColors(
+            game.current_colors(ctx.source).unwrap_or_default(),
+        )),
     }
 }
 
@@ -1102,6 +1162,7 @@ fn acquire_continuous_action(
             runtime_modification,
         )?);
     }
+    let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
     let effect_group =
         (mods.len() > 1).then(|| game.effect_store.continuous_effects.next_effect_group_id());
 

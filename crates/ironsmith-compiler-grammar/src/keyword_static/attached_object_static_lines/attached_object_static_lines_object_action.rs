@@ -58,6 +58,14 @@ pub fn parse_attached_gets_and_has_ability_line(
     let anthem = build_anthem_static_ability(&clause);
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
 
+    if (ability_tokens.first().is_some_and(|token| token.is_word("can"))
+        || shape.ability_tokens.first().is_some_and(OwnedLexToken::is_quote))
+        && let Some(tail) = parse_heterogeneous_granted_tail(shape.ability_tokens, &crate::lexer::token_word_refs(tokens), true)? {
+        let mut out = vec![anthem.into()];
+        out.extend(lower_granted_tail_for_anthem_subject(&clause.subject, &clause.condition, tail));
+        return Ok(Some(out));
+    }
+
     if let anthem_grant_grammar::ContinuingSegmentShape::Lose {
         ability_tokens: loss_tokens,
     } = anthem_grant_grammar::parse_continuing_segment_shape(&ability_tokens)
@@ -112,6 +120,25 @@ pub fn parse_attached_gets_and_has_ability_line(
             .collect::<Vec<_>>();
         if keyword_actions.is_empty() {
             continue;
+        }
+
+        // A complete quoted grant can be static, triggered, or activated.
+        // Reuse the same typed tail reader as ordinary grant composition;
+        // checking only for a colon drops triggered/static quoted abilities.
+        if (split.granted_tokens.iter().any(OwnedLexToken::is_quote)
+            || split.granted_tokens.first().is_some_and(|token| token.is_word("can")))
+            && let Some(tail) = parse_heterogeneous_granted_tail(
+                split.granted_tokens, &crate::lexer::token_word_refs(tokens), true,
+            )?
+        {
+            let mut out = vec![anthem.clone().into()];
+            for action in keyword_actions {
+                out.push(grant_keyword_action_for_anthem_subject(&clause, action));
+            }
+            out.extend(lower_granted_tail_for_anthem_subject(
+                &clause.subject, &clause.condition, tail,
+            ));
+            return Ok(Some(out));
         }
 
         if let Some(parsed) = parse_attached_granted_activated_line(split.granted_tokens)? {

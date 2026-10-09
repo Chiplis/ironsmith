@@ -124,6 +124,8 @@ pub enum ThisSpellCastCondition {
     },
     /// "only if a creature is attacking you"
     CreatureIsAttackingYou,
+    /// "only if a creature died this turn" (CR 700.4)
+    CreatureDiedThisTurn,
     /// "only if no permanents named <name> are on the battlefield"
     NoPermanentsNamedOnBattlefield(String),
     /// "only if you control N or more matching permanents"
@@ -135,6 +137,8 @@ pub enum ThisSpellCastCondition {
     YouControlFewerCreaturesThanEachOpponent,
     /// "only if you control N or more permanents whose names contain <word>"
     YouControlNameWordOrMore { word: &'static str, count: u32 },
+    /// A typed cast-time condition evaluated with the spell as source.
+    Condition(ironsmith_core::Condition),
 }
 
 /// Cast-time restriction for "Cast this spell only ..." lines.
@@ -249,6 +253,10 @@ impl ThisSpellCastRestrictionKind {
 
     pub fn if_creature_is_attacking_you() -> Self {
         Self::condition(ThisSpellCastCondition::CreatureIsAttackingYou)
+    }
+
+    pub fn if_creature_died_this_turn() -> Self {
+        Self::condition(ThisSpellCastCondition::CreatureDiedThisTurn)
     }
 
     pub fn after_combat() -> Self {
@@ -488,6 +496,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    fn skips_untap_step_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
     fn skips_extra_turn_for_player(
         &self,
         _game: &GameState,
@@ -556,6 +574,14 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// A continuously evaluated goad designation from this source.
     fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
+
+    /// "If <trigger> attacks, <required> attack if able" (CR 508.1d): the
+    /// (trigger, required) filters, read from this source's perspective.
+    fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
         None
     }
 
@@ -808,6 +834,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns the maximum number of creatures that can attack this ability's controller each combat.
     fn max_creatures_can_attack_you_each_combat(&self) -> Option<usize> {
+        None
+    }
+
+    /// Returns the maximum number of creatures that can attack this ability's
+    /// source (a planeswalker) each combat.
+    fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
         None
     }
 
@@ -1358,6 +1390,8 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChooseColorAsEntersSpec {
     pub excluded: Option<crate::color::Color>,
+    /// Number of different colors chosen ("choose two colors").
+    pub count: u32,
 }
 
 /// Spec for "as this becomes attached, choose a color" abilities.
@@ -1368,6 +1402,8 @@ pub struct ChooseColorAsBecomesAttachedSpec;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChoosePlayerAsEntersSpec {
     pub filter: crate::target::PlayerFilter,
+    /// Number of different players chosen ("choose two players").
+    pub count: u32,
 }
 
 /// Spec for "as this enters, note your life total" abilities.
@@ -1387,6 +1423,10 @@ pub struct RevealFromHandAsEntersSpec {
 pub struct ChooseCardNameAsEntersSpec {
     pub reveal_opponents_hands: bool,
     pub require_nonland_from_revealed_opponents: bool,
+    /// An opponent also names a card ("you and an opponent each choose").
+    pub opponent_also_chooses: bool,
+    /// Basic land card names can't be chosen.
+    pub exclude_basic_land_names: bool,
 }
 
 /// Spec for "as this enters, choose a basic land type" abilities.
@@ -1916,6 +1956,17 @@ impl StaticAbility {
             .skips_draw_step_for_player(game, source, controller, player)
     }
 
+    pub fn skips_untap_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_untap_step_for_player(game, source, controller, player)
+    }
+
     pub fn skips_extra_turn_for_player(
         &self,
         game: &GameState,
@@ -1996,6 +2047,12 @@ impl StaticAbility {
 
     pub fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
         self.0.goads_matching()
+    }
+
+    pub fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        self.0.conditional_attack_requirement()
     }
 
     pub fn goaded_by_player(
@@ -2205,6 +2262,10 @@ impl StaticAbility {
 
     pub fn max_creatures_can_attack_you_each_combat(&self) -> Option<usize> {
         self.0.max_creatures_can_attack_you_each_combat()
+    }
+
+    pub fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
+        self.0.max_creatures_can_attack_this_each_combat()
     }
 
     pub fn max_creatures_can_block_each_combat(&self) -> Option<usize> {
@@ -2926,6 +2987,18 @@ impl StaticAbility {
         Self::new(MaxCreaturesCanAttackYouEachCombat::new(maximum))
     }
 
+    pub fn can_block_as_though_no_landwalk() -> Self {
+        Self::new(CanBlockAsThoughNoLandwalk)
+    }
+
+    pub fn can_block_as_though_untapped() -> Self {
+        Self::new(CanBlockAsThoughUntapped)
+    }
+
+    pub fn max_attackers_can_attack_source_each_combat(maximum: usize) -> Self {
+        Self::new(MaxCreaturesCanAttackSourceEachCombat::new(maximum))
+    }
+
     pub fn max_blockers_each_combat(maximum: usize) -> Self {
         Self::new(MaxCreaturesCanBlockEachCombat::new(maximum))
     }
@@ -2954,6 +3027,22 @@ impl StaticAbility {
 
     pub fn artifact_landwalk() -> Self {
         Self::new(Landwalk::new(LandwalkKind::ArtifactLand))
+    }
+
+    pub fn legendary_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::LegendaryLand))
+    }
+
+    pub fn snow_any_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::SnowLand))
+    }
+
+    pub fn chosen_type_landwalk(snow: bool) -> Self {
+        Self::new(Landwalk::new(LandwalkKind::ChosenType { snow }))
+    }
+
+    pub fn sacrificed_land_types_landwalk() -> Self {
+        Self::new(Landwalk::new(LandwalkKind::SacrificedLandTypes))
     }
 
     pub fn attached_chosen_landwalk_grant(display: String, snow: bool) -> Self {
@@ -3343,6 +3432,10 @@ impl StaticAbility {
 
     pub fn set_base_power(filter: crate::target::ObjectFilter, power: i32) -> Self {
         Self::new(SetBasePowerForFilter::new(filter, power))
+    }
+
+    pub fn set_base_toughness(filter: crate::target::ObjectFilter, toughness: i32) -> Self {
+        Self::new(SetBaseToughnessForFilter::new(filter, toughness))
     }
 
     pub fn set_colors(filter: crate::target::ObjectFilter, colors: crate::color::ColorSet) -> Self {
@@ -3891,6 +3984,11 @@ impl StaticAbility {
         Self::new(ChooseColorAsEnters::new(excluded, display))
     }
 
+    /// "As this enters, choose two colors." (Seal of the Guildpact).
+    pub fn choose_colors_as_enters(count: u32, display: String) -> Self {
+        Self::new(ChooseColorAsEnters::new(None, display).with_count(count))
+    }
+
     pub fn choose_color_as_becomes_attached(display: String) -> Self {
         Self::new(ChooseColorAsBecomesAttached::new(display))
     }
@@ -3904,6 +4002,17 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(ChoosePlayerAsEnters::new(filter, display))
+    }
+
+    /// "As this enters, choose two players." (Bitter Feud, Sower of Discord).
+    pub fn choose_players_as_enters(
+        filter: crate::target::PlayerFilter,
+        count: u32,
+        display: String,
+    ) -> Self {
+        let mut ability = ChoosePlayerAsEnters::new(filter, display);
+        ability.count = count.max(1);
+        Self::new(ability)
     }
 
     pub fn note_life_total_as_enters(display: String) -> Self {
@@ -3942,6 +4051,7 @@ impl StaticAbility {
             ChooseCardNameAsEntersSpec {
                 reveal_opponents_hands: true,
                 require_nonland_from_revealed_opponents: true,
+                ..ChooseCardNameAsEntersSpec::default()
             },
         )
     }
@@ -4045,6 +4155,10 @@ impl StaticAbility {
         Self::new(PlayersSkipExtraTurns::new(player))
     }
 
+    pub fn players_skip_untap_steps(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayersSkipUntapStep::new(player))
+    }
+
     pub fn starting_life_bonus(amount: i32) -> Self {
         Self::new(StartingLifeBonus::new(amount))
     }
@@ -4075,6 +4189,7 @@ impl StaticAbility {
 
     pub fn additional_land_plays(count: u32) -> Self {
         let display = match count {
+            u32::MAX => "You may play any number of lands on each of your turns.".to_string(),
             1 => "You may play an additional land on each of your turns.".to_string(),
             2 => "You may play two additional lands on each of your turns.".to_string(),
             _ => format!("You may play {count} additional lands on each of your turns."),

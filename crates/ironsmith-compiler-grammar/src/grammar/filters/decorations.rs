@@ -117,7 +117,17 @@ pub enum FilterTailDecoration {
     WithoutKeyword(FilterKeywordConstraint),
     WithEitherKeyword(FilterKeywordConstraint, FilterKeywordConstraint),
     WithBothKeywords(FilterKeywordConstraint, FilterKeywordConstraint),
+    /// "without flying or islandwalk" (Stormtide Leviathan): lacking every
+    /// listed keyword.
+    WithoutEitherKeyword(FilterKeywordConstraint, FilterKeywordConstraint),
+    /// "with deathtouch, hexproof, reach, or trample" (Mwonvuli Beast
+    /// Tracker): any one of three or more listed keywords. Fixed capacity so
+    /// the decoration stays `Copy`.
+    WithAnyKeyword([Option<FilterKeywordConstraint>; MAX_KEYWORD_LIST]),
 }
+
+/// The longest serial keyword list a "with" tail decoration carries.
+pub const MAX_KEYWORD_LIST: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsedFilterTailDecoration {
@@ -290,6 +300,21 @@ pub fn apply_filter_tail_decoration(filter: &mut ObjectFilter, decoration: Filte
             apply_filter_keyword_constraint(filter, first_constraint, false);
             apply_filter_keyword_constraint(filter, second_constraint, false);
         }
+        FilterTailDecoration::WithAnyKeyword(keywords) => {
+            filter.any_of = keywords
+                .iter()
+                .flatten()
+                .map(|constraint| {
+                    let mut branch = ObjectFilter::default();
+                    apply_filter_keyword_constraint(&mut branch, *constraint, false);
+                    branch
+                })
+                .collect();
+        }
+        FilterTailDecoration::WithoutEitherKeyword(first_constraint, second_constraint) => {
+            apply_filter_keyword_constraint(filter, first_constraint, true);
+            apply_filter_keyword_constraint(filter, second_constraint, true);
+        }
     }
 }
 
@@ -335,6 +360,16 @@ fn parse_with_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDe
 fn parse_without_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDecoration> {
     let checkpoint = *input;
     if let Ok(constraint) = parse_keyword_constraint.parse_next(input) {
+        let after_first = *input;
+        if primitives::word_slice_exact("or")
+            .void()
+            .parse_next(input)
+            .is_ok()
+            && let Ok(second) = parse_keyword_constraint.parse_next(input)
+        {
+            return Ok(FilterTailDecoration::WithoutEitherKeyword(constraint, second));
+        }
+        *input = after_first;
         return Ok(FilterTailDecoration::WithoutKeyword(constraint));
     }
     *input = checkpoint;
@@ -344,6 +379,20 @@ fn parse_without_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTai
 }
 
 fn parse_with_keyword_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDecoration> {
+    if let Some((constraints, connective, consumed)) =
+        crate::util::parse_filter_keyword_constraint_list_words(input)
+        && constraints.len() > 2
+        && constraints.len() <= MAX_KEYWORD_LIST
+        && connective == crate::util::FilterKeywordListConnective::Or
+        && consumed <= input.len()
+    {
+        let mut keywords = [None; MAX_KEYWORD_LIST];
+        for (slot, constraint) in keywords.iter_mut().zip(constraints) {
+            *slot = Some(constraint);
+        }
+        *input = &input[consumed..];
+        return Ok(FilterTailDecoration::WithAnyKeyword(keywords));
+    }
     let first = parse_keyword_constraint.parse_next(input)?;
     let after_first = *input;
     if primitives::word_slice_exact("or")

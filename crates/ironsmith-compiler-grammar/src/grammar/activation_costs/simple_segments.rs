@@ -395,15 +395,24 @@ fn parse_behold_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Activati
     let subtype_word = primitives::word_parser_text.parse_next(input)?;
     let subtype = leaf::parse_leaf_subtype_flexible_complete(subtype_word)
         .map_err(|_| primitives::backtrack_err("behold subtype", "known subtype"))?;
+    // "behold a Gamma creature" (Hulk's Thunderclap): the noun after a
+    // creature type restates that the beheld object is a creature.
+    if subtype.is_creature_type() {
+        opt(alt((primitives::kw("creature"), primitives::kw("creatures")))).parse_next(input)?;
+    }
     eof.parse_next(input)?;
     Ok(ActivationCostSegmentCst::Behold { subtype, count })
 }
 
 fn parse_blight_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
     primitives::kw("blight").parse_next(input)?;
-    let count = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    let (count, x) = alt((
+        primitives::kw("x").value((0, true)),
+        leaf::parse_leaf_number_prefix_lexed.map(|count| (count, false)),
+    ))
+    .parse_next(input)?;
     eof.parse_next(input)?;
-    Ok(ActivationCostSegmentCst::Blight { count })
+    Ok(ActivationCostSegmentCst::Blight { count, x })
 }
 
 fn is_energy_symbol_token(token: &OwnedLexToken) -> bool {
@@ -504,7 +513,7 @@ mod tests {
         );
         assert_eq!(
             parse("blight 2"),
-            ActivationCostSegmentCst::Blight { count: 2 }
+            ActivationCostSegmentCst::Blight { count: 2, x: false }
         );
     }
     #[test]

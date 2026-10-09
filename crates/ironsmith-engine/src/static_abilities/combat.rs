@@ -26,6 +26,9 @@ pub struct AttackCost {
     covers_planeswalkers: bool,
     cost: crate::cost::TotalCost,
     display_text: String,
+    /// Only attacks on the controller's planeswalkers are taxed (Onakke
+    /// Oathkeeper); attacks on the player are free (CR 508.1g-h).
+    planeswalkers_only: bool,
 }
 
 impl AttackCost {
@@ -40,7 +43,19 @@ impl AttackCost {
             covers_planeswalkers,
             cost,
             display_text: display.into(),
+            planeswalkers_only: false,
         }
+    }
+    /// Limit the tax to attacks on the controller's planeswalkers.
+    pub fn with_planeswalkers_only(mut self, planeswalkers_only: bool) -> Self {
+        self.planeswalkers_only = planeswalkers_only;
+        if planeswalkers_only {
+            self.covers_planeswalkers = true;
+        }
+        self
+    }
+    pub fn planeswalkers_only(&self) -> bool {
+        self.planeswalkers_only
     }
     pub fn attackers(&self) -> &ObjectFilter {
         &self.attackers
@@ -71,9 +86,12 @@ impl StaticAbilityKind for AttackCost {
         attacker: ObjectId,
         target: AttackTaxTargetKind,
     ) -> Option<crate::cost::TotalCost> {
-        if !matches!(target, AttackTaxTargetKind::Player)
-            && !(self.covers_planeswalkers && matches!(target, AttackTaxTargetKind::Planeswalker))
-        {
+        let taxed = match target {
+            AttackTaxTargetKind::Player => !self.planeswalkers_only,
+            AttackTaxTargetKind::Planeswalker => self.covers_planeswalkers,
+            _ => false,
+        };
+        if !taxed {
             return None;
         }
         let object = game.object(attacker)?;
@@ -100,12 +118,15 @@ impl StaticAbilityKind for AttackCost {
             .map_err(|error| {
                 crate::effects::ExecutionError::UnresolvableValue(error.to_string())
             })?;
-        Ok(Some(super::StaticAbility::new(Self::new(
-            self.attackers.clone(),
-            self.covers_planeswalkers,
-            cost,
-            self.display_text.clone(),
-        ))))
+        Ok(Some(super::StaticAbility::new(
+            Self::new(
+                self.attackers.clone(),
+                self.covers_planeswalkers,
+                cost,
+                self.display_text.clone(),
+            )
+            .with_planeswalkers_only(self.planeswalkers_only),
+        )))
     }
 }
 
@@ -220,6 +241,84 @@ pub(crate) fn imposed_attack_costs_for_target(
                 });
             }
         }
+    }
+    costs.extend(resolved_effect_attack_taxes(game, attacker, payer, defender, target));
+    costs
+}
+
+/// CR 508.1g-h, 611.2a: attack taxes created by resolving spells and
+/// abilities (War Tax, Sivitri) last for their stated duration whether or not
+/// their source is still on the battlefield, so they live in the restriction
+/// store rather than on a permanent.
+fn resolved_effect_attack_taxes(
+    game: &GameState,
+    attacker: &crate::object::Object,
+    payer: PlayerId,
+    defender: PlayerId,
+    target: &crate::combat_state::AttackTarget,
+) -> Vec<ImposedAttackCost> {
+    let target_is_player = matches!(target, crate::combat_state::AttackTarget::Player(_));
+    let target_is_planeswalker =
+        matches!(target, crate::combat_state::AttackTarget::Planeswalker(_));
+    let mut costs = Vec::new();
+    for restriction in &game.effect_store.restriction_effects {
+        let Restriction::AttackTax(rule) = &restriction.restriction else {
+            continue;
+        };
+        if !restriction.is_active(game, game.turn.turn_number)
+            || !rule.taxes_attack(
+                restriction.controller,
+                defender,
+                target_is_player,
+                target_is_planeswalker,
+            )
+        {
+            continue;
+        }
+        let filter_ctx = game.filter_context_for(restriction.controller, Some(restriction.source));
+        if !rule.attackers.matches(attacker, &filter_ctx, game) {
+            continue;
+        }
+        let mana = match &rule.mana_per_attacker {
+            crate::effect::Value::Fixed(amount) => u32::try_from(*amount).unwrap_or(0),
+            other => {
+                let ctx = crate::effects::ExecutionContext::new_default(
+                    restriction.source,
+                    restriction.controller,
+                );
+                crate::effects::helpers::resolve_value(game, other, &ctx)
+                    .ok()
+                    .and_then(|amount| u32::try_from(amount).ok())
+                    .unwrap_or(0)
+            }
+        };
+        let mut components = Vec::new();
+        if mana > 0 {
+            let mut pips = Vec::new();
+            let mut remaining = mana;
+            while remaining > 0 {
+                let chunk = remaining.min(u32::from(u8::MAX)) as u8;
+                pips.push(vec![crate::mana::ManaSymbol::Generic(chunk)]);
+                remaining -= u32::from(chunk);
+            }
+            components.push(crate::costs::Cost::mana(crate::mana::ManaCost::from_pips(
+                pips,
+            )));
+        }
+        if rule.life_per_attacker > 0 {
+            components.push(crate::costs::Cost::life(rule.life_per_attacker));
+        }
+        if components.is_empty() {
+            continue;
+        }
+        costs.push(ImposedAttackCost {
+            payer,
+            attacker: attacker.id,
+            source: restriction.source,
+            controller: restriction.controller,
+            cost: crate::cost::TotalCost::from_costs(components),
+            display: "Attack tax".into(),
+        });
     }
     costs
 }
@@ -555,6 +654,38 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
 
     fn display(&self) -> String {
         "Can block only creatures with flying".to_string()
+    }
+}
+
+/// "This creature can block creatures with landwalk abilities as though they
+/// didn't have those abilities" (Street Savvy): only this blocker ignores
+/// the attackers' landwalk evasion (CR 702.14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughNoLandwalk;
+
+impl StaticAbilityKind for CanBlockAsThoughNoLandwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughNoLandwalk
+    }
+
+    fn display(&self) -> String {
+        "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string()
+    }
+}
+
+/// "This creature can block as though it were untapped" (Masako the
+/// Humorless grants it to tapped creatures): being tapped doesn't stop it
+/// from being declared as a blocker (CR 509.1a); it stays tapped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CanBlockAsThoughUntapped;
+
+impl StaticAbilityKind for CanBlockAsThoughUntapped {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAsThoughUntapped
+    }
+
+    fn display(&self) -> String {
+        "This creature can block as though it were untapped".to_string()
     }
 }
 
@@ -1117,6 +1248,42 @@ impl StaticAbilityKind for MaxCreaturesCanAttackYouEachCombat {
     }
 }
 
+/// "No more than N creatures can attack this planeswalker each combat"
+/// (The Eternal Wanderer, Tomik's grant): a cap on the attackers declared
+/// against this permanent (CR 508.1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaxCreaturesCanAttackSourceEachCombat {
+    pub maximum: usize,
+}
+
+impl MaxCreaturesCanAttackSourceEachCombat {
+    pub const fn new(maximum: usize) -> Self {
+        Self { maximum }
+    }
+}
+
+impl StaticAbilityKind for MaxCreaturesCanAttackSourceEachCombat {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MaxCreaturesCanAttackSourceEachCombat
+    }
+
+    fn display(&self) -> String {
+        let noun = if self.maximum == 1 {
+            "creature"
+        } else {
+            "creatures"
+        };
+        format!(
+            "No more than {} {} can attack this planeswalker each combat",
+            self.maximum, noun
+        )
+    }
+
+    fn max_creatures_can_attack_this_each_combat(&self) -> Option<usize> {
+        Some(self.maximum)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaxCreaturesCanBlockEachCombat {
     pub maximum: usize,
@@ -1159,6 +1326,16 @@ pub enum LandwalkKind {
     AnyLand,
     NonbasicLand,
     ArtifactLand,
+    /// CR 702.14c legendary landwalk.
+    LegendaryLand,
+    /// CR 702.14c snow landwalk (any snow land).
+    SnowLand,
+    /// Landwalk of the land type chosen for the granting resolution;
+    /// materialized to `Subtype` as that grant resolves.
+    ChosenType { snow: bool },
+    /// One landwalk per land type of the sacrificed cost land; expanded by
+    /// the resolving grant.
+    SacrificedLandTypes,
 }
 
 impl LandwalkKind {
@@ -1175,6 +1352,13 @@ impl LandwalkKind {
             Self::AnyLand => "Landwalk".to_string(),
             Self::NonbasicLand => "Nonbasic landwalk".to_string(),
             Self::ArtifactLand => "Artifact landwalk".to_string(),
+            Self::LegendaryLand => "Legendary landwalk".to_string(),
+            Self::SnowLand => "Snow landwalk".to_string(),
+            Self::ChosenType { snow: false } => "Landwalk of the chosen type".to_string(),
+            Self::ChosenType { snow: true } => "Snow landwalk of the chosen type".to_string(),
+            Self::SacrificedLandTypes => {
+                "Landwalk of each of the land types of the sacrificed land".to_string()
+            }
         }
     }
 }
@@ -1221,6 +1405,22 @@ impl StaticAbilityKind for Landwalk {
 
     fn landwalk_kind(&self) -> Option<LandwalkKind> {
         Some(self.kind)
+    }
+
+    /// "Target creature gains landwalk of the chosen type until end of turn":
+    /// the type is the one chosen earlier in this resolution, stored on the
+    /// resolving source (CR 702.14a, 611.2c).
+    fn materialize_resolution_values(
+        &self,
+        game: &crate::game_state::GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let LandwalkKind::ChosenType { snow } = self.kind else {
+            return Ok(None);
+        };
+        Ok(game.chosen_land_type(ctx.source).map(|subtype| {
+            super::StaticAbility::new(Self::new(LandwalkKind::Subtype { subtype, snow }))
+        }))
     }
 }
 
@@ -2947,6 +3147,7 @@ mod tests {
             covers_planeswalkers: false,
             cost: cost.clone(),
             display_text: "Attack tax".into(),
+            planeswalkers_only: false,
         };
         assert_eq!(
             collected_cost(
@@ -3246,6 +3447,34 @@ impl StaticAbilityKind for GoadMatching {
     }
     fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
         Some(&self.filter)
+    }
+}
+
+/// "If <trigger> attacks, <required> attack if able." (Viashino Bey, War's
+/// Toll, Magnetic Web). The requirement exists only for an attack declaration
+/// in which a creature matching `trigger` attacks (CR 508.1d); declaration
+/// validation fixes that set from the proposed declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalAttackRequirement {
+    pub trigger: crate::target::ObjectFilter,
+    pub required: crate::target::ObjectFilter,
+}
+
+impl StaticAbilityKind for ConditionalAttackRequirement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ConditionalAttackRequirement
+    }
+    fn display(&self) -> String {
+        format!(
+            "If {} attacks, {} attack if able",
+            self.trigger.description(),
+            self.required.description()
+        )
+    }
+    fn conditional_attack_requirement(
+        &self,
+    ) -> Option<(&crate::target::ObjectFilter, &crate::target::ObjectFilter)> {
+        Some((&self.trigger, &self.required))
     }
 }
 

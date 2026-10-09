@@ -373,6 +373,20 @@ fn parse_target_first<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamage
     })
 }
 
+/// The whole source descriptor is exactly "a source of your choice"
+/// (CR 609.7a: the source is chosen as the effect resolves).
+pub fn is_exact_source_of_your_choice_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        trim_lexed_commas(tokens),
+        (
+            opt(article),
+            primitives::phrase(&["source", "of", "your", "choice"]),
+        ),
+        "exact source of your choice",
+    )
+    .is_ok()
+}
+
 pub fn parse_prevent_all_damage_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventAllDamageShape<'_>> {

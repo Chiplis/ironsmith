@@ -68,6 +68,12 @@ pub enum AnthemCountExpression {
     /// controller. Shared Two-Headed Giant poison totals count once per team.
     /// Appended to preserve existing serialized enum ordinals.
     PlayerCounters(PlayerFilter, CounterType),
+    /// Players who have lost the game (CR 104.3, 800.4): "for each player who
+    /// has lost the game" (Rampant Frogantua). Appended.
+    PlayersLostGame,
+    /// Mana symbols of `color` in the affected object's mana cost (chroma,
+    /// CR 702.49; hybrid symbols count). Appended.
+    ManaSymbolsOfColorInAffectedCost(crate::Color),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -115,6 +121,7 @@ impl AnthemValue {
                 count:
                     AnthemCountExpression::AttachedToAffected(_)
                     | AnthemCountExpression::ColorsOfAffected
+                    | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_)
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
                 ..
@@ -122,6 +129,7 @@ impl AnthemValue {
             | Self::CappedPerCount {
                 count:
                     AnthemCountExpression::AttachedToAffected(_)
+                    | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_)
                     | AnthemCountExpression::ColorsOfAffected
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
@@ -215,7 +223,10 @@ pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
         Value::MaximumLifeTotal(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You)
         | Value::CountPlayersBelowHalfStartingLifeTotal(
             PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You,
-        ) => true,
+        )
+        | Value::CountPlayers(PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You) => {
+            true
+        }
         Value::LifeTotal(PlayerFilter::You)
         | Value::CardsInHand(PlayerFilter::You)
         | Value::CardsInLibrary(PlayerFilter::You)

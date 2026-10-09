@@ -16,6 +16,8 @@ pub enum TargetPlayerChoiceActor {
     Opponent,
     ThatPlayer,
     Voter,
+    /// "defending player chooses ..." (Crashing Boars, Drana)
+    DefendingPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +180,8 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
         )
             .value(TargetPlayerChoiceActor::ThatPlayer),
         (primitives::kw("the"), primitives::kw("voter")).value(TargetPlayerChoiceActor::Voter),
+        (primitives::kw("defending"), primitives::kw("player"))
+            .value(TargetPlayerChoiceActor::DefendingPlayer),
     ))
     .parse_next(input)?;
     alt((primitives::kw("choose"), primitives::kw("chooses"))).parse_next(input)?;

@@ -15,6 +15,12 @@ pub enum SentencePreludeShape {
         sides: u32,
         surface: DieSurface,
     },
+    /// "Roll two d20 and ignore the lower roll." (Berserker's Frenzy)
+    RollDiceIgnoreLower {
+        count: u32,
+        sides: u32,
+        surface: DieSurface,
+    },
 }
 
 pub fn parse_sentence_prelude_shape_tokens(
@@ -57,14 +63,29 @@ fn parse_roll_dice_choose_one_result(
     let die_notation: &str = any.parse_next(input)?;
     let sides = leaf::parse_leaf_die_sides_complete(die_notation)
         .map_err(|_| primitives::backtrack_err("die notation", "d followed by sides"))?;
-    for word in ["and", "choose", "one", "result"] {
-        primitives::word_slice_exact(word).parse_next(input)?;
-    }
+    primitives::word_slice_exact("and").parse_next(input)?;
+    let ignore_lower = alt((
+        (
+            primitives::word_slice_exact("choose"),
+            primitives::word_slice_exact("one"),
+            primitives::word_slice_exact("result"),
+        )
+            .value(false),
+        (
+            primitives::word_slice_exact("ignore"),
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("lower"),
+            primitives::word_slice_exact("roll"),
+        )
+            .value(true),
+    ))
+    .parse_next(input)?;
     eof.parse_next(input)?;
-    Ok(SentencePreludeShape::RollDiceChooseOneResult {
-        count,
-        sides,
-        surface: DieSurface::CompactNotation,
+    let surface = DieSurface::CompactNotation;
+    Ok(if ignore_lower {
+        SentencePreludeShape::RollDiceIgnoreLower { count, sides, surface }
+    } else {
+        SentencePreludeShape::RollDiceChooseOneResult { count, sides, surface }
     })
 }
 

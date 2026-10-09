@@ -265,6 +265,10 @@ fn parse_unless_shape<'a>(
             primitives::phrase(&["its", "controller"]).value(CounterPaymentPayer::SpellController),
             primitives::phrase(&["that", "spells", "controller"]).value(CounterPaymentPayer::SpellController),
             primitives::phrase(&["that", "spell's", "controller"]).value(CounterPaymentPayer::SpellController),
+            // The countered stack object may be an ability (CR 113.7a: its
+            // controller is the controller of the object it came from).
+            primitives::phrase(&["that", "abilitys", "controller"]).value(CounterPaymentPayer::SpellController),
+            primitives::phrase(&["that", "ability's", "controller"]).value(CounterPaymentPayer::SpellController),
             primitives::phrase(&["they"]).value(CounterPaymentPayer::SpellController),
             primitives::phrase(&["that", "player"]).value(CounterPaymentPayer::SpellController),
         )),

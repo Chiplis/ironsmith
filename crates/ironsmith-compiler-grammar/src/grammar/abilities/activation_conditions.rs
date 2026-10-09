@@ -195,6 +195,33 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     ) {
         return Some(ActivationTiming::AnyTimeByEnchantedCreatureController);
     }
+    // "Only your opponents may activate this ability [and only as a
+    // sorcery]." (Detention Vortex, Soul Ransom): the activator is an
+    // opponent of the source's controller.
+    if matches_exact_tokens(
+        tokens,
+        &["only", "your", "opponents", "may", "activate", "this", "ability"],
+    ) {
+        return Some(ActivationTiming::AnyTimeByOpponents);
+    }
+    if matches_exact_tokens(
+        tokens,
+        &[
+            "only", "your", "opponents", "may", "activate", "this", "ability", "and", "only", "as",
+            "a", "sorcery",
+        ],
+    ) {
+        return Some(ActivationTiming::SorcerySpeedByOpponents);
+    }
+    if matches_exact_tokens(
+        tokens,
+        &[
+            "only", "the", "player", "this", "creature", "is", "attacking", "may", "activate",
+            "this", "ability", "and", "only", "during", "the", "declare", "attackers", "step",
+        ],
+    ) {
+        return Some(ActivationTiming::DeclareAttackersStepByAttackedPlayer);
+    }
     if matches_prefix_tokens(
         tokens,
         &[
@@ -306,6 +333,9 @@ use crate::recognition::ParseOutcome;
 mod condition_readings;
 
 pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(cap) = parse_counted_activation_cap(tokens) {
+        return Some(cap);
+    }
     let input = condition_readings::ActivationCondition {
         tokens,
         read_by_cache: Default::default(),
@@ -743,4 +773,27 @@ mod enchanted_controller_activation_tests {
         let tokens = crate::lexer::lex_line("Only the controller of the enchanted creature may activate this ability during combat banana", 0).unwrap();
         assert!(parse_activate_only_timing_lexed(&tokens).is_none());
     }
+}
+
+/// "Activate no more times each turn than the number of snow Swamps you
+/// control." (Withering Wisps): a per-turn activation cap equal to a count
+/// read when the ability is activated (CR 602.5b).
+fn parse_counted_activation_cap(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let head = [
+        "activate", "no", "more", "times", "each", "turn", "than", "the", "number", "of",
+    ];
+    if tokens.len() <= head.len()
+        || !tokens[..head.len()]
+            .iter()
+            .zip(head)
+            .all(|(token, word)| token.is_word(word))
+    {
+        return None;
+    }
+    let filter =
+        crate::object_filters::parse_object_filter(&tokens[head.len()..], false).ok()?;
+    Some(PredicateAst::MaxActivationsPerTurnCount(
+        crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+    ))
 }

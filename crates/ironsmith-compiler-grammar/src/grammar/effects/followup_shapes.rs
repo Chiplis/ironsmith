@@ -177,6 +177,47 @@ pub fn is_instead_replacement_sentence(tokens: &[OwnedLexToken]) -> bool {
         || words.get(instead + 1).is_some_and(|word| *word == "if")
 }
 
+/// "If <condition>, <restated action> instead." on its own line (an
+/// ability word may label it: "Adamant — If at least three red mana was
+/// spent to cast this spell, it deals 4 damage instead."). Unlike an
+/// ordinary replacement effect, its condition names no event that "would"
+/// happen: it modifies the action the preceding statement performed
+/// (CR 614.1a, a self-replacement of that statement).
+pub fn is_conditional_instead_restatement_sentence(tokens: &[OwnedLexToken]) -> bool {
+    conditional_instead_restatement_action(tokens).is_some()
+}
+
+/// The restated action of a conditional instead restatement ("it deals 4
+/// damage" in "If ..., it deals 4 damage instead."), when the sentence has
+/// that shape.
+pub fn conditional_instead_restatement_action(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    fn shape<'a>(
+        input: &mut LexStream<'a>,
+    ) -> WResult<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+        primitives::kw("if").parse_next(input)?;
+        let condition = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::comma()))
+            .map(|((), _)| ())
+            .take()
+            .parse_next(input)?;
+        primitives::comma().parse_next(input)?;
+        let action = repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek((primitives::kw("instead"), primitives::sentence_end())),
+        )
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+        primitives::kw("instead").parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok((condition, action))
+    }
+    let tokens = super::split_labeled_effect_prefix_lexed(tokens).unwrap_or(tokens);
+    let (condition, action) =
+        crate::grammar::primitives::probe_all(tokens, shape, "conditional instead restatement")?;
+    (!condition.iter().any(|token| token.is_word("would"))).then_some(action)
+}
+
 pub fn parse_create_more_prior_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreateMorePriorTokensShape<'_>> {

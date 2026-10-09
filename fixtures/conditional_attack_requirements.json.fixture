@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Viashino Bey",
+    "oracle_id": "d9c9b933-74f4-4898-bbb8-2da76b86ccda",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Creature — Lizard",
+    "oracle_text": "If this creature attacks, all creatures you control attack if able.",
+    "power": "4",
+    "toughness": "3",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature — Lizard\nPower/Toughness: 4/3\nIf this creature attacks, all creatures you control attack if able."
+  },
+  {
+    "name": "War's Toll",
+    "oracle_id": "ba4e4afb-24bb-47de-aba8-89d21b11d45c",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever an opponent taps a land for mana, tap all lands that player controls.\nIf a creature an opponent controls attacks, all creatures that opponent controls attack if able.",
+    "text": "Mana cost: {3}{R}\nType: Enchantment\nWhenever an opponent taps a land for mana, tap all lands that player controls.\nIf a creature an opponent controls attacks, all creatures that opponent controls attack if able."
+  },
+  {
+    "name": "Magnetic Web",
+    "oracle_id": "c62c8006-5650-43cb-8247-da097aa42376",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "If a creature with a magnet counter on it attacks, all creatures with magnet counters on them attack if able.\nWhenever a creature with a magnet counter on it attacks, all creatures with magnet counters on them block that creature this turn if able.\n{1}, {T}: Put a magnet counter on target creature.",
+    "text": "Mana cost: {2}\nType: Artifact\nIf a creature with a magnet counter on it attacks, all creatures with magnet counters on them attack if able.\nWhenever a creature with a magnet counter on it attacks, all creatures with magnet counters on them block that creature this turn if able.\n{1}, {T}: Put a magnet counter on target creature."
+  }
+]

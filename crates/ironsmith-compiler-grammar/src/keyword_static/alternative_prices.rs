@@ -6,6 +6,10 @@ use crate::lexer::{TokenWordView, render_token_slice};
 pub fn parse_independent_alternative_price_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The commander tax life substitution (Liesa) has its own owner.
+    if super::commander_tax_life::parse_commander_tax_life_line(tokens).is_some() {
+        return Ok(None);
+    }
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     if tokens.iter().any(OwnedLexToken::is_quote) {
         return Ok(None);
@@ -85,6 +89,24 @@ pub fn parse_independent_alternative_price_line(
         && !cast_head
         && words.get(head + 2) == Some(&"pay")
         && words.get(head + 3) == Some(&"rather")
+    {
+        return Ok(None);
+    }
+    // "You may pay {W}{U}{B}{R}{G} rather than pay the mana cost for spells you
+    // cast": a pure mana price is owned by the fixed alternative-mana-cost
+    // grant. Mana groups contribute parser word pieces ("w", "0"), so the word
+    // check above never sees "rather" directly after "pay" for them; without
+    // this deferral both readings match with different ASTs and the registry
+    // rejects the line as ambiguous.
+    if !once
+        && !cast_head
+        && words.get(head + 2) == Some(&"pay")
+        && let Some(pay_token) = starts.get(head + 2).copied()
+        && let Some(rather_token) = starts.get(rather).copied()
+        && rather_token > pay_token + 1
+        && tokens[pay_token + 1..rather_token]
+            .iter()
+            .all(|token| token.kind == TokenKind::ManaGroup)
     {
         return Ok(None);
     }

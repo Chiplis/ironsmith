@@ -1,0 +1,10 @@
+[
+  {
+    "name": "You Look Upon the Tarrasque",
+    "oracle_id": "231a6f8a-624a-4bff-8648-0b4ef910a6aa",
+    "mana_cost": "{4}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Run and Hide — Prevent all combat damage that would be dealt to you and creatures you control this turn.\n• Gather Your Courage — Target creature gets +5/+5 and gains indestructible until end of turn. All creatures your opponents control able to block that creature this turn do so.",
+    "text": "Mana cost: {4}{G}\nType: Instant\nChoose one —\n• Run and Hide — Prevent all combat damage that would be dealt to you and creatures you control this turn.\n• Gather Your Courage — Target creature gets +5/+5 and gains indestructible until end of turn. All creatures your opponents control able to block that creature this turn do so."
+  }
+]

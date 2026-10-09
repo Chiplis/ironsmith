@@ -215,7 +215,6 @@ impl EffectExecutor for ScryEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let mut retained_children = Vec::new();
                 let player_id = resolve_player_filter(game, &self.player, ctx)?;
                 let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
@@ -224,51 +223,94 @@ impl EffectExecutor for ScryEffect {
                         EffectOutcome::count(0),
                     ));
                 }
-                let arrangement = choose_scry_arrangement(
-                    game,
-                    ctx,
-                    player_id,
-                    player_id,
-                    count,
-                    "Scry",
-                    &mut retained_children,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
+                // CR 614.1a, 616.1: the scry is proposed before any card is
+                // looked at, so "scry that many cards plus one instead"
+                // (Kenessos) modifies it and "draw that many cards instead"
+                // (Eligeth) replaces it.
+                // Nothing could replace or modify it: skip the replacement
+                // pass (and its state copy) and perform the action directly.
+                if !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game) {
+                    return execute_scry_body(game, ctx, player_id, count);
                 }
-                // CR 701.22d: the player still scries (and "whenever you scry"
-                // triggers) even if the library is empty; only scry 0 is no event.
-                apply_scry_arrangement(game, &arrangement);
-
-                let keyword = crate::effects::composition::complete_keyword_action_with_outputs(
+                crate::effects::composition::execute_keyword_action_with_outputs(
                     game,
                     ctx,
-                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
-                        arrangement.total_looked as i32,
-                    )),
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Scry,
-                        player_id,
-                        ctx.source,
-                        arrangement.total_looked as u32,
+                    crate::events::Event::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Scry,
+                            player_id,
+                            ctx.source,
+                            u32::try_from(count).unwrap_or(u32::MAX),
+                        ),
+                        ctx.provenance,
                     ),
-                )?;
-                let keyword_outcome = keyword.outcome.clone();
-                retained_children.push(keyword);
-                Ok(CompletedEffectOutputs::from_children(
-                    retained_children,
-                    |_| {
-                        EffectOutcome::aggregate_with_primary_result(
-                            keyword_outcome,
-                            [arrangement.observation],
-                        )
+                    crate::effects::composition::KeywordActionOutput::Body,
+                    crate::effects::composition::KeywordActionAmount::BodyMagnitude,
+                    |game, ctx, action| {
+                        execute_scry_body(game, ctx, action.player, action.amount as usize)
                     },
-                ))
+                )
             },
         )
     }
+}
+
+/// Scry `count` cards for `player_id` once the proposed scry proceeds.
+fn execute_scry_body(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    count: usize,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let mut retained_children = Vec::new();
+    // CR 701.22d: scry 0 (after a replacement halved it, say) is no event.
+    if count == 0 {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let arrangement = choose_scry_arrangement(
+        game,
+        ctx,
+        player_id,
+        player_id,
+        count,
+        "Scry",
+        &mut retained_children,
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    // CR 701.22d: the player still scries (and "whenever you scry"
+    // triggers) even if the library is empty; only scry 0 is no event.
+    apply_scry_arrangement(game, &arrangement);
+
+    let keyword = crate::effects::composition::complete_keyword_action_with_outputs(
+        game,
+        ctx,
+        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+            arrangement.total_looked as i32,
+        )),
+        KeywordActionEvent::new(
+            KeywordActionKind::Scry,
+            player_id,
+            ctx.source,
+            arrangement.total_looked as u32,
+        ),
+    )?;
+    let keyword_outcome = keyword.outcome.clone();
+    retained_children.push(keyword);
+    Ok(CompletedEffectOutputs::from_children(
+        retained_children,
+        |_| {
+            EffectOutcome::aggregate_with_primary_result(
+                keyword_outcome,
+                [arrangement.observation],
+            )
+        },
+    ))
 }
 
 /// Effect that lets a player fateseal N cards.

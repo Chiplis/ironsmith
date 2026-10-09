@@ -1,0 +1,16 @@
+[
+ {
+  "name": "Monomania",
+  "oracle_id": "29c6935e-ef64-4298-af74-9b18eed93136",
+  "mana_cost": "{3}{B}{B}",
+  "type_line": "Sorcery",
+  "oracle_text": "Target player chooses a card in their hand and discards the rest."
+ },
+ {
+  "name": "Breakthrough",
+  "oracle_id": "c6b26c1f-121f-4b7c-921e-429b623ca934",
+  "mana_cost": "{X}{U}",
+  "type_line": "Sorcery",
+  "oracle_text": "Draw four cards, then choose X cards in your hand and discard the rest."
+ }
+]

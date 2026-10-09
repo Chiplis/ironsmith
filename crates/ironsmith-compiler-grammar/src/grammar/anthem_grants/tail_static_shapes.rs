@@ -381,12 +381,15 @@ fn parse_base_power_toughness_grant_lexed<'a>(
     // Oracle lists may join the base-P/T predicate to the first granted
     // ability with either "and has" or a comma followed by "has".
     alt((primitives::kw("and").void(), primitives::comma().void())).parse_next(input)?;
-    alt((
+    // "it has base power and toughness 5/5 and vigilance" / "10/10,
+    // vigilance, and trample" (Timber Paladin): the shared "has" governs the
+    // keyword list too.
+    winnow::combinator::opt(alt((
         primitives::kw("have"),
         primitives::kw("has"),
         primitives::kw("gain"),
         primitives::kw("gains"),
-    ))
+    )))
     .parse_next(input)?;
     let ability_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
     let ability_tokens = trim_lexed_commas(ability_tokens);

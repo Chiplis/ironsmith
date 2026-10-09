@@ -187,6 +187,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
@@ -231,6 +232,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
         Value::CreaturesDiedThisTurnControlledBy(player)
@@ -306,6 +308,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::PlayersDealtDamage(player)
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::LandsPlayed(player)
                 | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
@@ -388,6 +391,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
@@ -422,6 +426,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),
         Value::SpellsCastThisTurnMatching { filter, .. }
@@ -461,6 +466,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         YouControl(filter)
         | OpponentControls(filter)
         | YouHaveCardInHandMatching(filter)
+        | TopCardOfYourLibraryMatches(filter)
         | ObjectEnteredBattlefieldThisTurn(filter)
         | ObjectEnteredBattlefieldLastTurn(filter)
         | ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
@@ -543,6 +549,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     match restriction {
         AdditionalLandPlays(player, _)
         | NoMaximumHandSize(player)
+        | DrawFromBottom(player)
+        | ActivateAbilities(player)
         | GainLife(player)
         | SearchLibraries(player)
         | SearchOwnLibraryFromOwnEffects(player)
@@ -559,11 +567,18 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | LoseGameForZeroLife(player)
         | WinGame(player)
         | BecomeMonarch(player)
+        | VentureMoreThanOnceEachTurn(player)
+        | BlockWithMoreThan { player, .. }
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
         PlayLandsMatching(player, filter)
         | CastSpellsMatching(player, filter)
-        | CastMoreThanOneSpellEachTurn(player, filter) => {
+        | CastMoreThanOneSpellEachTurn(player, filter)
+        | CastMoreThanNSpellsEachTurn {
+            player,
+            spells: filter,
+            ..
+        } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {
@@ -601,14 +616,22 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | PhaseIn(filter)
         | AttackOrBlock(filter)
         | AttackOrBlockAlone(filter)
-        | EnterBattlefield(filter) => object_filter_mentions_iterated_player(filter),
+        | EnterBattlefield(filter)
+        | BecomeUntapped(filter)
+        | AttackBlockOrCrew(filter) => object_filter_mentions_iterated_player(filter),
         AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
-        | AttackPlayer { attackers, player } => {
+        | AttackPlayer { attackers, player }
+        | MustAttackPlayer { attackers, player } => {
             object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
         }
         BlockSpecificAttacker { blockers, attacker }
         | MustBlockSpecificAttacker { blockers, attacker }
-        | BeTargetedFrom(blockers, attacker) => {
+        | BeTargetedFrom(blockers, attacker)
+        | BeAttachedBy(blockers, attacker)
+        | AttackPermanents {
+            attackers: blockers,
+            permanents: attacker,
+        } => {
             object_filter_mentions_iterated_player(blockers)
                 || object_filter_mentions_iterated_player(attacker)
         }
@@ -616,6 +639,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
         PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),
+        AttackTax(rule) => object_filter_mentions_iterated_player(&rule.attackers),
         PreventDamage | PreventCombatDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }

@@ -632,6 +632,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
     let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
+    let has_any_activated_ability = has_any_activated_ability_phrase(&all_words);
     if parse_phrase_whole(
         &non_article_parser_word_refs(&base_tokens),
         ACTIVATED_ABILITY_WORDS,
@@ -683,7 +684,9 @@ pub(in super::super) fn parse_object_filter_inner(
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
     } else if (parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
         || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some())
-        && (!(has_tap_activated_ability || has_non_mana_activated_ability)
+        && (!(has_tap_activated_ability
+            || has_non_mana_activated_ability
+            || has_any_activated_ability)
             || crate::word_primitives::parse_any_sequence_prefix(
                 &ability_words,
                 &[&["activated", "ability"], &["activated", "abilities"]],
@@ -903,6 +906,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     let _ = try_apply_controlled_continuously_since_turn_began_clause(&mut filter, &mut all_words);
 
+    strip_turned_face_up_this_turn_words(&mut filter, &mut all_words);
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
     if parse_phrase_anywhere(
@@ -1117,6 +1121,25 @@ pub(in super::super) fn parse_object_filter_inner(
                 idx += consumed.max(1);
                 continue;
             }
+            // "permanents they control but don't own" (Blim): the negated
+            // relation's elided subject is the pronoun of the preceding
+            // relation, not "you".
+            if idx >= 3
+                && all_words[idx - 1] == "but"
+                && all_words[idx - 3] == "they"
+                && matches!(all_words[idx - 2], "control" | "controls" | "own" | "owns")
+            {
+                let mut with_subject = vec!["they"];
+                with_subject.extend_from_slice(slice);
+                if let Some(consumed) = try_apply_negated_you_relation_clause(
+                    &mut filter,
+                    &with_subject,
+                    &pronoun_player_filter,
+                ) {
+                    idx += consumed.saturating_sub(1).max(1);
+                    continue;
+                }
+            }
             if let Some(consumed) =
                 try_apply_negated_you_relation_clause(&mut filter, slice, &pronoun_player_filter)
             {
@@ -1248,6 +1271,9 @@ pub(in super::super) fn parse_object_filter_inner(
     }
     if has_non_mana_activated_ability {
         filter.has_non_mana_activated_ability = true;
+    }
+    if has_any_activated_ability {
+        filter.has_activated_ability = true;
     }
 
     let mut referenced_zones = Vec::new();
@@ -2818,7 +2844,14 @@ pub(in super::super) fn parse_object_filter_inner(
         // introduce a supported qualifier or another selector; an arbitrary
         // noun cannot be silently discarded by the domain fallback.
         for (index, words) in all_words.windows(2).enumerate() {
+            // "target token you control not named Dutiful Replicator": a
+            // trailing negated name is admitted only once the excluded name
+            // was actually captured on the filter.
+            let negated_name_tail = all_words.get(index + 2) == Some(&"not")
+                && all_words.get(index + 3) == Some(&"named")
+                && filter.excluded_name.is_some();
             if words == ["you", "control"]
+                && !negated_name_tail
                 && let Some(next) = all_words.get(index + 2)
                 && !matches!(
                     *next,

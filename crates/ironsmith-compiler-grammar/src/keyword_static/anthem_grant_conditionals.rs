@@ -52,7 +52,7 @@ fn parse_attached_subject_controller_condition(
         return Ok(None);
     };
     let Some(tag) = filter.tagged_constraints.iter().find_map(|constraint| {
-        matches!(constraint.tag.as_str(), "enchanted" | "equipped").then(|| constraint.tag.clone())
+        matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified").then(|| constraint.tag.clone())
     }) else {
         return Ok(None);
     };
@@ -156,6 +156,132 @@ pub fn parse_carried_conditional_anthem_grant_line(
         granted_tail,
     ));
     Ok(Some(result))
+}
+
+/// A quoted activated ability granted to a complete static subject. Reuse
+/// the ordinary subject and activated-ability owners for composed statics.
+pub fn parse_quoted_activated_ability_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let mut quoted = false;
+    let Some(has) = tokens.iter().position(|token| {
+        if token.is_quote() { quoted = !quoted; false }
+        else { !quoted && token.is_any_word(&["has", "have"]) }
+    }) else { return Ok(None); };
+    let mut tail = &tokens[has + 1..];
+    while tail.last().is_some_and(|token| matches!(token.kind,
+        crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) {
+        tail = &tail[..tail.len() - 1];
+    }
+    if tail.len() < 2 || !tail[0].is_quote() || !tail[tail.len() - 1].is_quote() {
+        return Ok(None);
+    }
+    let body = &tail[1..tail.len() - 1];
+    if body.iter().any(OwnedLexToken::is_quote)
+        || anthem_grant_grammar::parse_colon_tail_split(body).is_none() {
+        return Ok(None);
+    }
+    let Ok(subject) = parse_anthem_subject(&tokens[..has]) else { return Ok(None); };
+    // Filtered and attached grants already have their own complete owners.
+    // This fills the source-grant arm used by omitted-subject composition.
+    if !matches!(subject, AnthemSubjectAst::Source) { return Ok(None); }
+    let Some(ability) = parse_activated_line(body)? else { return Ok(None); };
+    let scope = fixed_anthem_clause(subject, 0, 0, None);
+    Ok(Some(vec![grant_object_ability_for_anthem_subject(
+        &scope, ability, display_text_for_tokens(body, false),
+    )]))
+}
+
+/// "[As long as ...,] this creature gets +1/+1, is black, and has
+/// \"{2}{B}, {T}: Destroy target blue creature.\"" (Possessed cycle): a pump,
+/// a color-setting effect (layer 5, CR 613.1e) and a quoted activated-ability
+/// grant (layer 6), all under the same leading condition. The general
+/// keyword grant reader declines this shape because its final "and has"
+/// segment looks like an omitted-subject predicate.
+pub fn parse_anthem_color_and_quoted_activated_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(line_shape) = anthem_grant_grammar::parse_anthem_keyword_head(tokens) else {
+        return Ok(None);
+    };
+    if line_shape.pre_grant_is_temporary {
+        return Ok(None);
+    }
+    let Some(color_segment) =
+        anthem_grant_grammar::parse_anthem_keyword_color_segment(tokens, line_shape)
+    else {
+        return Ok(None);
+    };
+    // Keep the delimiters: they establish that this is an authored ability
+    // grant, rather than an unquoted continuation of the anthem.
+    let mut ability_tokens_storage = &tokens[line_shape.have_token + 1..];
+    while ability_tokens_storage.last().is_some_and(|token| matches!(token.kind,
+        crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) {
+        ability_tokens_storage = &ability_tokens_storage[..ability_tokens_storage.len() - 1];
+    }
+
+    if !ability_tokens_storage
+        .first()
+        .is_some_and(|token| token.is_quote())
+        || !ability_tokens_storage
+            .last()
+            .is_some_and(|token| token.is_quote())
+    {
+        return Ok(None);
+    }
+    let ability_tokens = trim_outer_quotes(&ability_tokens_storage);
+    if ability_tokens.iter().any(|token| token.is_quote())
+        || anthem_grant_grammar::parse_colon_tail_split(ability_tokens).is_none()
+    {
+        return Ok(None);
+    }
+    let clause_words = crate::lexer::token_word_refs(tokens);
+    let clause = parse_anthem_clause(tokens, line_shape.get_token, color_segment.is_token)?;
+    let filter = anthem_subject_filter(&clause.subject);
+    let mut result = vec![build_anthem_static_ability(&clause).into()];
+    let color_ast: StaticAbilityAst = StaticAbility::set_colors(filter, color_segment.color).into();
+    result.push(match &clause.condition {
+        Some(condition) => add_static_ability_ast_condition(color_ast, condition.clone())?,
+        None => color_ast,
+    });
+    let Some(parsed) = parse_activated_line(ability_tokens)? else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported granted activated ability in anthem clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let display = display_text_for_tokens(ability_tokens, false);
+    result.push(grant_object_ability_for_anthem_subject(&clause, parsed, display));
+    Ok(Some(result))
+}
+
+/// "[As long as this creature is attacking,] for each creature you control,
+/// you may have that creature assign its combat damage as though it weren't
+/// blocked." (Siege Behemoth): grants the unblocked-assignment permission
+/// (CR 510.1c) to each creature you control under the leading condition.
+pub fn parse_controlled_creatures_may_assign_as_unblocked_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let (condition, body) = match crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(tokens) {
+        Some(split) => (
+            Some(parse_static_condition_clause(split.condition_tokens)?),
+            split.remainder_tokens,
+        ),
+        None => (None, tokens),
+    };
+    if !crate::grammar::abilities::is_each_controlled_may_assign_damage_as_unblocked_lexed(body) {
+        return Ok(None);
+    }
+    let filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    Ok(Some(vec![StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::may_assign_damage_as_unblocked(),
+        )),
+        condition,
+    }]))
 }
 
 pub fn parse_anthem_and_keyword_line(
@@ -1303,7 +1429,7 @@ fn attached_object_anthem_subject_filter(subject: &AnthemSubjectAst) -> Option<&
             matches!(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         })
         .then_some(filter)
 }
@@ -1785,6 +1911,32 @@ fn parse_heterogeneous_granted_tail_remaining(
             continue;
         }
 
+        if crate::grammar::primitives::parse_all(
+            trim_edge_punctuation_tokens(&segment),
+            winnow::combinator::alt((
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "didnt", "have", "those", "abilities",
+                ]),
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "didn't", "have", "those", "abilities",
+                ]),
+                crate::grammar::primitives::phrase(&[
+                    "can", "block", "creatures", "with", "landwalk", "abilities", "as", "though",
+                    "they", "did", "not", "have", "those", "abilities",
+                ]),
+            )),
+            "blocker landwalk permission",
+        )
+        .is_ok()
+        {
+            parsed
+                .granted_static
+                .push(StaticAbility::can_block_as_though_no_landwalk().into());
+            continue;
+        }
+
         if let Some((ability, display)) =
             parse_granted_object_ability_segment(&segment, clause_words, attached_subject)?
         {
@@ -1949,6 +2101,11 @@ fn parse_heterogeneous_granted_tail_remaining(
 }
 
 fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> bool {
+    // CR 702.28b: a creature with shadow can be blocked only by creatures
+    // with shadow. "As though they didn't have shadow" (the attackers) and
+    // "as though it had shadow" (the blocker) both grant exactly the
+    // permission to block shadow creatures; neither form lets the blocker
+    // lose the ability to block creatures without shadow.
     matches!(
         trim_edge_punctuation(tokens)
             .iter()
@@ -1967,6 +2124,8 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
             "didnt" | "didn't",
             "have",
             "shadow"
+        ] | [
+            "can", "block", "creatures", "with", "shadow", "as", "though", "it", "had", "shadow"
         ]
     )
 }
@@ -3048,6 +3207,42 @@ pub fn parse_attached_can_attack_as_though_no_defender_line(
     }))
 }
 
+/// "Enchanted creature can attack as though it had haste." (Instill Energy):
+/// the attached creature gets the CR 302.6 summoning-sickness exemption for
+/// attacking only, not haste itself (its {T} abilities stay restricted).
+pub fn parse_attached_can_attack_as_though_haste_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    use crate::grammar::primitives;
+    use winnow::Parser as _;
+    let clean = trim_edge_punctuation(tokens);
+    let Some((subject, rest)) = primitives::parse_prefix(
+        &clean,
+        winnow::combinator::alt((
+            primitives::phrase(&["enchanted", "creature"]).value("enchanted creature"),
+            primitives::phrase(&["equipped", "creature"]).value("equipped creature"),
+        )),
+    ) else {
+        return Ok(None);
+    };
+    let Some(((), rest)) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["can", "attack", "as", "though", "it", "had", "haste"]),
+    ) else {
+        return Ok(None);
+    };
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::can_attack_as_though_haste(),
+        )),
+        display: format!("{subject} can attack as though it had haste"),
+        condition: None,
+    }))
+}
+
 pub fn parse_plain_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -3839,6 +4034,15 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The complete numeric absorb reader owns its prevention payload.
+    if matches!(parse_absorb_keyword_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
+    // A descriptor's "has" qualifies the entrants rather than granting an
+    // ability when the complete entry-counter rule owns this line.
+    if matches!(parse_enters_with_additional_counter_for_filter_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 

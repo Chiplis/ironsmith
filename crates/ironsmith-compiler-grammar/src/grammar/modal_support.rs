@@ -22,7 +22,8 @@ use super::grammar::abilities::parse_activation_condition_lexed;
 use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::grammar::structure::{
-    ModalHeaderChooseSpec, parse_modal_header_choose_spec, scan_modal_header_flags,
+    ModalHeaderChooseSpec, parse_modal_header_choose_spec, parse_opponent_modal_choose_spec,
+    scan_modal_header_flags,
     split_lexed_sentences, split_trailing_modal_gate_clause,
 };
 use super::keyword_static::parse_value_binding_clause_lexed;
@@ -141,7 +142,13 @@ pub fn parse_modal_header(
 ) -> Result<Option<ModalHeader>, CardTextError> {
     let spree = tokens.first().is_some_and(|token| token.is_word("spree"));
     let tiered = tokens.first().is_some_and(|token| token.is_word("tiered"));
-    let choose_spec = if spree || tiered {
+    // CR 700.2: "An opponent chooses one —" has an opponent choose the modes
+    // while the spell is cast.
+    let opponent_choose_spec = parse_opponent_modal_choose_spec(tokens);
+    let cast_chooser = opponent_choose_spec.as_ref().map(|_| PlayerFilter::Opponent);
+    let choose_spec = if let Some(spec) = opponent_choose_spec {
+        spec
+    } else if spree || tiered {
         ModalHeaderChooseSpec {
             choose_idx: 0,
             min: Value::Fixed(1),
@@ -256,11 +263,14 @@ pub fn parse_modal_header(
         effect_start_idx = comma_idx + 1;
     }
 
-    let prechoose_tokens = if spree || tiered {
+    // "An opponent" names the chooser, not an effect before the choice.
+    let prechoose_tokens = if spree || tiered || cast_chooser.is_some() {
         &[]
     } else {
         trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
     };
+    let (intervening_if, prechoose_tokens) =
+        split_modal_trigger_intervening_if(trigger.is_some(), prechoose_tokens);
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
     let common_prefix_effects_ast = parse_modal_common_prefix_effects(tokens, choose_idx)?;
     let common_suffix_effects_ast = parse_modal_common_suffix_effects(tokens, choose_idx)?;
@@ -285,13 +295,43 @@ pub fn parse_modal_header(
         choose_both_control_card_types: modal_flags.choose_both_control_card_types,
         choose_both_exact_life_total: modal_flags.choose_both_exact_life_total,
         trigger,
+        intervening_if,
         activated,
         x_replacement,
         prefix_effects_ast,
         common_prefix_effects_ast,
         common_suffix_effects_ast,
         modal_gate,
+        cast_chooser,
     }))
+}
+
+/// CR 603.4: in `<trigger>, if <condition>, choose one —` the whole
+/// pre-choice clause is an intervening-if condition, not a resolution-time
+/// conditional effect. Claim it only when the complete clause is a modeled
+/// predicate; anything else keeps the ordinary prefix-effect reading.
+fn split_modal_trigger_intervening_if(
+    has_trigger: bool,
+    prechoose_tokens: &[OwnedLexToken],
+) -> (
+    Option<crate::cards::builders::PredicateAst>,
+    &[OwnedLexToken],
+) {
+    if !has_trigger
+        || !prechoose_tokens
+            .first()
+            .is_some_and(|token| token.is_word("if"))
+    {
+        return (None, prechoose_tokens);
+    }
+    let predicate_tokens = trim_lexed_commas(&prechoose_tokens[1..]);
+    if predicate_tokens.is_empty() {
+        return (None, prechoose_tokens);
+    }
+    match super::grammar::structure::parse_modeled_predicate(predicate_tokens) {
+        Some(predicate) => (Some(predicate), &[]),
+        None => (None, prechoose_tokens),
+    }
 }
 
 fn parse_modal_presentation_label(
@@ -501,6 +541,9 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
+                counters: amount,
+            })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
                 count: amount,
                 ..
@@ -668,13 +711,13 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::ExcessDamageToController { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })
@@ -772,6 +815,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
@@ -780,6 +825,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 ..
             })
@@ -830,6 +876,7 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
             })

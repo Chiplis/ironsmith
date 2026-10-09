@@ -79,13 +79,16 @@ const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
     "this effect can't reduce the mana in that cost to less than one mana.";
 
 mod block_parsing;
+mod characteristic_modes;
 mod line_dispatch;
 mod line_family_handlers;
 mod line_recognition;
 mod statement_recognition;
 mod unsupported;
 
-use block_parsing::{try_parse_level_header_block, try_parse_modal_bullet_block};
+use block_parsing::{
+    try_parse_level_header_block, try_parse_modal_bullet_block, try_parse_saga_modal_chapter_block,
+};
 use line_dispatch::{LineDispatchResult, dispatch_standard_line};
 use line_recognition::{
     recognize_level_item, recognize_modal_mode, recognize_saga_chapter_line, recognize_static_line,
@@ -2917,11 +2920,23 @@ fn try_parse_labeled_line_dispatch(
                         rewrite_line_tokens(line, &body)
                     })
                     .map(|body_line| recognize_static_line(&body_line))
-                    .transpose()?
-                    .flatten();
-            let mut labeled_static = builder_aware_static;
+                    .transpose();
+            // A builder-aware view that the static grammar rejects (Hexmark
+            // Destroyer's "Multi-threat Eliminator — This creature can't be
+            // blocked except by six or more creatures.") still has the
+            // normalized body view, which the unlabeled line parses; only
+            // when that also fails does the builder-aware error stand.
+            let (mut labeled_static, builder_aware_error) = match builder_aware_static {
+                Ok(parsed) => (parsed.flatten(), None),
+                Err(error) => (None, Some(error)),
+            };
             if labeled_static.is_none() {
-                labeled_static = recognize_static_line(line)?;
+                labeled_static = match (recognize_static_line(line), builder_aware_error) {
+                    (Ok(Some(parsed)), _) => Some(parsed),
+                    (_, Some(error)) => return Err(error),
+                    (Ok(None), None) => None,
+                    (Err(error), None) => return Err(error),
+                };
             }
             if let Some(mut static_line) = labeled_static {
                 // "• Mardu — If a creature attacking causes …" (Windcrag Siege):
@@ -4037,6 +4052,13 @@ fn dispatch_remaining_preprocessed_line(
     if let Some(next_idx) =
         try_push_level_header_block(preprocessed, idx, line, allow_unsupported, lines)?
     {
+        return Ok(next_idx);
+    }
+    if let Some((saga_modal, next_idx)) =
+        try_parse_saga_modal_chapter_block(preprocessed, idx, line)?
+    {
+        trace_recognized_line(&saga_modal);
+        lines.push(saga_modal);
         return Ok(next_idx);
     }
     if try_push_saga_chapter(preprocessed, line, lines)? {

@@ -12,6 +12,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
+use winnow::Parser as _;
 
 use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
@@ -62,7 +63,32 @@ pub fn parse_prevent_next_damage_clause(
             clause_text
         )));
     }
-    let target = if shape.protects_you_and_permanents_you_control {
+    // "... to any number of targets, divided as you choose" (Embolden): the
+    // amount is divided among the announced targets (CR 601.2d).
+    let divided_targets = crate::grammar::primitives::parse_all(
+        trim_lexed_commas(shape.target_tokens),
+        (
+            crate::grammar::primitives::phrase(&["any", "number", "of", "targets"]),
+            winnow::combinator::opt(crate::grammar::primitives::comma()),
+            crate::grammar::primitives::phrase(&["divided", "as", "you", "choose"]),
+        ),
+        "divided prevention targets",
+    )
+    .is_ok();
+    if !divided_targets
+        && !shape.protects_you_and_permanents_you_control
+        && !shape.source_of_your_choice
+        && let Some(effect) =
+            parse_prevent_next_damage_each_union(&amount, shape.target_tokens, shape.combat_only)?
+    {
+        return Ok(Some(effect));
+    }
+    let target = if divided_targets {
+        TargetAst::WithCount(
+            Box::new(TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))),
+            ChoiceCount::any_number(),
+        )
+    } else if shape.protects_you_and_permanents_you_control {
         TargetAst::Player(PlayerFilter::You, span_from_tokens(shape.target_tokens))
     } else {
         parse_target_phrase(shape.target_tokens)?
@@ -78,12 +104,105 @@ pub fn parse_prevent_next_damage_clause(
     );
     if let EffectAst::SubjectVerb(subject) = &mut effect
         && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
-            combat_only, ..
+            combat_only,
+            divided,
+            ..
         }) = &mut subject.action
     {
         *combat_only = shape.combat_only;
+        *divided = divided_targets;
     }
     Ok(Some(effect))
+}
+
+/// "Prevent the next N damage that would be dealt to each creature and each
+/// player this turn" (Kitsune Palliator): every member of every quantified
+/// set gets its own shield of N (CR 615.7). Object arms become a
+/// non-targeted per-object shield; player arms ("each player", "each
+/// opponent") iterate the players.
+fn parse_prevent_next_damage_each_union(
+    amount: &Value,
+    target_tokens: &[OwnedLexToken],
+    combat_only: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let target_tokens = trim_lexed_commas(target_tokens);
+    let Some(after_each) = crate::grammar::primitives::parse_prefix(
+        target_tokens,
+        crate::grammar::primitives::kw("each"),
+    )
+    .map(|(_, rest)| rest) else {
+        return Ok(None);
+    };
+    let Some((and_idx, (), right)) = crate::grammar::primitives::find_prefix(after_each, || {
+        crate::grammar::primitives::phrase(&["and", "each"])
+    }) else {
+        return Ok(None);
+    };
+    let left = &after_each[..and_idx];
+    if left.is_empty()
+        || right.is_empty()
+        || crate::grammar::primitives::find_prefix(right, || {
+            crate::grammar::primitives::phrase(&["and", "each"])
+        })
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let mut effects = Vec::new();
+    for arm in [left, right] {
+        let Some(effect) = prevent_next_damage_each_arm(amount, arm, combat_only) else {
+            return Ok(None);
+        };
+        effects.push(effect);
+    }
+    Ok(Some(EffectAst::Sequence { effects }))
+}
+
+fn prevent_next_damage_each_arm(
+    amount: &Value,
+    arm: &[OwnedLexToken],
+    combat_only: bool,
+) -> Option<EffectAst> {
+    let span = span_from_tokens(arm);
+    let prevent = |target: TargetAst| {
+        let mut effect = EffectAst::subject_verb_prevent_damage_with_options(
+            amount.clone(),
+            target,
+            Until::EndOfTurn,
+            false,
+            false,
+            Vec::new(),
+        );
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamage { combat_only: slot, .. },
+            ) = &mut subject.action
+        {
+            *slot = combat_only;
+        }
+        effect
+    };
+    let player_arm = crate::grammar::primitives::parse_all(
+        arm,
+        winnow::combinator::alt((
+            crate::grammar::primitives::kw("player").value(false),
+            crate::grammar::primitives::kw("opponent").value(true),
+        )),
+        "prevention player arm",
+    );
+    if let Ok(opponents_only) = player_arm {
+        let effects = vec![prevent(TargetAst::Player(PlayerFilter::IteratedPlayer, span))];
+        return Some(EffectAst::ForEach(if opponents_only {
+            ForEachEffectAst::ForEachOpponent { effects }
+        } else {
+            ForEachEffectAst::ForEachPlayer { effects }
+        }));
+    }
+    let mut filter = parse_object_filter(arm, false).ok()?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Some(prevent(TargetAst::Object(filter, None, None)))
 }
 
 pub fn parse_double_counters_clause(
@@ -1305,6 +1424,37 @@ fn filtered_prevention(
     effect
 }
 
+/// "a source of your choice" / "a red source of your choice": the filter
+/// that limits the single source chosen on resolution. `None` when the phrase
+/// is not a source choice.
+fn parse_source_of_your_choice_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((base, ())) =
+        crate::grammar::primitives::split_lexed_once_before_suffix(tokens, 0, || {
+            crate::grammar::primitives::phrase(&["of", "your", "choice"])
+        })
+    else {
+        return Ok(None);
+    };
+    let base = match base.split_first() {
+        Some((article, rest)) if article.is_any_word(&["a", "an"]) => rest,
+        _ => return Ok(None),
+    };
+    if !base.last().is_some_and(|token| token.is_word("source"))
+        || base.iter().any(|token| {
+            token.is_any_word(&["target", "and", "or", "color", "that", "other"])
+        })
+    {
+        return Ok(None);
+    }
+    let (filter, of_chosen_color) = parse_damage_sources_filter(base)?;
+    if of_chosen_color {
+        return Ok(None);
+    }
+    Ok(Some(filter))
+}
+
 /// "sources", "red sources", "black sources and red sources", "sources of
 /// the color of your choice": returns the source filter and whether the color
 /// is chosen on resolution.
@@ -1322,6 +1472,22 @@ fn parse_damage_sources_filter(
         |token: &OwnedLexToken| token.is_word("sources") || token.is_word("source");
     let parts: Vec<&[OwnedLexToken]> = tokens.split(|token| token.is_word("and")).collect();
     let parse_part = |part: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
+        // "sources you don't control", "sources your opponents control": a
+        // controller clause after the source noun scopes the source set.
+        if let Some(noun_idx) = part.iter().position(is_source_noun)
+            && noun_idx + 1 < part.len()
+            && let Some(controller) = damage_source_controller_clause(&part[noun_idx + 1..])
+        {
+            let mut filter = if noun_idx == 0 {
+                ObjectFilter::default()
+            } else {
+                let mut filter = parse_object_filter(&part[..noun_idx], false)?;
+                filter.zone = None;
+                filter
+            };
+            filter.controller = Some(controller);
+            return Ok(filter);
+        }
         let Some((last, descriptor)) = part.split_last() else {
             return Err(CardTextError::ParseError(
                 "missing damage source".to_string(),
@@ -1352,6 +1518,33 @@ fn parse_damage_sources_filter(
         return Ok((filter, of_chosen_color));
     }
     Ok((parse_part(tokens)?, of_chosen_color))
+}
+
+/// The controller clause after a damage-source noun.
+fn damage_source_controller_clause(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+    use crate::grammar::primitives;
+    use winnow::Parser;
+    use winnow::combinator::alt;
+    primitives::parse_all(
+        tokens,
+        alt((
+            primitives::phrase(&["you", "control"]).value(PlayerFilter::You),
+            alt((
+                primitives::phrase(&["you", "don't", "control"]),
+                primitives::phrase(&["you", "dont", "control"]),
+                primitives::phrase(&["you", "do", "not", "control"]),
+            ))
+            .value(PlayerFilter::NotYou),
+            alt((
+                primitives::phrase(&["your", "opponents", "control"]),
+                primitives::phrase(&["an", "opponent", "controls"]),
+                primitives::phrase(&["opponents", "control"]),
+            ))
+            .value(PlayerFilter::Opponent),
+        )),
+        "damage source controller",
+    )
+    .ok()
 }
 
 pub fn parse_prevent_all_damage_clause(
@@ -1428,6 +1621,26 @@ pub fn parse_prevent_all_damage_clause(
             } else {
                 source_tokens
             };
+            // "Prevent all damage a source of your choice would deal [to you]
+            // this turn." (Pay No Heed, Auriok Replica): the source is chosen
+            // on resolution (CR 609.7a); without a recipient every recipient
+            // is protected.
+            if clause_shapes::is_exact_source_of_your_choice_tokens(source_tokens) {
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
+                };
+                return Ok(Some(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_with_source_choice(
+                        target,
+                        Until::EndOfTurn,
+                        true,
+                    )
+                    .with_prevention_source_would_deal_surface(),
+                ));
+            }
             if source_tokens
                 .windows(2)
                 .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
@@ -1435,6 +1648,29 @@ pub fn parse_prevent_all_damage_clause(
                 return Err(CardTextError::ParseError(
                     "all-damage source exclusion needs its own complete target binding".into(),
                 ));
+            }
+            // "Prevent all damage a [red] source of your choice would deal
+            // [to you] this turn" (Burrenton Forge-Tender, Auriok Replica,
+            // Prahv): one source is chosen on resolution (CR 609.7a).
+            if let Some(choice_filter) = parse_source_of_your_choice_filter(source_tokens)? {
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => {
+                        TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None)
+                    }
+                };
+                let mut effect = filtered_prevention(target, choice_filter, false);
+                if let EffectAst::SubjectVerb(subject) = &mut effect
+                    && let SubjectVerbActionAst::DamagePrevention(
+                        DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                            source_of_your_choice,
+                            ..
+                        },
+                    ) = &mut subject.action
+                {
+                    *source_of_your_choice = true;
+                }
+                return Ok(Some(effect.with_prevention_source_would_deal_surface()));
             }
             if source_tokens.iter().any(|token| token.is_word("target"))
                 || source_tokens.first().is_some_and(|token| {
@@ -1678,7 +1914,19 @@ pub fn parse_prevent_next_time_damage_sentence(
         }
     };
 
-    let effect = if shape.reflect_damage_to_source_controller {
+    let effect = if shape.portion != ironsmith_core::NextTimeDamagePreventionPortion::All
+        || shape.combat_only
+    {
+        if shape.reflect_damage_to_source_controller {
+            return Ok(None);
+        }
+        EffectAst::subject_verb_prevent_next_time_damage_portion(
+            source,
+            target,
+            shape.portion,
+            shape.combat_only,
+        )
+    } else if shape.reflect_damage_to_source_controller {
         EffectAst::subject_verb_prevent_next_time_damage_with_reflection(source, target, true)
     } else {
         EffectAst::subject_verb_prevent_next_time_damage(source, target)
@@ -1864,6 +2112,7 @@ pub fn parse_redirect_next_damage_sentence(
             amount_tokens,
             protected_tokens,
             destination,
+            source_of_your_choice,
         } => {
             let Some((amount, amount_used)) = parse_value(amount_tokens) else {
                 return Err(CardTextError::ParseError(format!(
@@ -1877,7 +2126,28 @@ pub fn parse_redirect_next_damage_sentence(
                     clause_text
                 )));
             }
-            let protected_target = protected_tokens.map(parse_target_phrase).transpose()?;
+            // "you and/or permanents you control" names the controller plus
+            // every matching permanent; it declares no target.
+            let protected_target = match protected_tokens {
+                Some(tokens) if source_of_your_choice => {
+                    match clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
+                        Some(filter) => {
+                            Some(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None))
+                        }
+                        None => Some(parse_target_phrase(tokens)?),
+                    }
+                }
+                Some(tokens) => Some(parse_target_phrase(tokens)?),
+                None => None,
+            };
+            if source_of_your_choice
+                && !matches!(destination, clause_shapes::RedirectDamageDestinationShape::Target(_))
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "chosen-source redirection supports only a target destination (clause: '{}')",
+                    clause_text
+                )));
+            }
             match destination {
                 clause_shapes::RedirectDamageDestinationShape::Controller => {
                     let protected_target = protected_target.ok_or_else(|| {
@@ -1901,11 +2171,13 @@ pub fn parse_redirect_next_damage_sentence(
                         && let SubjectVerbActionAst::DamagePrevention(
                             DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                                 protected_target: effect_protected_target,
+                                source_of_your_choice: effect_source_choice,
                                 ..
                             },
                         ) = &mut subject_verb.action
                     {
                         *effect_protected_target = protected_target;
+                        *effect_source_choice = source_of_your_choice;
                     }
                     effect
                 }
@@ -1915,6 +2187,7 @@ pub fn parse_redirect_next_damage_sentence(
                             amount, protected_target,
                             destination: RedirectNextTimeDamageDestinationAst::SourceObject,
                             destination_target: None,
+                            source_of_your_choice: false,
                         }))
                 }
                 clause_shapes::RedirectDamageDestinationShape::SourceController
@@ -2085,7 +2358,59 @@ fn parse_choose_target_prelude_targets(
     if targets.len() < 2 {
         return Ok(None);
     }
+    bind_prelude_player_pronouns(&mut targets);
     Ok(Some(targets))
+}
+
+/// "choose target player and any number of target attacking creatures their
+/// opponents control": each target phrase is read on its own, so its
+/// "their"/"they" defaults to an iterated player. In one declaration the
+/// pronoun names the earlier target player instead, a relation checked as
+/// the targets are chosen (CR 115.1, 601.2c).
+fn bind_prelude_player_pronouns(targets: &mut [TargetAst]) {
+    fn player_target(target: &TargetAst) -> Option<&PlayerFilter> {
+        match target {
+            TargetAst::Player(filter, _) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                player_target(inner)
+            }
+            _ => None,
+        }
+    }
+    fn object_filter(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, _, _) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                object_filter(inner)
+            }
+            _ => None,
+        }
+    }
+    fn rebind(relation: &mut Option<PlayerFilter>, player: &PlayerFilter) {
+        match relation {
+            Some(PlayerFilter::IteratedPlayer) => *relation = Some(player.clone()),
+            Some(PlayerFilter::OpponentOf(inner))
+                if matches!(inner.as_ref(), PlayerFilter::IteratedPlayer) =>
+            {
+                *relation = Some(PlayerFilter::OpponentOf(Box::new(player.clone())));
+            }
+            _ => {}
+        }
+    }
+    let mut prior_player: Option<PlayerFilter> = None;
+    for target in targets.iter_mut() {
+        if let Some(filter) = player_target(target) {
+            prior_player = Some(match filter {
+                PlayerFilter::Target(_) => filter.clone(),
+                other => PlayerFilter::Target(Box::new(other.clone())),
+            });
+            continue;
+        }
+        if let (Some(player), Some(filter)) = (prior_player.as_ref(), object_filter(target)) {
+            rebind(&mut filter.controller, player);
+            rebind(&mut filter.owner, player);
+        }
+    }
 }
 
 fn parse_kicked_additional_targets_prelude(
@@ -2527,7 +2852,8 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::Blight { amount } => {
             EffectAst::subject_verb_put_counters(
                 crate::object::CounterType::MinusOneMinusOne,
-                Value::Fixed(amount as i32)
+                amount
+                    .map_or(Value::X, |amount| Value::Fixed(amount as i32))
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction),
                 TargetAst::Object(ObjectFilter::creature().you_control(), None, None),
                 None,
@@ -2537,6 +2863,7 @@ pub fn parse_keyword_mechanic_clause(
         clause_shapes::KeywordMechanicShape::ManifestDread {
             repeat,
             source_exiled_owner,
+            its_controller,
         } => {
             let manifest = if source_exiled_owner {
                 EffectAst::ForEach(ForEachEffectAst::ForEachObject {
@@ -2546,6 +2873,8 @@ pub fn parse_keyword_mechanic_clause(
                     .in_zone(Zone::Exile),
                     effects: vec![EffectAst::subject_verb_manifest_dread(PlayerAst::ItsOwner)],
                 })
+            } else if its_controller {
+                EffectAst::subject_verb_manifest_dread(PlayerAst::ItsController)
             } else {
                 EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit)
             };
@@ -2557,14 +2886,53 @@ pub fn parse_keyword_mechanic_clause(
                 }),
             }
         }
-        clause_shapes::KeywordMechanicShape::ManifestTop { player } => {
+        clause_shapes::KeywordMechanicShape::ManifestTop { player, count } => {
             let player = match player {
                 clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
                 clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
                     PlayerAst::ThatPlayerOrTargetController
                 }
             };
-            EffectAst::subject_verb_manifest_top_card(player)
+            let manifest = EffectAst::subject_verb_manifest_top_card(player);
+            // CR 701.40c: manifesting several cards manifests them one at a time.
+            if count > 1 {
+                EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                    count: Value::Fixed(count as i32),
+                    effects: vec![manifest],
+                })
+            } else {
+                manifest
+            }
+        }
+        clause_shapes::KeywordMechanicShape::OpenAttractions { count } => {
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: Value::Fixed(count as i32),
+                effects: vec![EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, false)],
+            })
+        }
+        clause_shapes::KeywordMechanicShape::ManifestTopCount {
+            count_tokens,
+            equal_to,
+        } => {
+            // CR 701.40c: multiple cards from a library are manifested one
+            // at a time, so the instruction repeats the single-card manifest.
+            let count = if equal_to {
+                crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(count_tokens)
+                    .or_else(|| {
+                        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(count_tokens)
+                    })
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported manifest amount (clause: '{clause_text}')"
+                        ))
+                    })?
+            } else {
+                parse_keyword_value_tokens(count_tokens, "manifest", &clause_text)?
+            };
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count,
+                effects: vec![EffectAst::subject_verb_manifest_top_card(PlayerAst::You)],
+            })
         }
         clause_shapes::KeywordMechanicShape::CloakTop { player } => {
             let player = match player {
@@ -2577,6 +2945,34 @@ pub fn parse_keyword_mechanic_clause(
         }
         clause_shapes::KeywordMechanicShape::ManifestFromHand => {
             EffectAst::subject_verb_manifest_from_hand(PlayerAst::You)
+        }
+        clause_shapes::KeywordMechanicShape::CloakFromHand => {
+            // CR 701.58a: choose a card in your hand and put it onto the
+            // battlefield face down as a 2/2 creature with ward {2}.
+            let chosen = crate::util::helper_tag_for_tokens(tokens, "cloak_from_hand");
+            let mut filter = ObjectFilter::default();
+            filter.zone = Some(crate::zone::Zone::Hand);
+            filter.owner = Some(crate::target::PlayerFilter::You);
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ObjectChoices(
+                        crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                            filter,
+                            count: crate::effect::ChoiceCount::exactly(1),
+                            count_value: None,
+                            player: PlayerAst::You,
+                            tag: crate::tag::TagRef::of(chosen.clone()),
+                        },
+                    ),
+                    EffectAst::subject_verb_cloak_onto_battlefield(
+                        PlayerAst::You,
+                        TargetAst::Tagged(crate::tag::TagRef::of(chosen), None),
+                        false,
+                        crate::cards::builders::ReturnControllerAst::Preserve,
+                        false,
+                    ),
+                ],
+            }
         }
         clause_shapes::KeywordMechanicShape::Populate { repeat } => {
             EffectAst::subject_verb_populate(keyword_repeat_value(

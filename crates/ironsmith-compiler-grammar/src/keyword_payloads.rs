@@ -8,7 +8,7 @@ use crate::zone::Zone;
 
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_craft_line_lexed, parse_cycling_line_lexed,
-    parse_equip_line_lexed, parse_reconfigure_line_lexed,
+    parse_equip_line_lexed, parse_fortify_line_lexed, parse_reconfigure_line_lexed,
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::grammar::abilities::{
@@ -174,6 +174,27 @@ pub(super) fn parse_additional_cost(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    // "As an additional cost to cast this spell, blight X. X can't be greater
+    // than the greatest toughness among creatures you control." (Soul
+    // Immolation): the trailing X bound is a rule of the spell (CR 601.2b),
+    // not part of the cost. Read the cost without it and add the bound.
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    if let [first, .., last] = sentences.as_slice()
+        && let Some(bound) = crate::keyword_static::read_aggregate_x_maximum(last)
+    {
+        let cost_len = tokens
+            .iter()
+            .position(|token| std::ptr::eq(token, &last[0]))
+            .unwrap_or(tokens.len());
+        let _ = first;
+        return match parse_additional_cost(line, &tokens[..cost_len], full_tokens)? {
+            Some(KeywordLinePayload::Ast(cost)) => Ok(ast(LineAst::Multiple(vec![
+                *cost,
+                LineAst::StaticAbility(bound),
+            ]))),
+            _ => Ok(None),
+        };
+    }
     let context = rewrite_context(line, tokens, full_tokens, KeywordLineKind::AdditionalCost);
     if let Some(parsed) = parse_keyword_special_cases(&context, tokens)? {
         return Ok(ast(parsed));
@@ -428,6 +449,7 @@ ability_parser!(parse_cycling, parse_cycling_line_lexed);
 ability_parser!(parse_craft, parse_craft_line_lexed);
 ability_parser!(parse_reinforce, parse_reinforce_line_lexed);
 ability_parser!(parse_equip, parse_equip_line_lexed);
+ability_parser!(parse_fortify, parse_fortify_line_lexed);
 pub(super) fn parse_reconfigure(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],

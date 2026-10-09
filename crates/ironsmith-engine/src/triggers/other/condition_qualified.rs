@@ -30,6 +30,9 @@ impl ConditionQualifiedTrigger {
     }
 }
 
+/// Surface marker for a triggered ability gated by a level-up range.
+pub const LEVEL_RANGE_SURFACE_PREFIX: &str = "__ironsmith_level_range:";
+
 impl TriggerMatcher for ConditionQualifiedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.trigger.matches(event, ctx)
@@ -96,6 +99,11 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
     }
 
     fn display(&self) -> String {
+        // A level-range gate (CR 711.2a) is presentation structure: the
+        // ability is printed under its LEVEL header, not with a qualifier.
+        if self.surface.starts_with(LEVEL_RANGE_SURFACE_PREFIX) {
+            return self.trigger.display();
+        }
         let condition = if self.surface.trim().is_empty() {
             crate::runtime_display::describe_condition(&self.condition)
         } else {

@@ -313,12 +313,13 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 target,
             })
@@ -420,6 +421,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             })
@@ -1138,6 +1143,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
@@ -1166,6 +1172,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
@@ -1298,8 +1305,9 @@ pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner } => {
             player_filter_references_tag(inner, tag)
         }
@@ -1563,6 +1571,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
         | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
         | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -1650,6 +1659,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
@@ -1660,6 +1671,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
             ..
         })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked { .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
@@ -1691,6 +1703,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
         | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
@@ -1954,6 +1967,13 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     });
     if target_references {
         return true;
+    }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
+            portion: ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount), ..
+        }), ..
+    }) = effect {
+        return value_references_event_derived_amount(amount);
     }
     match effect {
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) => {
@@ -2735,6 +2755,8 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
@@ -2781,7 +2803,8 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     }
 
     if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
-    | Restriction::AttackPlayer { attackers, .. } = restriction
+    | Restriction::AttackPlayer { attackers, .. }
+    | Restriction::MustAttackPlayer { attackers, .. } = restriction
     {
         return attackers
             .tagged_constraints

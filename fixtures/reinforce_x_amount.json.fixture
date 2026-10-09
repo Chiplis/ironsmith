@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Wren's Run Hydra",
+    "oracle_id": "a2196bc3-2fe6-49d4-8c79-d6beb3d6c5d8",
+    "text": "Mana cost: {X}{G}\nType: Creature — Hydra\nPower/Toughness: 0/0\nReach\nThis creature enters with X +1/+1 counters on it.\nReinforce X—{X}{G}{G}"
+  },
+  {
+    "name": "Swell of Courage",
+    "oracle_id": "60033841-71c7-4370-a2bc-e570a5c100ea",
+    "text": "Mana cost: {3}{W}{W}\nType: Instant\nCreatures you control get +2/+2 until end of turn.\nReinforce X—{X}{W}{W}"
+  }
+]

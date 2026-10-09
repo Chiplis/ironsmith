@@ -27,6 +27,9 @@ pub enum MustBlockShape<'a> {
         subject_tokens: &'a [OwnedLexToken],
     },
     AllCreatures {
+        /// "creatures your opponents control" when the blockers are
+        /// qualified (You Look Upon the Tarrasque); unqualified otherwise.
+        blocker_filter_tokens: Option<&'a [OwnedLexToken]>,
         attacker_and_duration_tokens: &'a [OwnedLexToken],
     },
     SubjectAgainstAttacker {
@@ -39,6 +42,8 @@ pub enum MustBlockShape<'a> {
 pub enum DurationTriggerPrefixShape {
     UntilEndOfTurn,
     UntilYourNextTurn,
+    /// "until (the) end of your next turn" (Season of the Bold).
+    UntilEndOfYourNextTurn,
     UntilYourNextUpkeep,
     UntilYourNextUntapStep,
     DuringYourNextUntapStep,
@@ -172,6 +177,163 @@ pub fn parse_combat_requirement_shape(
     (!shape.subject_tokens.iter().any(|token| token.is_period())).then_some(shape)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackRequirementPlayer {
+    /// "that player": the player the preceding instruction named.
+    ThatPlayer,
+    You,
+    /// "attacks a player": any player rather than a planeswalker or battle.
+    APlayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttackPlayerRequirementDuration {
+    Turn,
+    Combat,
+    /// "each combat": every combat within an explicitly stated duration.
+    EachCombat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttackPlayerRequirementShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub player: AttackRequirementPlayer,
+    pub duration: AttackPlayerRequirementDuration,
+}
+
+fn attack_player_suffix<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(AttackRequirementPlayer, AttackPlayerRequirementDuration)> {
+    (
+        alt((primitives::kw("attack"), primitives::kw("attacks"))),
+        alt((
+            primitives::phrase(&["that", "player"]).value(AttackRequirementPlayer::ThatPlayer),
+            // "attacks you this turn" is the typed this-turn requirement
+            // (effect_sentences::attack_player_requirement) only.
+            primitives::phrase(&["a", "player"]).value(AttackRequirementPlayer::APlayer),
+        )),
+        alt((
+            primitives::phrase(&["this", "turn"]).value(AttackPlayerRequirementDuration::Turn),
+            primitives::phrase(&["this", "combat"]).value(AttackPlayerRequirementDuration::Combat),
+            primitives::phrase(&["each", "combat"])
+                .value(AttackPlayerRequirementDuration::EachCombat),
+        )),
+        primitives::phrase(&["if", "able"]),
+        primitives::sentence_end(),
+    )
+        .map(|(_, player, duration, _, _)| (player, duration))
+        .parse_next(input)
+}
+
+fn attack_player_requirement<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttackPlayerRequirementShape<'a>> {
+    let subject_tokens = repeat_till(1.., any.void(), peek(attack_player_suffix))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    let (player, duration) = attack_player_suffix.parse_next(input)?;
+    Ok(AttackPlayerRequirementShape {
+        subject_tokens: trim_shape_edges(subject_tokens),
+        player,
+        duration,
+    })
+}
+
+/// "This creature attacks that player this combat if able." (Ruhan of the
+/// Fomori): a requirement to attack one specific player (CR 508.1d).
+pub fn parse_attack_player_requirement_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<AttackPlayerRequirementShape<'_>> {
+    let shape = crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        attack_player_requirement,
+        "attack player requirement clause",
+    )?;
+    (!shape.subject_tokens.is_empty()
+        && !shape.subject_tokens.iter().any(|token| token.is_period()))
+    .then_some(shape)
+}
+
+fn time_travel_once<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["time", "travel"]).parse_next(input)
+}
+
+fn time_travel_count<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    opt(primitives::kw("then")).parse_next(input)?;
+    time_travel_once.parse_next(input)?;
+    let count = alt((
+        (
+            opt(primitives::comma()),
+            opt(primitives::kw("then")),
+            time_travel_once,
+        )
+            .value(2u32),
+        primitives::kw("twice").value(2u32),
+        (
+            crate::grammar::leaf::parse_leaf_number_prefix_lexed,
+            primitives::kw("times"),
+        )
+            .map(|(count, _)| count),
+        winnow::combinator::empty.value(1u32),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(count)
+}
+
+/// "time travel", "time travel twice / three times", "time travel, then time
+/// travel": how many times the keyword action is performed.
+pub fn parse_time_travel_count_shape(tokens: &[OwnedLexToken]) -> Option<u32> {
+    crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        time_travel_count,
+        "time travel clause",
+    )
+    .filter(|count| *count > 0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReselectAttackTargetShape<'a> {
+    pub attacker_tokens: &'a [OwnedLexToken],
+    pub players_only: bool,
+}
+
+fn reselect_attack_target<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ReselectAttackTargetShape<'a>> {
+    primitives::phrase(&["reselect", "which"]).parse_next(input)?;
+    let players_only = alt((
+        primitives::phrase(&["player", "or", "permanent"]).value(false),
+        primitives::kw("player").value(true),
+    ))
+    .parse_next(input)?;
+    let attacker_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek((primitives::phrase(&["is", "attacking"]), primitives::sentence_end())),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["is", "attacking"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ReselectAttackTargetShape {
+        attacker_tokens: trim_shape_edges(attacker_tokens),
+        players_only,
+    })
+}
+
+pub fn parse_reselect_attack_target_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ReselectAttackTargetShape<'_>> {
+    crate::grammar::primitives::probe_all(
+        trim_shape_edges(tokens),
+        reselect_attack_target,
+        "reselect attack target clause",
+    )
+}
+
 fn subject_blocks_this_turn<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {
     let suffix = || {
         (
@@ -206,6 +368,37 @@ fn all_creatures_block<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<
         .parse_next(input)?;
     suffix().parse_next(input)?;
     Ok(MustBlockShape::AllCreatures {
+        blocker_filter_tokens: None,
+        attacker_and_duration_tokens: trim_shape_edges(attacker_and_duration_tokens),
+    })
+}
+
+/// "All creatures your opponents control able to block that creature this
+/// turn do so.": the Lure requirement over a qualified blocker set.
+fn all_filtered_creatures_block<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {
+    primitives::kw("all").parse_next(input)?;
+    let able = || primitives::phrase(&["able", "to", "block"]);
+    let blocker_filter_tokens = (
+        primitives::kw("creatures"),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(able())),
+    )
+        .take()
+        .parse_next(input)?;
+    able().parse_next(input)?;
+    let suffix = || {
+        (
+            primitives::phrase(&["do", "so"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    };
+    let attacker_and_duration_tokens = repeat_till(1.., any.void(), peek(suffix()))
+        .map(|((), ())| ())
+        .take()
+        .parse_next(input)?;
+    suffix().parse_next(input)?;
+    Ok(MustBlockShape::AllCreatures {
+        blocker_filter_tokens: Some(trim_shape_edges(blocker_filter_tokens)),
         attacker_and_duration_tokens: trim_shape_edges(attacker_and_duration_tokens),
     })
 }
@@ -241,6 +434,7 @@ pub fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape
         alt((
             subject_blocks_this_turn,
             all_creatures_block,
+            all_filtered_creatures_block,
             subject_blocks_attacker,
         )),
         "must block clause",
@@ -257,6 +451,10 @@ pub fn parse_duration_trigger_prefix_shape(
                 .value(DurationTriggerPrefixShape::UntilEndOfTurn),
             primitives::phrase(&["until", "your", "next", "turn"])
                 .value(DurationTriggerPrefixShape::UntilYourNextTurn),
+            primitives::phrase(&["until", "the", "end", "of", "your", "next", "turn"])
+                .value(DurationTriggerPrefixShape::UntilEndOfYourNextTurn),
+            primitives::phrase(&["until", "end", "of", "your", "next", "turn"])
+                .value(DurationTriggerPrefixShape::UntilEndOfYourNextTurn),
             primitives::phrase(&["until", "your", "next", "upkeep"])
                 .value(DurationTriggerPrefixShape::UntilYourNextUpkeep),
             primitives::phrase(&["until", "your", "next", "untap", "step"])

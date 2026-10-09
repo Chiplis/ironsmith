@@ -582,6 +582,21 @@ pub(super) fn recognize_static_line(
 ) -> Result<Option<RecognizedStaticLine>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    // These complete static programs carry multiple independent components.
+    // Older leaf recognizers can read only a flash or cost-condition suffix;
+    // retain the typed whole-line reading at the document boundary.
+    if let Some(abilities) = crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(&parse_tokens)?
+        .or(crate::keyword_static::parse_double_conditional_this_spell_cost_reduction_line(&parse_tokens)?)
+    {
+        return Ok(Some(RecognizedStaticLine {
+            info: line.info.clone(),
+            parse_tokens,
+            chosen_option: None,
+            parsed: Some(Box::new(crate::cards::builders::LineAst::StaticAbilities(
+                abilities.into_iter().map(Into::into).collect(),
+            ))),
+        }));
+    }
     if (parse_tokens
         .iter()
         .any(|token| token.kind == TokenKind::Quote)
@@ -810,6 +825,28 @@ pub(super) fn recognize_level_item(
             Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => return Err(err),
             Err(_) => {}
         }
+    }
+
+    // "LEVEL 7+ ... At the beginning of each end step, if it's not your turn,
+    // take an extra turn after this one." (Lighthouse Chronologist): a
+    // triggered ability inside a level range (CR 711.2a).
+    if line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+        && let Ok(chunk @ LineAst::Triggered { .. }) = parse_triggered_line_lexed(&line.tokens)
+    {
+        return Ok(Some(RecognizedLevelItem {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: LevelItemKind::TriggeredAbility,
+            parsed: ParsedLevelAbilityItemAst::TriggeredAbility(ParsedLevelActivatedAbilityAst {
+                info: line.info.semantic_info(),
+                chunk,
+                restrictions: Default::default(),
+                semantic_facts: line.info.semantic_facts.clone(),
+            }),
+        }));
     }
 
     if !should_skip_keyword_action_static_probe(&line.tokens)

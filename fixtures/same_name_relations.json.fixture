@@ -1,100 +1,32 @@
 [
-  {
-    "name": "Canoptek Wraith",
-    "oracle_id": "61849685-b407-4ed0-aafc-ec3a003200b9",
-    "type_line": "Artifact Creature — Wraith",
-    "mana_cost": "{3}",
-    "power": "2",
-    "toughness": "1",
-    "oracle_text": "Wraith Form — This creature can't be blocked.\nTransdimensional Scout — When this creature deals combat damage to a player, you may pay {3} and sacrifice it. If you do, choose a land you control. Then search your library for up to two basic land cards which have the same name as the chosen land, put them onto the battlefield tapped, then shuffle.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Cylian Sunsinger",
-    "oracle_id": "dcc82c14-d632-4333-be35-4a206a10b184",
-    "type_line": "Creature — Elf Shaman",
-    "mana_cost": "{1}{G}",
-    "power": "2",
-    "toughness": "2",
-    "oracle_text": "{R}{G}{W}: This creature and each other creature with the same name as it get +3/+3 until end of turn.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Extraplanar Lens",
-    "oracle_id": "e48f9fc7-72cf-4c3a-b3b3-d237edc01310",
-    "type_line": "Artifact",
-    "mana_cost": "{3}",
-    "oracle_text": "Imprint — When this artifact enters, you may exile target land you control.\nWhenever a land with the same name as the exiled card is tapped for mana, its controller adds one mana of any type that land produced.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Grim Reminder",
-    "oracle_id": "12684e95-2652-4c3c-b2c7-021b62344d77",
-    "type_line": "Instant",
-    "mana_cost": "{2}{B}",
-    "oracle_text": "Search your library for a nonland card and reveal it. Each opponent who cast a spell this turn with the same name as that card loses 6 life. Then shuffle.\n{B}{B}: Return this card from your graveyard to your hand. Activate only during your upkeep.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Invader Parasite",
-    "oracle_id": "fe4c0dc1-f6a9-4828-9c19-4239c4f955a7",
-    "type_line": "Creature — Phyrexian Insect",
-    "mana_cost": "{3}{R}{R}",
-    "power": "3",
-    "toughness": "2",
-    "oracle_text": "Imprint — When this creature enters, exile target land.\nWhenever a land an opponent controls with the same name as the exiled card enters, this creature deals 2 damage to that player.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Strata Scythe",
-    "oracle_id": "a500b724-bf28-47a3-b434-6efdebbcc04c",
-    "type_line": "Artifact — Equipment",
-    "mana_cost": "{3}",
-    "oracle_text": "Imprint — When this Equipment enters, search your library for a land card, exile it, then shuffle.\nEquipped creature gets +1/+1 for each land on the battlefield with the same name as the exiled card.\nEquip {3}",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "The Apprentice's Folly",
-    "oracle_id": "f45542a0-0d49-4b56-9c3e-663ff8d0529a",
-    "type_line": "Enchantment — Saga",
-    "mana_cost": "{2}{U}{R}",
-    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Choose target nontoken creature you control that doesn't have the same name as a token you control. Create a token that's a copy of it, except it isn't legendary, is a Reflection in addition to its other types, and has haste.\nIII — Sacrifice all Reflections you control.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Winnow",
-    "oracle_id": "1b2ad355-3f1e-4c8b-93ee-848934646b23",
-    "type_line": "Instant",
-    "mana_cost": "{1}{W}",
-    "oracle_text": "Destroy target nonland permanent if another permanent with the same name is on the battlefield.\nDraw a card.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  },
-  {
-    "name": "Yenna, Redtooth Regent",
-    "oracle_id": "0adede77-5181-4190-8066-4797cefe0189",
-    "type_line": "Legendary Creature — Elf Noble",
-    "mana_cost": "{2}{G}{W}",
-    "power": "4",
-    "toughness": "4",
-    "oracle_text": "{2}, {T}: Choose target enchantment you control that doesn't have the same name as another permanent you control. Create a token that's a copy of it, except it isn't legendary. If the token is an Aura, untap Yenna, then scry 2. Activate only as a sorcery.",
-    "source_coverage_status": "implemented_pending_full_corpus_validation",
-    "source_review_commit": "a7ba1a14ebde67a8389c39f5e5fc164fa650cdf5",
-    "validation": "authored_not_run"
-  }
+ {
+  "name": "Bloodbond March",
+  "oracle_id": "fc17d8dd-887f-405e-a195-777aa3da36f5",
+  "oracle_text": "Whenever a player casts a creature spell, each player returns all cards with the same name as that spell from their graveyard to the battlefield.",
+  "text": "Mana cost: {2}{B}{G}\nType: Enchantment\nWhenever a player casts a creature spell, each player returns all cards with the same name as that spell from their graveyard to the battlefield."
+ },
+ {
+  "name": "Rat King, Verminister",
+  "oracle_id": "a5656dab-5ce6-48fd-9eae-2c06969bb8df",
+  "oracle_text": "Disappear — At the beginning of your end step, if a permanent left the battlefield under your control this turn, create a 1/1 black Rat creature token and put a +1/+1 counter on Rat King.\n{T}, Sacrifice three Rats: Return target creature card and all other cards with the same name as that card from your graveyard to the battlefield tapped.",
+  "text": "Mana cost: {1}{B}\nType: Legendary Creature — Rat Avatar\nPower/Toughness: 1/1\nDisappear — At the beginning of your end step, if a permanent left the battlefield under your control this turn, create a 1/1 black Rat creature token and put a +1/+1 counter on Rat King.\n{T}, Sacrifice three Rats: Return target creature card and all other cards with the same name as that card from your graveyard to the battlefield tapped."
+ },
+ {
+  "name": "Locket of Yesterdays",
+  "oracle_id": "bfbfa8c1-5b03-40bb-8a4c-aedb768cb023",
+  "oracle_text": "Spells you cast cost {1} less to cast for each card with the same name as that spell in your graveyard.",
+  "text": "Mana cost: {1}\nType: Artifact\nSpells you cast cost {1} less to cast for each card with the same name as that spell in your graveyard."
+ },
+ {
+  "name": "Winnow",
+  "oracle_id": "1b2ad355-3f1e-4c8b-93ee-848934646b23",
+  "oracle_text": "Destroy target nonland permanent if another permanent with the same name is on the battlefield.\nDraw a card.",
+  "text": "Mana cost: {1}{W}\nType: Instant\nDestroy target nonland permanent if another permanent with the same name is on the battlefield.\nDraw a card."
+ },
+ {
+  "name": "Bazaar of Wonders",
+  "oracle_id": "7fca65b8-01fe-4858-97c6-f97ae82cd801",
+  "oracle_text": "When this enchantment enters, exile all graveyards.\nWhenever a player casts a spell, counter it if a card with the same name is in a graveyard or a nontoken permanent with the same name is on the battlefield.",
+  "text": "Mana cost: {3}{U}{U}\nType: World Enchantment\nWhen this enchantment enters, exile all graveyards.\nWhenever a player casts a spell, counter it if a card with the same name is in a graveyard or a nontoken permanent with the same name is on the battlefield."
+ }
 ]

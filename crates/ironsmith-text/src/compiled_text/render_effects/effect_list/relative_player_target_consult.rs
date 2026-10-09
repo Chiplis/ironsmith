@@ -95,6 +95,7 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_co
         player: reference_player,
         filter: controlled_filter,
         fewer: false,
+        ..
     }) = target_only.target.base()
     else {
         return None;
@@ -164,6 +165,7 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_se
         player: reference_player,
         filter: controlled_filter,
         fewer: false,
+        ..
     }) = target_only.target.base()
     else {
         return None;

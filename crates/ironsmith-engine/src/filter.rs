@@ -1246,7 +1246,7 @@ fn source_attachment_host_for_tag(
     tag: &TagKey,
     game: &GameState,
 ) -> Option<crate::ids::ObjectId> {
-    if !matches!(tag.as_str(), "enchanted" | "equipped") {
+    if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
         return None;
     }
     let source = game.object(source?)?;
@@ -1275,6 +1275,7 @@ fn intrinsic_attachment_tag_constraint_matches_subject(
 ) -> Option<bool> {
     let matches_intrinsic = match tag.as_str() {
         "equipped" => subject_has_attached_subtype(subject, Subtype::Equipment, game),
+        "fortified" => subject_has_attached_subtype(subject, Subtype::Fortification, game),
         "enchanted" => {
             subject.subject_was_enchanted()
                 || subject_has_attached_subtype(subject, Subtype::Aura, game)
@@ -2967,10 +2968,11 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::LowestLifeTied => false,
             PlayerFilter::MostCardsInHand => false,
             PlayerFilter::CastCardTypeThisTurn(_) => false,
+            PlayerFilter::TurnHistory(_) => false,
             // Source-relative turn history requires access to GameState and
             // is evaluated by `player_filter_matches_game` below.
             PlayerFilter::AttackedBySourceThisTurn => false,
-            PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+            PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
                 base.matches_player(player, ctx)
             }
             PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, .. } => {
@@ -2986,7 +2988,9 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
             PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => false,
-            PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => false,
+            PlayerFilter::OpponentOf(_)
+            | PlayerFilter::PlayerToLeftOf(_)
+            | PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
                 .tagged_players
@@ -3046,6 +3050,28 @@ impl PlayerFilterExt for PlayerFilter {
     }
 }
 
+/// Whether `player` did the given action this turn (CR 500.1 turn history).
+pub(crate) fn player_turn_history_matches(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    history: ironsmith_core::PlayerTurnHistoryFilter,
+) -> bool {
+    match history {
+        ironsmith_core::PlayerTurnHistoryFilter::CastSpell => game
+            .turn_store
+            .turn_history
+            .spell_cast_snapshot_history()
+            .iter()
+            .any(|snapshot| snapshot.controller == player),
+        ironsmith_core::PlayerTurnHistoryFilter::AttackedWithCreature => game
+            .turn_store
+            .turn_history
+            .creatures_attacked_by_player_this_turn
+            .get(&player)
+            .is_some_and(|creatures| !creatures.is_empty()),
+    }
+}
+
 pub(crate) fn player_filter_matches_game(
     filter: &PlayerFilter,
     player: PlayerId,
@@ -3053,6 +3079,7 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::TurnHistory(history) => player_turn_history_matches(game, player, *history),
         PlayerFilter::Defending if ctx.defending_player_reference.is_some() => {
             match game.defending_player_candidates(ctx.defending_player_reference.unwrap()) {
                 Ok(players) => {
@@ -3096,12 +3123,16 @@ pub(crate) fn player_filter_matches_game(
                     event.attacker == source
                 })
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             let Some(source) = ctx.source else {
                 return false;
             };
             player_filter_matches_game(base, player, game, ctx)
-                && game.source_dealt_damage_to_player_this_game(source, player)
+                && if *this_turn {
+                    game.source_dealt_damage_to_player_this_turn(source, player)
+                } else {
+                    game.source_dealt_damage_to_player_this_game(source, player)
+                }
         }
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
             if !player_filter_matches_game(base, player, game, ctx) {
@@ -3196,6 +3227,7 @@ pub(crate) fn player_filter_matches_game(
             player: reference_filter,
             filter: object_filter,
             fewer,
+            ..
         } => {
             if ctx
                 .players_in_range
@@ -3297,6 +3329,14 @@ pub(crate) fn player_filter_matches_game(
             other.is_in_game()
                 && game.are_opponents(other.id, player)
                 && player_filter_matches_game(base, other.id, game, ctx)
+        }),
+        // "the player to their left" (CR 101.4a seating): the nearest in-game
+        // player to the left of a player `base` names.
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_filter_matches_game(base, other.id, game, ctx)
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player)
         }),
         PlayerFilter::Target(inner) => {
             let inner = inner
@@ -3712,6 +3752,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_non_mana_activated_ability && !subject.tail_has_non_mana_activated_ability() {
             return false;
         }
+        if self.has_activated_ability
+            && !subject
+                .tail_abilities()
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
+        {
+            return false;
+        }
         if !self.could_produce_mana.is_empty()
             && !subject_could_produce_any_mana_symbol(subject, &self.could_produce_mana, game)
         {
@@ -3745,6 +3793,31 @@ impl ObjectFilterExt for ObjectFilter {
                 continue;
             }
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
+                // "that card" naming the top card of your library (Crown of
+                // Convergence, Conspicuous Snoop): read the live library top
+                // of the filter's "you" (CR 401.1).
+                if constraint.tag.as_str() == crate::tag::TOP_OF_YOUR_LIBRARY_TAG {
+                    let top = ctx
+                        .you
+                        .and_then(|you| game.player(you))
+                        .and_then(|player| player.library.last().copied())
+                        .and_then(|id| game.object(id))
+                        .map(|top| {
+                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                                top, game,
+                            )
+                        });
+                    let snapshots: Vec<crate::snapshot::ObjectSnapshot> = top.into_iter().collect();
+                    if !tagged_constraint_matches_subject(
+                        subject,
+                        &snapshots,
+                        constraint.relation,
+                        game,
+                    ) {
+                        return false;
+                    }
+                    continue;
+                }
                 // "cards you exiled" (Haldan): exiled cards linked to a source
                 // whose controller is the filter's "you".
                 if constraint.tag.as_str() == crate::tag::EXILED_BY_YOU_TAG
@@ -3812,7 +3885,9 @@ impl ObjectFilterExt for ObjectFilter {
                             live.zone != source.zone || live.stable_id != source.stable_id
                         })
                     });
-                    if !departed || !matches!(constraint.tag.as_str(), "enchanted" | "equipped") {
+                    if !departed
+                        || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
+                    {
                         return None;
                     }
                     match source.attached_to {
@@ -3832,7 +3907,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 // A source-relative attachment reference has no subject when
                 // that Aura or Equipment is unattached.
-                if matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                if matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
                     && ctx
                         .source
                         .and_then(|source| game.object(source))
@@ -4438,13 +4513,18 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentOf(base) if !matches!(base.as_ref(), PlayerFilter::You) => {
                     controller_suffix = Some("one of their opponents controls".to_string());
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::TurnHistory(history) => {
+                    parts.push(format!("a player {}'s", history.relative_clause()))
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -4607,13 +4687,18 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::OpponentOf(_) | PlayerFilter::MaxSpeed { .. } => {
+                PlayerFilter::OpponentOf(_)
+                | PlayerFilter::PlayerToLeftOf(_)
+                | PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::TurnHistory(history) => {
+                    format!("a player {} owns", history.relative_clause())
+                }
                 PlayerFilter::AttackedBySourceThisTurn => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -4847,6 +4932,7 @@ impl ObjectFilterExt for ObjectFilter {
                         "it" | "__it__" | "blocking" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
+                        "fortified" => parts.push("fortified".to_string()),
                         "convoked_this_spell" => {
                             post_noun_qualifiers.push("that convoked this spell".to_string());
                         }
@@ -5670,6 +5756,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.shares_color {
             parts.push("that share a color".to_string());
         }
+        if self.shares_card_type {
+            parts.push("that share a card type".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -5962,6 +6051,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.has_non_mana_activated_ability {
             parts.push("with an activated ability that isn't a mana ability".to_string());
         }
+        if self.has_activated_ability {
+            parts.push("with activated abilities".to_string());
+        }
 
         let has_source_exiled_constraint = self.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -6035,6 +6127,10 @@ impl ObjectFilterExt for ObjectFilter {
                 "that entered this turn".to_string()
             };
             parts.push(clause);
+        }
+
+        if self.turned_face_up_this_turn {
+            parts.push("that was turned face up this turn".to_string());
         }
 
         if self.put_onto_battlefield_with_source {
@@ -6383,3 +6479,32 @@ mod fewest_controller_set_tests {
 #[cfg(test)]
 #[path = "filter/shared_card_type_reference_tests.rs"]
 mod shared_card_type_reference_tests;
+
+#[cfg(test)]
+mod player_to_left_of_tests {
+    use super::*;
+
+    #[test]
+    fn player_to_their_left_follows_the_iterated_player_seat() {
+        // "the player to their left" (CR 101.4a seating) is relative to the
+        // player the enclosing per-player process is for.
+        let game = crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let players = [
+            crate::PlayerId::from_index(0),
+            crate::PlayerId::from_index(1),
+            crate::PlayerId::from_index(2),
+        ];
+        let filter = PlayerFilter::PlayerToLeftOf(Box::new(PlayerFilter::IteratedPlayer));
+        for iterated in players {
+            let ctx = FilterContext::new(players[0]).with_iterated_player(Some(iterated));
+            let expected = game.closest_in_game_player_to_left_matching(iterated, |_| true);
+            let matching = players
+                .iter()
+                .copied()
+                .filter(|player| player_filter_matches_game(&filter, *player, &game, &ctx))
+                .collect::<Vec<_>>();
+            assert_eq!(matching, expected.into_iter().collect::<Vec<_>>());
+            assert!(!matching.contains(&iterated));
+        }
+    }
+}

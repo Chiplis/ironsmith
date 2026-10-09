@@ -21,7 +21,23 @@ pub(super) fn classify_next_time_destination(
     {
         return Some(RedirectDamageDestinationShape::Controller);
     }
-    if primitives::parse_all(tokens, (primitives::phrase(&["its", "controller"]), winnow::combinator::eof).void(), "damage source controller").is_ok() {
+    // "its controller" / "that source's controller" (Reflect Damage): the
+    // controller of the damage's source (CR 614.9 redirection).
+    if primitives::parse_all(
+        tokens,
+        (
+            alt((
+                primitives::phrase(&["its", "controller"]),
+                primitives::phrase(&["that", "source's", "controller"]),
+                primitives::phrase(&["that", "sources", "controller"]),
+            )),
+            winnow::combinator::eof,
+        )
+            .void(),
+        "damage source controller",
+    )
+    .is_ok()
+    {
         return Some(RedirectDamageDestinationShape::SourceController);
     }
     if primitives::parse_all(tokens, (primitives::kw("itself"), winnow::combinator::eof).void(), "damage source itself").is_ok() {

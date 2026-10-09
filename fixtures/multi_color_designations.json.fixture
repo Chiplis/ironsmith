@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Seal of the Guildpact",
+  "oracle_id": "9a2d60bc-3024-4a1b-ad74-81645fd227c4",
+  "oracle_text": "As this artifact enters, choose two colors.\nEach spell you cast costs {1} less to cast for each of the chosen colors it is.",
+  "text": "Mana cost: {5}\nType: Artifact\nAs this artifact enters, choose two colors.\nEach spell you cast costs {1} less to cast for each of the chosen colors it is."
+ },
+ {
+  "name": "Tablet of the Guilds",
+  "oracle_id": "71ce7034-1400-4e7c-9ef3-37baed669faf",
+  "oracle_text": "As this artifact enters, choose two colors.\nWhenever you cast a spell, if it's at least one of the chosen colors, you gain 1 life for each of the chosen colors it is.",
+  "text": "Mana cost: {2}\nType: Artifact\nAs this artifact enters, choose two colors.\nWhenever you cast a spell, if it's at least one of the chosen colors, you gain 1 life for each of the chosen colors it is."
+ }
+]

@@ -37,12 +37,15 @@ pub enum LookExileFaceDownShape {
 pub enum LookedCardDisposition {
     HandAndLibraryBottom(LibraryBottomOrderAst),
     HandAndGraveyard,
+    /// "Put one into your hand and exile the rest." (Eye of Yawgmoth)
+    HandAndExile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookedPartitionDestination {
     Hand,
     Graveyard,
+    Exile,
     LibraryTop(LibraryBottomOrderAst),
     LibraryBottom(LibraryBottomOrderAst),
 }
@@ -195,6 +198,12 @@ const OTHER_BOTTOM: &[&[&str]] = &[
     &["rest", "on", "bottom"],
     &["rest", "onto", "bottom"],
 ];
+const OTHER_EXILE: &[&[&str]] = &[
+    &["exile", "the", "rest"],
+    &["exile", "rest"],
+    &["exile", "the", "other"],
+    &["exile", "other"],
+];
 const OTHER_GRAVEYARD: &[&[&str]] = &[
     &["other", "into", "graveyard"],
     &["other", "into", "your", "graveyard"],
@@ -214,6 +223,9 @@ pub fn parse_looked_card_disposition(tokens: &[OwnedLexToken]) -> Option<LookedC
     }
     if contains_content_sequence(tokens, OTHER_GRAVEYARD) {
         return Some(LookedCardDisposition::HandAndGraveyard);
+    }
+    if contains_content_sequence(tokens, OTHER_EXILE) {
+        return Some(LookedCardDisposition::HandAndExile);
     }
     None
 }

@@ -253,7 +253,8 @@ impl EffectExecutor for PayManaEffect {
             |game, ctx| {
                 let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
                 let chooses_x =
-                    self.cost.has_x() && self.x_value.is_none() && ctx.x_value.is_none();
+                    self.cost.has_x() && self.x_value.is_none()
+                        && (self.independent_x_choice || ctx.x_value.is_none());
                 let bounded_x = if self.x_maximum.is_some() || chooses_x {
                     let semantic_maximum = if let Some(maximum) = &self.x_maximum {
                         resolve_value(game, maximum, ctx)?.max(0) as u32

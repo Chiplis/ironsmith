@@ -1,0 +1,20 @@
+[
+ {
+  "name": "Fumiko the Lowblood",
+  "oracle_id": "cba58942-b98c-45aa-8651-7dc666e31c93",
+  "mana_cost": "{2}{R}{R}",
+  "type_line": "Legendary Creature — Human Samurai",
+  "oracle_text": "Fumiko has bushido X, where X is the number of attacking creatures.\nCreatures your opponents control attack each combat if able.",
+  "power": "3",
+  "toughness": "2"
+ },
+ {
+  "name": "Kodama of the Center Tree",
+  "oracle_id": "88188cc1-3211-4bf8-a591-613b66192695",
+  "mana_cost": "{4}{G}",
+  "type_line": "Legendary Creature — Spirit",
+  "oracle_text": "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control.\nKodama of the Center Tree has soulshift X, where X is the number of Spirits you control.",
+  "power": "*",
+  "toughness": "*"
+ }
+]

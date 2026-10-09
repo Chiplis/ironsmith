@@ -331,6 +331,19 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         {
             return vec![line.to_string()];
         }
+        if let Some(restriction_start) = split.trailing_restriction_start
+            && split.kind == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
+            && restriction_start > split.second_start
+        {
+            let cost = line
+                .get(split.second_start..restriction_start)
+                .unwrap_or_default()
+                .trim();
+            let restriction = line.get(restriction_start..).unwrap_or_default().trim();
+            if !first.is_empty() && !cost.is_empty() && !restriction.is_empty() {
+                return vec![format!("{first} {restriction}"), cost.to_string()];
+            }
+        }
         if !first.is_empty() && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
         }
@@ -493,6 +506,26 @@ fn replace_names_with_map(
 
     /// "meld them into Titania, Gaea Incarnate": the meld result's name is
     /// another card's name even when it shares the source's short name.
+    /// "Roll a six-sided die" on a card named Six-Sided Die: the die rolled
+    /// is a game object of that kind, not the card itself.
+    fn is_rolled_die_noun(bytes: &[u8], idx: usize) -> bool {
+        let Some(article) = previous_word(bytes, idx) else {
+            return false;
+        };
+        if !matches!(article, b"a" | b"an") {
+            return false;
+        }
+        let mut article_start = idx;
+        while article_start > 0 && !bytes[article_start - 1].is_ascii_alphanumeric() {
+            article_start -= 1;
+        }
+        while article_start > 0 && bytes[article_start - 1].is_ascii_alphanumeric() {
+            article_start -= 1;
+        }
+        previous_word(bytes, article_start)
+            .is_some_and(|word| matches!(word, b"roll" | b"rolls" | b"reroll" | b"rerolls"))
+    }
+
     fn preceded_by_meld_into(bytes: &[u8], idx: usize) -> bool {
         let start = idx.saturating_sub(24);
         let window = bytes[start..idx].to_ascii_lowercase();
@@ -519,6 +552,22 @@ fn replace_names_with_map(
             idx += 1;
         }
         (start < idx).then_some(&bytes[start..idx])
+    }
+
+    /// "a card exiled with Raphael" (Raphael, Most Attitude): the linked
+    /// exile pool of the source names it by its short name.
+    fn preceded_by_exiled_with(bytes: &[u8], idx: usize) -> bool {
+        if previous_word(bytes, idx) != Some(b"with".as_slice()) {
+            return false;
+        }
+        let mut with_start = idx;
+        while with_start > 0 && !bytes[with_start - 1].is_ascii_alphanumeric() {
+            with_start -= 1;
+        }
+        while with_start > 0 && bytes[with_start - 1].is_ascii_alphanumeric() {
+            with_start -= 1;
+        }
+        previous_word(bytes, with_start) == Some(b"exiled".as_slice())
     }
 
     fn preceded_by_ability_grant_word(bytes: &[u8], idx: usize) -> bool {
@@ -635,6 +684,9 @@ fn replace_names_with_map(
                     | b"sacrifice"
                     | b"destroy"
                     | b"regenerate"
+                    // "You can't cast Rakdos unless ..." (Rakdos, Lord of
+                    // Riots): the spell being cast is this card.
+                    | b"cast"
             )
         }) || next.is_some_and(|word| {
             matches!(
@@ -674,6 +726,7 @@ fn replace_names_with_map(
                     | b"s"
             )
         }) || apostrophe_s
+            || preceded_by_exiled_with(bytes, idx)
     }
 
     fn is_result_optional_companion_short_name_context(
@@ -1055,6 +1108,7 @@ fn replace_names_with_map(
                 && followed_by_cost_word(bytes, idx + full_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
             && !preceded_by_meld_into(bytes, idx)
+            && !is_rolled_die_noun(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
@@ -1105,6 +1159,7 @@ fn replace_names_with_map(
                 && followed_by_cost_word(bytes, idx + short_bytes.len()))
             && !preceded_by_named_keyword(bytes, idx)
             && !preceded_by_meld_into(bytes, idx)
+            && !is_rolled_die_noun(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)

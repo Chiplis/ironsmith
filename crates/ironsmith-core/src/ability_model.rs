@@ -59,6 +59,18 @@ pub enum ActivationTiming {
     BeforeEndOfCombatStep,
     /// The live controller of the creature enchanted by this ability source.
     AnyTimeByEnchantedCreatureController,
+    /// "Only your opponents may activate this ability": any opponent of the
+    /// source's current controller may activate it, at any time they could
+    /// activate an ability (CR 602.1, 602.5).
+    AnyTimeByOpponents,
+    /// "Only your opponents may activate this ability and only as a
+    /// sorcery": an opponent of the source's controller, during their own
+    /// main phase with an empty stack (CR 307.1, 602.5d).
+    SorcerySpeedByOpponents,
+    /// "Only the player this creature is attacking may activate this ability
+    /// and only during the declare attackers step." (Capricopian): the
+    /// activator is the player the source is attacking (CR 506.2, 508).
+    DeclareAttackersStepByAttackedPlayer,
 }
 
 impl ActivationTiming {
@@ -235,6 +247,11 @@ pub enum ManaUsageRestriction<E> {
     CastSpellOrUnlockDoorOrTurnFaceUp {
         spell_filter: ObjectFilter,
     },
+    /// "Spend this mana only to cast <spells> and unlock doors" (Smoky
+    /// Lounge): a matching spell or a Room unlock cost (CR 709.5e).
+    CastSpellOrUnlockDoor {
+        spell_filter: ObjectFilter,
+    },
     ActivateAbility,
     /// Generic CR 106.6 transaction rule. An empty `on_spend` list is a pure
     /// spending restriction; a predicate of `Any` with payloads is an
@@ -305,6 +322,9 @@ impl<E> ManaUsageRestriction<E> {
             },
             Self::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter } => {
                 ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter }
+            }
+            Self::CastSpellOrUnlockDoor { spell_filter } => {
+                ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter }
             }
             Self::ActivateAbility => ManaUsageRestriction::ActivateAbility,
             Self::PaymentTransaction {
@@ -1124,8 +1144,14 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     /// its source. The string fallback preserves older compiled definitions;
     /// new parses use the typed activator-relative timing variant.
     pub fn allows_any_player_to_activate(&self) -> bool {
-        matches!(self.timing, ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep | ActivationTiming::AnyTimeByEnchantedCreatureController)
-            || self.additional_restrictions.iter().any(|restriction| {
+        matches!(
+            self.timing,
+            ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+                | ActivationTiming::AnyTimeByEnchantedCreatureController
+                | ActivationTiming::AnyTimeByOpponents
+                | ActivationTiming::SorcerySpeedByOpponents
+                | ActivationTiming::DeclareAttackersStepByAttackedPlayer
+        ) || self.additional_restrictions.iter().any(|restriction| {
                 restriction
                     .trim()
                     .to_ascii_lowercase()

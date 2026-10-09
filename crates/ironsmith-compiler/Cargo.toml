@@ -18,6 +18,7 @@ ironsmith-compiler-lowering = { path = "../ironsmith-compiler-lowering", default
 # test-only entry points on both phases. A package may dev-depend on itself to
 # turn its own feature on for its test targets.
 ironsmith-compiler = { path = ".", features = ["test-support"] }
+serde_json = "1.0.149"
 
 [features]
 default = []

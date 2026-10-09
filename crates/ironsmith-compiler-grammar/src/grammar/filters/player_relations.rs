@@ -225,6 +225,12 @@ fn parse_relation_subject_word_slice(
                 // pronoun's player, not of the ability's controller.
                 relation_phrase(&["their", "opponents"])
                     .map(|()| PlayerFilter::OpponentOf(Box::new(pronoun_player_filter.clone()))),
+                // "creatures the active player controls" (Siren's Call).
+                alt((
+                    relation_phrase(&["the", "active", "player"]),
+                    relation_phrase(&["active", "player"]),
+                ))
+                .value(PlayerFilter::Active),
             )),
         )),
     ))
@@ -1699,6 +1705,18 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
+    // "the last chosen card" after a repeated choice (Forgotten Lore): the
+    // choice made by the final round of this resolution, which is the current
+    // antecedent of the choice's own reference tag.
+    if all_words.len() >= 3
+        && all_words[0] == "last"
+        && all_words[1] == "chosen"
+        && is_demonstrative_object_head(all_words[2])
+    {
+        push_it_tagged_object_constraint(filter);
+        all_words.drain(..2);
+        return true;
+    }
     if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORDS.contains(&all_words[0]) {
         let plural_demonstrative = all_words[0] == "those";
         let demonstrative_reference = matches!(all_words[0], "that" | "those");

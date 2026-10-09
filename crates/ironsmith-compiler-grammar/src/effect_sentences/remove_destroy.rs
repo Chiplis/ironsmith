@@ -93,10 +93,19 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         shapes::RemoveClauseShape::Counters {
             amount,
             up_to,
+            any_number,
             counter_descriptor,
             destination,
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
+            // "any number of [kind] counters": up to every counter of that kind
+            // the holder has. Lowering rebinds the source placeholder to the
+            // resolved holder (or the "from among" set).
+            let amount = if any_number {
+                Value::CountersOn(Box::new(ChooseSpec::Source), counter_type)
+            } else {
+                amount
+            };
             match destination {
                 shapes::RemoveCounterDestination::EachOfAnyNumber { filter_tokens } => {
                     let filter = parse_object_filter(filter_tokens, false)?;
@@ -226,6 +235,30 @@ fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, Ca
     parse_object_filter(tokens, false)
 }
 
+/// Apply a combat-history predicate to the object filter of a target phrase,
+/// looking through an authored count wrapper ("up to one target creature
+/// that was dealt damage this turn").
+fn with_target_object_filter(
+    target: TargetAst,
+    apply: impl FnOnce(&mut ObjectFilter),
+) -> Option<TargetAst> {
+    match target {
+        TargetAst::Object(mut filter, target_span, it_span) => {
+            apply(&mut filter);
+            Some(TargetAst::Object(filter, target_span, it_span))
+        }
+        TargetAst::WithCount(inner, count) => {
+            with_target_object_filter(*inner, apply)
+                .map(|inner| TargetAst::WithCount(Box::new(inner), count))
+        }
+        TargetAst::WithCountValue(inner, count, value) => {
+            with_target_object_filter(*inner, apply)
+                .map(|inner| TargetAst::WithCountValue(Box::new(inner), count, value))
+        }
+        _ => None,
+    }
+}
+
 fn lower_combat_history_target(
     shape: shapes::DestroyCombatHistoryShape<'_>,
 ) -> Result<Option<TargetAst>, CardTextError> {
@@ -235,21 +268,14 @@ fn lower_combat_history_target(
             Ok(matches!(&target, TargetAst::Object(..)).then_some(target))
         }
         shapes::DestroyCombatHistoryShape::DealerThisTurn { target_tokens } => {
-            let TargetAst::Object(mut filter, target_span, it_span) =
-                parse_target_phrase(target_tokens)?
-            else {
-                return Ok(None);
-            };
-            filter.dealt_damage_this_turn = true;
-            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+            Ok(with_target_object_filter(parse_target_phrase(target_tokens)?, |filter| {
+                filter.dealt_damage_this_turn = true;
+            }))
         }
         shapes::DestroyCombatHistoryShape::DealtDamageThisTurn { target_tokens } => {
-            let target = parse_target_phrase(target_tokens)?;
-            let TargetAst::Object(mut filter, target_span, it_span) = target else {
-                return Ok(None);
-            };
-            filter.was_dealt_damage_this_turn = true;
-            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+            Ok(with_target_object_filter(parse_target_phrase(target_tokens)?, |filter| {
+                filter.was_dealt_damage_this_turn = true;
+            }))
         }
         shapes::DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn {
             target_tokens,
@@ -258,12 +284,9 @@ fn lower_combat_history_target(
             let TargetAst::Player(player, _) = parse_target_phrase(player_tokens)? else {
                 return Ok(None);
             };
-            let target = parse_target_phrase(target_tokens)?;
-            let TargetAst::Object(mut filter, target_span, it_span) = target else {
-                return Ok(None);
-            };
-            filter.dealt_damage_to_player_this_turn = Some(player);
-            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+            Ok(with_target_object_filter(parse_target_phrase(target_tokens)?, |filter| {
+                filter.dealt_damage_to_player_this_turn = Some(player);
+            }))
         }
     }
 }

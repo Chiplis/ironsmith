@@ -1,0 +1,50 @@
+[
+ {
+  "name": "Heirloom Mirror // Inherited Fiend",
+  "oracle_id": "b33390dd-f2f8-4059-83a9-45c0edccd5e4",
+  "mana_cost": "{1}{B}",
+  "type_line": "Artifact",
+  "oracle_text": "{1}, {T}, Pay 1 life, Discard a card: Draw a card, mill a card, then put a ritual counter on this artifact. Then if it has three or more ritual counters on it, remove them and transform it. Activate only as a sorcery."
+ },
+ {
+  "name": "Smoldering Egg // Ashmouth Dragon",
+  "oracle_id": "7493d78c-26c4-402e-bec5-6449773d0344",
+  "mana_cost": "{1}{R}",
+  "type_line": "Creature — Dragon Egg",
+  "oracle_text": "Defender\nWhenever you cast an instant or sorcery spell, put a number of ember counters on this creature equal to the amount of mana spent to cast that spell. Then if this creature has seven or more ember counters on it, remove them and transform this creature.",
+  "power": "0",
+  "toughness": "4"
+ },
+ {
+  "name": "Strixhaven Stadium",
+  "oracle_id": "2ed0c6fc-b8b4-47da-a04b-1d995bdeecb0",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "oracle_text": "{T}: Add {C}. Put a point counter on this artifact.\nWhenever a creature deals combat damage to you, remove a point counter from this artifact.\nWhenever a creature you control deals combat damage to an opponent, put a point counter on this artifact. Then if it has ten or more point counters on it, remove them all and that player loses the game."
+ },
+ {
+  "name": "Lightning Coils",
+  "oracle_id": "bbb16f23-fdb1-444b-bef8-ce3e177c2678",
+  "mana_cost": "{3}",
+  "type_line": "Artifact",
+  "oracle_text": "Whenever a nontoken creature you control dies, put a charge counter on this artifact.\nAt the beginning of your upkeep, if this artifact has five or more charge counters on it, remove all of them from it and create that many 3/1 red Elemental creature tokens with haste. Exile them at the beginning of the next end step."
+ },
+ {
+  "name": "Galloping Lizrog",
+  "oracle_id": "3561cd52-961f-4098-9287-58ee43970f0f",
+  "mana_cost": "{3}{G}{U}",
+  "type_line": "Creature — Frog Lizard",
+  "oracle_text": "Trample\nWhen this creature enters, you may remove any number of +1/+1 counters from among creatures you control. If you do, put twice that many +1/+1 counters on this creature.",
+  "power": "3",
+  "toughness": "3"
+ },
+ {
+  "name": "Rhys, the Evermore",
+  "oracle_id": "9f013b5d-fff0-4c50-8621-158b6dc34834",
+  "mana_cost": "{1}{W}",
+  "type_line": "Legendary Creature — Elf Warrior",
+  "oracle_text": "Flash\nWhen Rhys enters, another target creature you control gains persist until end of turn.\n{W}, {T}: Remove any number of counters from target creature you control. Activate only as a sorcery.",
+  "power": "2",
+  "toughness": "2"
+ }
+]

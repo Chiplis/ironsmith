@@ -670,7 +670,9 @@ fn resolve_item(
         ParsedCardItem::Modal(modal) => report.append(resolve_modal(modal, symbols)),
         ParsedCardItem::LevelAbility(level) => {
             for item in &level.items {
-                if let ParsedLevelAbilityItemAst::ActivatedAbility(activated) = item {
+                if let ParsedLevelAbilityItemAst::ActivatedAbility(activated)
+                | ParsedLevelAbilityItemAst::TriggeredAbility(activated) = item
+                {
                     let mut resolver = CanonicalReferenceResolver::new(symbols);
                     let line_scope = symbols
                         .line_scope(activated.info.display_line_index)

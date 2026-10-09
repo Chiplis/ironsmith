@@ -180,10 +180,22 @@ fn rest_action_effect(
 ) -> EffectAst {
     match action {
         chain_grammar::RestActionShape::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        // CR 701.26a: tapping the rest of the matching permanents.
+        chain_grammar::RestActionShape::Tap => EffectAst::subject_verb_tap_all(filter),
         chain_grammar::RestActionShape::Exile => EffectAst::subject_verb_exile_all(filter, false),
         chain_grammar::RestActionShape::Sacrifice => {
             EffectAst::subject_verb_sacrifice_all(player, filter)
         }
+        // Every other card the chooser holds that matches the chosen set's
+        // description (CR 701.9a discards from that player's hand).
+        chain_grammar::RestActionShape::Discard => EffectAst::subject_verb_discard(
+            player,
+            Value::Count(filter.clone()),
+            false,
+            false,
+            Some(filter),
+            None,
+        ),
     }
 }
 
@@ -374,7 +386,59 @@ pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAs
     if let Some(effects) = super::parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
-    parse_effect_chain_lexed_inner(tokens)
+    let effects = parse_effect_chain_lexed_inner(tokens)?;
+    Ok(group_distributed_exile_instruction(tokens, effects))
+}
+
+/// "Target opponent exiles the top card of their library, a card at random
+/// from their graveyard, and a card at random from their hand"
+/// (Crabomination): one exile verb distributed over an object list is ONE
+/// instruction that lowered into several exile actions. Keep them together
+/// as one coordinated clause so "cards exiled this way" names all of them;
+/// separate sentences (each with its own verb) never merge.
+fn group_distributed_exile_instruction(
+    tokens: &[OwnedLexToken],
+    effects: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    if effects.len() < 2 {
+        return effects;
+    }
+    let exile_verbs = tokens
+        .iter()
+        .filter(|token| token.is_any_word(&["exile", "exiles"]))
+        .count();
+    let one_clause = !tokens.iter().any(|token| {
+        token.is_period() || token.is_any_word(&["then", "if", "unless", "where"])
+    });
+    fn exiles(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+                action,
+                SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Exile { .. } | ZoneMoveActionAst::ExileAll { .. }
+                ) | SubjectVerbActionAst::Library(
+                    crate::cards::builders::LibraryActionAst::ExileTopOfLibrary { .. }
+                )
+            ),
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+                exiles(effect)
+            }
+            EffectAst::Sequence { effects } => effects.iter().any(exiles),
+            _ => false,
+        }
+    }
+    // Only a list whose members are themselves several exiles: other
+    // "exile ... and <action>" chains keep their flat shape for the
+    // specialist bundle readers that match it.
+    if exile_verbs != 1 || !one_clause || effects.iter().filter(|effect| exiles(effect)).count() < 2
+    {
+        return effects;
+    }
+    vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+        result_conjunction: false,
+    }]
 }
 
 /// Parse the typed producer chain `put a counter ..., then create an X/Y
@@ -520,6 +584,8 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
             battlefield_tapped: false,
             battlefield_attacking: false,
             battlefield_attack_target_player_or_planeswalker_controlled_by: None,
+            battlefield_attack_player_only: false,
+            battlefield_blocking: None,
             battlefield_face_down: false,
             battlefield_transformed: false,
             attached_to: None,
@@ -584,6 +650,24 @@ fn parse_effect_chain_lexed_inner(
         return Ok(vec![effect]);
     }
     if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::temporary_mana_clause::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::conditional_protection_list::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::repeated_doubling::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(vec![effect]);
     }
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
@@ -816,6 +900,9 @@ pub use surface_preservation::{
 fn parse_for_each_object_effect_chain_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if crate::grammar::effects::counter_marker_shapes::parse_for_each_counter_kind_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(effects) = super::search_library::parse_for_each_revealed_this_way_sentence(tokens)?
     {
         return Ok(Some(effects));
@@ -1349,14 +1436,76 @@ pub fn parse_effect_chain_inner_lexed(
 #[path = "chain_carry/inner_chain_readings.rs"]
 mod inner_chain_readings;
 
+/// "you gain life and draw cards equal to its power" (Lifeblood Hydra),
+/// "each player loses life and discards cards equal to ..." (Blim): a bare
+/// life gain/loss coordinated with a later instruction shares that
+/// instruction's terminal "equal to" amount. Restate the amount on the life
+/// clause so each coordinated action reads its own complete quantity.
+fn expand_shared_life_equal_to_amount(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let head = &tokens[..and_idx];
+    let (life, before_life) = head.split_last()?;
+    if !life.is_word("life")
+        || !before_life
+            .last()
+            .is_some_and(|verb| verb.is_any_word(&["gain", "gains", "lose", "loses"]))
+    {
+        return None;
+    }
+    let tail = &tokens[and_idx + 1..];
+    let equal_idx = tail
+        .windows(2)
+        .rposition(|pair| pair[0].is_word("equal") && pair[1].is_word("to"))?;
+    let equal_tail = crate::util::trim_edge_punctuation_tokens(&tail[equal_idx..]);
+    // Only a single terminal amount phrase is shared; a further coordinated
+    // or sequenced action after it would make the scope ambiguous.
+    if equal_tail.len() <= 2
+        || equal_tail
+            .iter()
+            .any(|token| token.is_any_word(&["and", "then"]) || token.is_comma())
+    {
+        return None;
+    }
+    let mut expanded = head.to_vec();
+    expanded.extend_from_slice(equal_tail);
+    expanded.extend_from_slice(&tokens[and_idx..]);
+    Some(expanded)
+}
+
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A complete anchored turn instruction owns its internal comma before
+    // generic coordination constructs sibling clauses.
+    if let Some(effect) = super::dispatch_inner::parse_take_extra_turn_sentence(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(expanded) = expand_shared_life_equal_to_amount(tokens) {
+        return parse_effect_chain_inner_lexed_unstacked(&expanded, recognize_control_flow);
+    }
     if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
         return Ok(vec![effect]);
     }
     if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::attacked_turn_permission::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = super::graveyard_self_cast::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::temporary_mana_clause::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::conditional_protection_list::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::repeated_doubling::parse(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? {
         return Ok(vec![effect]);
     }
     // Conditional sentence readers enter here directly. A value definition
@@ -1435,7 +1584,26 @@ fn parse_effect_chain_inner_lexed_unstacked(
             false
         }
     };
-    let mut coordination_plan = if lists_mana_combination || sacrifices_object_union {
+    // "target creature gains your choice of flying, vigilance, deathtouch, or
+    // lifelink until end of turn" (Atraxa's Skitterfang, Éowyn): the commas
+    // and "or" after "your choice of" list the options of one choice; they
+    // never coordinate separate actions. Only claimed when nothing before the
+    // list and no conjunction elsewhere could coordinate a real action.
+    let lists_explicit_choice = effect_chain_tokens
+        .windows(3)
+        .position(|window| {
+            window[0].is_word("your") && window[1].is_word("choice") && window[2].is_word("of")
+        })
+        .is_some_and(|choice_idx| {
+            !effect_chain_tokens[..choice_idx].iter().any(OwnedLexToken::is_comma)
+                && !effect_chain_tokens
+                    .iter()
+                    .any(|token| token.is_any_word(&["and", "then", "unless", "if"]))
+        });
+    let mut coordination_plan = if lists_mana_combination
+        || sacrifices_object_union
+        || lists_explicit_choice
+    {
         None
     } else {
         match super::super::grammar::effects::coordination::recognize_coordination(
@@ -1546,6 +1714,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
             segments = sibling_segments;
         }
     }
+    segments = expand_bare_tap_state_verb_shared_object_lexed(segments);
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
     segments = merge_for_each_counter_group_segments_lexed(segments);
@@ -2174,6 +2343,40 @@ fn parse_effect_chain_inner_lexed_unstacked(
     Ok(effects)
 }
 
+/// "Untap and goad that creature" (Besmirch): a bare tap-state verb shares
+/// the object of the following coordinated action. Materialize the shared
+/// operand on the bare arm ("untap that creature") so each arm owns the same
+/// antecedent reference instead of an untargeted untap.
+fn expand_bare_tap_state_verb_shared_object_lexed(
+    mut segments: Vec<Vec<OwnedLexToken>>,
+) -> Vec<Vec<OwnedLexToken>> {
+    for idx in 0..segments.len().saturating_sub(1) {
+        let [verb] = segments[idx].as_slice() else {
+            continue;
+        };
+        if !verb.is_any_word(&["tap", "untap"]) {
+            continue;
+        }
+        let next = &segments[idx + 1];
+        if !next.first().is_some_and(|token| token.as_word().is_some())
+            || !matches!(find_verb_lexed(next), Some((_, 0)))
+        {
+            continue;
+        }
+        let object = &next[1..];
+        if !object
+            .first()
+            .is_some_and(|token| token.is_any_word(&["that", "it", "them", "those", "target"]))
+        {
+            continue;
+        }
+        let mut expanded = segments[idx].clone();
+        expanded.extend(object.iter().cloned());
+        segments[idx] = expanded;
+    }
+    segments
+}
+
 pub(super) fn parse_inline_looked_card_partition_chain(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -2684,8 +2887,121 @@ fn parse_colored_source_prevention_followup(sentence: &[OwnedLexToken]) -> Optio
 /// parsed on its own it loses that context, so it is a rider on the shield.
 /// Returns false when the last effect is not such a shield or the sentence is
 /// none of these.
+/// "If <condition>, this effect doesn't affect combat damage that would be
+/// dealt by <colored creatures>." (Undergrowth): when the condition holds the
+/// Fog prevents only combat damage from creatures outside that color
+/// (CR 615.1); otherwise it prevents all combat damage.
+fn conditional_combat_prevention_exception(
+    last: &EffectAst,
+    sentence: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage {
+                duration,
+            }),
+        ..
+    }) = last
+    else {
+        return None;
+    };
+    let clean = crate::util::trim_edge_punctuation(sentence);
+    let (_, rest) = grammar::parse_prefix(&clean, grammar::kw("if"))?;
+    let (comma_idx, _, after_comma) = grammar::find_prefix(rest, grammar::comma)?;
+    let condition_tokens = &rest[..comma_idx];
+    const EXCEPTION_HEADS: [&[&str]; 2] = [
+        &["this", "effect", "doesn't", "affect", "combat", "damage", "that", "would", "be", "dealt", "by"],
+        &["this", "effect", "doesnt", "affect", "combat", "damage", "that", "would", "be", "dealt", "by"],
+    ];
+    let source_tokens = EXCEPTION_HEADS.iter().find_map(|head| {
+        grammar::parse_prefix(after_comma, grammar::phrase(*head)).map(|((), tail)| tail)
+    })?;
+    let condition = parse_predicate_with_grammar_entrypoint_lexed(condition_tokens).ok()?;
+    let excepted = parse_object_filter(source_tokens, false).ok()?;
+    let colors = excepted.colors?;
+    if excepted.card_types != [crate::types::CardType::Creature] {
+        return None;
+    }
+    let mut prevented = excepted.clone();
+    prevented.colors = None;
+    prevented.excluded_colors = colors;
+    Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: condition,
+        if_true: vec![EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+            prevented,
+            duration.clone(),
+        )],
+        if_false: vec![last.clone()],
+    }))
+}
+
 pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
     use crate::grammar::effects::generic_sequence_shapes as sequence_grammar;
+    if let Some(last) = effects.last()
+        && let Some(replacement) = conditional_combat_prevention_exception(last, sentence)
+    {
+        *effects.last_mut().expect("checked") = replacement;
+        return true;
+    }
+    // "If this spell was kicked, prevent the next 6 damage this way instead."
+    // (Pollen Remedy): the divided total depends on the announced kicker.
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+                amount,
+                divided: true,
+                ..
+            }),
+        ..
+    })) = effects.last_mut()
+        && let Value::Fixed(base) = *amount.unhinted()
+        && let Some(kicked) = super::prevention_source_riders::parse_kicked_amount_override(sentence)
+    {
+        *amount = Value::Add(
+            Box::new(Value::Fixed(base)),
+            Box::new(Value::Scaled(Box::new(Value::WasKicked), kicked - base)),
+        );
+        return true;
+    }
+    // CR 615.5: the additional part reads the prevented damage's source
+    // (Channel Harm, Comeuppance, Judgment of Alexander, Samite Ministration).
+    if let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut() {
+        let slot = match action {
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    of_chosen_color: false,
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    source_of_your_choice: true,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                    target: TargetAst::Player(crate::target::PlayerFilter::You, _),
+                    follow_up_effects,
+                    ..
+                },
+            ) => Some(follow_up_effects),
+            _ => None,
+        };
+        if let Some(slot) = slot
+            && let Ok(Some(rider)) = super::prevention_source_riders::parse(sentence)
+        {
+            match rider {
+                super::prevention_source_riders::PreventionRider::Inline(rider) => {
+                    slot.push(rider);
+                }
+                // The delayed trigger is registered right after the shield it
+                // links to (CR 603.7).
+                super::prevention_source_riders::PreventionRider::Delayed(delayed) => {
+                    effects.push(delayed);
+                }
+            }
+            return true;
+        }
+    }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;

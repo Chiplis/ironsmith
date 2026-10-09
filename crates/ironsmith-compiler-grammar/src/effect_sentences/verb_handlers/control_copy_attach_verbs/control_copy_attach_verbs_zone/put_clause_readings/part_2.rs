@@ -195,6 +195,28 @@ pub(super) fn read_library_placement_destination(
     let tokens = input.tokens;
     let player = input.player;
     let exiled_with_source_surface = input.exiled_with_source_surface.clone();
+    if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens)
+        && let Some(split) = split_independent_reference_pair(shape.target_tokens)
+    {
+        // "Put this creature and target creature on top of their owners'
+        // libraries" (Void Stalker): each named object is its own reference
+        // (CR 115.1d: each "target" is a separate target), so the shared
+        // destination applies to each operand independently instead of the
+        // target reader keeping only one of them or a type union.
+        let destination_start = shape.target_tokens.len();
+        let destination = &tokens[destination_start..];
+        let mut effects = Vec::with_capacity(2);
+        for operand in [split.0, split.1] {
+            let mut operand_tokens = operand.to_vec();
+            operand_tokens.extend_from_slice(destination);
+            effects.push(super::super::parse_put_into_hand(&operand_tokens, input.subject)?);
+        }
+        return Ok(Some(EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        }));
+    }
     if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens) {
         let (target_tokens, source_top_only) = strip_source_top_only_prefix(shape.target_tokens);
         // "put one of those cards back on top of your library" (Devourer of
@@ -763,6 +785,14 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     destination_shape.face_down,
                     attached_to_target.clone(),
                 )
+                .with_battlefield_attack_target(destination_shape.attack_target)
+        .with_battlefield_blocking(
+            destination_shape
+                .blocking_tokens
+                .as_deref()
+                .map(parse_target_phrase)
+                .transpose()?,
+        )
                 .with_exiled_with_source_surface(exiled_with_source_surface.clone());
                 let effect = EffectAst::Sequence {
                     effects: vec![choose, move_chosen],
@@ -872,6 +902,14 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             destination_shape.face_down,
             attached_to_target,
         )
+        .with_battlefield_attack_target(destination_shape.attack_target)
+        .with_battlefield_blocking(
+            destination_shape
+                .blocking_tokens
+                .as_deref()
+                .map(parse_target_phrase)
+                .transpose()?,
+        )
         .with_exiled_with_source_surface(exiled_with_source_surface)
         .with_move_to_zone_actor_surface(player)
         .with_move_to_zone_plural_surface_if(
@@ -902,4 +940,27 @@ fn singular_revealed_this_way_filter_tokens(tokens: &[OwnedLexToken]) -> Option<
         .zip(["revealed", "this", "way"])
         .all(|(token, word)| token.is_word(word));
     (suffix_matches && end > 1).then_some(&tokens[1..end])
+}
+
+/// Two independently named objects joined by one top-level "and", each a
+/// complete reference of its own ("this creature and target creature",
+/// "target creature and target land"). A type list inside one reference
+/// ("target artifact or enchantment") never matches.
+fn split_independent_reference_pair(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let mut ands = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"));
+    let (and_idx, _) = ands.next()?;
+    if ands.next().is_some() || tokens.iter().any(|token| token.is_comma()) {
+        return None;
+    }
+    let (left, right) = (&tokens[..and_idx], &tokens[and_idx + 1..]);
+    let left_is_reference = left.first().is_some_and(|token| token.is_word("target"))
+        || (left.first().is_some_and(|token| token.is_word("this")) && left.len() <= 3);
+    let right_is_target = right.first().is_some_and(|token| token.is_word("target"));
+    (left_is_reference && right_is_target && left.len() > 1 && right.len() > 1)
+        .then_some((left, right))
 }

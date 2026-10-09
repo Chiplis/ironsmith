@@ -197,6 +197,7 @@ fn graveyard_payment_replacements_apply_to_counter_and_bounce() {
     for bounce in [false, true] {
         for method in [
             AlternativeCastingMethod::Flashback {
+                x_minimum: 0,
                 total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
             },
             AlternativeCastingMethod::Harmonize {

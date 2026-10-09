@@ -659,6 +659,12 @@ pub struct PreventDamageEffect<E> {
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
     pub protect_you_and_permanents_you_control: bool,
+    /// "Prevent the next N damage ... to any number of targets, divided as
+    /// you choose": the amount is divided among the targets as the spell is
+    /// cast (CR 601.2d) and each target gets its own shield of its share
+    /// (CR 615.7).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub divided: bool,
 }
 
 impl<E> PreventDamageEffect<E> {
@@ -671,6 +677,7 @@ impl<E> PreventDamageEffect<E> {
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
+            divided: false,
         }
     }
 
@@ -745,6 +752,22 @@ impl<E> PreventAllDamageToTargetEffect<E> {
     }
 }
 
+/// How much of the next matching damage event a one-shot prevention shield
+/// prevents (CR 615.1): all of it, half of it rounded down ("prevent half
+/// that damage, rounded down", Dark Sphere), or all but a fixed amount
+/// ("prevent all but 1 of that damage", Forcefield), or exactly an amount
+/// ("Prevent X of that damage, where X is the amount of mana that player
+/// paid this way", Errant Minion), resolved when the shield is created.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub enum NextTimeDamagePreventionPortion {
+    #[default]
+    All,
+    HalfRoundedDown,
+    AllBut(u32),
+    Exactly(Value),
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PreventNextTimeDamageEffect<E = ()> {
@@ -757,6 +780,12 @@ pub struct PreventNextTimeDamageEffect<E = ()> {
     #[cfg_attr(feature = "serde", serde(default))]
     pub reflect_source_filter: Option<ObjectFilter>,
     pub follow_up_effects: Vec<E>,
+    /// The part of the next damage event the shield prevents.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub portion: NextTimeDamagePreventionPortion,
+    /// "would deal combat damage": only a combat damage event uses the shield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub combat_only: bool,
 }
 
 impl<E> PreventNextTimeDamageEffect<E> {
@@ -767,11 +796,23 @@ impl<E> PreventNextTimeDamageEffect<E> {
             reflect_damage_to_source_controller: false,
             reflect_source_filter: None,
             follow_up_effects: Vec::new(),
+            portion: NextTimeDamagePreventionPortion::All,
+            combat_only: false,
         }
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_portion(mut self, portion: NextTimeDamagePreventionPortion) -> Self {
+        self.portion = portion;
+        self
+    }
+
+    pub fn combat_damage_only(mut self) -> Self {
+        self.combat_only = true;
         self
     }
 
@@ -818,6 +859,15 @@ pub struct RedirectNextDamageToTargetEffect {
     pub protected_target: Option<ChooseSpec>,
     pub destination: RedirectNextDamageDestination,
     pub destination_target: Option<ChooseSpec>,
+    /// "The next N damage that a source of your choice would deal ...": the
+    /// source is chosen as the effect resolves and only its damage is
+    /// redirected (CR 609.7a, 614.9).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub source_of_your_choice: bool,
+    /// "... to you and/or permanents you control": the redirected damage is
+    /// damage to the controller or to a permanent matching this filter.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub protect_you_and_permanents: Option<ObjectFilter>,
 }
 
 impl RedirectNextDamageToTargetEffect {
@@ -827,6 +877,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: None,
             destination: RedirectNextDamageDestination::TargetObject,
             destination_target: Some(target),
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 
@@ -836,6 +888,8 @@ impl RedirectNextDamageToTargetEffect {
             protected_target: Some(protected_target),
             destination: RedirectNextDamageDestination::Controller,
             destination_target: None,
+            source_of_your_choice: false,
+            protect_you_and_permanents: None,
         }
     }
 }
@@ -997,6 +1051,22 @@ pub struct GrantPlayTaggedEffect<C> {
     /// This does not create a separate optional price or change a land play.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub alternative_cost: Option<crate::TotalCost<C>>,
+    /// "During any turn you attacked with <filter>, you may play that card":
+    /// the persistent grant is active only during turns in which its player
+    /// attacked with enough matching creatures. Appended; absent in older
+    /// artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub during_turns_attacked_with: Option<AttackedWithTurnCondition>,
+}
+
+/// Turns in which the permission's player attacked with at least `minimum`
+/// distinct creatures matching `filter` (CR 508.1: a creature "attacked"
+/// once it was declared as an attacker that turn).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AttackedWithTurnCondition {
+    pub filter: ObjectFilter,
+    pub minimum: u32,
 }
 
 #[cfg(feature = "serde")]
@@ -1030,7 +1100,13 @@ impl<C> GrantPlayTaggedEffect<C> {
             cast_pool_is_plural: false,
             max_plays: None,
             alternative_cost: None,
+            during_turns_attacked_with: None,
         }
+    }
+
+    pub fn during_turns_attacked_with(mut self, condition: AttackedWithTurnCondition) -> Self {
+        self.during_turns_attacked_with = Some(condition);
+        self
     }
 
     pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
@@ -1108,6 +1184,12 @@ pub enum LinkedExileFollowUp {
     /// Return that exact exiled object to its owner's hand at the beginning of
     /// the next end step.
     ReturnToHandAtNextEndStep,
+    /// That exact exiled card becomes plotted (CR 702.170c), e.g. Lilah,
+    /// Undefeated Slickshot.
+    BecomePlotted,
+    /// If that exact exiled card doesn't have suspend, it gains suspend
+    /// (CR 702.62a), e.g. Gandalf of the Secret Fire.
+    GainSuspendIfMissing,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1603,14 +1685,29 @@ pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
     pub follow_up_effects: Vec<E>,
+    /// The player a follow-up's "that player" names, resolved when the shield
+    /// is created ("Choose target opponent. Regenerate this creature. When it
+    /// regenerates this way, that player may draw a card."). The follow-up
+    /// runs later in the shield's replacement program, which has none of the
+    /// creating resolution's targets, so it reads that player as the iterated
+    /// player of a one-player loop.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub follow_up_player: Option<PlayerFilter>,
 }
 
 impl<E> RegenerateEffect<E> {
+    /// Result id of the regeneration replacement's own instruction (the
+    /// damage removal). A follow-up "When it regenerates this way, ..."
+    /// is a reflexive trigger keyed to it (CR 701.19, 603.12): it triggers
+    /// only when this shield actually replaced a destruction.
+    pub const SHIELD_USED_ID: crate::effect::EffectId = crate::effect::EffectId(0xFFFF_FE00);
+
     pub fn new(target: ChooseSpec, duration: Until) -> Self {
         Self {
             target,
             duration,
             follow_up_effects: Vec::new(),
+            follow_up_player: None,
         }
     }
 
@@ -1624,6 +1721,11 @@ impl<E> RegenerateEffect<E> {
 
     pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn with_follow_up_player(mut self, player: Option<PlayerFilter>) -> Self {
+        self.follow_up_player = player;
         self
     }
 }
@@ -1792,6 +1894,29 @@ impl SetClassLevelEffect {
     }
 }
 
+/// The game's day/night designation an effect sets (CR 731).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum DayNightDesignation {
+    Day,
+    Night,
+}
+
+/// "It becomes day." / "It becomes night." (CR 731.2-731.3). Making it day
+/// while it's already day (or night while night) changes nothing and is not
+/// "day becomes night" / "night becomes day".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct SetDayNightEffect {
+    pub designation: DayNightDesignation,
+}
+
+impl SetDayNightEffect {
+    pub const fn new(designation: DayNightDesignation) -> Self {
+        Self { designation }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BolsterEffect {
@@ -1864,6 +1989,10 @@ impl ChooseColorEffect {
 pub struct ChooseLandTypeEffect {
     pub chooser: PlayerFilter,
     pub exclude_basic: bool,
+    /// "choose a basic land type" (Giant Slug): only the five basic land
+    /// types are offered (CR 205.3i).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub basic_only: bool,
 }
 
 impl ChooseLandTypeEffect {
@@ -1871,7 +2000,13 @@ impl ChooseLandTypeEffect {
         Self {
             chooser,
             exclude_basic,
+            basic_only: false,
         }
+    }
+
+    pub fn basic_only(mut self) -> Self {
+        self.basic_only = true;
+        self
     }
 }
 
@@ -2404,6 +2539,10 @@ pub struct RollDiceChooseResultEffect {
     pub count: u32,
     pub sides: u32,
     pub die_text: Option<String>,
+    /// "... and ignore the lower roll": the result is the highest roll,
+    /// with no choice (Berserker's Frenzy).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ignore_lower: bool,
 }
 
 impl RollDiceChooseResultEffect {
@@ -2413,6 +2552,7 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text: None,
+            ignore_lower: false,
         }
     }
 
@@ -2427,7 +2567,14 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text,
+            ignore_lower: false,
         }
+    }
+
+    /// Keep the highest roll instead of choosing one.
+    pub fn with_ignore_lower(mut self, ignore_lower: bool) -> Self {
+        self.ignore_lower = ignore_lower;
+        self
     }
 }
 
@@ -2630,11 +2777,16 @@ pub struct PutStickerEffect {
 }
 
 /// Unlock a locked door of a Room matching `room_filter` during resolution.
+/// With `allow_lock`, the player instead chooses any door of the Room and
+/// toggles it: "lock or unlock a door of target Room you control"
+/// (CR 709.5c, CR 709.5f).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct UnlockRoomDoorEffect {
     pub player: PlayerFilter,
     pub room_filter: ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allow_lock: bool,
 }
 
 impl UnlockRoomDoorEffect {
@@ -2642,7 +2794,13 @@ impl UnlockRoomDoorEffect {
         Self {
             player,
             room_filter,
+            allow_lock: false,
         }
+    }
+
+    pub fn with_allow_lock(mut self, allow_lock: bool) -> Self {
+        self.allow_lock = allow_lock;
+        self
     }
 }
 
@@ -3863,6 +4021,26 @@ pub enum RestrictionDurationSurface {
     Default,
     LeadingUntilEndOfTurn,
     LeadingUntilYourNextTurn,
+    /// "during its controller's next two untap steps" (Telekinesis): a
+    /// next-untap-step duration covering this many of that player's untap
+    /// steps. Unlike the other surfaces this one is executable: the
+    /// restriction survives the first `count - 1` of those steps.
+    NextUntapSteps(u32),
+    /// "This turn and next turn, ..." (Peace Talks): an end-of-turn duration
+    /// that spans through the end of the next turn (CR 611.2a). The engine
+    /// extends the restriction's end-of-turn expiry by one turn. Appended.
+    ThisTurnAndNextTurn,
+}
+
+impl RestrictionDurationSurface {
+    /// Further untap steps a next-untap-step restriction still covers after
+    /// the first one.
+    pub fn additional_untap_steps(self) -> u32 {
+        match self {
+            Self::NextUntapSteps(count) => count.saturating_sub(1),
+            _ => 0,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -4837,6 +5015,36 @@ pub struct RepeatProcessEffect<E> {
     pub effects: Vec<E>,
     pub condition: EffectId,
     pub predicate: EffectPredicate,
+    /// Choices whose earlier rounds the process accumulates ("repeat this
+    /// process except that opponent can't choose a card already chosen").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub choice_history: Vec<RepeatProcessChoiceHistory>,
+}
+
+/// One choice accumulated across the rounds of a repeated process.
+///
+/// Before each later round the process moves the objects tagged `chosen` by
+/// the round that just finished into `previously_chosen`, and clears
+/// `chosen`. A round's choice can then exclude `previously_chosen`, while
+/// `chosen` keeps naming only the latest round's choice ("the last chosen
+/// card").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct RepeatProcessChoiceHistory {
+    pub chosen: crate::tag::TagKey,
+    pub previously_chosen: crate::tag::TagKey,
+}
+
+impl RepeatProcessChoiceHistory {
+    pub fn new(
+        chosen: impl Into<crate::tag::TagKey>,
+        previously_chosen: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self {
+            chosen: chosen.into(),
+            previously_chosen: previously_chosen.into(),
+        }
+    }
 }
 
 /// "You may pay [cost] to end this effect." (Licids): offers the player a
@@ -4880,7 +5088,13 @@ impl<E> RepeatProcessEffect<E> {
             effects,
             condition,
             predicate,
+            choice_history: Vec::new(),
         }
+    }
+
+    pub fn with_choice_history(mut self, choice_history: Vec<RepeatProcessChoiceHistory>) -> Self {
+        self.choice_history = choice_history;
+        self
     }
 }
 
@@ -5263,6 +5477,22 @@ impl<E> CollectManaPaymentsEffect<E> {
     pub fn new(effects: Vec<E>) -> Self { Self { effects } }
 }
 
+/// A die-result table row that fixes X ("1—9 | X is one.", Wand of Wonder):
+/// run `effects` with X equal to `value`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct BindXValueEffect<E> {
+    pub value: Value,
+    pub effects: Vec<E>,
+}
+
+impl<E> BindXValueEffect<E> {
+    pub fn new(value: Value, effects: Vec<E>) -> Self {
+        Self { value, effects }
+    }
+}
+
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ForPlayersEffect<E> {
@@ -5354,6 +5584,14 @@ pub struct RegisterDamageMultiplierEffect {
     pub combat_only: bool,
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
+    /// A non-multiplying amount change registered the same way: "it deals 2
+    /// damage to that permanent or player instead" (Equal Treatment) or "half
+    /// that damage". When present it replaces `factor` (CR 614.1a, 616.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub amount_override: Option<crate::AmountModifierSpec>,
+    /// "1 or more damage": the proposed amount must be at least this.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub minimum: Option<u32>,
 }
 
 /// One source deals one amount to the complete union of recipients at once.
@@ -5464,4 +5702,45 @@ pub struct RegisterDamageAdditionEffect {
     pub delta: Value,
     pub noncombat_only: bool,
     pub mode: ReplacementApplyMode,
+}
+
+/// What a loyalty-activation allowance relaxes this turn (CR 606.3 lets each
+/// permanent activate one loyalty ability per turn, at sorcery speed).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationAllowance {
+    /// One more loyalty activation this turn ("twice this turn rather than
+    /// only once", "once this turn as though none ... have been activated").
+    ExtraActivation,
+    /// Loyalty abilities may be activated any time the player could cast an
+    /// instant, on any player's turn.
+    InstantSpeed,
+}
+
+/// Which permanents a loyalty-activation allowance covers.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum LoyaltyActivationScope {
+    /// The resolving ability's source ("loyalty abilities of Kaito").
+    Source,
+    /// Each planeswalker the resolving player controls as the effect
+    /// resolves ("For each planeswalker you control, ...").
+    EachControlledPlaneswalkerNow,
+    /// Planeswalkers the resolving player controls at any time this turn,
+    /// optionally of one subtype ("Jace planeswalkers you control").
+    ControlledPlaneswalkers { subtype: Option<Subtype> },
+}
+
+/// Relax the loyalty-ability activation rule for the rest of this turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct GrantLoyaltyActivationAllowanceEffect {
+    pub scope: LoyaltyActivationScope,
+    pub allowance: LoyaltyActivationAllowance,
+}
+
+impl GrantLoyaltyActivationAllowanceEffect {
+    pub fn new(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> Self {
+        Self { scope, allowance }
+    }
 }

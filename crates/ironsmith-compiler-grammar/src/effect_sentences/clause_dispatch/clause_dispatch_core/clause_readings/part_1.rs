@@ -243,17 +243,29 @@ pub(super) fn read_counter_linked_land_subtype_followup(
         ),
     };
     if let Some(shape) = followup_grammar::parse_counter_linked_land_subtype_followup(tokens) {
+        let target = TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            span_from_tokens(tokens),
+        );
+        let duration = Until::ForAsLongAs(
+            ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                shape.counter_type,
+            ),
+        );
+        if !shape.preserve_other_types {
+            // "That land is an Island for as long as ..." (Quicksilver
+            // Fountain): setting a land subtype replaces the old land types
+            // and their rules-text mana abilities (CR 305.7).
+            return Ok(Some(EffectAst::subject_verb_become_basic_land_type(
+                target,
+                shape.subtype,
+                duration,
+            )));
+        }
         return Ok(Some(EffectAst::subject_verb_add_subtypes(
-            TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                span_from_tokens(tokens),
-            ),
+            target,
             vec![shape.subtype],
-            Until::ForAsLongAs(
-                ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
-                    shape.counter_type,
-                ),
-            ),
+            duration,
         )));
     }
     Ok(None)

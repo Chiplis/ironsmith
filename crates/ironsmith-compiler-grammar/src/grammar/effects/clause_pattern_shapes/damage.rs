@@ -16,6 +16,11 @@ pub struct PreventNextTimeDamageShape<'a> {
     pub source: DamageSourceShape<'a>,
     pub target: DamageTargetShape<'a>,
     pub reflect_damage_to_source_controller: bool,
+    /// "prevent half that damage, rounded down" / "prevent all but N of that
+    /// damage" (CR 615.1): the part of the next damage the shield prevents.
+    pub portion: ironsmith_core::NextTimeDamagePreventionPortion,
+    /// "would deal combat damage".
+    pub combat_only: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DestroyDamageTargetReference {
@@ -89,6 +94,8 @@ pub enum RedirectNextDamageShape<'a> {
         amount_tokens: &'a [OwnedLexToken],
         protected_tokens: Option<&'a [OwnedLexToken]>,
         destination: RedirectDamageDestinationShape<'a>,
+        /// "that a source of your choice would deal to ..." (Harm's Way).
+        source_of_your_choice: bool,
     },
 }
 fn tokens_before<'a, P>(input: &mut LexStream<'a>, parser: P) -> WResult<&'a [OwnedLexToken]>
@@ -133,16 +140,19 @@ fn you_and_permanents_filter<'a>(input: &mut LexStream<'a>) -> WResult<(bool, Ob
     ))
     .parse_next(input)?;
     let other = opt(primitives::kw("other")).parse_next(input)?.is_some();
-    let creatures = alt((
-        alt((primitives::kw("creature"), primitives::kw("creatures"))).value(true),
-        alt((primitives::kw("permanent"), primitives::kw("permanents"))).value(false),
+    let kind = alt((
+        alt((primitives::kw("creature"), primitives::kw("creatures")))
+            .value(Some(crate::types::CardType::Creature)),
+        alt((primitives::kw("planeswalker"), primitives::kw("planeswalkers")))
+            .value(Some(crate::types::CardType::Planeswalker)),
+        alt((primitives::kw("permanent"), primitives::kw("permanents"))).value(None),
     ))
     .parse_next(input)?;
     primitives::phrase(&["you", "control"]).parse_next(input)?;
-    let filter = if creatures {
-        ObjectFilter::creature().you_control()
-    } else {
-        ObjectFilter::permanent().you_control()
+    let filter = match kind {
+        Some(crate::types::CardType::Creature) => ObjectFilter::creature().you_control(),
+        Some(card_type) => ObjectFilter::permanent().with_type(card_type).you_control(),
+        None => ObjectFilter::permanent().you_control(),
     };
     Ok((other, if other { filter.other() } else { filter }))
 }
@@ -256,6 +266,17 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
         }
         if is_shadow_word(token) {
             filter = filter.with_static_ability(StaticAbilityId::Shadow);
+            continue;
+        }
+        // "an unblocked creature of your choice" (Forcefield): combat status
+        // is part of the source description, not a word to skip.
+        match word.to_ascii_lowercase().as_str() {
+            "unblocked" => filter.unblocked = true,
+            "attacking" => filter.attacking = true,
+            "blocking" => filter.blocking = true,
+            "tapped" => filter.tapped = true,
+            "untapped" => filter.untapped = true,
+            _ => {}
         }
     }
     filter.colors = colors;
@@ -425,12 +446,47 @@ fn parse_prevent_next_damage_lexed<'a>(
     })
 }
 
+/// "Prevent the next N damage that a source of your choice would deal to
+/// <recipient> this turn." (Refraction Trap): the active-voice spelling of
+/// the chosen-source finite shield (CR 615.7, 609.7a).
+fn parse_prevent_next_damage_by_chosen_source_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventNextDamageShape<'a>> {
+    primitives::kw("prevent").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("next").parse_next(input)?;
+    let amount_tokens = any.void().take().parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::phrase(&["damage", "that"]).parse_next(input)?;
+    source_of_your_choice.parse_next(input)?;
+    primitives::phrase(&["would", "deal", "to"]).parse_next(input)?;
+    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    let protects_you_and_permanents_you_control = primitives::parse_all(
+        target_tokens,
+        (you_and_permanents, winnow::combinator::eof).map(|(_, _)| ()),
+        "prevent-next combined target",
+    )
+    .is_ok();
+    Ok(PreventNextDamageShape {
+        amount_tokens,
+        target_tokens,
+        source_of_your_choice: true,
+        protects_you_and_permanents_you_control,
+        combat_only,
+    })
+}
+
 pub fn parse_prevent_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextDamageShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
-        parse_prevent_next_damage_lexed,
+        alt((
+            parse_prevent_next_damage_lexed,
+            parse_prevent_next_damage_by_chosen_source_lexed,
+        )),
         "prevent next damage",
     )
 }
@@ -459,23 +515,55 @@ fn simple_prevent_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     Ok(false)
 }
 
+/// "prevent half that damage, rounded down" (Dark Sphere).
+fn half_prevent_tail<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ironsmith_core::NextTimeDamagePreventionPortion> {
+    primitives::phrase(&["prevent", "half", "that", "damage"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["rounded", "down"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown)
+}
+
+/// "prevent all but 1 of that damage" (Forcefield).
+fn all_but_prevent_tail<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ironsmith_core::NextTimeDamagePreventionPortion> {
+    primitives::phrase(&["prevent", "all", "but"]).parse_next(input)?;
+    let remaining = primitives::number_token.parse_next(input)?;
+    primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining))
+}
+
 fn parse_prevent_next_time_damage_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PreventNextTimeDamageShape<'a>> {
     primitives::phrase(&["the", "next", "time"]).parse_next(input)?;
     let source_tokens = one_or_more_tokens_before(input, primitives::kw("would").void())?;
-    primitives::phrase(&["would", "deal", "damage"]).parse_next(input)?;
+    primitives::phrase(&["would", "deal"]).parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::kw("damage").parse_next(input)?;
     opt(primitives::kw("to")).parse_next(input)?;
     let target_tokens = tokens_before(input, primitives::phrase(&["this", "turn"]))?;
     primitives::phrase(&["this", "turn"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    let reflect_damage_to_source_controller =
-        alt((reflect_tail, simple_prevent_tail)).parse_next(input)?;
+    let (reflect_damage_to_source_controller, portion) = alt((
+        reflect_tail.map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
+        simple_prevent_tail
+            .map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
+        half_prevent_tail.map(|portion| (false, portion)),
+        all_but_prevent_tail.map(|portion| (false, portion)),
+    ))
+    .parse_next(input)?;
     Ok(PreventNextTimeDamageShape {
         source: classify_damage_source(source_tokens)
             .ok_or_else(|| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?,
         target: classify_damage_target(target_tokens),
         reflect_damage_to_source_controller,
+        portion,
+        combat_only,
     })
 }
 
@@ -616,7 +704,9 @@ use combat_programs::parse_redirect_next_damage_lexed;
 pub use combat_programs::parse_redirect_next_damage_tokens;
 #[path = "damage/core.rs"]
 mod core_programs;
-use core_programs::{next_time_tail, parse_next_amount, parse_next_time};
+use core_programs::{
+    next_time_tail, parse_next_amount, parse_next_amount_by_chosen_source, parse_next_time,
+};
 #[path = "damage/condition.rs"]
 mod condition_programs;
 use condition_programs::{classify_next_amount_destination, classify_next_time_destination};

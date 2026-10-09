@@ -1,0 +1,14 @@
+[
+ {
+  "name": "Custodi Squire",
+  "oracle_id": "07c7193e-f591-4aee-a3cc-3a2c52a38f9b",
+  "oracle_text": "Flying\nWill of the council — When this creature enters, starting with you, each player votes for an artifact, creature, or enchantment card in your graveyard. Return each card with the most votes or tied for most votes to your hand.",
+  "text": "Mana cost: {4}{W}\nType: Creature — Spirit Cleric\nPower/Toughness: 3/3\nFlying\nWill of the council — When this creature enters, starting with you, each player votes for an artifact, creature, or enchantment card in your graveyard. Return each card with the most votes or tied for most votes to your hand."
+ },
+ {
+  "name": "Vault 11: Voter's Dilemma",
+  "oracle_id": "e2c00aff-696c-4b20-acd4-95b71b5f8b10",
+  "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — For each opponent, you create a 1/1 white Human Soldier creature token.\nII, III — Each player secretly votes for up to one creature, then those votes are revealed. If no creature got votes, each player draws a card. Otherwise, destroy each creature with the most votes or tied for most votes.",
+  "text": "Mana cost: {2}{W}{B}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — For each opponent, you create a 1/1 white Human Soldier creature token.\nII, III — Each player secretly votes for up to one creature, then those votes are revealed. If no creature got votes, each player draws a card. Otherwise, destroy each creature with the most votes or tied for most votes."
+ }
+]

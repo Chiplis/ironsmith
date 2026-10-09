@@ -506,6 +506,7 @@ pub(crate) fn move_looked_partition_group(
     let (zone, to_top, order) = match destination {
         effect_grammar::LookedPartitionDestination::Hand => (Zone::Hand, false, None),
         effect_grammar::LookedPartitionDestination::Graveyard => (Zone::Graveyard, false, None),
+        effect_grammar::LookedPartitionDestination::Exile => (Zone::Exile, false, None),
         effect_grammar::LookedPartitionDestination::LibraryTop(order) => {
             (Zone::Library, true, Some(order))
         }
@@ -593,6 +594,9 @@ pub fn parse_inline_look_at_top_then_singleton_hand_partition(
             }
             effect_grammar::LookedCardDisposition::HandAndGraveyard => {
                 effect_grammar::LookedPartitionDestination::Graveyard
+            }
+            effect_grammar::LookedCardDisposition::HandAndExile => {
+                effect_grammar::LookedPartitionDestination::Exile
             }
         };
     Some(compose_singleton_hand_partition(
@@ -911,28 +915,61 @@ pub fn parse_exile_face_down_pile_then_cloak(
         return Ok(None);
     };
 
+    face_down_pile_effects(first_tokens, shape).map(Some)
+}
+
+/// "Exile <target> and the top N cards of <library> in a face-down pile,
+/// shuffle that pile, then cloak/manifest those cards." as one sentence.
+pub fn parse_exile_face_down_pile_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = effect_grammar::parse_face_down_pile_sentence_shape(tokens) else {
+        return Ok(None);
+    };
+    face_down_pile_effects(tokens, shape).map(Some)
+}
+
+/// The named object's exile establishes the pile, the library exile appends
+/// to it, and the shuffled pile then enters face down (CR 701.58a cloak,
+/// CR 701.40a manifest; CR 701.40e: one at a time).
+fn face_down_pile_effects(
+    first_tokens: &[OwnedLexToken],
+    shape: effect_grammar::CloakPileSequenceShape<'_>,
+) -> Result<Vec<EffectAst>, CardTextError> {
     let target = effect_sentences::parse_target_phrase(shape.target_tokens)?;
     let pile_tag = helper_tag_for_tokens(first_tokens, "cloak_pile");
     let target_exile = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb_exile(target, true)),
         tag: crate::tag::TagRef::of(pile_tag.clone()),
     };
+    let pile = TargetAst::Tagged(crate::tag::TagRef::of(pile_tag.clone()), None);
+    let entry = if shape.manifest {
+        EffectAst::subject_verb_manifest_onto_battlefield(
+            PlayerAst::You,
+            pile,
+            shape.enters_tapped,
+            ReturnControllerAst::You,
+            true,
+        )
+    } else {
+        EffectAst::subject_verb_cloak_onto_battlefield(
+            PlayerAst::You,
+            pile,
+            shape.enters_tapped,
+            ReturnControllerAst::You,
+            true,
+        )
+    };
 
-    Ok(Some(vec![
+    Ok(vec![
         target_exile,
         EffectAst::subject_verb_exile_top_of_library_face_down(
             shape.library_owner,
             shape.library_count,
-            crate::tag::TagRef::of(pile_tag.clone()),
+            crate::tag::TagRef::of(pile_tag),
         ),
-        EffectAst::subject_verb_cloak_onto_battlefield(
-            PlayerAst::You,
-            TargetAst::Tagged(crate::tag::TagRef::of(pile_tag), None),
-            shape.enters_tapped,
-            ReturnControllerAst::You,
-            true,
-        ),
-    ]))
+        entry,
+    ])
 }
 
 /// "Exile <target> and the top N cards of <library> in a face-down pile. If
@@ -1377,6 +1414,16 @@ fn rest_action_effect(
         effect_grammar::RestActionShape::Sacrifice => {
             EffectAst::subject_verb_sacrifice_all(player, filter)
         }
+        // Every other card the chooser holds that matches the chosen set's
+        // description (CR 701.9a discards from that player's hand).
+        effect_grammar::RestActionShape::Discard => EffectAst::subject_verb_discard(
+            player,
+            Value::Count(filter.clone()),
+            false,
+            false,
+            Some(filter),
+            None,
+        ),
     }
 }
 

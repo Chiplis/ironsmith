@@ -220,6 +220,12 @@ pub fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Op
     if super::gain_ability_shapes::parse_gain_then_get_shape(tokens).is_some() {
         return None;
     }
+    // "Until your next turn, you and planeswalkers you control gain
+    // protection from that player" (Eon Frolicker): `you and <permanents>`
+    // is one coordinated subject of a single gain, not two clauses.
+    if leading_duration_you_and_gain_subject(tokens) {
+        return None;
+    }
 
     // "and so on for" introduces the remainder of a keyword list, not a
     // second executable action. The keyword-bundle parser expands that list
@@ -243,6 +249,26 @@ pub fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Op
 
     (super::chain_splitting::split_effect_chain_on_and_tokens(tokens, true).len() > 1)
         .then(|| parse_carry_duration_prefix_tokens(tokens).is_some())
+}
+
+fn leading_duration_you_and_gain_subject(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let Some(duration) = super::gain_ability_shapes::parse_leading_gain_duration_shape(&words)
+    else {
+        return false;
+    };
+    let Some(rest) = words.get(duration.consumed_words..) else {
+        return false;
+    };
+    let Some((gain_word, _)) = super::gain_ability_shapes::find_primary_gain_ability_verb(rest)
+    else {
+        return false;
+    };
+    let mut subject: &[&str] = &rest[..gain_word];
+    primitives::word_slice_exact("you").parse_next(&mut subject).is_ok()
+        && primitives::word_slice_exact("and").parse_next(&mut subject).is_ok()
+        && !subject.is_empty()
+        && !subject.iter().any(|word| matches!(*word, "and" | "then"))
 }
 
 pub fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {

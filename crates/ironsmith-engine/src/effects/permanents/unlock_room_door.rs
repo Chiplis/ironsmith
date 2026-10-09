@@ -16,7 +16,11 @@ impl EffectExecutor for UnlockRoomDoorEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter_as_chooser(game, &self.player, ctx)?;
-        let filter_ctx = game.filter_context_for(chooser, Some(ctx.source));
+        // A targeted unlock ("up to one target Room") restricts the Room to
+        // the announced target through `is_target_object`.
+        let filter_ctx = game
+            .filter_context_for(chooser, Some(ctx.source))
+            .with_target_objects(ctx.filter_context(game).target_objects);
         let candidates = game
             .battlefield
             .iter()
@@ -25,7 +29,12 @@ impl EffectExecutor for UnlockRoomDoorEffect {
                 game.object(*object_id).is_some_and(|object| {
                     object.zone == Zone::Battlefield
                         && self.room_filter.matches(object, &filter_ctx, game)
-                        && game.room_has_locked_door(*object_id)
+                        && (game.room_has_locked_door(*object_id)
+                            || (self.allow_lock
+                                && !crate::special_actions::unlocked_room_doors(
+                                    game, *object_id,
+                                )
+                                .is_empty()))
                 })
             })
             .collect::<Vec<_>>();
@@ -63,22 +72,46 @@ impl EffectExecutor for UnlockRoomDoorEffect {
         else {
             return Ok(EffectOutcome::count(0));
         };
-        // CR 709.5f: the player chooses a locked door to unlock.
-        let doors = crate::special_actions::locked_room_doors(game, room_id);
-        let door = if doors.len() > 1 {
+        // CR 709.5f: the player chooses a locked door to unlock. "Lock or
+        // unlock a door" (CR 709.5c) also offers each unlocked door to lock.
+        let mut doors = crate::special_actions::locked_room_doors(game, room_id)
+            .into_iter()
+            .map(|door| (door, false))
+            .collect::<Vec<_>>();
+        if self.allow_lock {
+            doors.extend(
+                crate::special_actions::unlocked_room_doors(game, room_id)
+                    .into_iter()
+                    .map(|door| (door, true)),
+            );
+        }
+        let Some(&first_door) = doors.first() else {
+            return Ok(EffectOutcome::count(0));
+        };
+        let (door, lock) = if doors.len() > 1 {
             let door_options = doors
                 .iter()
                 .enumerate()
-                .map(|(index, door)| {
+                .map(|(index, (door, lock))| {
                     let name = crate::special_actions::room_door_name(game, room_id, *door)
                         .unwrap_or_else(|| "Door".to_string());
+                    let name = match (self.allow_lock, lock) {
+                        (false, _) => name,
+                        (true, false) => format!("Unlock {name}"),
+                        (true, true) => format!("Lock {name}"),
+                    };
                     SelectableOption::new(index, name)
                 })
                 .collect();
+            let prompt = if self.allow_lock {
+                "Choose a door to lock or unlock"
+            } else {
+                "Choose a door to unlock"
+            };
             let door_ctx = SelectOptionsContext::new(
                 chooser,
                 Some(ctx.source),
-                "Choose a door to unlock",
+                prompt,
                 door_options,
                 1,
                 1,
@@ -91,13 +124,17 @@ impl EffectExecutor for UnlockRoomDoorEffect {
                 .into_iter()
                 .next()
                 .and_then(|index| doors.get(index).copied())
-                .unwrap_or(doors[0])
+                .unwrap_or(first_door)
         } else {
-            doors
-                .first()
-                .copied()
-                .unwrap_or(crate::special_actions::RoomDoor::Linked)
+            first_door
         };
+        if lock {
+            if !crate::special_actions::apply_room_door_lock(game, room_id, door) {
+                return Ok(EffectOutcome::count(0));
+            }
+            return Ok(EffectOutcome::with_objects(vec![room_id])
+                .with_affected_objects(vec![room_id]));
+        }
         let Some(events) =
             crate::special_actions::unlock_room_door_with_events(game, chooser, room_id, door)
         else {
@@ -122,6 +159,83 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::{CardType, Subtype};
+
+    fn two_door_room(game: &mut GameState, alice: PlayerId) -> crate::ids::ObjectId {
+        let front_id = CardId::from_raw(7_401_101);
+        let back_id = CardId::from_raw(7_401_102);
+        let front = CardDefinitionBuilder::new(front_id, "Front Door")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Room])
+            .other_face(back_id)
+            .other_face_name("Back Door")
+            .linked_face_layout(LinkedFaceLayout::Split)
+            .build();
+        let back = CardDefinitionBuilder::new(back_id, "Back Door")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Room])
+            .other_face(front_id)
+            .other_face_name("Front Door")
+            .linked_face_layout(LinkedFaceLayout::Split)
+            .build();
+        game.register_linked_face_definition(&front);
+        game.register_linked_face_definition(&back);
+        game.create_object_from_definition(&front, alice, Zone::Battlefield)
+    }
+
+    fn room_filter() -> ObjectFilter {
+        let mut room_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        room_filter.controller = Some(PlayerFilter::You);
+        room_filter.subtypes = vec![Subtype::Room];
+        room_filter
+    }
+
+    #[test]
+    fn lock_or_unlock_reverses_a_full_unlock_and_unlocks_again() {
+        // CR 709.5c: an unlocked door can be locked; the fused overlay of a
+        // fully unlocked Room is dropped and the other half stays unlocked.
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let room_id = two_door_room(&mut game, alice);
+        assert!(crate::special_actions::apply_room_door_unlock(
+            &mut game,
+            room_id,
+            crate::special_actions::RoomDoor::Linked,
+        ));
+        assert!(game.is_room_fully_unlocked(room_id));
+
+        let effect = UnlockRoomDoorEffect::new(PlayerFilter::You, room_filter()).with_allow_lock(true);
+        let mut ctx = ExecutionContext::new_default(room_id, alice);
+        // Doors offered: no locked door, then the unlocked Current and
+        // Linked doors; the first choice locks the current half.
+        effect.execute(&mut game, &mut ctx).expect("lock resolves");
+        assert!(!game.is_room_fully_unlocked(room_id));
+        assert!(game.room_has_locked_door(room_id));
+        assert_eq!(game.object(room_id).unwrap().name.to_string(), "Back Door");
+
+        // Now the locked door is offered first: unlocking it fully unlocks
+        // the Room again.
+        let mut ctx = ExecutionContext::new_default(room_id, alice);
+        effect.execute(&mut game, &mut ctx).expect("unlock resolves");
+        assert!(game.is_room_fully_unlocked(room_id));
+    }
+
+    #[test]
+    fn locking_the_only_unlocked_door_leaves_no_unlocked_door() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let room_id = two_door_room(&mut game, alice);
+        assert_eq!(
+            crate::special_actions::unlocked_room_doors(&game, room_id),
+            vec![crate::special_actions::RoomDoor::Current]
+        );
+        assert!(crate::special_actions::apply_room_door_lock(
+            &mut game,
+            room_id,
+            crate::special_actions::RoomDoor::Current,
+        ));
+        assert!(game.room_has_no_unlocked_door(room_id));
+        assert!(crate::special_actions::unlocked_room_doors(&game, room_id).is_empty());
+    }
 
     #[test]
     fn resolution_unlocks_one_matching_room_without_paying_its_door_cost() {
@@ -160,10 +274,7 @@ mod tests {
             "Room filter should match its only legal candidate: {:#?}",
             game.object(room_id),
         );
-        let effect = UnlockRoomDoorEffect {
-            player: PlayerFilter::You,
-            room_filter,
-        };
+        let effect = UnlockRoomDoorEffect::new(PlayerFilter::You, room_filter);
         let mut ctx = ExecutionContext::new_default(room_id, alice);
         let outcome = effect
             .execute(&mut game, &mut ctx)

@@ -106,6 +106,16 @@ pub fn parse_deal_damage_equal_to_clause(
         let filter = parse_damage_each_filter(&shape.target_tokens[1..])?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
+    // "to that player and each creature that player controls": the named
+    // player and the object set are both dealt the damage.
+    if let Some((player, filter)) = parse_player_and_each_object_recipients(shape.target_tokens)? {
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_damage(amount.clone(), player),
+                EffectAst::subject_verb_damage_each(amount, filter),
+            ],
+        }));
+    }
     let target = preserve_optional_single_damage_target(
         parse_target_phrase(shape.target_tokens)?,
         shape.target_tokens,
@@ -224,11 +234,60 @@ pub(super) fn parse_divided_damage_with_amount(
     }
 }
 
+/// "deals N damage to <one recipient> for each <count>" (Black Market
+/// Tycoon, Lotleth Giant): the trailing count multiplies the amount dealt to
+/// that one recipient; it never multiplies the recipients. Returns the clause
+/// without the multiplier and the count.
+fn split_trailing_damage_for_each_multiplier(
+    tokens: &[OwnedLexToken],
+    used: usize,
+) -> Option<(&[OwnedLexToken], Value)> {
+    let tail = tokens.get(used..)?;
+    let view = crate::lexer::TokenWordView::new(tail);
+    let words = view.to_word_refs();
+    if words.first() != Some(&"damage") || words.get(1) != Some(&"to") {
+        return None;
+    }
+    let for_idx = (3..words.len().saturating_sub(1))
+        .find(|&index| words[index] == "for" && words[index + 1] == "each")?;
+    let recipient = &words[2..for_idx];
+    // Sets ("each creature"), divisions and conditional tails keep their own
+    // owners; only one plainly named recipient is scaled here.
+    if recipient.iter().any(|word| {
+        matches!(
+            *word,
+            "each" | "unless" | "if" | "equal" | "where" | "and" | "or" | "divided" | "instead"
+                | "among" | "up"
+        )
+    }) {
+        return None;
+    }
+    let count_words = &words[for_idx..];
+    let (count, count_used) =
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(count_words)?;
+    if count_used != count_words.len() {
+        return None;
+    }
+    let head = view.token_span_for_words(0, for_idx)?;
+    Some((&tokens[..used + head.end], count))
+}
+
 pub fn parse_deal_damage_with_amount(
     tokens: &[OwnedLexToken],
     amount: Value,
     used: usize,
 ) -> Result<EffectAst, CardTextError> {
+    if let Value::Fixed(per_count @ 1..) = amount
+        && let Some((head, count)) = split_trailing_damage_for_each_multiplier(tokens, used)
+    {
+        let count = count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        let scaled = if per_count == 1 {
+            count
+        } else {
+            Value::Scaled(Box::new(count), per_count)
+        };
+        return parse_deal_damage_with_amount(head, scaled, used);
+    }
     let clause = crate::lexer::token_word_refs(tokens).join(" ");
     let shape =
         combat_grammar::parse_combat_damage_target_shape_lexed(tokens, used).map_err(|error| {

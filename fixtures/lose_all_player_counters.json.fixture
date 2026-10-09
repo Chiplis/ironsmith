@@ -1,0 +1,9 @@
+[
+ {
+  "name": "Final Act",
+  "oracle_id": "335a6c6a-030f-45d4-806c-467a22962eed",
+  "mana_cost": "{4}{B}{B}",
+  "type_line": "Sorcery",
+  "oracle_text": "Choose one or more —\n• Destroy all creatures.\n• Destroy all planeswalkers.\n• Destroy all battles.\n• Exile all graveyards.\n• Each opponent loses all counters."
+ }
+]

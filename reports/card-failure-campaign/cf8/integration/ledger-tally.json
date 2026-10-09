@@ -1,0 +1,917 @@
+{
+  "packages": [
+    {
+      "package": "p01-lossy-semantic-markers",
+      "cards": 176,
+      "statuses": {
+        "source-proposed": 58,
+        "already-on-main": 90,
+        "blocked": 22,
+        "semantic-fix-collateral": 6
+      }
+    },
+    {
+      "package": "p02-linefamily-a",
+      "cards": 149,
+      "statuses": {
+        "blocked": 86,
+        "source-proposed": 62,
+        "already-on-main": 1
+      }
+    },
+    {
+      "package": "p03-linefamily-b",
+      "cards": 176,
+      "statuses": {
+        "blocked": 120,
+        "source-proposed": 54,
+        "already-on-main": 2
+      }
+    },
+    {
+      "package": "p04-noverb-a",
+      "cards": 151,
+      "statuses": {
+        "source-proposed": 73,
+        "blocked": 74,
+        "covered-by-other-package": 4
+      }
+    },
+    {
+      "package": "p05-noverb-b",
+      "cards": 203,
+      "statuses": {
+        "source-proposed": 61,
+        "blocked": 87,
+        "already-on-main": 5,
+        "dependant-blocked": 47,
+        "dependant-proposed": 3
+      }
+    },
+    {
+      "package": "p06-predicates",
+      "cards": 204,
+      "statuses": {
+        "blocked": 123,
+        "source-proposed": 79,
+        "already-on-main": 2
+      }
+    },
+    {
+      "package": "p07-other",
+      "cards": 157,
+      "statuses": {
+        "blocked": 102,
+        "source-proposed": 52,
+        "already-on-main": 1,
+        "semantic-fix-collateral": 2
+      }
+    },
+    {
+      "package": "p08-other",
+      "cards": 175,
+      "statuses": {
+        "blocked": 102,
+        "source-proposed": 71,
+        "already-on-main": 2
+      }
+    },
+    {
+      "package": "p09-other",
+      "cards": 153,
+      "statuses": {
+        "source-proposed": 59,
+        "blocked": 94
+      }
+    },
+    {
+      "package": "p10-other",
+      "cards": 158,
+      "statuses": {
+        "blocked": 119,
+        "source-proposed": 38,
+        "semantic-fix-collateral": 1
+      }
+    },
+    {
+      "package": "p11-other",
+      "cards": 158,
+      "statuses": {
+        "blocked": 96,
+        "source-proposed": 62
+      }
+    },
+    {
+      "package": "p12-other",
+      "cards": 141,
+      "statuses": {
+        "source-proposed": 52,
+        "blocked": 69,
+        "already-on-main": 2,
+        "semantic-fix-collateral": 2,
+        "dependant-proposed": 16
+      }
+    }
+  ],
+  "unique_cards": 1934,
+  "proposed_unique": 746,
+  "mixed_status": {
+    "2aac0ddc-1005-4049-a337-fe86e092b461": [
+      {
+        "package": "p01-lossy-semantic-markers",
+        "name": "Rebuild the City",
+        "status": "source-proposed"
+      },
+      {
+        "package": "p12-other",
+        "name": "Rebuild the City",
+        "status": "dependant-proposed"
+      }
+    ],
+    "cbad35cd-9026-43ea-8333-94f3b34459e3": [
+      {
+        "package": "p01-lossy-semantic-markers",
+        "name": "Gandalf of the Secret Fire",
+        "status": "semantic-fix-collateral"
+      },
+      {
+        "package": "p06-predicates",
+        "name": "Gandalf of the Secret Fire",
+        "status": "blocked"
+      }
+    ],
+    "d5dc00cb-1510-4ce9-8dd9-0722f65d34b4": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Grell Philosopher",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Grell Philosopher",
+        "status": "dependant-blocked"
+      }
+    ],
+    "f9d72bd4-8b4c-47bb-9361-a8cb5e5f64cb": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Frenzied Saddlebrute",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Frenzied Saddlebrute",
+        "status": "dependant-blocked"
+      }
+    ],
+    "47af21d3-b43f-4101-81cf-ca44db1a2706": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Seeker of Slaanesh",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Seeker of Slaanesh",
+        "status": "dependant-blocked"
+      }
+    ],
+    "b1bc4498-43c0-461c-afba-ef81d743e5aa": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Imaginary Threats",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Imaginary Threats",
+        "status": "dependant-blocked"
+      }
+    ],
+    "e4625704-1d52-44e4-804f-2f45644d76ac": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Muldrotha, the Gravetide",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Muldrotha, the Gravetide",
+        "status": "dependant-blocked"
+      }
+    ],
+    "d39af66c-4997-48b8-a704-f21d93247d7d": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Share the Spoils",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Share the Spoils",
+        "status": "dependant-blocked"
+      }
+    ],
+    "7c9e351d-2e6c-4050-9c3d-b15bb9255a4d": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Azula, Cunning Usurper",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Azula, Cunning Usurper",
+        "status": "dependant-blocked"
+      }
+    ],
+    "2cabf7a4-17af-45c7-b314-a84f5dc0d070": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Dawnhand Dissident",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Dawnhand Dissident",
+        "status": "dependant-blocked"
+      }
+    ],
+    "795bc0b0-4b0a-49d6-ac8e-a52a10a93be8": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Evendo Brushrazer",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Evendo Brushrazer",
+        "status": "dependant-blocked"
+      }
+    ],
+    "2de138b0-3159-4a0c-a474-a4e5600b2e51": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Festival of Embers",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Festival of Embers",
+        "status": "dependant-blocked"
+      }
+    ],
+    "b391a4ce-52ce-4a8c-bbe5-6053951ee1d4": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Theater of Horrors",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Theater of Horrors",
+        "status": "dependant-blocked"
+      }
+    ],
+    "f624c0f1-1c09-4b7a-b140-11329f27e3c7": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Trove of Temptation",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Trove of Temptation",
+        "status": "dependant-blocked"
+      }
+    ],
+    "06425cb9-d157-4155-a727-78656df12458": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Kasmina, Enigma Sage",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Kasmina, Enigma Sage",
+        "status": "dependant-proposed"
+      }
+    ],
+    "e23bf5fe-e494-473e-8502-606106ee1820": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Shared Fate",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Shared Fate",
+        "status": "dependant-blocked"
+      }
+    ],
+    "766c644c-04fe-4b01-93dd-09a50d78d01f": [
+      {
+        "package": "p02-linefamily-a",
+        "name": "Uba Mask",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Uba Mask",
+        "status": "dependant-blocked"
+      }
+    ],
+    "e001d7e6-71c9-42fa-9d5c-9455da66e4ec": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Arcade Gannon",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Arcade Gannon",
+        "status": "dependant-blocked"
+      }
+    ],
+    "4232995b-68c0-4514-8cde-bc62b9d1cbaa": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Galactus, Devourer of Worlds",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Galactus, Devourer of Worlds",
+        "status": "dependant-blocked"
+      }
+    ],
+    "93a476c0-c77e-43b0-8695-ada40368a002": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Sharkey, Tyrant of the Shire",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Sharkey, Tyrant of the Shire",
+        "status": "dependant-proposed"
+      }
+    ],
+    "114e1d2c-cefc-4e2a-922e-3b2ceed1871d": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Maralen, Fae Ascendant",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Maralen, Fae Ascendant",
+        "status": "dependant-blocked"
+      }
+    ],
+    "1b62e88f-d544-4c01-a5a2-1c185a3c9c1e": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Banon, the Returners' Leader",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Banon, the Returners' Leader",
+        "status": "dependant-blocked"
+      }
+    ],
+    "56c412be-daab-4461-931f-1e2ea8ecd75d": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Null Summoner",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Null Summoner",
+        "status": "dependant-blocked"
+      }
+    ],
+    "b9c1ca24-5696-4777-8465-13a8f78e4fb5": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Falco Spara, Pactweaver",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Falco Spara, Pactweaver",
+        "status": "dependant-blocked"
+      }
+    ],
+    "9d5f712a-d46c-4d7e-8fea-45fdadb458df": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Hedonist's Trove",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Hedonist's Trove",
+        "status": "dependant-blocked"
+      }
+    ],
+    "e330412f-46a1-4e7c-8766-f644606049e0": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Into the Pit",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Into the Pit",
+        "status": "dependant-blocked"
+      }
+    ],
+    "ed69b907-272c-4a87-a943-06aaad976fb1": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Nathan Drake, Treasure Hunter",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Nathan Drake, Treasure Hunter",
+        "status": "dependant-blocked"
+      }
+    ],
+    "2d44bdd2-aa31-415a-be71-d9e98ef12334": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Noctis, Prince of Lucis",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Noctis, Prince of Lucis",
+        "status": "dependant-blocked"
+      }
+    ],
+    "01635d21-aeda-4754-9d94-68fcd0cd6556": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Quilled Greatwurm",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Quilled Greatwurm",
+        "status": "dependant-blocked"
+      }
+    ],
+    "eea64b1f-d6a9-4f72-8612-efab4b124b63": [
+      {
+        "package": "p03-linefamily-b",
+        "name": "Sunglasses of Urza",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Sunglasses of Urza",
+        "status": "dependant-blocked"
+      }
+    ],
+    "99f4a22a-ba33-43f0-bc58-9df8388706cd": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Wild Shape",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Wild Shape",
+        "status": "dependant-proposed"
+      }
+    ],
+    "ca16b735-26c7-4d0b-959b-b031f6cb376e": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Genku, Future Shaper",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Genku, Future Shaper",
+        "status": "dependant-proposed"
+      }
+    ],
+    "78826624-8784-4003-8813-230f299a588f": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Outlaws' Merriment",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Outlaws' Merriment",
+        "status": "dependant-proposed"
+      }
+    ],
+    "615b4189-e800-408b-99e0-71ae7089b937": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Dance with Calamity",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Dance with Calamity",
+        "status": "dependant-blocked"
+      }
+    ],
+    "3f8e7a45-4c6e-4ee6-93d0-b7de9715ec97": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Lim-D\u00fbl's Vault",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Lim-D\u00fbl's Vault",
+        "status": "dependant-blocked"
+      }
+    ],
+    "0dfdf1a1-a3a9-490f-bd9d-dcba088c6785": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Teyo, Geometric Tactician",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Teyo, Geometric Tactician",
+        "status": "dependant-blocked"
+      }
+    ],
+    "7340dbcb-4b26-4038-be8c-a89e76294221": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Gideon Jura",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Gideon Jura",
+        "status": "dependant-blocked"
+      }
+    ],
+    "43040c34-acad-4d62-893d-fd606fa9d8fe": [
+      {
+        "package": "p04-noverb-a",
+        "name": "The Brothers' War",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "The Brothers' War",
+        "status": "dependant-blocked"
+      }
+    ],
+    "ca59fbf4-c774-49d3-8630-108c053e01fb": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Whispersteel Dagger",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Whispersteel Dagger",
+        "status": "dependant-blocked"
+      }
+    ],
+    "78e87805-19e3-415b-ad0b-3275183d7297": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Planeswalker's Mischief",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Planeswalker's Mischief",
+        "status": "dependant-blocked"
+      }
+    ],
+    "35c416c6-f522-4b4c-93db-75c4e01843d1": [
+      {
+        "package": "p04-noverb-a",
+        "name": "King Narfi's Betrayal",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "King Narfi's Betrayal",
+        "status": "dependant-proposed"
+      }
+    ],
+    "60fc4c2d-1bf9-4c9a-a240-ab9b1c9c6817": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Meeting of the Five",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Meeting of the Five",
+        "status": "dependant-blocked"
+      }
+    ],
+    "579f9a86-a1af-4c2a-a7e5-8fea0bd0eb61": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Black Widow, Super Spy",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Black Widow, Super Spy",
+        "status": "dependant-blocked"
+      }
+    ],
+    "87966759-206a-4a2d-bf78-86f727c29972": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Nahiri, Forged in Fury",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Nahiri, Forged in Fury",
+        "status": "dependant-proposed"
+      }
+    ],
+    "973c684c-a396-4e40-8aaa-365bc64a6f9a": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Galvanic Relay",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Galvanic Relay",
+        "status": "dependant-blocked"
+      }
+    ],
+    "ef80e174-78e8-412d-a6fe-89c7af746669": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Hama, the Bloodbender",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Hama, the Bloodbender",
+        "status": "dependant-blocked"
+      }
+    ],
+    "bfef4daa-b950-46ce-8c08-11f9983741cf": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Kotose, the Silent Spider",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Kotose, the Silent Spider",
+        "status": "dependant-blocked"
+      }
+    ],
+    "65b28ec7-1099-4f9d-8d57-2ffd8a5b0e91": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Monk Class",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Monk Class",
+        "status": "dependant-blocked"
+      }
+    ],
+    "9109437a-da80-463f-a92a-77d693d05d91": [
+      {
+        "package": "p04-noverb-a",
+        "name": "North Star",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "North Star",
+        "status": "dependant-blocked"
+      }
+    ],
+    "7bc4c7e2-6758-4a85-84e7-03ab93981106": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Tinybones, the Pickpocket",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Tinybones, the Pickpocket",
+        "status": "dependant-blocked"
+      }
+    ],
+    "68e12748-9a7b-4e99-a6de-be097a269342": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Chandra, Pyromaster",
+        "status": "source-proposed"
+      },
+      {
+        "package": "p12-other",
+        "name": "Chandra, Pyromaster",
+        "status": "dependant-proposed"
+      }
+    ],
+    "56de4cdc-4db0-48ec-8a16-f66086507233": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Mnemonic Deluge",
+        "status": "source-proposed"
+      },
+      {
+        "package": "p12-other",
+        "name": "Mnemonic Deluge",
+        "status": "dependant-proposed"
+      }
+    ],
+    "1e36a42f-58e2-49bc-8c14-7f75e1d8ef98": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Arcane Bombardment",
+        "status": "source-proposed"
+      },
+      {
+        "package": "p12-other",
+        "name": "Arcane Bombardment",
+        "status": "dependant-proposed"
+      }
+    ],
+    "ac136d46-32b7-4222-a840-b8be011c1872": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Zethi, Arcane Blademaster",
+        "status": "source-proposed"
+      },
+      {
+        "package": "p12-other",
+        "name": "Zethi, Arcane Blademaster",
+        "status": "dependant-proposed"
+      }
+    ],
+    "98a13f7b-ebe7-4a90-a0b9-95dccfff7fa6": [
+      {
+        "package": "p04-noverb-a",
+        "name": "The Tale of Tamiyo",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "The Tale of Tamiyo",
+        "status": "dependant-proposed"
+      }
+    ],
+    "cbd106fb-c9c5-4c5e-8801-619b7c8ff5a6": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Qasali Ambusher",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Qasali Ambusher",
+        "status": "dependant-blocked"
+      }
+    ],
+    "ee82947d-1cf0-4c53-84d4-81f81c6201ee": [
+      {
+        "package": "p04-noverb-a",
+        "name": "Shredder, Shadow Master",
+        "status": "blocked"
+      },
+      {
+        "package": "p05-noverb-b",
+        "name": "Shredder, Shadow Master",
+        "status": "dependant-blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Shredder, Shadow Master",
+        "status": "dependant-proposed"
+      }
+    ],
+    "764f6412-c4ff-4eec-9a9d-870661f97f8b": [
+      {
+        "package": "p05-noverb-b",
+        "name": "Fblthp, Lost on the Range",
+        "status": "dependant-blocked"
+      },
+      {
+        "package": "p07-other",
+        "name": "Fblthp, Lost on the Range",
+        "status": "blocked"
+      }
+    ],
+    "818f908c-9af6-4edc-bb0e-193bc830e2e4": [
+      {
+        "package": "p05-noverb-b",
+        "name": "Chandra, Flameshaper",
+        "status": "dependant-proposed"
+      },
+      {
+        "package": "p07-other",
+        "name": "Chandra, Flameshaper",
+        "status": "blocked"
+      }
+    ],
+    "1ca97394-4e8c-4698-bea1-554f9b10927b": [
+      {
+        "package": "p05-noverb-b",
+        "name": "Lukka, Coppercoat Outcast",
+        "status": "dependant-blocked"
+      },
+      {
+        "package": "p07-other",
+        "name": "Lukka, Coppercoat Outcast",
+        "status": "blocked"
+      }
+    ],
+    "f0c5864f-83c3-4d99-8f97-0ab92608fff3": [
+      {
+        "package": "p05-noverb-b",
+        "name": "Sen Triplets",
+        "status": "dependant-blocked"
+      },
+      {
+        "package": "p11-other",
+        "name": "Sen Triplets",
+        "status": "blocked"
+      }
+    ],
+    "1a168ba5-8e11-41dd-8f8a-8cb23bbde056": [
+      {
+        "package": "p05-noverb-b",
+        "name": "Xanathar, Guild Kingpin",
+        "status": "dependant-blocked"
+      },
+      {
+        "package": "p11-other",
+        "name": "Xanathar, Guild Kingpin",
+        "status": "blocked"
+      }
+    ],
+    "a6abb6af-7ea2-43f3-8718-2a077ad0c947": [
+      {
+        "package": "p07-other",
+        "name": "Ob Nixilis, the Adversary",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Ob Nixilis, the Adversary",
+        "status": "dependant-proposed"
+      }
+    ],
+    "40362fe0-a1a9-4d76-8c35-eac474b91af5": [
+      {
+        "package": "p07-other",
+        "name": "Mizzix's Mastery",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Mizzix's Mastery",
+        "status": "dependant-proposed"
+      }
+    ],
+    "eb37496e-374f-41b9-bd52-f52f37bdac31": [
+      {
+        "package": "p07-other",
+        "name": "Calamity, Galloping Inferno",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Calamity, Galloping Inferno",
+        "status": "dependant-proposed"
+      }
+    ],
+    "d499e473-aed8-4c8b-8cf0-a43bcc5f40cf": [
+      {
+        "package": "p07-other",
+        "name": "Aurora Shifter",
+        "status": "blocked"
+      },
+      {
+        "package": "p12-other",
+        "name": "Aurora Shifter",
+        "status": "dependant-proposed"
+      }
+    ]
+  }
+}

@@ -191,7 +191,8 @@ pub(crate) fn rewrite_runtime_modification_words(
             *filter = rewrite_attachment_words(filter, change)?;
         }
         RuntimeModification::ChangeControllerToEffectController
-        | RuntimeModification::RemoveAllAbilities | RuntimeModification::RemoveThisAbility => {}
+        | RuntimeModification::RemoveAllAbilities | RuntimeModification::RemoveThisAbility
+        | RuntimeModification::RetainSourceColors => {}
     }
     // Name overrides, display-only copy-exception text, preserve flags, source
     // references and supertype exceptions remain verbatim through cloning.

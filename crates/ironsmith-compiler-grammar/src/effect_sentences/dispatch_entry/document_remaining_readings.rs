@@ -764,6 +764,21 @@ fn read_sentence_prelude_shape(
             ),
         ]));
     }
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceIgnoreLower {
+        count,
+        sides,
+        surface,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_roll_dice_ignore_lower_with_surface(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(surface),
+            ),
+        ]));
+    }
     Ok(None)
 }
 fn read_leading_player_may(

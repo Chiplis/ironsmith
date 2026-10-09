@@ -1,0 +1,22 @@
+[
+  {
+    "name": "North Wind Avatar",
+    "oracle_id": "b408c345-b308-4920-8494-4f204d856aa3",
+    "text": "Mana cost: {2}{U}{U}{R}\nType: Creature — Dragon Spirit Avatar\nPower/Toughness: 5/5\nFlying\nWhen this creature enters, if you cast it, you may put a card you own from outside the game into your hand."
+  },
+  {
+    "name": "Mastermind's Acquisition",
+    "oracle_id": "6aec5b1f-cea6-4ec3-9759-e4544da8c52b",
+    "text": "Mana cost: {2}{B}{B}\nType: Sorcery\nChoose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand."
+  },
+  {
+    "name": "Ring of Ma'rûf",
+    "oracle_id": "c79b9187-cbfe-43a0-bdc8-4f7e0d215607",
+    "text": "Mana cost: {5}\nType: Artifact\n{5}, {T}, Exile this artifact: The next time you would draw a card this turn, instead put a card you own from outside the game into your hand."
+  },
+  {
+    "name": "The Raven's Warning",
+    "oracle_id": "74206de7-470b-4256-9207-9fb46d3c4356",
+    "text": "Mana cost: {1}{W}{U}\nType: Enchantment — Saga\nI — Create a 1/1 blue Bird creature token with flying. You gain 2 life.\nII — Whenever one or more creatures you control with flying deal combat damage to a player this turn, look at that player's hand and draw a card.\nIII — You may put a card you own from outside the game on top of your library."
+  }
+]

@@ -27,6 +27,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             | DirectCantFact::SourceCantAttackItsOwner
             | DirectCantFact::SourceCantBeBlocked
             | DirectCantFact::SourceCantAttackAlone
+            | DirectCantFact::SourceCantBlockAlone
             | DirectCantFact::SourceCantAttackOrBlock
             | DirectCantFact::SourceCantAttackOrBlockAlone
             | DirectCantFact::SourceCantAttackOrBlockUnlessMaxSpeed
@@ -86,6 +87,10 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantBeBlocked => StaticAbility::unblockable(),
         DirectCantFact::SourceCantAttackAlone => StaticAbility::restriction(
             crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+            format_negated_restriction_display(tokens),
+        ),
+        DirectCantFact::SourceCantBlockAlone => StaticAbility::restriction(
+            crate::effect::Restriction::block_alone(ObjectFilter::source()),
             format_negated_restriction_display(tokens),
         ),
         DirectCantFact::SourceCantAttackOrBlock => StaticAbility::restriction(
@@ -297,6 +302,46 @@ fn typed_attack_tax_static_ability(
         cost,
         format_negated_restriction_display(tokens),
     )))
+}
+
+/// "Creatures can't attack planeswalkers you control unless their controller
+/// pays {1} for each creature they control that's attacking a planeswalker
+/// you control." (Onakke Oathkeeper): attacks on the controller are free; only
+/// attacks on that player's planeswalkers are taxed (CR 508.1g-h). The
+/// player-inclusive wordings stay with the typed attack-tax reader above.
+fn planeswalker_attack_tax_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+    let fact = cant_shapes::parse_general_attack_tax_tokens(tokens)?;
+    if fact.defenders != ironsmith_core::value_model::AttackTaxDefenders::ControllerPlaneswalkers {
+        return None;
+    }
+    let mut costs = Vec::new();
+    match fact.mana {
+        Some(cant_shapes::AttackTaxManaAmount::Generic(amount)) if amount > 0 => {
+            costs.push(crate::model::CompilerCost::Mana(ManaCost::from_pips(vec![vec![
+                ManaSymbol::Generic(u8::try_from(amount).ok()?),
+            ]])));
+        }
+        Some(cant_shapes::AttackTaxManaAmount::Generic(_)) | None => {}
+        // A static ability has no announced X.
+        Some(cant_shapes::AttackTaxManaAmount::X) => return None,
+    }
+    if fact.life > 0 {
+        costs.push(crate::model::CompilerCost::Life(crate::effect::Value::Fixed(
+            i32::try_from(fact.life).ok()?,
+        )));
+    }
+    if costs.is_empty() {
+        return None;
+    }
+    Some(
+        StaticAbility::attack_cost(
+            ObjectFilter::creature(),
+            true,
+            ironsmith_core::TotalCost::from_costs(costs),
+            format_negated_restriction_display(tokens),
+        )
+        .with_attack_cost_planeswalkers_only(),
+    )
 }
 
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
@@ -748,6 +793,12 @@ mod cant_clause_readings;
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A mixed serial predicate owns the entire subject and every member.
+    // A later "can't" must not make this reader reinterpret its first verb
+    // as part of a target filter. The compound reader guards its recursion.
+    if matches!(crate::keyword_static::parse_compound_self_predicate_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     Ok(parse_cant_clauses_unbound(tokens)?.map(|abilities| {
         abilities
             .into_iter()
@@ -794,6 +845,16 @@ fn bind_static_restriction_pronoun_to_source(mut ability: StaticAbility) -> Stat
 fn parse_cant_clauses_unbound(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A shared source subject followed by a positive predicate is owned by
+    // the compound static reader, even when a later member is negated.
+    let first_predicate = tokens.iter().position(|token| token.is_any_word(&["attacks", "blocks", "has", "gets", "is", "can", "can\'t", "cant"]));
+    if let Some(index) = first_predicate {
+        if !tokens[index].is_any_word(&["can\'t", "cant"])
+            && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..index]))
+            && tokens[index + 1..].iter().any(|token| token.is_any_word(&["can\'t", "cant"])) {
+            return Ok(None);
+        }
+    }
     // An imperative action may carry a later negated followup. Its verb is
     // owned by the effect sequence, not a static subject ending at "doesn't".
     if matches!(
@@ -852,6 +913,14 @@ fn parse_cant_clauses_unbound(
                 crate::grammar::anthem_grants::parse_each_creature_subject(clause.subject_tokens)
                     .is_some()
             })
+        // A filtered set granted a blocker-count restriction ("Boars you
+        // control can't be blocked by more than one creature") is owned by
+        // its grant production; the negated grammar would read the count as
+        // a blocker filter.
+        || matches!(
+            crate::keyword_static::parse_filtered_blocker_count_restriction_line(tokens),
+            Ok(Some(_))
+        )
         || crate::grammar::keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(
             tokens,
         )
@@ -1129,11 +1198,26 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
+    if let Some(ability) = planeswalker_attack_tax_static_ability(tokens) {
+        return Ok(Some(ability));
+    }
+
     if let Some(ability) = attack_unless_static_ability(tokens) {
         return Ok(Some(ability));
     }
 
     if let Some(ability) = blocking_cant_static_ability(tokens) {
+        return Ok(Some(ability));
+    }
+
+    // "can't block alone" is a block-legality requirement on the source
+    // (CR 509.1b), not "can't block <an attacker named 'alone'>".
+    if matches!(
+        cant_shapes::parse_direct_cant_fact_tokens(tokens),
+        Some(DirectCantFact::SourceCantBlockAlone)
+    ) && let Some(StaticAbilityShapeResolution::Ability(ability)) =
+        direct_cant_static_ability(tokens)
+    {
         return Ok(Some(ability));
     }
 

@@ -116,10 +116,29 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
             crate::static_abilities::LandwalkKind::ArtifactLand => {
                 CompilerStaticAbility::artifact_landwalk()
             }
+            crate::static_abilities::LandwalkKind::LegendaryLand => {
+                CompilerStaticAbility::legendary_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::SnowLand => {
+                CompilerStaticAbility::snow_any_landwalk()
+            }
+            crate::static_abilities::LandwalkKind::ChosenType { snow } => {
+                CompilerStaticAbility::chosen_type_landwalk(snow)
+            }
+            crate::static_abilities::LandwalkKind::SacrificedLandTypes => {
+                CompilerStaticAbility::sacrificed_land_types_landwalk()
+            }
         }),
         KeywordAction::Bloodthirst(amount) => Some(CompilerStaticAbility::bloodthirst(amount)),
+        KeywordAction::BloodthirstX => Some(CompilerStaticAbility::enters_with_counters_value(
+            crate::object::CounterType::PlusOnePlusOne,
+            crate::effect::Value::DamageDealtToPlayersThisTurn(crate::target::PlayerFilter::Opponent),
+        )),
         KeywordAction::Tribute(amount) => Some(CompilerStaticAbility::tribute(amount)),
-        KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
+        KeywordAction::Rampage(_)
+        | KeywordAction::Bushido(_)
+        | KeywordAction::BushidoValue(_)
+        | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(CompilerStaticAbility::changeling()),
         KeywordAction::ProtectionFrom(colors) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),

@@ -224,6 +224,11 @@ pub enum ValueSurfaceHint {
     /// resolves." The effect using the value remains responsible for
     /// actually freezing it at resolution.
     AsThisAbilityResolves,
+    /// Preserve an authored activation-time sampling clause ("where X is the
+    /// number of Bobbleheads you control as you activate this ability"). The
+    /// value is used while the ability is being activated (target count or
+    /// division, CR 601.2c/601.2d via 602.2b), so it is fixed then.
+    AsYouActivateThisAbility,
     /// Preserve an authored numeric reference to "the result" of the prior
     /// effect. Unlike an ambient trigger event amount, this value must bind to
     /// the immediately exported effect result (for example, a die roll).
@@ -597,6 +602,10 @@ pub enum TurnHistoryCount {
         filter: ObjectFilter,
         cause: crate::CauseFilter,
     },
+    /// Lands played this turn by matching players (CR 305.2), summed. A land
+    /// played this way counts once whatever permission allowed the play.
+    /// Appended to preserve existing serialized enum ordinals.
+    LandsPlayed(PlayerFilter),
 }
 
 impl TurnHistoryCount {
@@ -622,9 +631,17 @@ pub enum Value {
     Scaled(Box<Value>, i32),
     DividedRoundedDown(Box<Value>, i32),
     HalfRoundedDown(Box<Value>),
+    /// Two raised to the value ("draws 2ˣ cards", Mathemagics).
+    PowerOfTwo(Box<Value>),
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
     GreatestCount(ObjectFilter),
+    /// The number of matching objects controlled (or, with no controller
+    /// partition, owned) by the player who has the fewest of them ("equal to
+    /// the number of lands controlled by the player who controls the fewest",
+    /// Balance). The player partition is the filter's controller, else its
+    /// owner (cards in hand).
+    LeastCount(ObjectFilter),
     /// The largest cohort of matching creatures that share one creature type.
     /// A creature with multiple creature types contributes once to each of its
     /// type cohorts; the value is the size of the largest cohort, not the sum.
@@ -763,6 +780,13 @@ pub enum Value {
         player: PlayerFilter,
         filter: ObjectFilter,
         exclude_source: bool,
+    },
+    /// Number of distinct card types among matching spells cast this turn
+    /// (CR 205.2a), read from cast history like `SpellsCastThisTurnMatching`
+    /// so spells that already resolved still contribute.
+    CardTypesAmongSpellsCastThisTurn {
+        player: PlayerFilter,
+        filter: ObjectFilter,
     },
     /// Total mana value of matching spells cast during the current turn.
     ///
@@ -907,6 +931,10 @@ pub enum Value {
     /// instruction. `if_unset` applies only to a known never-made choice. Missing
     /// historical evidence is an error, not an invented zero.
     SourceChosenNumber { if_unset: Option<i32>, pair: Option<crate::LinkedExilePair> },
+    /// Number of the source's chosen colors the referenced object is ("you
+    /// gain 1 life for each of the chosen colors it is", Tablet of the
+    /// Guilds). Appended to preserve existing serialized variant ordinals.
+    ChosenColorsOf(Box<ChooseSpec>),
 }
 
 impl Value {
@@ -1195,6 +1223,126 @@ pub enum Restriction {
     /// player; it is not part of the physical source-quality filter.
     /// Appended to preserve existing serialized variant ordinals.
     PlayerHexproofFrom(PlayerFilter, ObjectFilter),
+    /// "<creature> attacks <player> this combat if able": a requirement
+    /// (CR 508.1d) to attack that player, counted only when the creature
+    /// attacks that player. Appended to preserve serialized variant ordinals.
+    MustAttackPlayer {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
+    /// "[objects] can't become untapped" (Blossombind): no event or rule may
+    /// untap the matching permanents, including the untap step and untap
+    /// costs. Distinct from `Untap`, which only skips the controller's untap
+    /// step. Appended to preserve existing serialized variant ordinals.
+    BecomeUntapped(ObjectFilter),
+    /// "[objects] can't attack, block, or crew Vehicles" (Revoke
+    /// Privileges): attack and block prohibitions plus exclusion from crew
+    /// costs (CR 702.122a taps "untapped creatures you control"). Appended.
+    AttackBlockOrCrew(ObjectFilter),
+    /// "[hosts] can't be enchanted by other Auras" / "can't be equipped":
+    /// the second filter names attachments that can't become (or stay,
+    /// CR 704.5m/n) attached to the matching hosts. Appended.
+    BeAttachedBy(ObjectFilter, ObjectFilter),
+    /// A resolving effect's general attack tax (CR 508.1g-h): War Tax ("this
+    /// turn, creatures can't attack unless their controller pays {X} for each
+    /// attacking creature they control") or Sivitri ("until your next turn,
+    /// ... unless their controller pays 2 life for each of those creatures").
+    /// Like `AttackYouUnlessControllerPaysPerAttacker` it outlives its source.
+    /// Appended to preserve existing serialized variant ordinals.
+    AttackTax(AttackTaxRule),
+    /// "[players] can cast no more than N [matching] spells each turn" (Fires
+    /// of Invention): a cast-limit like `CastMoreThanOneSpellEachTurn` with a
+    /// general maximum. Appended to preserve existing serialized ordinals.
+    CastMoreThanNSpellsEachTurn {
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    },
+    /// "You draw cards from the bottom of your library rather than the top."
+    /// (River Song): a lasting player rule changing which card a draw takes
+    /// (CR 121.1 draws the top card; this rule substitutes the bottom card).
+    /// Appended to preserve existing serialized variant ordinals.
+    DrawFromBottom(PlayerFilter),
+    /// "[players] can't activate abilities" with no exception: every
+    /// activated ability, mana abilities included, from any zone (City of
+    /// Solitude off-turn, CR 602.5). Appended to preserve serialized ordinals.
+    ActivateAbilities(PlayerFilter),
+    /// "[creatures] can't attack <permanents>" (Jace, Multiverse Architect:
+    /// "creatures they control can't attack Jaces you control"): matching
+    /// attackers can't choose a matching planeswalker or battle as their
+    /// attack target (CR 508.1b). Appended to preserve serialized ordinals.
+    AttackPermanents {
+        attackers: ObjectFilter,
+        permanents: ObjectFilter,
+    },
+    /// "[players] can't block with more than N creatures [this combat]"
+    /// (Mirri, Weatherlight Duelist): caps the number of creatures each
+    /// matching player declares as blockers (CR 509.1b-c). Appended.
+    BlockWithMoreThan {
+        player: PlayerFilter,
+        maximum: usize,
+    },
+    /// "[players] can't venture into the dungeon more than once each turn"
+    /// (Keen-Eared Sentry): a matching player who already ventured this turn
+    /// can't venture again, including through the initiative (CR 701.49).
+    /// Appended.
+    VentureMoreThanOnceEachTurn(PlayerFilter),
+}
+
+/// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
+/// controller (CR 508.1g-h).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
+pub enum AttackTaxDefenders {
+    /// "can't attack you unless ..."
+    #[default]
+    Controller,
+    /// "can't attack you or planeswalkers you control unless ..."
+    ControllerOrPlaneswalkers,
+    /// "can't attack planeswalkers you control unless ..."
+    ControllerPlaneswalkers,
+    /// "creatures can't attack unless ...": every attack, whoever is attacked.
+    Anyone,
+}
+
+/// The per-attacker payment of a resolving effect's attack tax. Each matching
+/// attacker costs its controller `mana_per_attacker` generic mana and
+/// `life_per_attacker` life. A variable amount ({X}) is fixed when the
+/// effect resolves (CR 107.3, 611.2a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AttackTaxRule {
+    pub attackers: ObjectFilter,
+    pub defenders: AttackTaxDefenders,
+    pub mana_per_attacker: Value,
+    pub life_per_attacker: u32,
+}
+
+impl AttackTaxRule {
+    /// Whether an attack on a target of this kind is taxed by a rule whose
+    /// controller is `rule_controller`, given the attacked target's defending
+    /// player and whether the target is a planeswalker.
+    pub fn taxes_attack(
+        &self,
+        rule_controller: PlayerId,
+        defending_player: PlayerId,
+        target_is_player: bool,
+        target_is_planeswalker: bool,
+    ) -> bool {
+        match self.defenders {
+            AttackTaxDefenders::Anyone => true,
+            AttackTaxDefenders::Controller => {
+                defending_player == rule_controller && target_is_player
+            }
+            AttackTaxDefenders::ControllerOrPlaneswalkers => {
+                defending_player == rule_controller
+                    && (target_is_player || target_is_planeswalker)
+            }
+            AttackTaxDefenders::ControllerPlaneswalkers => {
+                defending_player == rule_controller && target_is_planeswalker
+            }
+        }
+    }
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1209,11 +1357,16 @@ pub enum ManaSpendMode {
     Normal,
     AnyColor,
     AnyType,
+    /// "You may spend colorless mana as though it were mana of any color"
+    /// (CR 609.4b): only colorless mana converts; colored mana is spent
+    /// normally. Appended so earlier variant indices stay stable.
+    ColorlessAsAnyColor,
 }
 
 impl ManaSpendMode {
     pub fn is_normal(&self) -> bool { *self == Self::Normal }
 
+    /// True when every mana symbol may be spent as any color.
     pub fn allows_any_color(self) -> bool {
         matches!(self, Self::AnyColor | Self::AnyType)
     }
@@ -1222,8 +1375,21 @@ impl ManaSpendMode {
         self == Self::AnyType
     }
 
+    /// The one mana symbol this mode lets be spent as any color, when the
+    /// conversion is restricted to a single symbol.
+    pub fn any_color_mana_symbol(self) -> Option<crate::ManaSymbol> {
+        (self == Self::ColorlessAsAnyColor).then_some(crate::ManaSymbol::Colorless)
+    }
+
+    /// The broadest of two permissions. A restricted single-symbol
+    /// conversion is subsumed by either unrestricted mode.
     pub fn combine(self, other: Self) -> Self {
-        self.max(other)
+        match (self, other) {
+            (Self::Normal, mode) | (mode, Self::Normal) => mode,
+            (Self::AnyType, _) | (_, Self::AnyType) => Self::AnyType,
+            (Self::AnyColor, _) | (_, Self::AnyColor) => Self::AnyColor,
+            (Self::ColorlessAsAnyColor, Self::ColorlessAsAnyColor) => Self::ColorlessAsAnyColor,
+        }
     }
 }
 
@@ -1543,6 +1709,10 @@ impl Restriction {
         Self::MustAttack(filter)
     }
 
+    pub fn must_attack_player(attackers: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::MustAttackPlayer { attackers, player }
+    }
+
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {
         Self::MustBeBlocked(filter)
     }
@@ -1553,6 +1723,57 @@ impl Restriction {
 
     pub fn untap(filter: ObjectFilter) -> Self {
         Self::Untap(filter)
+    }
+
+    pub fn become_untapped(filter: ObjectFilter) -> Self {
+        Self::BecomeUntapped(filter)
+    }
+
+    pub fn attack_block_or_crew(filter: ObjectFilter) -> Self {
+        Self::AttackBlockOrCrew(filter)
+    }
+
+    pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
+        Self::BeAttachedBy(hosts, attachments)
+    }
+
+    pub fn attack_tax(rule: AttackTaxRule) -> Self {
+        Self::AttackTax(rule)
+    }
+
+    pub fn attack_permanents(attackers: ObjectFilter, permanents: ObjectFilter) -> Self {
+        Self::AttackPermanents {
+            attackers,
+            permanents,
+        }
+    }
+
+    pub fn activate_abilities(player: PlayerFilter) -> Self {
+        Self::ActivateAbilities(player)
+    }
+
+    pub fn draw_from_bottom(player: PlayerFilter) -> Self {
+        Self::DrawFromBottom(player)
+    }
+
+    pub fn cast_more_than_n_spells_each_turn(
+        player: PlayerFilter,
+        spells: ObjectFilter,
+        maximum: u32,
+    ) -> Self {
+        Self::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+        }
+    }
+
+    pub fn block_with_more_than(player: PlayerFilter, maximum: usize) -> Self {
+        Self::BlockWithMoreThan { player, maximum }
+    }
+
+    pub fn venture_more_than_once_each_turn(player: PlayerFilter) -> Self {
+        Self::VentureMoreThanOnceEachTurn(player)
     }
 
     pub fn be_blocked(filter: ObjectFilter) -> Self {
@@ -1915,6 +2136,10 @@ pub enum Condition {
         count: u32,
     },
     YouHaveCardInHandMatching(ObjectFilter),
+    /// The card on top of the controller's library (CR 401.1: the last
+    /// object of the library sequence) matches the filter. Library-top
+    /// changes mark continuous state dirty, so statics re-evaluate.
+    TopCardOfYourLibraryMatches(ObjectFilter),
     YourTurn,
     /// The turn currently being played was created as an extra turn rather
     /// than reached through the normal turn order.
@@ -2029,7 +2254,14 @@ pub enum Condition {
     },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
+    /// The source permanent has dealt damage since it last entered the
+    /// battlefield ("as long as it hasn't dealt damage yet", Karakyk
+    /// Guardian). A new object (CR 400.7) starts with no damage history.
+    SourceHasDealtDamageSinceEntered,
     SourceIsHarnessed,
+    /// "if this creature isn't prepared" (Paradox Shaper): the source bears
+    /// the prepared designation.
+    SourceIsPrepared,
     SourceIsRenowned,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),
@@ -2160,6 +2392,11 @@ pub enum Condition {
     SourceInGraveyardWithCardsAbove {
         filter: ObjectFilter,
         count: u32,
+        /// "with a creature card directly above it" (Death Spark): the one
+        /// card immediately above the source must match (CR 404.1, ordered
+        /// graveyard).
+        #[cfg_attr(feature = "serde", serde(default))]
+        directly_above: bool,
     },
     SourceIsInZone(Zone),
     ActivationTiming(ActivationTiming),
@@ -2249,6 +2486,14 @@ pub enum Condition {
     /// Combat participant identities come from the triggering declaration;
     /// current combat roles, life and poison are checked again on resolution.
     CombatParticipant(CombatParticipantCondition),
+    /// "During each opponent's end step": an opponent of this condition's
+    /// controller is the active player and the game is in the end step.
+    /// Appended to preserve serialized condition discriminants.
+    OpponentsEndStep,
+    /// "Activate no more times each turn than the number of snow Swamps you
+    /// control." (Withering Wisps): a per-turn activation cap read when the
+    /// ability is activated (CR 602.5b). Appended for wire stability.
+    MaxActivationsPerTurnCount(AnthemCountExpression),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

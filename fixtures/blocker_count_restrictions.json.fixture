@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Hexmark Destroyer",
+    "oracle_id": "b3329240-c812-45ea-a7f8-4d79cd4ed515",
+    "text": "Mana cost: {4}{B}{B}\nType: Artifact Creature — Necron\nPower/Toughness: 6/6\nMulti-threat Eliminator — This creature can't be blocked except by six or more creatures.\nUnearth {4}{B}{B}"
+  },
+  {
+    "name": "Sonorous Howlbonder",
+    "oracle_id": "89645420-1a14-46bf-b27d-966553a95463",
+    "text": "Mana cost: {1}{B/R}{B/R}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nMenace\nEach creature you control with menace can't be blocked except by three or more creatures."
+  },
+  {
+    "name": "Rocksteady, Crash Courser",
+    "oracle_id": "f9330a7b-8a65-4e04-a777-bf6512332850",
+    "text": "Mana cost: {4}{G}{G}\nType: Legendary Creature — Rhino Mutant\nPower/Toughness: 7/7\nRocksteady can't be blocked by more than one creature.\nBoars you control can't be blocked by more than one creature.\nForestcycling {2}"
+  }
+]

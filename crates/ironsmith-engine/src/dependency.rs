@@ -232,6 +232,8 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.noncommander
         && !filter.has_tap_activated_ability
         && !filter.has_non_mana_activated_ability
+        && !filter.has_activated_ability
+        && !filter.shares_card_type
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
@@ -1033,8 +1035,10 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::ControlsMost { .. }
             | PlayerFilter::ControlsFewestTied { .. }
             | PlayerFilter::OpponentOf(_)
+            | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
+            | PlayerFilter::TurnHistory(_)
             | PlayerFilter::AttackedBySourceThisTurn
             | PlayerFilter::WasDealtDamageBySourceThisGame { .. }
             | PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
@@ -1570,7 +1574,8 @@ fn value_references_pt(value: &Value) -> bool {
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_references_pt(value),
+        | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => value_references_pt(value),
 
         // EffectValue could reference P/T from a prior effect
         Value::EffectValue(_) | Value::EffectValueOffset(_, _) => true,
@@ -1608,6 +1613,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::Count(_)
         | Value::CountScaled(_, _)
         | Value::GreatestCount(_)
+        | Value::LeastCount(_)
         | Value::GreatestSharedCreatureTypeCount(_)
         | Value::GreatestSharedNameCount(_)
         | Value::TotalManaValue(_)
@@ -1650,6 +1656,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::ColorsOf(_)
+        | Value::ChosenColorsOf(_)
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
@@ -1689,6 +1696,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SourceDevouredCreatureCount
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::WasKicked
@@ -1857,7 +1865,8 @@ fn attachment_scoped_effect_object(
                         constraint.relation,
                         crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     ) && (constraint.tag == crate::tag::TagKey::from("enchanted")
-                        || constraint.tag == crate::tag::TagKey::from("equipped"))
+                        || constraint.tag == crate::tag::TagKey::from("equipped")
+                        || constraint.tag == crate::tag::TagKey::from("fortified"))
                 })
         }
         _ => false,
@@ -2042,6 +2051,7 @@ pub(crate) fn condition_could_be_affected_by(
         C::YouControl(filter)
         | C::OpponentControls(filter)
         | C::YouHaveCardInHandMatching(filter)
+        | C::TopCardOfYourLibraryMatches(filter)
         | C::ObjectEnteredBattlefieldThisTurn(filter)
         | C::ObjectEnteredBattlefieldLastTurn(filter)
         | C::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)
@@ -2068,7 +2078,9 @@ pub(crate) fn condition_could_be_affected_by(
         }
         C::CreatureDealtDamageBySourceDiedThisTurn { victim, .. } => filters_affected(&[victim]),
         C::AttachmentCount { attachment, .. } => filters_affected(&[attachment]),
-        C::CountComparison { count, .. } | C::CountParity { count, .. } => {
+        C::CountComparison { count, .. }
+        | C::CountParity { count, .. }
+        | C::MaxActivationsPerTurnCount(count) => {
             anthem_count_could_be_affected_by(count, modification)
         }
         C::ValueComparison { left, right, .. } => {
@@ -2180,11 +2192,14 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceControllersMainPhase
         | C::SourceControllersCombatPhase
         | C::SourceControllersEndStep
+        | C::OpponentsEndStep
         | C::SourceIsTapped
         | C::SourceIsSaddled
         | C::SourceDevouredCreaturesOrMore(_)
         | C::SourceIsHarnessed
+        | C::SourceIsPrepared
         | C::SourceIsMonstrous
+        | C::SourceHasDealtDamageSinceEntered
         | C::SourceIsRenowned
         | C::SourceIsFaceDown
         | C::SourceHasNoCounter(_)
@@ -2382,11 +2397,13 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_could_be_affected_by(value, modification),
+        | Value::HalfRoundedDown(value)
+        | Value::PowerOfTwo(value) => value_could_be_affected_by(value, modification),
         Value::SourcePower | Value::SourceToughness => pt_affected,
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::DistinctNames(filter)
@@ -2436,7 +2453,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
             matches!(modification.layer(), Layer::Copy)
         }
-        Value::ColorsOf(_) => matches!(modification.layer(), Layer::Color | Layer::Copy),
+        Value::ColorsOf(_) | Value::ChosenColorsOf(_) => {
+            matches!(modification.layer(), Layer::Color | Layer::Copy)
+        }
         Value::Devotion { .. } | Value::DevotionToChosenColor(_) => {
             matches!(modification.layer(), Layer::Copy)
                 || modification_can_change_type_characteristics(modification)
@@ -2450,6 +2469,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         }
         Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
+        | Value::CardTypesAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::CommanderColorIdentityColors(_)
@@ -2696,6 +2716,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
 fn filter_mentions_card_types(filter: &ObjectFilter, types: &[crate::types::CardType]) -> bool {
     filter.type_or_subtype_union
         || filter.one_per_card_type
+        || filter.shares_card_type
         || types.iter().any(|card_type| {
             filter.card_types.contains(card_type)
                 || filter.all_card_types.contains(card_type)
@@ -2771,6 +2792,7 @@ fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
 fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
     filter.has_tap_activated_ability
         || filter.has_non_mana_activated_ability
+        || filter.has_activated_ability
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()

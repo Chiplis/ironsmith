@@ -183,6 +183,31 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         }
     }
 
+    // "the number of artifacts that were put into graveyards from the
+    // battlefield this turn" (Structural Assault, Anzrag's Rampage): every
+    // player's matching permanents that went from the battlefield to a
+    // graveyard this turn, judged by last-known information (CR 700.4 for
+    // creatures; the same zone change for other permanents).
+    for suffix in [
+        &[
+            "that", "were", "put", "into", "graveyards", "from", "the", "battlefield", "this",
+            "turn",
+        ][..],
+        &[
+            "that", "were", "put", "into", "a", "graveyard", "from", "the", "battlefield",
+            "this", "turn",
+        ][..],
+    ] {
+        if let Some(end) = suffix_start(&words, suffix) {
+            let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+                filter,
+                from: Some(crate::zone::Zone::Battlefield),
+                to: Some(crate::zone::Zone::Graveyard),
+            }));
+        }
+    }
+
     for suffix in [
         &[
             "that",
@@ -287,6 +312,32 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::DiscardedOrCycled(PlayerFilter::You),
         ));
+    }
+
+    // "for each card you've discarded this turn" (Change of Fortune, Misty
+    // Knight, Living Laser): the discard events of the turn (CR 701.9a),
+    // read from the turn history rather than from any current zone.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["card", "cards"],
+            &["youve", "you've"],
+            &["discarded"],
+            &["this"],
+            &["turn"],
+        ],
+    ) || crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["card", "cards"],
+            &["you"],
+            &["have"],
+            &["discarded"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::CardsDiscardedThisTurn(PlayerFilter::You));
     }
 
     let graveyard_put = crate::word_primitives::parse_sequence_start(&words, &["put"]);
@@ -471,6 +522,28 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             },
         ));
     }
+    // "for each player who was dealt combat damage this turn" (Vivien's
+    // Stampede): every player, not only opponents.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["player", "players"],
+            &["who", "that"],
+            &["was", "were"],
+            &["dealt"],
+            &["combat"],
+            &["damage"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PlayersDealtCombatDamageBy {
+                players: PlayerFilter::Any,
+                sources: ObjectFilter::default(),
+            },
+        ));
+    }
     let opponents_lost_life = crate::word_primitives::parse_choice_sequence_complete(
         &words,
         &[
@@ -508,6 +581,23 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
     if opponents_lost_life {
         return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(
             PlayerFilter::Opponent,
+        )));
+    }
+    // "for each player who lost life this turn" (Reaper's Scythe): every
+    // player, distinct.
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["player", "players"],
+            &["who", "that"],
+            &["lost"],
+            &["life"],
+            &["this"],
+            &["turn"],
+        ],
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(
+            PlayerFilter::Any,
         )));
     }
 

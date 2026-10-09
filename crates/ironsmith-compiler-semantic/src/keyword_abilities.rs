@@ -169,6 +169,7 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
                     added_card_types: Vec::new(), added_subtypes: Vec::new(), removed_supertypes: Vec::new(),
                     set_base_power_toughness: None, set_base_power_toughness_to_source_totals: false,
                     starting_loyalty: None, granted_abilities: Vec::new(),
+                    set_name: None, added_supertypes: Vec::new(),
                 }));
             (TriggerSpec::ThisAttacks, vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 sequential: false, filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending),

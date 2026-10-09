@@ -638,6 +638,51 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
     ]))
 }
 
+/// "Target player reveals a card at random from their hand, then loses life
+/// equal to that card's mana value." (Singe-Mind Ogre): the life loss reads
+/// the randomly revealed card, not the source or a spell.
+pub fn parse_sentence_random_hand_reveal_then_loses_mana_value_life(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = clause.tokens();
+    let Some(split) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+    else {
+        return Ok(None);
+    };
+    let tail = SubjectVerbPrimitiveClause::new(&tokens[split + 2..]);
+    if !matches!(
+        tail.word_refs().as_slice(),
+        ["loses", "life", "equal", "to", "that", "card's" | "cards", "mana", "value"]
+    ) {
+        return Ok(None);
+    }
+    let Some(mut effects) = parse_sentence_target_player_reveals_random_card_from_hand(
+        SubjectVerbPrimitiveClause::new(&tokens[..split]),
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::RevealLook(crate::cards::builders::RevealLookActionAst::RevealTagged {
+                tag,
+            }),
+        ..
+    })) = effects.last()
+    else {
+        return Ok(None);
+    };
+    let amount = Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag.key.clone())));
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::That,
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
+    ));
+    Ok(Some(effects))
+}
+
 fn is_hand_reference_clause(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     choice_shapes::is_hand_reference_shape(&clause.word_refs())
 }

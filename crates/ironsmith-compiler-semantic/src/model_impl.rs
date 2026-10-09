@@ -23,6 +23,7 @@ pub mod static_abilities;
 pub mod structured_abilities;
 pub mod token_definition;
 pub mod triggered_abilities;
+pub mod trigger_zones;
 pub mod visit;
 
 pub use ironsmith_compiler_ast::{parse_types, provenance, restrictions, symbols};

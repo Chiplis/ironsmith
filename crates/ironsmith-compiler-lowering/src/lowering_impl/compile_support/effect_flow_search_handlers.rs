@@ -380,6 +380,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     granted_abilities,
                     set_base_power_toughness,
                     copy_exception_surface,
+                    retain_source_colors,
                 }),
             ..
         }),
@@ -447,6 +448,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         granted_abilities.clone(),
         set_base_power_toughness.clone(),
         copy_exception_surface.clone(),
+        *retain_source_colors,
     );
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }
@@ -677,6 +679,8 @@ fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<Effect
                 cost,
                 x_value: None,
                 x_maximum: None,
+                independent_x_choice: false,
+
             }),
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1518,10 +1522,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let mut compiled = body_effects
                 .drain(..target_prelude_count)
                 .collect::<Vec<_>>();
-            let effect = Effect::repeat_process(
-                body_effects,
-                condition,
-                effect_predicate_from_if_result(continue_predicate.clone()),
+            let choice_history = repeat_process_choice_history(&body_effects);
+            let effect = Effect::new(
+                crate::effects::RepeatProcessEffect::new(
+                    body_effects,
+                    condition,
+                    effect_predicate_from_if_result(continue_predicate.clone()),
+                )
+                .with_choice_history(choice_history),
             );
             compiled.push(effect);
             (compiled, choices)
@@ -1550,6 +1558,41 @@ pub(super) fn try_compile_flow_and_iteration_effect(
     };
 
     Ok(Some(compiled))
+}
+
+/// Each object choice in a repeated process body that excludes the
+/// process's earlier choices (`PriorProcessChoices`, set by resolve for
+/// "except that <player> can't choose a card already chosen for <this>")
+/// asks the process to accumulate its chosen objects across rounds.
+fn repeat_process_choice_history(
+    body: &[Effect],
+) -> Vec<ironsmith_core::RepeatProcessChoiceHistory> {
+    fn visit(effect: &Effect, out: &mut Vec<ironsmith_core::RepeatProcessChoiceHistory>) {
+        if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == ironsmith_core::tag::PRIOR_PROCESS_CHOICES_TAG
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            })
+        {
+            let history = ironsmith_core::RepeatProcessChoiceHistory::new(
+                choose.tag.clone(),
+                ironsmith_core::tag::PRIOR_PROCESS_CHOICES_TAG,
+            );
+            if !out.contains(&history) {
+                out.push(history);
+            }
+        }
+        // A nested repeated process owns its own rounds.
+        if effect.downcast_ref::<crate::effects::RepeatProcessEffect>().is_some() {
+            return;
+        }
+        effect.visit_child_effects(&mut |child| visit(child, out));
+    }
+    let mut out = Vec::new();
+    for effect in body {
+        visit(effect, &mut out);
+    }
+    out
 }
 
 fn single_cast_tagged_reference_tag(

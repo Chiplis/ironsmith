@@ -625,6 +625,10 @@ pub fn execute_untap_step_with(
     game: &mut GameState,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
+    // CR 614.10: a static "skip your untap step" (Stasis) skips the occurrence.
+    if game.player_skips_untap_step(game.turn.active_player) {
+        return Ok(());
+    }
     let checkpoint = game.clone();
     let result = capture_untap_step_boundary(game)
         .and_then(|boundary| execute_untap_step_inner(game, decision_maker, &boundary));
@@ -916,7 +920,12 @@ fn execute_untap_step_inner(
 
     for effect in &mut game.effect_store.restriction_effects {
         if consumed_untap_restrictions.contains(&effect.timestamp) {
-            effect.consumed_next_untap = true;
+            // "next two untap steps": each consumed step uses one up.
+            if effect.additional_untap_steps > 0 {
+                effect.additional_untap_steps -= 1;
+            } else {
+                effect.consumed_next_untap = true;
+            }
         }
     }
     let current_turn = game.turn.turn_number;
@@ -1409,6 +1418,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     game.effect_store.continuous_effects.cleanup_end_of_turn();
     game.cleanup_player_control_end_of_turn();
     game.cleanup_combat_choice_control_end_of_turn();
+    game.cleanup_vote_control_end_of_turn();
 
     // Restrictions are materialized into CantEffectTracker. Rebuild it only
     // after both direct restriction instances and continuous effects have

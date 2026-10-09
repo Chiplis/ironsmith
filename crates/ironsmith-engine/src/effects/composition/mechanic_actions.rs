@@ -27,6 +27,7 @@ use crate::events::processing::{
 };
 use crate::events::zones::ZoneChangeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
@@ -2035,6 +2036,9 @@ impl EffectExecutor for DevourEffect {
                     ));
                 }
 
+                // CR 702.82c: "Devour [quality]" devours only permanents with
+                // that quality; plain devour devours creatures.
+                let quality_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
                 let candidates = game
                     .battlefield
                     .iter()
@@ -2043,7 +2047,11 @@ impl EffectExecutor for DevourEffect {
                     .filter(|&id| {
                         game.object(id).is_some_and(|obj| {
                             game.controller_of(obj) == ctx.controller
-                                && game.object_has_card_type(id, crate::types::CardType::Creature)
+                                && match &self.quality {
+                                    None => game
+                                        .object_has_card_type(id, crate::types::CardType::Creature),
+                                    Some(quality) => quality.matches(obj, &quality_ctx, game),
+                                }
                                 && game.can_be_sacrificed(id)
                         })
                     })
@@ -2054,7 +2062,11 @@ impl EffectExecutor for DevourEffect {
                 } else {
                     let spec = ChooseObjectsSpec::new(
                         ctx.source,
-                        "Choose any number of other creatures you control to sacrifice for devour",
+                        if self.quality.is_some() {
+                            "Choose any number of other permanents you control to sacrifice for devour"
+                        } else {
+                            "Choose any number of other creatures you control to sacrifice for devour"
+                        },
                         candidates.clone(),
                         0,
                         Some(candidates.len()),
@@ -2097,15 +2109,14 @@ impl EffectExecutor for DevourEffect {
                         let count = sacrifices.outcome.count_or_zero();
                         game.set_devoured_objects(ctx.source, devoured);
                         game.set_devoured_count(ctx.source, count.max(0) as u32);
+                        let devoured_count = u32::try_from(count).map_err(|_| {
+                            ExecutionError::InternalError(
+                                "devour count exceeds the counter range".into(),
+                            )
+                        })?;
                         let counters = crate::effects::PutCountersEffect::new(
                             CounterType::PlusOnePlusOne,
-                            u32::try_from(count)
-                                .map_err(|_| {
-                                    ExecutionError::InternalError(
-                                        "devour count exceeds the counter range".into(),
-                                    )
-                                })?
-                                .saturating_mul(self.multiplier),
+                            self.counters_for(devoured_count),
                             ChooseSpec::Source,
                         )
                         .execute_child_with_outputs(game, ctx)?;

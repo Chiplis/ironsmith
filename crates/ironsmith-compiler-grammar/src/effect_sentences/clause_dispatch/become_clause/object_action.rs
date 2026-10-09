@@ -6,6 +6,21 @@ pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    // "It becomes night." / "It becomes day." (CR 731.2-731.3): the impersonal
+    // "it" names the game's day/night designation, not an object.
+    if let [subject] = LexedClause::new(subject_tokens).trim().as_slice()
+        && subject.is_word("it")
+    {
+        let rest = crate::util::trim_edge_punctuation_tokens(rest_tokens);
+        if let [designation] = rest {
+            if designation.is_word("night") {
+                return Ok(EffectAst::SetDayNight(ironsmith_core::DayNightDesignation::Night));
+            }
+            if designation.is_word("day") {
+                return Ok(EffectAst::SetDayNight(ironsmith_core::DayNightDesignation::Day));
+            }
+        }
+    }
     let mut designation_clause = subject_tokens.to_vec();
     designation_clause.push(OwnedLexToken::synthetic_word("become"));
     designation_clause.extend_from_slice(rest_tokens);
@@ -126,6 +141,25 @@ pub fn parse_become_clause(
                 remainder,
                 become_clause_tokens,
                 Some(ironsmith_core::AnimationDurationSurface::Leading),
+            )
+        } else if let Some((counter_type, body)) =
+            crate::grammar::effects::parse_affected_object_counter_duration_suffix(
+                &become_clause_tokens,
+            )
+            && !trailing_duration_belongs_to_quoted_ability(&become_clause_tokens, body)
+        {
+            // "It's a green Dinosaur with base power and toughness 5/5 for as
+            // long as it has a saurian counter on it": the animation lasts
+            // while the animated object keeps that counter.
+            (
+                Until::ForAsLongAs(
+                    ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                        counter_type,
+                    ),
+                ),
+                subject_tokens.clone(),
+                body.to_vec(),
+                None,
             )
         } else if let Some((duration, remainder)) =
             parse_restriction_duration(&become_clause_tokens)?
@@ -363,6 +397,9 @@ pub fn parse_become_clause(
             } else {
                 Vec::new()
             };
+            let retain_source_colors = copy_exception
+                .as_ref()
+                .is_some_and(|exception| exception.retain_source_colors);
             return Ok(EffectAst::subject_verb_become_copy(
                 target,
                 source,
@@ -410,6 +447,7 @@ pub fn parse_become_clause(
                     .and_then(|exception| exception.set_base_power_toughness)
                     .map(|(power, toughness)| (Value::Fixed(power), Value::Fixed(toughness))),
                 copy_exception.and_then(|exception| exception.surface),
+                retain_source_colors,
             ));
         }
         become_grammar::BecomeCopySourceShape::NotCopy => {}
@@ -428,6 +466,9 @@ pub fn parse_become_clause(
     }
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Prepared) {
         return Ok(EffectAst::subject_verb_prepare(target));
+    }
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Unprepared) {
+        return Ok(EffectAst::subject_verb_unprepare(target));
     }
     if let Some(aura) = become_surface.aura {
         if become_grammar::aura_subject_prefers_source(target_subject_tokens)
@@ -733,8 +774,51 @@ pub fn parse_become_clause(
             }
             return Ok(with_subtype_removal(effect));
         }
-        let (descriptor_words, preserve_other_types) =
+        let (mut descriptor_words, mut preserve_other_types) =
             become_grammar::strip_become_addition_tail_words(&become_words[value_word_count..]);
+        // "Each of them is a 1/1 Spirit with flying in addition to its other
+        // types" (Storm of Souls): keywords granted after the implied-creature
+        // subtype (CR 205.3m; the abilities are added in layer 6).
+        let mut implied_creature_grants = Vec::<GrantedAbilityAst>::new();
+        if let Some(with_word) = descriptor_words
+            .iter()
+            .position(|word| *word == "with")
+            .filter(|index| *index > 0)
+        {
+            let Some(with_token) = become_body_tokens.iter().position(|token| token.is_word("with"))
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation suffix (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            };
+            let become_grammar::BecomeAnimationSuffixShape::With {
+                ability_tokens,
+                grants_all_creature_types: false,
+                preserve_other_types: suffix_preserves,
+                ..
+            } = become_grammar::parse_become_animation_suffix_shape(
+                &become_body_tokens[with_token..],
+            )
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation suffix (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            };
+            let ability_words = crate::lexer::parser_token_word_refs(ability_tokens);
+            let (parsed, is_choice) =
+                parse_granted_abilities_for_gain_clause(ability_tokens, &ability_words, false)?;
+            if is_choice || parsed.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported implied-creature animation abilities (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                )));
+            }
+            implied_creature_grants = parsed;
+            descriptor_words = &descriptor_words[..with_word];
+            preserve_other_types = preserve_other_types || suffix_preserves;
+        }
         if preserve_other_types
             && let Some(descriptor) =
                 become_grammar::parse_become_creature_descriptor_words(descriptor_words)
@@ -749,7 +833,7 @@ pub fn parse_become_clause(
                 Vec::new(),
                 descriptor.colors,
                 Vec::new(),
-                Vec::new(),
+                implied_creature_grants,
                 true,
                 Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature),
                 Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),

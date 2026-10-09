@@ -331,6 +331,19 @@ pub(super) fn queue_triggers_for_events(
     try_queue_reported_events_with_batch_policy(game, trigger_queue, events, false, true)
 }
 
+/// Like [`queue_triggers_for_events`], but delayed triggers observe the
+/// events too. A mana ability's own production event is observed by
+/// temporary "until end of turn, whenever a player taps ... for mana"
+/// triggers (Bubbling Muck, Chaos Moon) exactly like printed ones; those are
+/// triggered mana abilities and resolve immediately (CR 605.1b).
+pub(super) fn queue_triggers_for_events_including_delayed(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+) -> Result<(), crate::effects::ExecutionError> {
+    try_queue_reported_events_with_batch_policy(game, trigger_queue, events, true, true)
+}
+
 /// Queue trigger matches for events produced by one simultaneous game action.
 ///
 /// Every event is recorded before matching, then trigger checks share a single
@@ -1551,7 +1564,8 @@ fn resolved_target_bounds(
         let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
         let mut ctx = crate::effects::ExecutionContext::new(source_id, caster, &mut decision_maker);
         ctx.x_value = game.object(source_id).and_then(|source| source.x_value);
-        match crate::effects::helpers::resolve_value(game, count_value, &ctx) {
+        // This reader prices the announcement, before costs or responses.
+        match crate::effects::helpers::resolve_value(game, count_value.unhinted(), &ctx) {
             Ok(value) => value.max(0) as usize,
             Err(_) => return (profile.min_targets, profile.max_targets),
         }
@@ -2652,10 +2666,18 @@ fn player_filter_has_prior_object_controller(filter: &PlayerFilter) -> bool {
     }
 }
 
+/// "target creatures their opponents control" after "target player": the
+/// candidate's controller must be an opponent of the prior target player.
+fn player_filter_is_opponent_of_prior_target_player(filter: &PlayerFilter) -> bool {
+    matches!(filter, PlayerFilter::OpponentOf(inner) if matches!(inner.as_ref(), PlayerFilter::Target(_)))
+}
+
 fn relax_prior_target_player_filter(filter: &PlayerFilter) -> PlayerFilter {
     // A dependency under exclusion cannot be replaced with Any in place:
     // Any minus Any is empty. Enumerate a superset, then validate exact pairs.
-    if player_filter_has_prior_object_controller(filter) {
+    if player_filter_has_prior_object_controller(filter)
+        || player_filter_is_opponent_of_prior_target_player(filter)
+    {
         return PlayerFilter::Any;
     }
     match filter {
@@ -2678,6 +2700,15 @@ fn prior_shared_player_requirement(
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
+    if filter
+        .controller
+        .as_ref()
+        .is_some_and(player_filter_is_opponent_of_prior_target_player)
+    {
+        return requirements
+            .iter()
+            .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)));
+    }
     if filter
         .controller
         .as_ref()
@@ -2753,6 +2784,39 @@ fn link_target_controller_requirement(
         return None;
     };
     let prior_index = prior_shared_player_requirement(spec, requirements)?;
+    if filter
+        .controller
+        .as_ref()
+        .is_some_and(player_filter_is_opponent_of_prior_target_player)
+    {
+        // Each candidate pairs with every prior target player its
+        // controller is an opponent of.
+        let mut allowed_pairs = Vec::new();
+        for prior in &requirements[prior_index].legal_targets {
+            let Target::Player(player) = prior else {
+                continue;
+            };
+            for candidate in candidates {
+                let Target::Object(id) = candidate else {
+                    continue;
+                };
+                if game
+                    .current_controller(*id)
+                    .is_some_and(|controller| game.are_opponents(controller, *player))
+                {
+                    allowed_pairs.push((*prior, *candidate));
+                }
+            }
+        }
+        return Some(crate::decisions::context::SharedTargetPlayerGroup {
+            group: 0,
+            target_players: Vec::new(),
+            pair_constraint: Some(crate::decisions::context::TargetPairConstraint {
+                prior_requirement: prior_index,
+                allowed_pairs,
+            }),
+        });
+    }
     if filter
         .controller
         .as_ref()
@@ -3233,9 +3297,10 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
             base: Box::new(specialize_iterated_player_filter(base, player)),
         },
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(specialize_iterated_player_filter(base, player)),
+                this_turn: *this_turn,
             }
         }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {
@@ -3254,10 +3319,12 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             player: compared,
             filter,
             fewer,
+            as_you_activate,
         } => PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: Box::new(specialize_iterated_player_filter(compared, player)),
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
             fewer: *fewer,
+            as_you_activate: *as_you_activate,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
@@ -4233,6 +4300,9 @@ pub fn player_matches_filter_with_combat(
             .any(|snapshot| {
                 snapshot.controller == player_id && snapshot.card_types.contains(card_type)
             }),
+        PlayerFilter::TurnHistory(history) => {
+            crate::filter::player_turn_history_matches(game, player_id, *history)
+        }
         // Source-relative history is not meaningful while validating a
         // standalone player target; these filters are used by effect loops.
         PlayerFilter::AttackedBySourceThisTurn
@@ -4281,6 +4351,12 @@ pub fn player_matches_filter_with_combat(
             other.is_in_game()
                 && game.are_opponents(other.id, player_id)
                 && player_matches_filter_with_combat(other.id, base, game, controller, combat)
+        }),
+        PlayerFilter::PlayerToLeftOf(base) => game.players.iter().any(|other| {
+            other.is_in_game()
+                && player_matches_filter_with_combat(other.id, base, game, controller, combat)
+                && game.closest_in_game_player_to_left_matching(other.id, |_| true)
+                    == Some(player_id)
         }),
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
@@ -4671,6 +4747,17 @@ fn player_filter_for_resolution_target_validation(
         | PlayerFilter::HasMoreLifeThanYou { base } => {
             player_filter_for_resolution_target_validation(base)
         }
+        // "target opponent who controls more creatures than you do as you
+        // activate this ability" (Keeper of the Beasts): the comparison was a
+        // restriction on choosing the target; on resolution the player must
+        // still be an opponent (CR 608.2b).
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player,
+            as_you_activate: true,
+            ..
+        } => PlayerFilter::OpponentOf(Box::new(
+            player_filter_for_resolution_target_validation(player),
+        )),
         PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
             player_filter_for_resolution_target_validation(inner),
         )),
@@ -4755,11 +4842,12 @@ fn specialize_target_player_relation(
         }
         PlayerFilter::Target(inner)
         | PlayerFilter::AliasedTarget(inner)
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
+        | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {
             specialize_target_player_relation(inner, player, relation);
         }
@@ -4997,6 +5085,7 @@ fn stack_entry_current_assignment_legal_targets(
         let mut ctx =
             crate::effects::ExecutionContext::new_default(entry.object_id, entry.controller);
         ctx.x_value = entry.x_value;
+    ctx.activation_values = entry.ability_effects.as_ref().map(|program| program.activation_values.clone()).unwrap_or_default();
         ctx.effect_outcomes = entry.effect_outcomes.clone();
         // Relative references bind earlier target groups; including this
         // assignment would make "another" exclude its own retained target.
@@ -5092,6 +5181,7 @@ fn assignment_aggregate_still_legal(
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(entry.object_id, entry.controller, &mut dm);
     ctx.x_value = entry.x_value;
+    ctx.activation_values = entry.ability_effects.as_ref().map(|program| program.activation_values.clone()).unwrap_or_default();
     if let Some(snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(snapshot);
     }

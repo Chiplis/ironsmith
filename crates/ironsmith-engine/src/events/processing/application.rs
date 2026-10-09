@@ -676,6 +676,24 @@ pub(super) fn apply_trait_replacement(
                 count
             };
             for template in templates {
+                // "create that many tokens that are copies of enchanted
+                // permanent" (Moonlit Meditation): the copiable values are
+                // captured as the replacement applies (CR 707.2, 616.1).
+                if let Some(copy) = template.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
+                    let Some(copied) = replacement_copy_template_object(game, effect, &copy.target)
+                    else {
+                        return Ok(TraitApplyResult::Unchanged(event));
+                    };
+                    let Some(definition) = game.object(copied).map(|object| {
+                        let mut definition = object.to_card_definition();
+                        definition.card.is_token = true;
+                        definition
+                    }) else {
+                        return Ok(TraitApplyResult::Unchanged(event));
+                    };
+                    modified = modified.with_template(definition, copies)?;
+                    continue;
+                }
                 let Some(create) = template.downcast_ref::<crate::effects::CreateTokenEffect>()
                 else {
                     return Err(crate::effects::ExecutionError::InternalError(
@@ -1359,6 +1377,37 @@ pub(super) fn find_matching_sacrificable_permanents(
 
 /// A replacement sees every group in the modified event, including arbitrary
 /// templates inserted by earlier replacements (CR 616.1).
+/// The single permanent a token-copy replacement template names, read from
+/// the replacement source's point of view ("enchanted permanent" is the
+/// permanent the source Aura is attached to).
+fn replacement_copy_template_object(
+    game: &GameState,
+    effect: &crate::replacement::ReplacementEffect,
+    spec: &crate::target::ChooseSpec,
+) -> Option<crate::ids::ObjectId> {
+    use crate::filter::ObjectFilterExt as _;
+    match spec.base() {
+        crate::target::ChooseSpec::Tagged(tag)
+            if matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") =>
+        {
+            let source = game.object(effect.source)?;
+            (source.zone == Zone::Battlefield)
+                .then(|| source.attached_to.as_ref()?.object_id())
+                .flatten()
+        }
+        crate::target::ChooseSpec::Object(filter) => {
+            let filter_ctx = game.filter_context_for(effect.controller, Some(effect.source));
+            let mut matches = game.battlefield.iter().copied().filter(|id| {
+                game.object(*id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+            });
+            let first = matches.next()?;
+            matches.next().is_none().then_some(first)
+        }
+        _ => None,
+    }
+}
+
 fn token_groups_covered<'a>(
     game: &'a GameState,
     effect: &'a ReplacementEffect,
@@ -1420,6 +1469,12 @@ fn modify_token_groups_checked(
             tokens.adjusted_token_total(covers, |total| u128::from(total.max(floor)))
         }
         EventModification::ReduceToZero => tokens.adjusted_token_total(covers, |_| 0),
+        EventModification::Halve { round_up } => {
+            let round_up = *round_up;
+            tokens.adjusted_token_total(covers, move |total| {
+                u128::from(if round_up { total.div_ceil(2) } else { total / 2 })
+            })
+        }
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1445,6 +1500,9 @@ fn modified_count(
             count.max(resolve_value_for_replacement(value, game, effect.source))
         }
         EventModification::ReduceToZero => 0,
+        EventModification::Halve { round_up } => {
+            if *round_up { count.div_ceil(2) } else { count / 2 }
+        }
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }

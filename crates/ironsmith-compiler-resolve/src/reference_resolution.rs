@@ -607,6 +607,15 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
         // chosen opponent available to the second half.
         return;
     }
+    // "Creatures the active player controls attack this turn if able. ...
+    // that player controls" (Siren's Call): the active player (CR 102.1) is
+    // a fixed participant, published as the antecedent itself rather than as
+    // the controller of a possibly-empty affected set, exactly like an
+    // announced player target below.
+    if player_filter_from_object_filter(filter) == Some(PlayerFilter::Active) {
+        frame.last_player_filter = Some(PlayerFilter::Active);
+        return;
+    }
     // "Destroy all creatures target opponent controls. ... that player": an
     // announced player target stays the antecedent even when the affected
     // set is empty.
@@ -806,6 +815,7 @@ fn created_token_kind(
                 crate::types::CardType::Creature,
             ]
         }
+        TokenDefinitionSpec::Land(_) => vec![crate::types::CardType::Land],
         _ => return None,
     };
     Some(ObjectFilter {
@@ -1537,6 +1547,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
@@ -1674,6 +1685,57 @@ fn advance_reference_frames(
     Ok(())
 }
 
+/// The members of ONE coordinated instruction ("exiles A, B, and C").
+fn advance_coordinated_reference_frames(
+    effects: &[EffectAst],
+    id_gen: &mut IdGenContext,
+    frame: &mut ReferenceFrame,
+) -> Result<(), CardTextError> {
+    // "Target opponent exiles the top card of their library, a card at random
+    // from their graveyard, and a card at random from their hand. You may
+    // cast a spell from among cards exiled this way." (Crabomination): one
+    // instruction exiles several groups, and "this way" names all of them.
+    // Consecutive exile producers among the members of one coordinated
+    // instruction (choice helpers between them do not interrupt it) keep one
+    // "exiled this way" alias per producer; the resolver reads them as a
+    // union. Separate sentences go through `advance_reference_frames`, where
+    // each exile replaces the alias (the most recent exile wins).
+    let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+    let mut exile_group: Vec<TagKey> = Vec::new();
+    for effect in effects {
+        advance_reference_frame_for_effect(effect, id_gen, frame)?;
+        if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
+            if let Some((_, exiled)) = frame
+                .snapshot_tag_aliases
+                .iter()
+                .rev()
+                .find(|(existing, _)| existing == &alias)
+                && !exile_group.contains(exiled)
+            {
+                exile_group.push(exiled.clone());
+            }
+            if exile_group.len() > 1 {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(existing, _)| existing != &alias);
+                for exiled in &exile_group {
+                    frame.snapshot_tag_aliases.push((alias.clone(), exiled.clone()));
+                }
+            }
+        } else if !matches!(
+            effect,
+            EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjects { .. }
+                    | ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }
+                    | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }
+            )
+        ) {
+            exile_group.clear();
+        }
+    }
+    Ok(())
+}
+
 fn advance_reference_frame_for_effect(
     effect: &EffectAst,
     id_gen: &mut IdGenContext,
@@ -1686,6 +1748,9 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::CollectManaPayments { effects } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
+        EffectAst::BindX { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::PlaySubgame { nonwinner_effects } => {
@@ -1754,9 +1819,26 @@ fn advance_reference_frame_for_effect(
                 let group = crate::tag::CompilerReferenceTag::CoordinatedCreatedResult.key();
                 let mut created = Vec::new();
                 let mut all_members_create = coordination.members.len() > 1;
+                // One conjunctive instruction ("exiles the top card of their
+                // library, a card at random from their graveyard, and a card
+                // at random from their hand"): "exiled this way" names every
+                // member's exile.
+                let exiled_alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                let mut exiled_members: Vec<TagKey> = Vec::new();
                 for member in &coordination.members {
                     let before = frame.last_object_tag.clone();
                     advance_reference_frames(&member.effects, id_gen, frame)?;
+                    if member.effects.iter().any(|effect| {
+                        is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled)
+                    }) && let Some((_, exiled)) = frame
+                        .snapshot_tag_aliases
+                        .iter()
+                        .rev()
+                        .find(|(alias, _)| alias == &exiled_alias)
+                        && !exiled_members.contains(exiled)
+                    {
+                        exiled_members.push(exiled.clone());
+                    }
                     let creates_tokens = !member.effects.is_empty()
                         && member.effects.iter().all(|effect| {
                             matches!(
@@ -1778,6 +1860,16 @@ fn advance_reference_frame_for_effect(
                         _ => all_members_create = false,
                     }
                 }
+                if exiled_members.len() > 1 {
+                    frame
+                        .snapshot_tag_aliases
+                        .retain(|(alias, _)| alias != &exiled_alias);
+                    frame.snapshot_tag_aliases.extend(
+                        exiled_members
+                            .into_iter()
+                            .map(|exiled| (exiled_alias.clone(), exiled)),
+                    );
+                }
                 frame
                     .snapshot_tag_aliases
                     .retain(|(alias, _)| alias != &group);
@@ -1792,10 +1884,12 @@ fn advance_reference_frame_for_effect(
             advance_reference_frames(&iteration.body, id_gen, frame)?;
         }
         EffectAst::Vote(_) => {}
+        EffectAst::Coordinated { effects, .. } => {
+            advance_coordinated_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
@@ -2185,6 +2279,18 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
+                    // "Target player loses all poison counters. ~ deals that
+                    // much damage to that player" (Leeches): a player holder
+                    // is the next "that player".
+                    if matches!(target, TargetAst::Player(..)) {
+                        track_target_player(target, frame);
+                    }
+                }
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                    target: Some(target),
+                    ..
+                }) => {
+                    maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                     target,
@@ -2311,6 +2417,12 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target: None }) => {}
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                     maybe_tag_target(target, frame, id_gen, "removed_from_combat")?;
+                }
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                    target,
+                    ..
+                }) => {
+                    maybe_tag_target(target, frame, id_gen, "attack_reselected")?;
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
@@ -3531,7 +3643,13 @@ fn advance_reference_frame_for_effect(
         }
         // Mirrors lowering: the looked-at cards become the object antecedent
         // ("..., then puts them back in any order").
-        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, .. } => {
+        EffectAst::PlayerLooksAtTopCardsOfLibrary { tag, viewer, .. } => {
+            // Mirrors lowering, which resolves the viewer as a tracked actor:
+            // "Target opponent looks at the top four cards of your library
+            // and separates them ..." makes that opponent "that player".
+            if !matches!(viewer, PlayerAst::You) {
+                track_effect_player(*viewer, frame, true, true)?;
+            }
             frame.last_object_tag = Some(
                 if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                     next_reference_tag(id_gen, "revealed")
@@ -3542,12 +3660,19 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
+        | EffectAst::GreatestManaValueTieBreakExile { .. }
+        | EffectAst::SetDayNight(_)
+        | EffectAst::ChoosePlayerOption(_)
+        | EffectAst::ControlVotesThisTurn
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::ChooseFriendsOrFoes { .. }
+        | EffectAst::GrantLoyaltyActivationAllowance { .. }
         | EffectAst::PayToEndThisEffect { .. }
         | EffectAst::LookAtTopCardsAsViewer { .. }
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })
@@ -4757,6 +4882,12 @@ fn effect_is_library_search(effect: &EffectAst) -> bool {
             action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. }),
             ..
         }) => true,
+        // "you may search your library ... . If you search your library this
+        // way, ..." (Unlucky Cabbage Merchant): the optional wrapper's result
+        // is whether the search happened.
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) => effects.first().is_some_and(effect_is_library_search),
         _ => false,
     }
 }
@@ -4776,6 +4907,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
@@ -4907,6 +5039,13 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::MoveTaggedGroupToZone { .. }
         | EffectAst::RestartGame { .. }
         | EffectAst::PlaySubgame { .. } => true,
+        EffectAst::ControlFlow(_) => {
+            let mut produces = false;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                produces |= nested.iter().any(effect_can_supply_prior_effect_memory);
+            });
+            produces
+        }
         _ => false,
     }
 }
@@ -5326,6 +5465,12 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
                 | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
+                // "Reveal the top seven cards of your library" (Stomping
+                // Slabs) remembers the revealed cards in its outcome.
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                    reveal: true,
+                    ..
+                })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
         ),
         PriorEffectAction::Sacrificed => matches!(
@@ -5846,6 +5991,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
                 visit(max_exposed);
             }
         }
+        SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
+            portion: ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount),
+            ..
+        }) => visit(amount),
         _ => {}
     }
 }
@@ -6711,6 +6860,13 @@ fn resolve_effect_result_values_in_fields(
                 Ok(())
             }
         Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
+            Ok(())
+        }
+        Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)
                 || local_random_result_bindings::Family::Reveal.query(query) => {
             let family = if local_random_result_bindings::Family::Number.query(query) {
@@ -6954,6 +7110,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -7056,6 +7213,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
@@ -7063,6 +7222,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 ..
             })
@@ -7112,6 +7272,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
             })
@@ -7778,6 +7939,12 @@ fn resolve_effect_result_value(
             };
         }
         Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
+        }
+        Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)
                 || local_random_result_bindings::Family::Reveal.query(query) => {
             let family = if local_random_result_bindings::Family::Number.query(query) {
@@ -8195,6 +8362,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -8491,11 +8659,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ReselectAttackTarget { target, .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::BecomeBlocked {
                 target,
             })
@@ -8552,9 +8723,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: Some(target),
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 target,
             }) => bind_unresolved_it_in_target(target, seed_tag),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                target: None,
+                ..
+            }) => 0,
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
@@ -9395,7 +9574,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         ) => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
-        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => 0,
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+        | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices) => 0,
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count }) =>
             bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
@@ -9448,7 +9628,7 @@ fn bind_unresolved_it_in_player_filter(filter: &mut PlayerFilter, seed_tag: &Tag
             bind_unresolved_it_in_player_filter(base, seed_tag)
                 + bind_unresolved_it_in_player_filter(excluded, seed_tag)
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             bind_unresolved_it_in_player_filter(base, seed_tag)
         }
         PlayerFilter::LostLifeThisTurn { base } => {
@@ -9596,6 +9776,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         Value::Count(filter)
         | Value::CountScaled(filter, _)
         | Value::GreatestCount(filter)
+        | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
@@ -9626,6 +9807,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
+        | Value::ChosenColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),
         _ => 0,
@@ -9723,6 +9905,8 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::BecomeUntapped(filter)
+        | Restriction::AttackBlockOrCrew(filter)
         | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
@@ -9739,12 +9923,14 @@ fn bind_unresolved_it_in_restriction(
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
-        | Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+        | Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::BeAttachedBy(blockers, attacker) => {
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
-        | Restriction::AttackPlayer { attackers, .. } => {
+        | Restriction::AttackPlayer { attackers, .. }
+        | Restriction::MustAttackPlayer { attackers, .. } => {
             bind_unresolved_it_in_filter(attackers, seed_tag)
         }
         _ => 0,

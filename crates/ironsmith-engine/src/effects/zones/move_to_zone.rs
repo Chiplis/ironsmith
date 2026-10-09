@@ -979,13 +979,28 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 return Ok(EffectOutcome::count(0));
             }
         }
+        // CR 509.4: "blocking that creature" names the attacker once for
+        // every creature this instruction puts onto the battlefield.
+        let blocking_attacker = match &self.enters_blocking {
+            Some(spec) if self.zone == Zone::Battlefield => {
+                crate::effects::helpers::resolve_objects_for_effect(game, ctx, spec)
+                    .ok()
+                    .and_then(|ids| ids.first().copied())
+            }
+            _ => None,
+        };
+        let attack_player_only = matches!(
+            self.attack_target_mode,
+            Some(MoveToZoneAttackTargetMode::Player(_))
+        );
         let configured_attack_player = if let Some(prepared) = &prepared {
             prepared.attack_player
         } else {
             match &self.attack_target_mode {
-                Some(MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
-                    player_filter,
-                )) => Some(resolve_player_filter(game, player_filter, ctx)?),
+                Some(
+                    MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)
+                    | MoveToZoneAttackTargetMode::Player(player_filter),
+                ) => Some(resolve_player_filter(game, player_filter, ctx)?),
                 None => None,
             }
         };
@@ -1610,8 +1625,26 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             && crate::effects::combat::can_enter_attacking(game, new_id)
                         {
                             let target = if let Some(attack_player) = configured_attack_player {
-                                let targets = attack_targets_for_player(game, attack_player);
-                                choose_attack_target_for_player(game, ctx, attack_player, &targets)
+                                // CR 508.4: "attacking that opponent" names the
+                                // player, never their planeswalkers or battles.
+                                let targets = if attack_player_only {
+                                    attack_targets_for_player(game, attack_player)
+                                        .into_iter()
+                                        .filter(|target| matches!(target, AttackTarget::Player(_)))
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    attack_targets_for_player(game, attack_player)
+                                };
+                                if targets.is_empty() {
+                                    None
+                                } else {
+                                    choose_attack_target_for_player(
+                                        game,
+                                        ctx,
+                                        attack_player,
+                                        &targets,
+                                    )
+                                }
                             } else {
                                 crate::effects::combat::choose_enters_attacking_target(
                                     game, ctx, new_id,
@@ -1623,6 +1656,13 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             if let Some(target) = target {
                                 game.add_entering_attacker(new_id, target);
                             }
+                        }
+                        if let Some(attacker) = blocking_attacker
+                            && game.current_is_creature(new_id)
+                        {
+                            crate::effects::combat::put_onto_battlefield_blocking(
+                                game, new_id, attacker,
+                            );
                         }
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
                         affected_memory.push(Clone::clone(&target_lki_before_move));

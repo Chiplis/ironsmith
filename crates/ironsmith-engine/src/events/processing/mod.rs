@@ -1941,10 +1941,15 @@ fn prepare_discard_scoped_inner(
     // replacements. Only applying this particular replacement can authorize
     // its linked trigger; merely ending up in exile is insufficient.
     let mut additional_effects = replacement_scope.additional_replacement_effects.clone();
+    // A card has madness when it is printed or granted to it while in hand
+    // (CR 702.35a; Falkenrath Gorger).
     if game.object(card_id).is_some_and(|card| {
         card.alternative_casts
             .iter()
             .any(|alternative| alternative.is_madness())
+            || (card.zone == Zone::Hand
+                && crate::effects::player::granted_madness_route(game, card_id, Zone::Hand)
+                    .is_some())
     }) {
         additional_effects.push(ReplacementEffect::with_matcher(
             card_id,
@@ -3996,6 +4001,11 @@ pub(crate) fn prepare_untap_with_execution_context(
             ..
         } => {
             let targets = untap_program_targets(&context)?;
+            // The replacement program's "it" is the permanent that would untap.
+            let it_snapshot = crate::events::downcast_event::<crate::events::UntapEvent>(context.event.inner())
+                .and_then(|untap| game.object(untap.permanent))
+                .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                .into_iter().collect::<Vec<_>>();
             let mut result = EffectOutcome::replaced();
             result.set_value(crate::effect::OutcomeValue::Count(0));
             PreparedUntapOriginal::Replacement(
@@ -4014,7 +4024,7 @@ pub(crate) fn prepare_untap_with_execution_context(
                     original: result,
                     bindings: crate::effects::replacement::ReplacementProgramBindings {
                         targets,
-                        object_tags: Vec::new(),
+                        object_tags: vec![("it".into(), it_snapshot.clone()), ("__it__".into(), it_snapshot)],
                     },
                 },
             )
@@ -5183,8 +5193,29 @@ fn prepare_zone_change_with_context_inner(
                         return Ok(EventOutcome::Replaced);
                     }
                 }
-                let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                    game, &mut ctx, &effects, source, controller, &context, None,
+                // The instead-program's "it" is the object that would have
+                // moved (CR 614.6: the replaced move never happens), exactly as
+                // the draw-continuation branch above binds it.
+                let snapshot = context
+                    .zone_change_context
+                    .as_ref()
+                    .or_else(|| {
+                        crate::events::downcast_event::<crate::events::ZoneChangeEvent>(
+                            context.event.inner(),
+                        )
+                    })
+                    .and_then(|zone| zone.snapshot.clone())
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let mut outcome = crate::effects::replacement::execute_replacement_payload_with_object_tags(
+                    game,
+                    &mut ctx,
+                    &effects,
+                    source,
+                    controller,
+                    &context,
+                    None,
+                    vec![("it".into(), snapshot.clone()), ("__it__".into(), snapshot)],
                 )?;
                 crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
                 for event in outcome.events {

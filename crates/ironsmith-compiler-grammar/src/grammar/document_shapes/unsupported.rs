@@ -31,7 +31,6 @@ pub enum UnsupportedRewriteLineKind {
     AdditionalLandPermission,
     TargetOnlyRestriction,
     GenericLine,
-    ChooseLeadingSpell,
     TemporaryLosesAbilitiesBecomes,
     StaticLosesAbilitiesBecomes,
     ForAsLongAsPermission,
@@ -69,7 +68,6 @@ impl UnsupportedRewriteLineKind {
             Self::AdditionalLandPermission => "unsupported additional-land-play permission clause",
             Self::TargetOnlyRestriction => "unsupported target-only restriction clause",
             Self::GenericLine => "unsupported line",
-            Self::ChooseLeadingSpell => "unsupported choose-leading spell clause",
             Self::TemporaryLosesAbilitiesBecomes => {
                 "unsupported loses-all-abilities with becomes clause"
             }
@@ -123,23 +121,6 @@ const RULES: &[UnsupportedRule] = &[
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Exact,
         phrase: &[
-            "creatures",
-            "you",
-            "control",
-            "have",
-            "haste",
-            "and",
-            "attack",
-            "each",
-            "combat",
-            "if",
-            "able",
-        ],
-        kind: UnsupportedRewriteLineKind::AnthemSubject,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Exact,
-        phrase: &[
             "you", "may", "play", "any", "number", "of", "lands", "on", "each", "of", "your",
             "turns",
         ],
@@ -149,13 +130,6 @@ const RULES: &[UnsupportedRule] = &[
         match_kind: UnsupportedRuleMatch::Exact,
         phrase: &["unleash", "while"],
         kind: UnsupportedRewriteLineKind::GenericLine,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "enters", "tapped", "and", "doesnt", "untap", "during", "your", "untap", "step",
-        ],
-        kind: UnsupportedRewriteLineKind::MixedEntersTappedUntap,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
@@ -174,22 +148,6 @@ const RULES: &[UnsupportedRule] = &[
             "that", "creature",
         ],
         kind: UnsupportedRewriteLineKind::AuraCopyAttachment,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "with",
-            "power",
-            "or",
-            "toughness",
-            "1",
-            "or",
-            "less",
-            "cant",
-            "be",
-            "blocked",
-        ],
-        kind: UnsupportedRewriteLineKind::PowerOrToughnessUnblockable,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
@@ -265,7 +223,6 @@ pub fn parse_unsupported_rewrite_line_kind(
     crate::grammar::primitives::take_leaf(
         &mut input,
         alt((
-            parse_choose_leading_spell,
             |input: &mut WordSliceInput<'_>| {
                 if loss_template_supported {
                     Err(primitives::backtrack_err(
@@ -277,7 +234,6 @@ pub fn parse_unsupported_rewrite_line_kind(
                 }
             },
             parse_for_as_long_as_permission,
-            parse_multi_step_each_player,
             parse_artifact_creature_player_target,
             parse_creature_token_player_planeswalker_target,
             parse_villainous_choice,
@@ -387,17 +343,6 @@ fn parse_word_phrase(
     Ok(())
 }
 
-fn parse_choose_leading_spell(
-    input: &mut WordSliceInput<'_>,
-) -> WResult<UnsupportedRewriteLineKind> {
-    word_sequence(&["choose", "target", "land"]).parse_next(input)?;
-    locate_word_sequence(&[
-        "create", "three", "tokens", "that", "are", "copies", "of", "it",
-    ])
-    .parse_next(input)?;
-    Ok(UnsupportedRewriteLineKind::ChooseLeadingSpell)
-}
-
 fn parse_loses_abilities_becomes(
     input: &mut WordSliceInput<'_>,
 ) -> WResult<UnsupportedRewriteLineKind> {
@@ -441,29 +386,6 @@ fn parse_for_as_long_as_permission(
         }
     }
     Ok(UnsupportedRewriteLineKind::ForAsLongAsPermission)
-}
-
-fn parse_multi_step_each_player(
-    input: &mut WordSliceInput<'_>,
-) -> WResult<UnsupportedRewriteLineKind> {
-    let original = *input;
-    locate_word_sequence(&[
-        "each",
-        "player",
-        "loses",
-        "x",
-        "life",
-        "discards",
-        "x",
-        "cards",
-        "sacrifices",
-        "x",
-        "creatures",
-    ])
-    .parse_next(input)?;
-    let mut probe = original;
-    locate_word_sequence(&["then", "sacrifices", "x", "lands"]).parse_next(&mut probe)?;
-    Ok(UnsupportedRewriteLineKind::MultiStepEachPlayer)
 }
 
 fn parse_artifact_creature_player_target(

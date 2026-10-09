@@ -1092,6 +1092,15 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => Some(
             "Any player may activate this ability but only during their turn before the end step",
         ),
+        ActivationTiming::AnyTimeByOpponents => {
+            Some("Only your opponents may activate this ability")
+        }
+        ActivationTiming::SorcerySpeedByOpponents => {
+            Some("Only your opponents may activate this ability and only as a sorcery")
+        }
+        ActivationTiming::DeclareAttackersStepByAttackedPlayer => Some(
+            "Only the player this creature is attacking may activate this ability and only during the declare attackers step",
+        ),
         ActivationTiming::DuringSourceOwnersUpkeep => {
             Some("Activate only during this card's owner's upkeep")
         }
@@ -1544,6 +1553,11 @@ pub(super) fn describe_mana_usage_restriction(
             Some(format!(
                 "Spend this mana only to cast {spell_text}, unlock a door, or turn a permanent face up"
             ))
+        }
+        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter } => {
+            let spell_text =
+                describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
+            Some(format!("Spend this mana only to cast {spell_text} and unlock doors"))
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
@@ -3031,9 +3045,8 @@ pub(super) fn describe_structural_craft_keyword(
     }
 
     let costs = activated.mana_cost.costs();
-    let material = costs
-        .iter()
-        .find_map(craft_material_cost)
+    let material = craft_subtype_slot_materials(costs)
+        .or_else(|| costs.iter().find_map(craft_material_cost))
         .or_else(|| craft_material_from_tagged_costs(costs))?;
     let effects = activated.effects.flattened_default_effects();
     // Craft lowers to one "return this card transformed" move (CR 702.167a);
@@ -3079,6 +3092,65 @@ pub(super) fn describe_structural_craft_keyword(
 
     let cost_text = keyword_base_cost_text(costs, |cost| cost.mana_cost_ref().is_none())?;
     Some(format!("Craft with {material} {cost_text}"))
+}
+
+/// "a Dinosaur, a Merfolk, a Pirate, and a Vampire": two or more single-object
+/// subtype slots, each its own exile payment.
+fn craft_subtype_slot_materials(costs: &[crate::costs::Cost]) -> Option<String> {
+    let mut slots = Vec::new();
+    for pair in costs.windows(2) {
+        let Some(choose) = pair[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        else {
+            continue;
+        };
+        let Some(exile) = pair[1]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
+        else {
+            continue;
+        };
+        if !matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+            continue;
+        }
+        if choose.count != ChoiceCount::exactly(1) {
+            return None;
+        }
+        let material = shared_craft_material_filter(&choose.filter)?;
+        let [subtype] = material.subtypes.as_slice() else {
+            return None;
+        };
+        if material != ObjectFilter::default().with_subtype(*subtype) {
+            return None;
+        }
+        slots.push(*subtype);
+    }
+    if slots.len() < 2 {
+        return None;
+    }
+    let phrases = slots
+        .iter()
+        .map(|subtype| {
+            let noun = subtype.to_string();
+            let article = if noun
+                .chars()
+                .next()
+                .is_some_and(|first| "AEIOUaeiou".contains(first))
+            {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {noun}")
+        })
+        .collect::<Vec<_>>();
+    let (last, head) = phrases.split_last()?;
+    Some(if head.len() == 1 {
+        format!("{} and {last}", head[0])
+    } else {
+        format!("{}, and {last}", head.join(", "))
+    })
 }
 
 fn craft_material_from_tagged_costs(costs: &[crate::costs::Cost]) -> Option<String> {
@@ -3134,6 +3206,22 @@ pub(super) fn describe_craft_material_filter(
                 let number = small_number_word(amount).unwrap_or_else(|| amount.to_string());
                 format!("{number} {noun}s")
             });
+        }
+        if count.min > 0 && count.max.is_none() {
+            let noun = if material == ObjectFilter::default().with_type(CardType::Artifact) {
+                "artifacts".to_string()
+            } else if material == ObjectFilter::default().with_type(CardType::Creature) {
+                "creatures".to_string()
+            } else if let [subtype] = material.subtypes.as_slice()
+                && material == ObjectFilter::default().with_subtype(*subtype)
+            {
+                format!("{subtype}s")
+            } else {
+                return None;
+            };
+            let amount = u32::try_from(count.min).ok()?;
+            let number = small_number_word(amount).unwrap_or_else(|| amount.to_string());
+            return Some(format!("{number} or more {noun}"));
         }
     }
     if count == ChoiceCount::at_least(4) && is_craft_red_spell_material_filter(filter) {
@@ -4262,7 +4350,7 @@ pub(super) fn describe_structural_as_enters_keyword_program(
     match presentation_label? {
         PresentationLabel::Keyword(PresentationKeyword::Devour(_)) => {
             let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
-            Some(format!("Devour {}", devour.multiplier))
+            Some(devour.keyword_text())
         }
         PresentationLabel::Keyword(PresentationKeyword::Amplify(_)) => {
             let amplify = effect.downcast_ref::<crate::effects::AmplifyEffect>()?;
@@ -4291,7 +4379,7 @@ pub(super) fn describe_structural_devour_keyword(
         return None;
     };
     let devour = effect.downcast_ref::<crate::effects::DevourEffect>()?;
-    Some(format!("Devour {}", devour.multiplier))
+    Some(devour.keyword_text())
 }
 
 pub(super) fn describe_structural_amplify_keyword(

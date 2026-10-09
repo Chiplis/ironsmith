@@ -1881,11 +1881,45 @@ pub fn parse_you_control_attached_creature_line(
     )))
 }
 
+/// "Enchanted creature gets +0/+2 and can't be the target of spells."
+/// The modifier is an ordinary attached anthem; the coordinated negated
+/// clause is the same object restriction the standalone line produces for
+/// the attached subject (CR 613.4c for the P/T change, CR 115.4 / 702.18-style
+/// targeting restriction for the clause).
+fn parse_attached_gets_and_negated_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(parsed) = attached_grammar::parse_attached_gets_and_negated_restriction_tokens(tokens)
+    else {
+        return Ok(None);
+    };
+    let clause = parse_anthem_clause(tokens, parsed.get_token, parsed.and_token)?;
+    if clause.condition.is_some() {
+        return Ok(None);
+    }
+    let mut restriction_tokens = trim_edge_punctuation(parsed.subject_tokens).to_vec();
+    restriction_tokens.extend_from_slice(&trim_edge_punctuation(parsed.negated_tail));
+    let Some(parsed_restriction) = parse_negated_object_restriction_clause(&restriction_tokens)?
+    else {
+        return Ok(None);
+    };
+    if parsed_restriction.target.is_some() {
+        return Ok(None);
+    }
+    Ok(Some(vec![
+        build_anthem_static_ability(&clause).into(),
+        StaticAbilityAst::Static(StaticAbility::restriction(
+            parsed_restriction.restriction,
+            display_text_for_tokens(&restriction_tokens, true),
+        )),
+    ]))
+}
+
 pub fn parse_attached_gets_and_cant_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_gets_tail_tokens(tokens) else {
-        return Ok(None);
+        return parse_attached_gets_and_negated_restriction_line(tokens);
     };
     let line_text = crate::lexer::render_token_slice(tokens);
     let clause = parse_anthem_clause(tokens, parsed.get_token, parsed.and_token)?;

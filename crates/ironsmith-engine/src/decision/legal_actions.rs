@@ -1,3 +1,4 @@
+use crate::filter::ObjectFilterExt as _;
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::grant_registry::grant_usage_limit_allows;
@@ -533,6 +534,55 @@ fn append_granted_play_from_actions_for_card(
     Ok(())
 }
 
+/// "You may cast creature spells from your graveyard using their sneak
+/// abilities." (Ninja Teen): a permanent `player` controls lets a matching
+/// card they own be cast from `from_zone` with its `keyword` alternative cost,
+/// whether that cost is printed or granted (CR 601.2, 702.190a).
+pub(crate) fn filtered_alternative_cast_zone_permission(
+    game: &GameState,
+    player: PlayerId,
+    card: &crate::object::Object,
+    from_zone: Zone,
+    keyword: Option<ironsmith_core::alternative_cast_model::AlternativeCastKeyword>,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let Some(keyword) = keyword else {
+        return false;
+    };
+    if card.zone != from_zone || card.owner != player {
+        return false;
+    }
+    game.battlefield.iter().any(|&permanent| {
+        let Some(permanent_object) = game.object(permanent) else {
+            return false;
+        };
+        if game.controller_of(permanent_object) != player {
+            return false;
+        }
+        let Some(static_abilities) = view.static_abilities_rc(permanent) else {
+            return false;
+        };
+        static_abilities.iter().any(|static_ability| {
+            let Some(ironsmith_core::StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
+            }) = static_ability.compiled_model().map(|model| &model.payload)
+            else {
+                return false;
+            };
+            if *zone != from_zone || *method != keyword || !static_ability.is_active(game, permanent)
+            {
+                return false;
+            }
+            let ctx = game.filter_context_for(player, Some(permanent));
+            let mut filter = filter.clone();
+            filter.zone = None;
+            filter.matches(card, &ctx, game)
+        })
+    })
+}
+
 fn append_native_alternative_cast_actions_for_card_from_zone(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -548,7 +598,15 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
             matches!(ability.compiled_model().map(|model| &model.payload),
                 Some(ironsmith_core::StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method })
                 if *zone == from_zone && alt_cast.keyword() == Some(*method))
-        });
+        }) || (alt_cast.cast_from_zone() != from_zone
+            && filtered_alternative_cast_zone_permission(
+                game,
+                player,
+                card,
+                from_zone,
+                alt_cast.keyword(),
+                view,
+            ));
         if (alt_cast.cast_from_zone() == from_zone || additional_zone_allowed)
             && can_cast_with_alternative_with_view(game, player, card, alt_cast, view)
         {
@@ -613,6 +671,11 @@ fn append_zone_granted_alternative_cast_actions_for_card(
         ) {
             continue;
         }
+        // CR 702.35a: a granted madness cost is usable only while the madness
+        // trigger resolves, never as an ordinary cast from exile.
+        if method.is_madness() && !game.madness_cast_is_authorized(card_id, player) {
+            continue;
+        }
         let requirements = build_requirements_for_method(method);
         let mana_cost = get_mana_cost_for_method(method, card);
         let casting_method = match method {
@@ -638,6 +701,24 @@ fn append_zone_granted_alternative_cast_actions_for_card(
                 zone,
                 use_alternative: Some(base_alt_idx + offset),
             },
+            // A granted keyword cost that is not itself a cast from this zone
+            // ("Creature cards in your graveyard have sneak {3}{B}.") needs a
+            // separate permission to be used here (CR 601.2).
+            _ if filtered_alternative_cast_zone_permission(
+                game,
+                player,
+                card,
+                zone,
+                method.keyword(),
+                view,
+            ) =>
+            {
+                CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone,
+                    use_alternative: Some(base_alt_idx + offset),
+                }
+            }
             _ => continue,
         };
 
@@ -2010,6 +2091,29 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
             game.is_active_player(controller) && game.turn.phase != Phase::Ending
         }
+        // "Only your opponents may activate this ability": the activating
+        // player must be an opponent of the source's current controller.
+        crate::ability::ActivationTiming::AnyTimeByOpponents => game
+            .current_controller(source)
+            .is_some_and(|source_controller| game.are_opponents(controller, source_controller)),
+        crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+            game.current_controller(source)
+                .is_some_and(|source_controller| game.are_opponents(controller, source_controller))
+                && game.is_active_player(controller)
+                && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                && game.stack_is_empty()
+        }
+        crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+            game.turn.phase == Phase::Combat
+                && game.turn.step == Some(crate::game_state::Step::DeclareAttackers)
+                && game.combat.as_ref().is_some_and(|combat| {
+                    combat.attackers.iter().any(|info| {
+                        info.creature == source
+                            && info.target
+                                == crate::combat_state::AttackTarget::Player(controller)
+                    })
+                })
+        }
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)
                 .is_some_and(|object| game.is_active_player(object.owner))
@@ -2115,7 +2219,15 @@ fn loyalty_activation_special_rules_allow(
         return true;
     }
 
-    !game.loyalty_ability_activated_this_turn(source)
+    // CR 606.3: one loyalty activation per permanent each turn, unless an
+    // effect this turn allows more ("twice this turn rather than only once").
+    let allowed = 1 + crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+        game,
+        controller,
+        source,
+        crate::effects::LoyaltyActivationAllowance::ExtraActivation,
+    );
+    game.loyalty_activations_this_turn(source) < allowed
         && ((game.is_active_player(controller)
             && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
             && game.stack_is_empty())
@@ -2256,6 +2368,18 @@ fn player_may_activate_loyalty_abilities_any_time(
     let Some(activated_object) = game.object(source) else {
         return false;
     };
+    // "you may activate loyalty abilities of Jace planeswalkers you control
+    // on any player's turn any time you could cast an instant" (an effect
+    // lasting this turn).
+    if crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+        game,
+        controller,
+        source,
+        crate::effects::LoyaltyActivationAllowance::InstantSpeed,
+    ) > 0
+    {
+        return true;
+    }
     // Emblems grant the permission from the command zone (CR 114.4), e.g.
     // Teferi, Temporal Archmage's emblem.
     game.battlefield

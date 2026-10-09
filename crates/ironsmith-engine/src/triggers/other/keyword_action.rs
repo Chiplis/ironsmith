@@ -528,12 +528,12 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
-        matches!(
+        ((self.source_must_match && self.action == KeywordActionKind::Cycle) || matches!(
             self.action,
             KeywordActionKind::Planeswalk
                 | KeywordActionKind::CumulativeUpkeepNotPaid
                 | KeywordActionKind::Exploit
-        ) && event
+        )) && event
             .downcast::<KeywordActionEvent>()
             .is_some_and(|event| event.action == self.action)
     }

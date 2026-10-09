@@ -146,38 +146,110 @@ pub fn parse_craft_line_lexed(
         return Ok(None);
     };
     let material_text = crate::lexer::token_word_refs(spec.material_tokens).join(" ");
-    let (material_filter, material_count) = match spec.material {
-        CraftMaterialKind::CardType { card_type, count } => (
+    // CR 702.167a: craft exiles the source together with the listed
+    // materials from among permanents you control and/or cards in your
+    // graveyard. Each material slot is a separate exile payment.
+    let material_slots: Vec<(ObjectFilter, ChoiceCount)> = match spec.material {
+        CraftMaterialKind::CardType { card_type, count } => vec![(
             craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_type(card_type)),
             ChoiceCount::exactly(count as usize),
-        ),
-        CraftMaterialKind::Subtype { subtype, count } => (
+        )],
+        CraftMaterialKind::Subtype { subtype, count } => vec![(
             craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_subtype(subtype)),
             ChoiceCount::exactly(count as usize),
-        ),
-        CraftMaterialKind::OneOrMore => (
+        )],
+        CraftMaterialKind::CardTypeOrMore { card_type, minimum } => vec![(
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_type(card_type)),
+            ChoiceCount::at_least(minimum as usize),
+        )],
+        CraftMaterialKind::SubtypeOrMore { subtype, minimum } => vec![(
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_subtype(subtype)),
+            ChoiceCount::at_least(minimum as usize),
+        )],
+        CraftMaterialKind::SubtypeSlots(subtypes) => subtypes
+            .into_iter()
+            .map(|subtype| {
+                (
+                    craft_battlefield_or_graveyard_filter(
+                        ObjectFilter::default().with_subtype(subtype),
+                    ),
+                    ChoiceCount::exactly(1),
+                )
+            })
+            .collect(),
+        CraftMaterialKind::OneOrMore => vec![(
             craft_any_battlefield_or_graveyard_filter(),
             ChoiceCount::at_least(1),
-        ),
-        CraftMaterialKind::RedInstantOrSorcery { minimum } => (
+        )],
+        CraftMaterialKind::RedInstantOrSorcery { minimum } => vec![(
             craft_red_instant_or_sorcery_graveyard_filter(),
             ChoiceCount::at_least(minimum as usize),
-        ),
+        )],
         CraftMaterialKind::Unsupported => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported craft material clause '{material_text}'"
-            )));
+            match keyword_activated_grammar::parse_craft_filtered_material_tokens(
+                spec.material_tokens,
+            ) {
+                Some(keyword_activated_grammar::CraftFilteredMaterial::ShareCardType {
+                    count,
+                }) => {
+                    let mut filter = craft_any_battlefield_or_graveyard_filter();
+                    filter.shares_card_type = true;
+                    vec![(filter, ChoiceCount::exactly(count as usize))]
+                }
+                Some(keyword_activated_grammar::CraftFilteredMaterial::OrMore {
+                    minimum,
+                    filter_tokens,
+                }) => {
+                    let mut material =
+                        crate::object_filters::parse_object_filter_lexed(filter_tokens, false)
+                            .map_err(|_| {
+                                CardTextError::ParseError(format!(
+                                    "unsupported craft material clause '{material_text}'"
+                                ))
+                            })?;
+                    // A whole-selection relation inside one union branch
+                    // would never constrain the chosen set.
+                    if material.distinct_names
+                        || material.shares_name
+                        || material.shares_color
+                        || material.shares_land_type
+                        || material.shares_card_type
+                        || material.distinct_mana_values
+                        || material.distinct_powers
+                        || material.one_per_card_type
+                    {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported craft material relation '{material_text}'"
+                        )));
+                    }
+                    // The mechanic supplies the zones and their scopes.
+                    material.zone = None;
+                    material.controller = None;
+                    material.owner = None;
+                    vec![(
+                        craft_battlefield_or_graveyard_filter(material),
+                        ChoiceCount::at_least(minimum as usize),
+                    )]
+                }
+                None => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported craft material clause '{material_text}'"
+                    )));
+                }
+            }
         }
     };
     let base_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::model::CompilerCost::ExileChosen {
-        count: material_count,
-        filter: material_filter,
-        top_only: false,
-        turn_face_up: false,
-        binding: None,
-    });
+    for (material_filter, material_count) in material_slots {
+        merged_costs.push(crate::model::CompilerCost::ExileChosen {
+            count: material_count,
+            filter: material_filter,
+            top_only: false,
+            turn_face_up: false,
+            binding: None,
+        });
+    }
     merged_costs.push(crate::model::CompilerCost::EmitKeywordAction {
         kind: crate::events::KeywordActionKind::Craft,
         amount: 1,
@@ -277,13 +349,24 @@ pub fn parse_cycling_search_filter(
             card_types,
             subtypes,
             colors,
-        })) => Ok(Some(ObjectFilter {
-            supertypes,
-            card_types,
-            subtypes,
-            colors,
-            ..ObjectFilter::default()
-        })),
+        })) => {
+            // "Artifact landcycling" searches for a card that is both an
+            // artifact and a land; several card types in one typecycling
+            // quality are conjunctive.
+            let (card_types, all_card_types) = if card_types.len() > 1 {
+                (Vec::new(), card_types)
+            } else {
+                (card_types, Vec::new())
+            };
+            Ok(Some(ObjectFilter {
+                supertypes,
+                card_types,
+                all_card_types,
+                subtypes,
+                colors,
+                ..ObjectFilter::default()
+            }))
+        }
         Err(CyclingSearchParseError::MissingKeyword) => Err(CardTextError::ParseError(
             "missing cycling keyword".to_string(),
         )),
@@ -328,6 +411,9 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             }
             if qualifier.commander {
                 target_filter.is_commander = true;
+            }
+            if qualifier.token {
+                target_filter.token = true;
             }
             if qualifier.worthy {
                 // A creature is worthy if it's a legendary non-Villain that's
@@ -449,6 +535,33 @@ pub fn parse_equip_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_equip_line(tokens)
+}
+
+/// CR 702.67a: "Fortify [cost]" means "[Cost]: Attach this Fortification to
+/// target land you control. Activate only as a sorcery." Like Equip
+/// (CR 301.6), the land is a target and the ability fizzles if it becomes
+/// illegal.
+pub fn parse_fortify_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let Some((_, cost_tokens)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::kw("fortify"),
+    ) else {
+        return Ok(None);
+    };
+    let cost_tokens = crate::util::trim_edge_punctuation_tokens(cost_tokens);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "fortify missing activation cost".to_string(),
+        ));
+    }
+    let total_cost = parse_compiler_activation_cost(cost_tokens)?;
+    let mut parsed = build_equip_ability(total_cost, ObjectFilter::land().you_control());
+    if let AbilityKind::Activated(activated) = &mut parsed.ability.kind {
+        activated.keyword = None;
+    }
+    Ok(Some(parsed))
 }
 
 pub fn parse_reconfigure_line_lexed(

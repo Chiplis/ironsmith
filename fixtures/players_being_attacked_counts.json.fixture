@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Apothecary White",
+    "oracle_id": "7bf8bb41-6f46-492c-b6cf-5cfb29f973a4",
+    "text": "Mana cost: {3}{W}\nType: Legendary Creature — Human Cleric\nPower/Toughness: 3/4\nVigilance\nWhenever you attack, you create a Food token for each player being attacked.\n{W}, {T}, Tap X untapped Foods you control: Create X 1/1 white Human creature tokens."
+  },
+  {
+    "name": "Amber Gristle O'Maul",
+    "oracle_id": "d1435f7b-a694-4c7f-a0f2-34c4c646e04b",
+    "text": "Mana cost: {3}{R}\nType: Legendary Creature — Dwarf Cleric\nPower/Toughness: 3/3\nHaste\nWhenever Amber Gristle O'Maul attacks, you may discard your hand. If you do, draw a card for each player being attacked.\nChoose a Background"
+  }
+]

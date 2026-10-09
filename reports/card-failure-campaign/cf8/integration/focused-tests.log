@@ -1,0 +1,1365 @@
+warning: unused import: `TagKey`
+ --> crates/ironsmith-compiler-ast/src/parse_types.rs:4:35
+  |
+4 | use ironsmith_core::{ChoiceCount, TagKey, Value};
+  |                                   ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `ironsmith-compiler-ast` (lib) generated 1 warning (run `cargo fix --lib -p ironsmith-compiler-ast` to apply 1 suggestion)
+warning: unused import: `crate::tag::TagRef`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast.rs:13:5
+   |
+13 | use crate::tag::TagRef;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `crate::zone::Zone`
+  --> crates/ironsmith-compiler-semantic/src/model_impl/ast/queries.rs:15:5
+   |
+15 | use crate::zone::Zone;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: `ironsmith-compiler-semantic` (lib) generated 2 warnings (run `cargo fix --lib -p ironsmith-compiler-semantic` to apply 2 suggestions)
+warning: unused import: `SerializeMap`
+   --> crates/ironsmith-artifact-effect-decoder/src/lib.rs:529:39
+    |
+529 |     use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    |                                       ^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Serializer`
+   --> crates/ironsmith-artifact-effect-decoder/src/lib.rs:529:58
+    |
+529 |     use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    |                                                          ^^^^^^^^^^
+
+warning: `ironsmith-artifact-effect-decoder` (lib) generated 2 warnings
+warning: unused import: `pay_mana_cost_with_choices_in_context`
+  --> crates/ironsmith-engine/src/costs/mod.rs:66:5
+   |
+66 |     pay_mana_cost_with_choices_in_context,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `CardType` and `Subtype`
+  --> crates/ironsmith-engine/src/effect.rs:35:20
+   |
+35 | use crate::types::{CardType, Subtype};
+   |                    ^^^^^^^^  ^^^^^^^
+
+warning: unused import: `context::ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/clash.rs:8:42
+  |
+8 |     ChoiceSpec, DisplayOption, ScrySpec, context::ViewCardsContext, make_decision,
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `CardRevealedEvent`
+  --> crates/ironsmith-engine/src/effects/cards/clash.rs:13:21
+   |
+13 | use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+   |                     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::zone::Zone`
+  --> crates/ironsmith-engine/src/effects/cards/clash.rs:18:5
+   |
+18 | use crate::zone::Zone;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ObjectSnapshot`
+ --> crates/ironsmith-engine/src/effects/cards/discard_hand.rs:3:36
+  |
+3 | use crate::effect::{EffectOutcome, ObjectSnapshot};
+  |                                    ^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/exile_top.rs:8:5
+  |
+8 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/cards/imprint.rs:12:5
+   |
+12 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+ --> crates/ironsmith-engine/src/effects/cards/learn.rs:8:33
+  |
+8 | use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+  |                                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `view_hidden_candidate_objects`
+ --> crates/ironsmith-engine/src/effects/cards/look_at_hand.rs:7:58
+  |
+7 | use crate::effects::helpers::{resolve_players_from_spec, view_hidden_candidate_objects};
+  |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::decisions::context::ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/look_at_top.rs:3:5
+  |
+3 | use crate::decisions::context::ViewCardsContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:5:5
+  |
+5 | use crate::effects::zones::apply_zone_change_with_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:6:5
+  |
+6 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SimultaneousEffectCompletion`
+ --> crates/ironsmith-engine/src/effects/cards/mill.rs:8:93
+  |
+8 |     CompletedEffectOutputs, CostExecutableEffect, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+  |                                                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/cards/reveal_from_hand.rs:4:56
+  |
+4 | use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
+  |                                                        ^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::tag::TagKey`
+  --> crates/ironsmith-engine/src/effects/cards/reveal_from_hand.rs:13:5
+   |
+13 | use crate::tag::TagKey;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::ShuffleLibraryEvent`
+ --> crates/ironsmith-engine/src/effects/cards/shuffle_hand_and_graveyard_into_library.rs:7:5
+  |
+7 | use crate::events::ShuffleLibraryEvent;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/cards/shuffle_hand_and_graveyard_into_library.rs:10:5
+   |
+10 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::zone::Zone`
+  --> crates/ironsmith-engine/src/effects/cards/shuffle_hand_and_graveyard_into_library.rs:11:5
+   |
+11 | use crate::zone::Zone;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `reveal_objects`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:84:52
+   |
+84 |     public_reveal_observation, public_reveal_view, reveal_objects, reveal_objects_with_outputs,
+   |                                                    ^^^^^^^^^^^^^^
+
+warning: unused import: `execute_library_instruction_atomically`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:94:5
+   |
+94 |     execute_library_instruction_atomically, order_library_cards_top_to_bottom,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `look_at_cards`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:96:23
+   |
+96 | pub(crate) use look::{look_at_cards, look_at_cards_with_outputs};
+   |                       ^^^^^^^^^^^^^
+
+warning: unused import: `shuffle_library`
+  --> crates/ironsmith-engine/src/effects/cards/mod.rs:99:29
+   |
+99 |     commit_library_shuffle, shuffle_library, shuffle_library_action, shuffle_library_with_outputs,
+   |                             ^^^^^^^^^^^^^^^
+
+warning: unused import: `Effect`
+ --> crates/ironsmith-engine/src/effects/combat/fight.rs:3:21
+  |
+3 | use crate::effect::{Effect, EffectOutcome};
+  |                     ^^^^^^
+
+warning: unused import: `OutcomeValue`
+ --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:8:72
+  |
+8 | use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until};
+  |                                                                        ^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:16:5
+   |
+16 | use crate::effects::zones::apply_zone_change;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `move_to_battlefield_batch_with_options`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:19:55
+   |
+19 |     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::permanents::SacrificeEvent`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:24:5
+   |
+24 | use crate::events::permanents::SacrificeEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:26:19
+   |
+26 |     EventOutcome, TraitEventResult, process_trait_event_with_execution_context,
+   |                   ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::zones::ZoneChangeEvent`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:28:5
+   |
+28 | use crate::events::zones::ZoneChangeEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `CardRevealedEvent`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:29:21
+   |
+29 | use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+   |                     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `StableId`
+  --> crates/ironsmith-engine/src/effects/composition/mechanic_actions.rs:33:38
+   |
+33 | use crate::ids::{ObjectId, PlayerId, StableId};
+   |                                      ^^^^^^^^
+
+warning: unused import: `ViewCardsContext`
+ --> crates/ironsmith-engine/src/effects/consult_helpers.rs:1:47
+  |
+1 | use crate::decisions::context::{OrderContext, ViewCardsContext};
+  |                                               ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TraitEventResult` and `process_trait_event_with_execution_context`
+ --> crates/ironsmith-engine/src/effects/counters/proliferate.rs:9:33
+  |
+9 | use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+  |                                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_scoped_counter_placements`
+   --> crates/ironsmith-engine/src/effects/counters/mod.rs:130:61
+    |
+130 |     commit_scoped_counter_placement_originals_with_outputs, execute_scoped_counter_placements,
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `execute_counter_removal_cost` and `prepare_counter_removal_cost`
+   --> crates/ironsmith-engine/src/effects/counters/mod.rs:138:5
+    |
+138 |     execute_counter_removal_cost, execute_counter_removal_cost_with_outputs,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+139 |     execute_counter_removal_with_outputs, execute_player_counter_removal_with_outputs,
+140 |     prepare_counter_removal_cost,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/damage/deal_damage.rs:26:5
+   |
+26 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `EventContext`
+ --> crates/ironsmith-engine/src/effects/damage/replace_next_damage_to_target.rs:7:35
+  |
+7 | use crate::events::{DamageTarget, EventContext, EventKind, GameEventType, ReplacementMatcher};
+  |                                   ^^^^^^^^^^^^
+
+warning: unnecessary parentheses around function argument
+   --> crates/ironsmith-engine/src/effects/helpers/value_eval.rs:712:16
+    |
+712 |             Ok(((i64::from(player.life) + 1).div_euclid(2)))
+    |                ^                                          ^
+    |
+    = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+    |
+712 -             Ok(((i64::from(player.life) + 1).div_euclid(2)))
+712 +             Ok((i64::from(player.life) + 1).div_euclid(2))
+    |
+
+warning: unnecessary parentheses around function argument
+   --> crates/ironsmith-engine/src/effects/helpers/value_eval.rs:720:16
+    |
+720 |             Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
+    |                ^                                                   ^
+    |
+help: remove these parentheses
+    |
+720 -             Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
+720 +             Ok((i64::from(player.starting_life) + 1).div_euclid(2))
+    |
+
+warning: unused import: `crate::mana::ManaSymbol`
+ --> crates/ironsmith-engine/src/effects/mana/double_mana_pool.rs:8:5
+  |
+8 | use crate::mana::ManaSymbol;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PlayerFilter`
+  --> crates/ironsmith-engine/src/effects/mana/pay_mana.rs:11:33
+   |
+11 | use crate::target::{ChooseSpec, PlayerFilter};
+   |                                 ^^^^^^^^^^^^
+
+warning: unused import: `crate::events::PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/conspire.rs:19:5
+   |
+19 | use crate::events::PermanentTappedEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::triggers::TriggerEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/conspire.rs:22:5
+   |
+22 | use crate::triggers::TriggerEvent;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/crew.rs:17:60
+   |
+17 | use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
+   |                                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PermanentTappedEvent`
+  --> crates/ironsmith-engine/src/effects/permanents/saddle.rs:24:60
+   |
+24 | use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
+   |                                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_effect`
+ --> crates/ironsmith-engine/src/effects/permanents/unearth.rs:9:56
+  |
+9 | use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+  |                                                        ^^^^^^^^^^^^^^
+
+warning: unused import: `effect_driven_cast_options_for_card_with_payment`
+  --> crates/ironsmith-engine/src/effects/player/may_cast_matching_spell.rs:14:5
+   |
+14 |     effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_event_expansion_with_targets`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:43:5
+   |
+43 |     execute_event_expansion_with_targets, execute_replacement_payload,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `complete_deferred_replacement_programs_with_targets` and `execute_deferred_replacement_programs_with_bindings`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:51:5
+   |
+51 |     complete_deferred_replacement_programs_with_targets,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+52 |     complete_replacement_programs_with_original_outputs,
+53 |     execute_deferred_replacement_programs_with_bindings, execute_event_expansion_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `prepare_scoped_draw_continuation_with_outputs` and `prepare_scoped_draw_continuation`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:82:5
+   |
+82 |     prepare_scoped_draw_continuation, prepare_scoped_draw_continuation_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `prepare_zone_draw_tail`
+  --> crates/ironsmith-engine/src/effects/replacement/mod.rs:86:33
+   |
+86 | pub(crate) use zone_draw_tail::{prepare_zone_draw_tail, prepare_zone_draw_tail_with_outputs};
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `counter_stack_entry_at`
+  --> crates/ironsmith-engine/src/effects/stack/mod.rs:20:26
+   |
+20 | pub(crate) use counter::{counter_stack_entry_at, counter_stack_entry_at_with_outputs};
+   |                          ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `resolve_objects_for_effect`
+ --> crates/ironsmith-engine/src/effects/tokens/create_token_copy.rs:9:31
+  |
+9 | use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_token_instruction_atomically`
+  --> crates/ironsmith-engine/src/effects/tokens/mod.rs:29:46
+   |
+29 |     execute_resource_transaction_atomically, execute_token_instruction_atomically,
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `commit_zone_moves`, `complete_movement_batch`, `execute_battlefield_entries`, and `execute_zone_moves`
+  --> crates/ironsmith-engine/src/effects/zones/mod.rs:29:23
+   |
+29 |     PreparedZoneMove, commit_zone_moves, commit_zone_moves_with_completion,
+   |                       ^^^^^^^^^^^^^^^^^
+30 |     complete_movement_batch, execute_battlefield_entries, execute_battlefield_entries_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |     execute_zone_moves, execute_zone_moves_with_outputs, group_zone_move_observations,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `process_destroy`
+ --> crates/ironsmith-engine/src/effects/zones/destroy.rs:7:47
+  |
+7 | use crate::events::processing::{EventOutcome, process_destroy};
+  |                                               ^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/zones/exile_until_source_leaves.rs:7:5
+  |
+7 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::effects::zones::apply_zone_change_with_context_and_additional_effects`
+ --> crates/ironsmith-engine/src/effects/zones/haunt_exile.rs:8:5
+  |
+8 | use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/zones/move_to_library_nth_from_top.rs:15:5
+   |
+15 |     apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `apply_zone_change_with_context_and_additional_effects`
+  --> crates/ironsmith-engine/src/effects/zones/move_to_library_top_or_bottom_choice.rs:17:5
+   |
+17 |     apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `resolve_objects_for_effect`
+ --> crates/ironsmith-engine/src/effects/zones/put_onto_battlefield.rs:8:31
+  |
+8 | use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
+  |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `finish_battlefield_entry_receipts`
+    --> crates/ironsmith-engine/src/effects/zones/mod.rs:1129:36
+     |
+1129 |     PreparedBattlefieldEntryBatch, finish_battlefield_entry_receipts,
+     |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ForPlayersDrawContinuation` and `ForPlayersDrawProgress`
+   --> crates/ironsmith-engine/src/effects/mod.rs:286:30
+    |
+286 | pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::types::CardType`
+  --> crates/ironsmith-engine/src/events/processing/mod.rs:35:5
+   |
+35 | use crate::types::CardType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `OutcomeStatus`
+    --> crates/ironsmith-engine/src/events/processing/mod.rs:9683:40
+     |
+9683 |     use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
+     |                                        ^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/cards/matchers.rs:4:5
+  |
+4 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/counters/matchers.rs:4:5
+  |
+4 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/life/matchers.rs:3:5
+  |
+3 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+   --> crates/ironsmith-engine/src/events/mana.rs:312:9
+    |
+312 |     use crate::events::context::EventContext;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/permanents/matchers.rs:3:5
+  |
+3 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/tokens/matchers.rs:4:5
+  |
+4 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/other/keyword_action.rs:7:5
+  |
+7 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::context::EventContext`
+ --> crates/ironsmith-engine/src/events/other/player_loses_game.rs:5:5
+  |
+5 | use crate::events::context::EventContext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around block return value
+    --> crates/ironsmith-engine/src/game_loop/priority_cast.rs:3184:17
+     |
+3184 |                 (component.mana_cost_ref().is_some_and(|mana| mana.has_x())
+     |                 ^
+3185 |                     || cost_references_x(component))
+     |                                                    ^
+     |
+help: remove these parentheses
+     |
+3184 ~                 component.mana_cost_ref().is_some_and(|mana| mana.has_x())
+3185 ~                     || cost_references_x(component)
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/ironsmith-engine/src/game_loop/targeting.rs:5078:15
+     |
+5078 |     } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+     |               ^                                                                              ^
+     |
+help: remove these parentheses
+     |
+5078 -     } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+5078 +     } else if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/ironsmith-engine/src/game_loop/targeting.rs:5428:16
+     |
+5428 |             if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+     |                ^                                                                              ^
+     |
+help: remove these parentheses
+     |
+5428 -             if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+5428 +             if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
+     |
+
+warning: unused import: `EffectSourceType`
+  --> crates/ironsmith-engine/src/game_state.rs:18:5
+   |
+18 |     EffectSourceType, EffectTarget, Modification,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `PlayerId`
+  --> crates/ironsmith-engine/src/mana_payment/event_program.rs:13:28
+   |
+13 | use crate::ids::{ObjectId, PlayerId};
+   |                            ^^^^^^^^
+
+warning: unused import: `crate::mana::ManaSymbol`
+  --> crates/ironsmith-engine/src/mana_payment/event_program.rs:14:5
+   |
+14 | use crate::mana::ManaSymbol;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `execute_mana_payment_plan_in_context`
+  --> crates/ironsmith-engine/src/mana_payment/mod.rs:36:5
+   |
+36 |     execute_mana_payment_plan_in_context, execute_mana_payment_plan_in_context_with_outputs,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `activate_mana_during_payment`, `pay_mana_interactively_in_context`, and `pay_mana_interactively`
+  --> crates/ironsmith-engine/src/mana_payment/mod.rs:48:5
+   |
+48 |     activate_mana_during_payment, pay_mana_interactively, pay_mana_interactively_in_context,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt as _`
+  --> crates/ironsmith-engine/src/rules/combat.rs:11:5
+   |
+11 | use crate::filter::ObjectFilterExt as _;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::types::CardType`
+  --> crates/ironsmith-engine/src/rules/damage.rs:14:5
+   |
+14 | use crate::types::CardType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `resolve_anthem_count_expression`
+  --> crates/ironsmith-engine/src/static_abilities/mod.rs:77:29
+   |
+77 | pub(crate) use continuous::{resolve_anthem_count_expression, resolve_anthem_count_expression_checked};
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `TextBoxOverlay`
+  --> crates/ironsmith-engine/src/static_ability_processor.rs:38:5
+   |
+38 |     TextBoxOverlay,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `PlayerFilterExt as _`
+ --> crates/ironsmith-engine/src/triggers/cards/you_discard_card.rs:5:43
+  |
+5 | use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+  |                                           ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::PlayerFilterExt`
+ --> crates/ironsmith-engine/src/triggers/life_damage/is_dealt_damage.rs:6:5
+  |
+6 | use crate::filter::PlayerFilterExt;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `check::verify_intervening_if_at_resolution`
+    --> crates/ironsmith-engine/src/triggers/mod.rs:2397:16
+     |
+2397 | pub(crate) use check::verify_intervening_if_at_resolution;
+     |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::hash::Hash`
+  --> crates/ironsmith-engine/src/mana_payment/replacement_program.rs:29:13
+   |
+29 |         use std::hash::Hash;
+   |             ^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt`
+   --> crates/ironsmith-engine/src/triggers/other/transforms.rs:127:17
+    |
+127 |             use crate::filter::ObjectFilterExt as _;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::filter::ObjectFilterExt`
+ --> crates/ironsmith-engine/src/triggers/other/player_plays_land.rs:5:5
+  |
+5 | use crate::filter::ObjectFilterExt as _;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::hash::Hash`
+  --> crates/ironsmith-engine/src/mana_payment/witness.rs:24:13
+   |
+24 |         use std::hash::Hash;
+   |             ^^^^^^^^^^^^^^^
+
+warning: unused import: `CostExecutableEffect`
+ --> crates/ironsmith-engine/src/effects/composition/keyword_programs.rs:3:22
+  |
+3 | use crate::effects::{CostExecutableEffect, EffectExecutor, ExecutionContext, ExecutionError};
+  |                      ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::events::traits::ReplacementMatcher`
+  --> crates/ironsmith-engine/src/effects/damage/prevent_next_time_damage.rs:16:5
+   |
+16 | use crate::events::traits::ReplacementMatcher as _;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unreachable pattern
+   --> crates/ironsmith-engine/src/source_numbers.rs:130:9
+    |
+130 |         _ => false,
+    |         ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-engine/src/source_numbers.rs:130:9
+    |
+122 |         AbilityKind::Static(ability) => ability.canonical_model().as_ref().is_some_and(static_requires),
+    |         ---------------------------- matches some of the same values
+123 |         AbilityKind::Triggered(ability) => program_chooses_source_number(&ability.effects)
+    |         ------------------------------- matches some of the same values
+...
+129 |         AbilityKind::Activated(ability) => program_chooses_source_number(&ability.effects),
+    |         ------------------------------- matches some of the same values
+130 |         _ => false,
+    |         ^ collectively making this unreachable
+    = note: `#[warn(unreachable_patterns)]` on by default
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith-ae26a891e8d228a7.long-type-4129327600069970240.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unreachable pattern
+   --> crates/ironsmith-engine/src/source_numbers.rs:138:9
+    |
+138 |         _=>None,
+    |         ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-engine/src/source_numbers.rs:138:9
+    |
+135 |         AbilityKind::Triggered(ability)=>ability.effects.source_number_pair,
+    |         ------------------------------- matches some of the same values
+136 |         AbilityKind::Activated(ability)=>ability.effects.source_number_pair,
+    |         ------------------------------- matches some of the same values
+137 |         AbilityKind::Static(ability)=>static_pair(ability),
+    |         ---------------------------- matches some of the same values
+138 |         _=>None,
+    |         ^ collectively making this unreachable
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith-ae26a891e8d228a7.long-type-4129327600069970240.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unused variable: `method`
+    --> crates/ironsmith-engine/src/decision/io.rs:2797:13
+     |
+2797 |             method,
+     |             ^^^^^^ help: try ignoring the field: `method: _`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `permanent_id`
+    --> crates/ironsmith-engine/src/decision/io.rs:2815:17
+     |
+2815 |                 permanent_id,
+     |                 ^^^^^^^^^^^^ help: try ignoring the field: `permanent_id: _`
+
+warning: unused variable: `method`
+    --> crates/ironsmith-engine/src/decision/io.rs:2816:17
+     |
+2816 |                 method,
+     |                 ^^^^^^ help: try ignoring the field: `method: _`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/effects/composition/for_players.rs:823:13
+    |
+823 |         let mut players: Vec<PlayerId> = game
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+    --> crates/ironsmith-engine/src/effects/helpers.rs:3766:5
+     |
+3766 |     mut apply: impl FnMut(
+     |     ----^^^^^
+     |     |
+     |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/effects/mana/choice_helpers.rs:340:17
+    |
+340 |             let mut outcome = crate::effects::replacement::execute_replacement_payload(
+    |                 ----^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `provenance`
+   --> crates/ironsmith-engine/src/effects/permanents/tap.rs:200:13
+    |
+200 |         let provenance = ctx.provenance;
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_provenance`
+
+warning: unused variable: `ctx`
+   --> crates/ironsmith-engine/src/effects/runtime.rs:189:5
+    |
+189 |     ctx: &ExecutionContext,
+    |     ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+
+warning: unused variable: `next`
+   --> crates/ironsmith-engine/src/effects/runtime.rs:190:5
+    |
+190 |     next: Option<&Effect>,
+    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_next`
+
+warning: unused variable: `game`
+  --> crates/ironsmith-engine/src/effects/zones/exile_until_source_leaves.rs:63:50
+   |
+63 |     fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+   |                                                  ^^^^ help: if this is intentional, prefix it with an underscore: `_game`
+
+warning: unused variable: `game`
+   --> crates/ironsmith-engine/src/effects/zones/move_to_zone.rs:576:9
+    |
+576 |         game: &GameState,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_game`
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-engine/src/events/processing/mod.rs:862:5
+    |
+862 |     mut event: Event,
+    |     ----^^^^^
+    |     |
+    |     help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> crates/ironsmith-engine/src/events/processing/mod.rs:10219:13
+      |
+10219 |         let mut enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
+      |             ----^^^^^^^^^^^^^^^^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: unused variable: `tagged_objects`
+    --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:1694:9
+     |
+1694 |     let tagged_objects = (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects);
+     |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tagged_objects`
+
+warning: unused variable: `obj`
+    --> crates/ironsmith-engine/src/targeting/computation.rs:1470:18
+     |
+1470 |         let Some(obj) = game.object(obj_id) else {
+     |                  ^^^ help: if this is intentional, prefix it with an underscore: `_obj`
+
+warning: unused variable: `obj`
+    --> crates/ironsmith-engine/src/targeting/computation.rs:1535:21
+     |
+1535 |         if let Some(obj) = game.object(obj_id) {
+     |                     ^^^ help: if this is intentional, prefix it with an underscore: `_obj`
+
+warning: unreachable pattern
+    --> crates/ironsmith-engine/src/triggers/zone_changes/zone_change_trigger.rs:1295:13
+     |
+1219 |             (_, ZonePattern::Specific(Zone::Library)) => {
+     |             ----------------------------------------- matches all the relevant values
+...
+1295 |             (ZonePattern::Any, ZonePattern::Specific(Zone::Library)) => {
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/decision/mana.rs:1690:13
+     |
+1690 |             hypothetical.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+1690 |             let _ = hypothetical.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/decision/mana.rs:1774:13
+     |
+1774 |             x_game.refresh_continuous_state();
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1774 |             let _ = x_game.refresh_continuous_state();
+     |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:982:9
+    |
+982 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+982 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1114:5
+     |
+1114 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1114 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1210:5
+     |
+1210 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1210 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:1926:9
+     |
+1926 |         game.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1926 |         let _ = game.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2197:5
+     |
+2197 |     declaration_view.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2197 |     let _ = declaration_view.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2250:5
+     |
+2250 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2250 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/combat_decisions.rs:2259:5
+     |
+2259 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+2259 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1167:5
+     |
+1167 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1167 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1748:9
+     |
+1748 |         hypothetical.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1748 |         let _ = hypothetical.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:1933:5
+     |
+1933 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1933 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:4634:5
+     |
+4634 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4634 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_loop/priority_mana.rs:4697:5
+     |
+4697 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4697 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:80:5
+   |
+80 |     game.refresh_continuous_state();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+80 |     let _ = game.refresh_continuous_state();
+   |     +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:93:13
+   |
+93 |             game.refresh_continuous_state();
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+93 |             let _ = game.refresh_continuous_state();
+   |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:101:9
+    |
+101 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+101 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:335:5
+    |
+335 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+335 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/sba_triggers.rs:512:9
+    |
+512 |         game.refresh_continuous_state();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+512 |         let _ = game.refresh_continuous_state();
+    |         +++++++
+
+warning: unused `Result` that must be used
+  --> crates/ironsmith-engine/src/game_loop/targeting.rs:72:5
+   |
+72 |     game.refresh_continuous_state();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+   |
+72 |     let _ = game.refresh_continuous_state();
+   |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/targeting.rs:336:5
+    |
+336 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+336 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+   --> crates/ironsmith-engine/src/game_loop/turn_execution.rs:128:5
+    |
+128 |     game.refresh_continuous_state();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+128 |     let _ = game.refresh_continuous_state();
+    |     +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state.rs:5303:9
+     |
+5303 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+5303 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/object_state_and_events.rs:1309:9
+     |
+1309 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1309 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:1684:9
+     |
+1684 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1684 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/game_state/turns_and_tracking.rs:3225:9
+     |
+3225 |         self.refresh_continuous_state();
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+3225 |         let _ = self.refresh_continuous_state();
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/ironsmith-engine/src/turn.rs:1426:5
+     |
+1426 |     game.refresh_continuous_state();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+1426 |     let _ = game.refresh_continuous_state();
+     |     +++++++
+
+warning: `ironsmith-engine` (lib) generated 141 warnings (run `cargo fix --lib -p ironsmith-engine` to apply 94 suggestions)
+warning: unreachable pattern
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:220:17
+    |
+220 |                 _ => false,
+    |                 ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:220:17
+    |
+211 |                 AbilityKind::Triggered(triggered) => {
+    |                 --------------------------------- matches some of the same values
+...
+214 |                 AbilityKind::Static(static_ability) => {
+    |                 ----------------------------------- matches some of the same values
+...
+217 |                 AbilityKind::Activated(activated) => {
+    |                 --------------------------------- matches some of the same values
+...
+220 |                 _ => false,
+    |                 ^ collectively making this unreachable
+    = note: `#[warn(unreachable_patterns)]` on by default
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith_compiler_lowering-7f42985d3115f7f1.long-type-3167630844726989085.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unreachable pattern
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:273:17
+    |
+273 |                 _ => return Vec::new().into_iter(),
+    |                 ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> crates/ironsmith-compiler-lowering/src/lowering_impl/lower/damage_and_cost_rewrites.rs:273:17
+    |
+257 |                 AbilityKind::Triggered(triggered) => {
+    |                 --------------------------------- matches some of the same values
+...
+260 |                 AbilityKind::Activated(activated) => {
+    |                 --------------------------------- matches some of the same values
+...
+263 |                 AbilityKind::Static(static_ability) => {
+    |                 ----------------------------------- matches some of the same values
+...
+273 |                 _ => return Vec::new().into_iter(),
+    |                 ^ collectively making this unreachable
+    = note: the full name for the type has been written to '/Users/chiplis/ironsmith-cf8-int/target/debug/deps/ironsmith_compiler_lowering-7f42985d3115f7f1.long-type-3167630844726989085.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: `ironsmith-compiler-lowering` (lib) generated 2 warnings
+warning: unnecessary parentheses around `if` condition
+   --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/grouped_coins.rs:136:8
+    |
+136 |     if (words.starts_with(&["if", "they", "lose", "the", "flip"])
+    |        ^
+137 |         || words.starts_with(&["if", "they", "win", "the", "flip"]))
+    |                                                                    ^
+    |
+    = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+    |
+136 ~     if words.starts_with(&["if", "they", "lose", "the", "flip"])
+137 ~         || words.starts_with(&["if", "they", "win", "the", "flip"])
+    |
+
+warning: variable does not need to be mutable
+   --> crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases/advanced/predicate_readings/fallback.rs:870:17
+    |
+870 |             let mut filter = filter_from_words(descriptor)?;
+    |                 ----^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unreachable pattern
+  --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/temporary_damage_multiplier.rs:50:15
+   |
+43 |             | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+   |               ------------------------------------------------------------------------ matches all the relevant values
+...
+50 |             | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+   |
+   = note: `#[warn(unreachable_patterns)]` on by default
+
+warning: unused variable: `tag`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:26
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                          ^^^ help: if this is intentional, prefix it with an underscore: `_tag`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `player`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:31
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_player`
+
+warning: unused variable: `until_end_of_turn`
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups.rs:1746:58
+     |
+1746 |             if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+     |                                                          ^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_until_end_of_turn`
+
+warning: unreachable pattern
+     --> crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry.rs:12822:15
+      |
+12550 |             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { amount, .. })
+      |               ----------------------------------------------------------------------------- matches all the relevant values
+...
+12822 |             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
+      |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+
+warning: variable does not need to be mutable
+    --> crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability.rs:1927:9
+     |
+1927 |     let mut flush = |item: &mut Vec<OwnedLexToken>,
+     |         ----^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: value assigned to `discard_filter` is never read
+   --> crates/ironsmith-compiler-grammar/src/effect_sentences/sacrifice_discard/library.rs:294:17
+    |
+294 |                 discard_filter = None;
+    |                 ^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: `ironsmith-compiler-grammar` (lib) generated 9 warnings (run `cargo fix --lib -p ironsmith-compiler-grammar` to apply 3 suggestions)
+warning: unreachable pattern
+    --> crates/ironsmith-text/src/compiled_text/normalize_common/value_rendering.rs:5616:9
+     |
+5445 | /         Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+5446 | |             filter,
+5447 | |             from: Some(from),
+5448 | |             to: Some(to),
+5449 | |         }) => {
+     | |__________- matches all the relevant values
+...
+5616 | /         Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+5617 | |             filter,
+5618 | |             from: Some(Zone::Battlefield),
+5619 | |             to: Some(Zone::Graveyard),
+5620 | |         }) => {
+     | |__________^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` on by default
+
+warning: `ironsmith-text` (lib) generated 1 warning
+   Compiling ironsmith-compiler-runtime v0.1.0 (/Users/chiplis/ironsmith-cf8-int/crates/ironsmith-compiler-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.34s
+     Running tests/anthem_also_adverb.rs (target/debug/deps/anthem_also_adverb-c0266dd4673c02c7)
+
+running 2 tests
+test also_is_not_accepted_as_a_whole_subject ... ok
+test jetmir_keeps_three_independent_conditional_anthems_and_grants ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.96s
+
+     Running tests/cast_timing_combat_bodies.rs (target/debug/deps/cast_timing_combat_bodies-2f284b285cd2de0f)
+
+running 5 tests
+test berserkers_frenzy_keeps_the_higher_d20_and_has_both_block_rows ... ok
+test ignore_this_effect_for_each_excludes_objects_from_any_preceding_set_instruction ... ok
+test sirens_call_binds_that_player_to_the_active_player_and_spares_newcomers ... ok
+test taunt_requires_the_target_players_creatures_to_attack_you_next_turn ... ok
+test illusionists_gambit_adds_a_combat_bound_to_the_removed_attackers ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.11s
+
+     Running tests/cf8_attached_quoted_grants.rs (target/debug/deps/cf8_attached_quoted_grants-ae4b7b9e95e3258f)
+
+running 10 tests
+test a_single_x_definition_stays_with_its_keyword_and_stat_predicates ... ok
+test conditional_attached_stats_keep_both_branches ... ok
+test filtered_entry_reader_does_not_steal_sibling_quoted_grants ... ok
+test complete_attached_grants_compile_loss_free_on_both_routes has been running for over 60 seconds
+test keyword_sharing_keeps_the_full_graveyard_condition has been running for over 60 seconds
+test keyword_sharing_keeps_the_full_graveyard_condition ... ok
+test quoted_trigger_and_keyword_apply_to_the_enchanted_host_together ... ok
+test shared_x_definition_scales_only_the_declared_skeleton_subject ... ok
+test source_linked_permission_allows_only_its_exiled_cards_while_source_remains ... ok
+test source_linked_static_permission_stays_separate_from_activation ... ok
+test stat_count_preserves_both_attached_types_and_the_attachment_relation ... ok
+test complete_attached_grants_compile_loss_free_on_both_routes ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 343.26s
+
+     Running tests/cf8_baseline_reader_regressions.rs (target/debug/deps/cf8_baseline_reader_regressions-e5f13f1afc08de7c)
+
+running 21 tests
+test aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_phase ... ok
+test aluren_preserves_its_permission ... ok
+test ageless_sentinels ... ok
+test assassin_s_ink ... ok
+test arachnus_web ... ok
+test atomic_microsizer_preserves_its_permission ... ok
+test detective_s_phoenix ... ok
+test domestication ... ok
+test compleat_devotion ... ok
+test emrakul_the_promised_end ... ok
+test flaring_flame_kin ... ok
+test geistlight_snare ... ok
+test hexgold_slash ... ok
+test mysterious_pathlighter ... ok
+test pulling_teeth ... ok
+test shared_static_condition_gates_pump_keyword_and_activated_grant_together ... ok
+test edgar_master_machinist ... ok
+test the_fallen ... ok
+test tishanas_tidebinder ... ok
+test spirit_sisters_call ... ok
+test transcendent_dragon ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.96s
+
+     Running tests/possessed_threshold_grants.rs (target/debug/deps/possessed_threshold_grants-b6b2fe17627fb770)
+
+running 1 test
+test possessed_cycle_keeps_pump_color_and_granted_ability ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.07s
+

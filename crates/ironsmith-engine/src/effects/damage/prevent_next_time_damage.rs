@@ -13,6 +13,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
+use crate::events::traits::ReplacementMatcher as _;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
@@ -47,6 +48,31 @@ pub enum PreventNextTimeDamageTarget {
     Target(ChooseSpec),
 }
 
+/// "The next time ... would deal combat damage": the shield's constraints,
+/// limited to combat damage events (CR 510.2).
+#[derive(Debug, Clone)]
+struct CombatDamageOnly(PreventableDamageConstraintMatcher);
+
+impl crate::events::traits::ReplacementMatcher for CombatDamageOnly {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        self.0.may_match_event_kind(kind)
+    }
+
+    fn matches_prepared_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
+        crate::events::downcast_event::<crate::events::DamageEvent>(event)
+            .is_some_and(|damage| damage.is_combat)
+            && self.0.matches_prepared_event(event, ctx)
+    }
+
+    fn display(&self) -> String {
+        "When combat damage would be dealt (preventable)".to_string()
+    }
+}
+
 /// Register a one-shot replacement effect that prevents the next damage event matching constraints.
 ///
 /// One-shot effects are cleaned up at end of turn by the cleanup step, and consumed after use.
@@ -59,6 +85,10 @@ pub struct PreventNextTimeDamageEffect {
     /// at the time the damage is prevented.
     pub reflect_source_filter: Option<ObjectFilter>,
     pub follow_up_effects: Vec<Effect>,
+    /// The part of the next matching damage event the shield prevents.
+    pub portion: ironsmith_core::NextTimeDamagePreventionPortion,
+    /// Only a combat damage event uses the shield ("would deal combat damage").
+    pub combat_only: bool,
 }
 
 impl PreventNextTimeDamageEffect {
@@ -69,7 +99,19 @@ impl PreventNextTimeDamageEffect {
             reflect_damage_to_source_controller: false,
             reflect_source_filter: None,
             follow_up_effects: Vec::new(),
+            portion: ironsmith_core::NextTimeDamagePreventionPortion::All,
+            combat_only: false,
         }
+    }
+
+    pub fn with_portion(mut self, portion: ironsmith_core::NextTimeDamagePreventionPortion) -> Self {
+        self.portion = portion;
+        self
+    }
+
+    pub fn combat_damage_only(mut self) -> Self {
+        self.combat_only = true;
+        self
     }
 
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
@@ -206,6 +248,54 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             source: source_constraint,
             target: target_constraint,
         };
+        // A partial shield prevents only part of the next matching damage
+        // event and is then used up (CR 615.1, 615.7); it has no "prevented
+        // this way" rider in any printed form.
+        if self.portion != ironsmith_core::NextTimeDamagePreventionPortion::All {
+            if self.reflect_damage_to_source_controller || !self.follow_up_effects.is_empty() {
+                return Err(ExecutionError::UnresolvableValue(
+                    "a partial next-time prevention shield has no prevented-damage rider".into(),
+                ));
+            }
+            let replacement_action = match &self.portion {
+                ironsmith_core::NextTimeDamagePreventionPortion::HalfRoundedDown => {
+                    ReplacementAction::PreventHalfDamage { round_up: false }
+                }
+                ironsmith_core::NextTimeDamagePreventionPortion::AllBut(remaining) => {
+                    ReplacementAction::PreventDamageByRule(
+                        ironsmith_core::StaticDamagePreventionAmount::AllBut(*remaining),
+                    )
+                }
+                // The amount is fixed as the shield is created (CR 615.7):
+                // "Prevent X of that damage" names X's value now.
+                ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                    let amount = crate::effects::helpers::resolve_value(game, amount, ctx)?.max(0);
+                    ReplacementAction::PreventDamageByRule(
+                        ironsmith_core::StaticDamagePreventionAmount::Amount(Value::Fixed(amount)),
+                    )
+                }
+                ironsmith_core::NextTimeDamagePreventionPortion::All => ReplacementAction::Prevent,
+            };
+            let replacement = if self.combat_only {
+                ReplacementEffect::with_matcher(
+                    ctx.source,
+                    ctx.controller,
+                    CombatDamageOnly(matcher),
+                    replacement_action,
+                )
+            } else {
+                ReplacementEffect::with_matcher(
+                    ctx.source,
+                    ctx.controller,
+                    matcher,
+                    replacement_action,
+                )
+            };
+            game.effect_store
+                .replacement_effects
+                .add_one_shot_effect(replacement);
+            return Ok(EffectOutcome::resolved());
+        }
         // The shield prevents the damage (CR 615.1); what happens to the
         // prevented damage runs afterward as a prevention follow-up that reads
         // the prevented amount and the prevented damage event (CR 615.5).
@@ -237,12 +327,21 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         } else {
             ReplacementAction::Prevent
         };
-        let replacement = ReplacementEffect::with_matcher(
-            ctx.source,
-            ctx.controller,
-            matcher,
-            replacement_action,
-        );
+        let replacement = if self.combat_only {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                CombatDamageOnly(matcher),
+                replacement_action,
+            )
+        } else {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                matcher,
+                replacement_action,
+            )
+        };
 
         game.effect_store
             .replacement_effects

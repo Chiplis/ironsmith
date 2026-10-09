@@ -133,6 +133,33 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             player: PlayerFilter::You, filter,
         }), 1));
     }
+    // CR 700.4: "dies" means "is put into a graveyard from the battlefield".
+    // "<object> died this turn" reads that turn history through the shared
+    // object-filter grammar ("a non-Zombie creature", "a creature not named
+    // ..."). The bare "a creature died this turn" keeps its dedicated
+    // predicate; controller-qualified forms ("... died under your control
+    // this turn") do not end in this suffix and keep theirs.
+    if clean.len() > 4
+        && crate::lexer::parser_token_word_refs(&clean[clean.len() - 3..])
+            == ["died", "this", "turn"]
+    {
+        let subject = &clean[..clean.len() - 3];
+        let subject_words = crate::lexer::parser_token_word_refs(subject);
+        if !matches!(
+            subject_words.as_slice(),
+            ["a", "creature"] | ["no", "creatures"] | ["no", "creature"]
+        ) && let Ok(filter) =
+            crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                subject, false,
+            )
+            && filter != ObjectFilter::default()
+        {
+            return Some(value_at_least(
+                Value::TurnHistoryCount(TurnHistoryCount::died(filter)),
+                1,
+            ));
+        }
+    }
     if let Some(predicate) = parse_player_counter_placement_gate(clause) {
         return Some(predicate);
     }

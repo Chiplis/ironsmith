@@ -421,6 +421,8 @@ pub enum TriggerSpec {
         another: bool,
         source_filter: Option<ObjectFilter>,
         caused_by_source_entering: bool,
+        /// The ability triggered on that same source's attack declaration.
+        caused_by_source_attacking: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,
@@ -639,6 +641,11 @@ pub enum TriggerSpec {
         surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
     },
     DayNightChanged,
+    /// "Whenever damage [from a <quality> source] is prevented this way";
+    /// only meaningful as a delayed trigger linked to the preceding shield.
+    DamagePreventedThisWay {
+        source_filter: Option<ObjectFilter>,
+    },
     ThisEntersBattlefield {
         origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
     },

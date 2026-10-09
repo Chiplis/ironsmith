@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat_till, terminated};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -81,6 +81,8 @@ pub enum CombatMaximumKind {
     AttackYou,
     Attack,
     Block,
+    /// "... can attack this planeswalker / <this name> each combat".
+    AttackThis,
 }
 
 pub fn parse_damage_multiplier_tokens(
@@ -163,24 +165,21 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
     .parse_next(input)?;
     primitives::phrase(&["all", "damage"]).parse_next(input)?;
     let source = if opt(primitives::kw("that")).parse_next(input)?.is_some() {
-        parse_explicit_damage_source_shape_lexed(input)?
+        // "Double all damage that creatures you control with counters on
+        // them would deal." (Raphael, the Muscle): a relative clause naming
+        // the dealing objects without a "source" noun.
+        alt((
+            terminated(
+                parse_explicit_damage_source_shape_lexed,
+                peek(primitives::phrase(&["would", "deal"])),
+            ),
+            parse_named_damage_dealer_shape_lexed,
+        ))
+        .parse_next(input)?
     } else {
         // "Double all damage equipped creature would deal." (Mjölnir, Hammer
         // of Thor): the dealing object named directly.
-        let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
-            1..,
-            any.void(),
-            peek(primitives::phrase(&["would", "deal"])),
-        )
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)?;
-        DamageSourceShape {
-            source_noun: false,
-            filter_tokens: trim_lexed_commas(filter_tokens),
-            controller: DamageSourceControllerKind::None,
-            trailing_filter_tokens: &[],
-        }
+        parse_named_damage_dealer_shape_lexed(input)?
     };
     primitives::phrase(&["would", "deal"]).parse_next(input)?;
     opt(primitives::period()).parse_next(input)?;
@@ -196,6 +195,50 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
     })
 }
 
+fn parse_named_damage_dealer_shape_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<DamageSourceShape<'a>> {
+    let filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["would", "deal"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    Ok(DamageSourceShape {
+        source_noun: false,
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        controller: DamageSourceControllerKind::None,
+        trailing_filter_tokens: &[],
+    })
+}
+
+fn damage_multiplier_recipient_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<&'a [OwnedLexToken]> {
+    primitives::kw("to").parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((
+            primitives::phrase(&["this", "turn"]).void(),
+            primitives::kw("while").void(),
+            (
+                opt(primitives::comma()),
+                alt((
+                    primitives::phrase(&["it", "deals"]),
+                    primitives::phrase(&["that", "source", "deals"]),
+                )),
+            )
+                .void(),
+        ))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)
+}
+
 fn parse_damage_multiplier_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageMultiplierSpec<'a>> {
@@ -207,36 +250,18 @@ fn parse_damage_multiplier_lexed<'a>(
         primitives::phrase(&["would", "deal", "damage"]).value((false, false)),
     ))
     .parse_next(input)?;
-    // The recipient ends before either the duration, a live condition, or
-    // the replacement clause. None of those are part of its object filter.
-    let damaged_tokens = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
-        Some(
-            repeat_till::<_, _, (), _, _, _, _>(
-                1..,
-                any.void(),
-                peek(alt((
-                    primitives::phrase(&["this", "turn"]).void(),
-                    primitives::kw("while").void(),
-                    (
-                        opt(primitives::comma()),
-                        alt((
-                            primitives::phrase(&["it", "deals"]),
-                            primitives::phrase(&["that", "source", "deals"]),
-                        )),
-                    )
-                        .void(),
-                ))),
-            )
-            .map(|((), _)| ())
-            .take()
-            .parse_next(input)?,
-        )
-    } else {
-        None
-    };
-    let this_turn = opt(primitives::phrase(&["this", "turn"]))
+    // "would deal damage this turn to an opponent or ..." (Isengard
+    // Unleashed): the duration may precede the recipient.
+    let leading_this_turn = opt(primitives::phrase(&["this", "turn"]))
         .parse_next(input)?
         .is_some();
+    // The recipient ends before either the duration, a live condition, or
+    // the replacement clause. None of those are part of its object filter.
+    let damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
+    let this_turn = opt(primitives::phrase(&["this", "turn"]))
+        .parse_next(input)?
+        .is_some()
+        || leading_this_turn;
     let condition_tokens = opt((
         primitives::kw("while"),
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::comma()))
@@ -588,6 +613,13 @@ fn parse_combat_maximum_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Com
             primitives::phrase(&["can", "block", "each", "combat"]),
         )
             .value(CombatMaximumKind::Block),
+        (
+            alt((primitives::kw("creature"), primitives::kw("creatures"))),
+            primitives::phrase(&["can", "attack", "this"]),
+            opt(primitives::kw("planeswalker")),
+            primitives::phrase(&["each", "combat"]),
+        )
+            .value(CombatMaximumKind::AttackThis),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;

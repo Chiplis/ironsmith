@@ -110,6 +110,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })
             | SubjectVerbActionAst::DamagePrevention(
@@ -303,6 +304,28 @@ pub(super) fn compile_gain_control_action(
     }
     let effect = tag_object_target_effect(Effect::new(continuous_effect), &spec, ctx, "controlled");
     Ok((vec![effect], choices))
+}
+
+/// Compile the additional part of a prevention shield (CR 615.5). It runs in
+/// the prevented damage event's context; the event's source is tagged first
+/// so "that creature" / "the source's controller" name the prevented source.
+fn compile_prevention_source_follow_ups(
+    follow_up_effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    if follow_up_effects.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let mut follow_up_ctx =
+        EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
+    follow_up_ctx.allow_life_event_value = true;
+    let (compiled, choices) = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+    ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+    let mut effects = vec![Effect::tag_triggering_source(
+        crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+    )];
+    effects.extend(compiled);
+    Ok((effects, choices))
 }
 
 fn source_filter_needs_resolution_context(filter: &ObjectFilter) -> bool {
@@ -1060,6 +1083,14 @@ pub(super) fn compile_subject_verb_early(
                 Vec::new(),
             ))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions) => {
+            // CR 701.52a: the player rolls and visits their own Attractions.
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            Ok((
+                vec![Effect::roll_to_visit_attractions(subject.clone_player_filter())],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
         | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary) => {
             let cloak = matches!(
@@ -1110,11 +1141,14 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters }) => {
+            // "earthbend X, where X is that creature's power" binds the
+            // trigger's object reference exactly as other keyword amounts do.
+            let counters = resolve_value_it_tag(counters, &current_reference_env(ctx))?;
             let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
             let effect = tag_object_target_effect(
                 Effect::new(crate::effects::EarthbendEffect::new(
                     spec.clone(),
-                    *counters,
+                    counters,
                 )),
                 &spec,
                 ctx,
@@ -1202,12 +1236,14 @@ pub(super) fn compile_subject_verb_early(
             count,
             sides,
             surface,
+            ignore_lower,
         }) => compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-            Effect::roll_dice_choose_result_with_surface(
+            Effect::roll_dice_choose_result_with_surface_ignoring_lower(
                 *count,
                 *sides,
                 subject.into_player_filter(),
                 *surface,
+                *ignore_lower,
             )
         }),
         SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary) => {
@@ -1272,11 +1308,16 @@ pub(super) fn compile_subject_verb_early(
             effect.secretly = *secretly;
             Effect::new(effect)
         }),
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
+            exclude_basic,
+            basic_only,
+        }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            if *basic_only {
+                Effect::choose_basic_land_type(subject.into_player_filter())
+            } else {
                 Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
-            })
-        }
+            }
+        }),
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
@@ -1915,7 +1956,31 @@ pub(super) fn compile_subject_verb_early(
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
-        }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
+        }) => {
+            // "if that creature would deal combat damage to one of your
+            // opponents" / "to that player or a permanent that player
+            // controls": the referenced object and player are the ones the
+            // instruction names (the engine locks them as it registers).
+            let refs = current_reference_env(ctx);
+            let mut spec = spec.clone();
+            spec.source_filter = resolve_it_tag(&spec.source_filter, &refs)?;
+            if let Some(filter) = spec.target_object_filter.as_mut() {
+                *filter = resolve_it_tag(filter, &refs)?;
+            }
+            if let Some(antecedent) = ctx.last_player_filter.clone()
+                && antecedent != PlayerFilter::IteratedPlayer
+            {
+                if spec.target_player_filter == Some(PlayerFilter::IteratedPlayer) {
+                    spec.target_player_filter = Some(antecedent.clone());
+                }
+                if let Some(object) = spec.target_object_filter.as_mut()
+                    && object.controller == Some(PlayerFilter::IteratedPlayer)
+                {
+                    object.controller = Some(antecedent);
+                }
+            }
+            Ok((vec![Effect::new(spec)], Vec::new()))
+        }
         SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterCounterPlacementReplacement {
                 filter,
@@ -2269,13 +2334,14 @@ pub(super) fn compile_subject_verb_early(
             tapped,
             controller,
             cloak,
+            manifest,
             shuffle_before,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            if *controller == ReturnControllerAst::Owner && !*cloak {
+            if *controller == ReturnControllerAst::Owner && !*cloak && !*manifest {
                 // Ownership is per object, including a captured collection
                 // with several owners. The native movement owner already
                 // retains that choice through prepared entry and completion.
@@ -2312,17 +2378,21 @@ pub(super) fn compile_subject_verb_early(
             for choice in choices {
                 push_choice(&mut all_choices, choice);
             }
-            let mut effect = if *cloak {
-                let mut manifest =
-                    crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter)
-                        .cloak();
+            let mut effect = if *cloak || *manifest {
+                // CR 701.58a cloak / CR 701.40a manifest: the same face-down
+                // entry, with ward {2} only for cloak.
+                let mut face_down =
+                    crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter);
+                if *cloak {
+                    face_down = face_down.cloak();
+                }
                 if *tapped {
-                    manifest = manifest.tapped();
+                    face_down = face_down.tapped();
                 }
                 if *shuffle_before {
-                    manifest = manifest.shuffled();
+                    face_down = face_down.shuffled();
                 }
-                Effect::new(manifest)
+                Effect::new(face_down)
             } else {
                 Effect::put_onto_battlefield(spec.clone(), *tapped, controller_filter)
             };
@@ -2555,6 +2625,7 @@ pub(super) fn compile_subject_verb_early(
             allow_colorless,
             allow_artifacts,
             choose_card_type,
+            also_each,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2563,18 +2634,40 @@ pub(super) fn compile_subject_verb_early(
             } else {
                 resolve_non_target_player_filter(*chooser, &current_reference_env(ctx))?
             };
+            let also_each = also_each
+                .as_ref()
+                .map(|filter| resolve_it_tag(filter, &current_reference_env(ctx)))
+                .transpose()?;
+            // One choice covers every recipient: each mode grants the chosen
+            // protection to the named recipient and, for "you and each
+            // permanent you control", to every member of the set (locked at
+            // resolution, CR 611.2c).
+            let mode_effects = |ability: StaticAbility| {
+                let mut effects = vec![Effect::new(
+                    crate::effects::GrantAbilitiesTargetEffect::new(
+                        spec.clone(),
+                        vec![ability.clone()],
+                        crate::effect::Until::EndOfTurn,
+                    ),
+                )];
+                if let Some(filter) = &also_each {
+                    effects.push(Effect::new(
+                        crate::effects::ApplyContinuousEffect::new(
+                            crate::continuous::EffectTarget::Filter(filter.clone()),
+                            crate::continuous::Modification::AddAbility(ability),
+                            crate::effect::Until::EndOfTurn,
+                        )
+                        .lock_filter_at_resolution(),
+                    ));
+                }
+                effects
+            };
             let mut modes = Vec::new();
             if *allow_colorless {
                 let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Colorless);
                 modes.push(EffectMode {
                     source_text: "Colorless".to_string(),
-                    effects: vec![Effect::new(
-                        crate::effects::GrantAbilitiesTargetEffect::new(
-                            spec.clone(),
-                            vec![ability],
-                            crate::effect::Until::EndOfTurn,
-                        ),
-                    )],
+                    effects: mode_effects(ability),
                 });
             }
             if *allow_artifacts {
@@ -2583,13 +2676,7 @@ pub(super) fn compile_subject_verb_early(
                 ));
                 modes.push(EffectMode {
                     source_text: "Artifacts".to_string(),
-                    effects: vec![Effect::new(
-                        crate::effects::GrantAbilitiesTargetEffect::new(
-                            spec.clone(),
-                            vec![ability],
-                            crate::effect::Until::EndOfTurn,
-                        ),
-                    )],
+                    effects: mode_effects(ability),
                 });
             }
             if *choose_card_type {
@@ -2609,13 +2696,7 @@ pub(super) fn compile_subject_verb_early(
                     );
                     modes.push(EffectMode {
                         source_text: card_type.name().to_string(),
-                        effects: vec![Effect::new(
-                            crate::effects::GrantAbilitiesTargetEffect::new(
-                                spec.clone(),
-                                vec![ability],
-                                crate::effect::Until::EndOfTurn,
-                            ),
-                        )],
+                        effects: mode_effects(ability),
                     });
                 }
             } else {
@@ -2631,13 +2712,7 @@ pub(super) fn compile_subject_verb_early(
                     ));
                     modes.push(EffectMode {
                         source_text: name.to_string(),
-                        effects: vec![Effect::new(
-                            crate::effects::GrantAbilitiesTargetEffect::new(
-                                spec.clone(),
-                                vec![ability],
-                                crate::effect::Until::EndOfTurn,
-                            ),
-                        )],
+                        effects: mode_effects(ability),
                     });
                 }
             }
@@ -2769,6 +2844,8 @@ pub(super) fn compile_subject_verb_early(
                 reflect_damage_to_source_controller,
                 reflect_source_filter,
                 follow_up_effects,
+                portion,
+                combat_only,
             },
         ) => {
             let source_spec = match source {
@@ -2825,7 +2902,20 @@ pub(super) fn compile_subject_verb_early(
                 }
             };
             let mut effect =
-                crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec);
+                crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec)
+                    .with_portion(match portion {
+                        // "Prevent X of that damage, where X is ... this way":
+                        // the amount reads the producing payment's result.
+                        ironsmith_core::NextTimeDamagePreventionPortion::Exactly(amount) => {
+                            ironsmith_core::NextTimeDamagePreventionPortion::Exactly(
+                                resolve_value_it_tag(amount, &current_reference_env(ctx))?,
+                            )
+                        }
+                        other => other.clone(),
+                    });
+            if *combat_only {
+                effect = effect.combat_damage_only();
+            }
             let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
                 (Vec::new(), Vec::new())
             } else {
@@ -2885,6 +2975,7 @@ pub(super) fn compile_subject_verb_early(
             source_of_your_choice,
             protect_you_and_permanents_you_control,
             follow_up_effects,
+            divided,
         }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let damage_filter = if *combat_only {
@@ -2902,6 +2993,25 @@ pub(super) fn compile_subject_verb_early(
                 ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
                 compiled
             };
+            // CR 601.2d / 615.7: the amount is divided among the announced
+            // targets, one shield per target.
+            if *divided {
+                if *source_of_your_choice || *protect_you_and_permanents_you_control {
+                    return Err(CardTextError::ParseError(
+                        "divided prevention cannot also choose a source or protect a set".into(),
+                    ));
+                }
+                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
+                    let mut prevent =
+                        crate::effects::PreventDamageEffect::new(amount.clone(), spec, duration.clone())
+                            .with_filter(damage_filter.clone())
+                            .with_follow_up_effects(follow_up_effects.clone());
+                    prevent.divided = true;
+                    Effect::new(prevent)
+                })?;
+                choices.extend(follow_up_choices);
+                return Ok(Some((effects, choices)));
+            }
             if *protect_you_and_permanents_you_control {
                 let mut prevent = crate::effects::PreventDamageEffect::new(
                     amount,
@@ -2989,7 +3099,13 @@ pub(super) fn compile_subject_verb_early(
                 source_would_deal_surface,
             },
         ) => {
-            if !follow_up_effects.is_empty() && source_target.is_none() {
+            let follow_up_on_chosen_source_to_you = *source_of_your_choice
+                && !*source_choice_shares_activation_mana_color
+                && matches!(target, TargetAst::Player(crate::target::PlayerFilter::You, _));
+            if !follow_up_effects.is_empty()
+                && source_target.is_none()
+                && !follow_up_on_chosen_source_to_you
+            {
                 return Err(CardTextError::ParseError(
                     "deferred all-damage follow-up requires its bound source selector".into(),
                 ));
@@ -3058,6 +3174,34 @@ pub(super) fn compile_subject_verb_early(
                 } else {
                     effect.with_source_of_your_choice()
                 };
+                if !compiled_follow_up.is_empty() {
+                    // "Whenever damage from a <quality> source is prevented
+                    // this way this turn, ..." (Samite Ministration): the
+                    // prevented event's source is tagged for the follow-up.
+                    let mut follow_ups = vec![Effect::tag_triggering_source(
+                        crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+                    )];
+                    follow_ups.extend(compiled_follow_up);
+                    effect = effect.with_follow_up_effects(follow_ups);
+                }
+                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+            }
+            // "Prevent all damage a source of your choice would deal this
+            // turn." protects every recipient from the one chosen source.
+            if *source_of_your_choice
+                && let TargetAst::ObjectOrPlayer(filter, crate::target::PlayerFilter::Any, None) =
+                    target
+                && *filter == crate::target::ObjectFilter::default()
+            {
+                let mut effect = crate::effects::PreventAllDamageEffect::new(
+                    ironsmith_core::PreventionTarget::All,
+                    damage_filter.clone(),
+                    duration.clone(),
+                )
+                .with_source_of_your_choice();
+                if *source_would_deal_surface {
+                    effect = effect.with_source_would_deal_surface();
+                }
                 return Ok(Some((vec![Effect::new(effect)], Vec::new())));
             }
             if let TargetAst::ObjectOrPlayer(
@@ -3173,6 +3317,8 @@ pub(super) fn compile_subject_verb_early(
                 source_filter,
                 source_would_deal_surface,
                 of_chosen_color,
+                source_of_your_choice,
+                follow_up_effects,
             },
         ) => {
             let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
@@ -3180,6 +3326,11 @@ pub(super) fn compile_subject_verb_early(
             if source_filter != ObjectFilter::default() {
                 damage_filter.from_source = Some(source_filter);
             }
+            // CR 615.5: the additional part runs as each damage event is
+            // prevented, reading that prevented amount and its source. A
+            // fresh "target" in it is declared with the spell (CR 601.2c).
+            let (follow_up_effects, follow_up_choices) =
+                compile_prevention_source_follow_ups(follow_up_effects, ctx)?;
             let non_choice = match target {
                 TargetAst::Player(PlayerFilter::You | PlayerFilter::Any, None) => true,
                 TargetAst::Object(filter, None, None) => filter.tagged_constraints.is_empty(),
@@ -3194,7 +3345,25 @@ pub(super) fn compile_subject_verb_early(
                 if *source_would_deal_surface {
                     effect = effect.with_source_would_deal_surface();
                 }
-                return Ok(Some((vec![Effect::new(effect)], Vec::new())));
+                if *source_of_your_choice {
+                    // CR 609.7a: the source is chosen as the shield is
+                    // created; the filter only limits that choice.
+                    effect = effect.with_source_of_your_choice();
+                }
+                if !follow_up_effects.is_empty() {
+                    effect = effect.with_follow_up_effects(follow_up_effects);
+                }
+                return Ok(Some((vec![Effect::new(effect)], follow_up_choices)));
+            }
+            if !follow_up_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "prevention follow-up needs a non-targeted protected recipient".into(),
+                ));
+            }
+            if *source_of_your_choice {
+                return Err(CardTextError::ParseError(
+                    "a source of your choice needs a non-targeted protected recipient".into(),
+                ));
             }
             if non_choice {
                 return Err(CardTextError::ParseError(
@@ -3269,10 +3438,53 @@ pub(super) fn compile_subject_verb_early(
                 protected_target,
                 destination,
                 destination_target,
+                source_of_your_choice,
             },
         ) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let refs = current_reference_env(ctx);
+            // "The next N damage that a source of your choice would deal to
+            // you and/or permanents you control this turn is dealt to any
+            // target instead." (CR 609.7a, 614.9): the protected set is not a
+            // target, and only the chosen source's damage is redirected.
+            if *source_of_your_choice {
+                if *destination
+                    != crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject
+                {
+                    return Err(CardTextError::ParseError(
+                        "chosen-source redirection supports only a target destination".to_string(),
+                    ));
+                }
+                let destination_target = destination_target.as_ref().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "missing redirected-next damage destination target".to_string(),
+                    )
+                })?;
+                let (destination_spec, mut choices) =
+                    resolve_target_spec_with_choices(destination_target, &refs)?;
+                let mut effect =
+                    crate::effects::RedirectNextDamageToTargetEffect::new(amount, destination_spec);
+                effect.source_of_your_choice = true;
+                match protected_target {
+                    Some(TargetAst::ObjectOrPlayer(
+                        filter,
+                        crate::target::PlayerFilter::You,
+                        None,
+                    )) => {
+                        effect.protect_you_and_permanents = Some(resolve_it_tag(filter, &refs)?);
+                    }
+                    Some(protected) => {
+                        let (spec, protected_choices) =
+                            resolve_target_spec_with_choices(protected, &refs)?;
+                        for choice in protected_choices {
+                            push_choice(&mut choices, choice);
+                        }
+                        effect.protected_target = Some(spec);
+                    }
+                    None => {}
+                }
+                return Ok(Some((vec![Effect::new(effect)], choices)));
+            }
             let (protected_spec, mut choices) = if let Some(protected_target) = protected_target {
                 let (spec, choices) = resolve_target_spec_with_choices(protected_target, &refs)?;
                 (Some(spec), choices)

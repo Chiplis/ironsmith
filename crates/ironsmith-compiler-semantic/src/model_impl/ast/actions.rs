@@ -382,6 +382,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("OpenAttraction")
                 .field("reminder", reminder)
                 .finish(),
+            Self::KeywordActions(KeywordActionAst::RollToVisitAttractions) => {
+                f.write_str("RollToVisitAttractions")
+            }
             Self::Library(LibraryActionAst::ManifestTopCardOfLibrary) => {
                 f.write_str("ManifestTopCardOfLibrary")
             }
@@ -440,11 +443,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 count,
                 sides,
                 surface,
+                ignore_lower,
             }) => f
                 .debug_struct("RollDiceChooseResult")
                 .field("count", count)
                 .field("sides", sides)
                 .field("surface", surface)
+                .field("ignore_lower", ignore_lower)
                 .finish(),
             Self::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary) => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")
@@ -479,9 +484,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("excluded_subtypes", excluded_subtypes)
                 .field("family", family)
                 .finish(),
-            Self::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => f
+            Self::Choices(ChoiceActionAst::ChooseLandType {
+                exclude_basic,
+                basic_only,
+            }) => f
                 .debug_struct("ChooseLandType")
                 .field("exclude_basic", exclude_basic)
+                .field("basic_only", basic_only)
                 .finish(),
             Self::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => f
                 .debug_struct("ChooseCardName")
@@ -837,6 +846,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tapped,
                 controller,
                 cloak,
+                manifest,
                 shuffle_before,
             }) => f
                 .debug_struct("PutOntoBattlefield")
@@ -844,6 +854,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("tapped", tapped)
                 .field("controller", controller)
                 .field("cloak", cloak)
+                .field("manifest", manifest)
                 .field("shuffle_before", shuffle_before)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::RevealCardsFromHand {
@@ -913,14 +924,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_colorless,
                 allow_artifacts,
                 choose_card_type,
-            }) => f
-                .debug_struct("GrantProtectionChoice")
-                .field("target", target)
-                .field("chooser", chooser)
-                .field("allow_colorless", allow_colorless)
-                .field("allow_artifacts", allow_artifacts)
-                .field("choose_card_type", choose_card_type)
-                .finish(),
+                also_each,
+            }) => {
+                let mut debug = f.debug_struct("GrantProtectionChoice");
+                debug
+                    .field("target", target)
+                    .field("chooser", chooser)
+                    .field("allow_colorless", allow_colorless)
+                    .field("allow_artifacts", allow_artifacts)
+                    .field("choose_card_type", choose_card_type);
+                if let Some(also_each) = also_each {
+                    debug.field("also_each", also_each);
+                }
+                debug.finish()
+            }
             Self::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage {
                 duration,
             }) => f
@@ -983,6 +1000,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 reflect_damage_to_source_controller,
                 reflect_source_filter,
                 follow_up_effects,
+                portion,
+                combat_only,
             }) => f
                 .debug_struct("PreventNextTimeDamage")
                 .field("source", source)
@@ -993,6 +1012,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 )
                 .field("reflect_source_filter", reflect_source_filter)
                 .field("follow_up_effects", follow_up_effects)
+                .field("portion", portion)
+                .field("combat_only", combat_only)
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget {
                 target,
@@ -1049,11 +1070,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     duration,
                     source_filter,
                     of_chosen_color,
+                    source_of_your_choice,
                     ..
                 },
             ) => f
                 .debug_struct("PreventAllDamageToTargetFromSourceFilter")
                 .field("of_chosen_color", of_chosen_color)
+                .field("source_of_your_choice", source_of_your_choice)
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_filter", source_filter)
@@ -1274,6 +1297,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 spell_cost_increase,
                 lands_enter_tapped,
                 surface,
+                during_turns_attacked_with,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("permission_bound_mana", permission_bound_mana)
@@ -1290,6 +1314,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("spell_cost_increase", spell_cost_increase)
                 .field("lands_enter_tapped", lands_enter_tapped)
                 .field("surface", surface)
+                .field("during_turns_attacked_with", during_turns_attacked_with)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
                 tag, player, allow_land, without_paying_mana_cost, surface,
@@ -1384,6 +1409,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_tapped,
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
+                battlefield_attack_player_only,
+                battlefield_blocking,
                 battlefield_face_down,
                 battlefield_transformed,
                 attached_to,
@@ -1413,6 +1440,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "battlefield_attack_target_player_or_planeswalker_controlled_by",
                     battlefield_attack_target_player_or_planeswalker_controlled_by,
                 )
+                .field("battlefield_attack_player_only", battlefield_attack_player_only)
+                .field("battlefield_blocking", battlefield_blocking)
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("battlefield_transformed", battlefield_transformed)
                 .field("attached_to", attached_to)
@@ -1767,6 +1796,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 granted_abilities,
                 set_base_power_toughness,
                 copy_exception_surface,
+                retain_source_colors,
             }) => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -1785,6 +1815,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("granted_abilities", granted_abilities)
                 .field("set_base_power_toughness", set_base_power_toughness)
                 .field("copy_exception_surface", copy_exception_surface)
+                .field("retain_source_colors", retain_source_colors)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,
@@ -1983,6 +2014,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     protected_target,
                     destination,
                     destination_target,
+                    source_of_your_choice,
                 },
             ) => f
                 .debug_struct("RedirectNextDamageFromSourceToTarget")
@@ -1990,6 +2022,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("protected_target", protected_target)
                 .field("destination", destination)
                 .field("destination_target", destination_target)
+                .field("source_of_your_choice", source_of_your_choice)
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                 source,
@@ -2056,12 +2089,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 mode,
                 require_change,
                 copy_reference_plural,
+                new_target_restriction,
             }) => f
                 .debug_struct("RetargetStackObject")
                 .field("target", target)
                 .field("mode", mode)
                 .field("require_change", require_change)
                 .field("copy_reference_plural", copy_reference_plural)
+                .field("new_target_restriction", new_target_restriction)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilityToSource { ability, duration }) => f
                 .debug_struct("GrantAbilityToSource")
@@ -2407,6 +2442,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PutCounterOfChosenKind")
                 .field("target", target)
                 .finish(),
+            Self::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
+                kind_source,
+                target,
+                each,
+                exclude_kind_object,
+                only_if_absent,
+            }) => f
+                .debug_struct("PutCounterOfKindChosenFrom")
+                .field("kind_source", kind_source)
+                .field("target", target)
+                .field("each", each)
+                .field("exclude_kind_object", exclude_kind_object)
+                .field("only_if_absent", only_if_absent)
+                .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                 target,
                 random,
@@ -2543,11 +2592,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 cost,
                 x_value,
                 x_maximum,
+                independent_x_choice,
+
             }) => f
                 .debug_struct("PayMana")
                 .field("cost", cost)
                 .field("x_value", x_value)
                 .field("x_maximum", x_maximum)
+                .field("independent_x_choice", independent_x_choice)
                 .finish(),
             Self::Mana(ManaActionAst::DoubleManaPool) => f.write_str("DoubleManaPool"),
             Self::Mana(ManaActionAst::EmptyManaPool) => f.write_str("EmptyManaPool"),
@@ -2653,8 +2705,31 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
                 f.debug_tuple("BecomePlotted").field(target).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Prepare { target }) => {
-                f.debug_tuple("Prepare").field(target).finish()
+            Self::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, allow_lock }) => {
+                f.debug_tuple(if *allow_lock {
+                    "LockOrUnlockTargetRoomDoor"
+                } else {
+                    "UnlockTargetRoomDoor"
+                })
+                .field(target)
+                .finish()
+            }
+            Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                player,
+                controllers_next_combat,
+            }) => f
+                .debug_struct("MustAttackPlayerThisTurn")
+                .field("target", target)
+                .field("player", player)
+                .field("controllers_next_combat", controllers_next_combat)
+                .finish(),
+            Self::KeywordActions(KeywordActionAst::Prepare { target, unprepare }) => {
+                if *unprepare {
+                    f.debug_tuple("Unprepare").field(target).finish()
+                } else {
+                    f.debug_tuple("Prepare").field(target).finish()
+                }
             }
             Self::KeywordActions(KeywordActionAst::Suspect { target }) => {
                 f.debug_tuple("Suspect").field(target).finish()
@@ -2680,6 +2755,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
+            Self::PermanentState(PermanentStateActionAst::ReselectAttackTarget {
+                target,
+                players_only,
+                attacked_player,
+            }) => f
+                .debug_struct("ReselectAttackTarget")
+                .field("target", target)
+                .field("players_only", players_only)
+                .field("attacked_player", attacked_player)
+                .finish(),
             Self::PermanentState(PermanentStateActionAst::Flip { target }) => {
                 f.debug_tuple("Flip").field(target).finish()
             }

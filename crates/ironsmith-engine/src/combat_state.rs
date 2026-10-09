@@ -542,6 +542,42 @@ pub(crate) fn max_creatures_can_attack_defending_player_each_combat(
         .min()
 }
 
+/// The cap on attackers declared against one planeswalker, from its own
+/// "No more than N creatures can attack this planeswalker each combat".
+pub(crate) fn max_creatures_can_attack_planeswalker_each_combat(
+    game: &GameState,
+    planeswalker: ObjectId,
+) -> Option<usize> {
+    let all_effects = game.all_continuous_effects();
+    static_abilities_for_object(game, planeswalker, &all_effects)
+        .iter()
+        .filter_map(|ability| ability.max_creatures_can_attack_this_each_combat())
+        .min()
+}
+
+/// Every declared planeswalker's own attacker cap holds (CR 508.1c).
+pub(crate) fn planeswalker_attack_caps_hold<'a>(
+    game: &GameState,
+    targets: impl IntoIterator<Item = &'a AttackTarget>,
+) -> Result<(), CombatError> {
+    let mut per_planeswalker: HashMap<ObjectId, usize> = HashMap::new();
+    for target in targets {
+        if let AttackTarget::Planeswalker(planeswalker) = target {
+            *per_planeswalker.entry(*planeswalker).or_insert(0) += 1;
+        }
+    }
+    let mut planeswalkers = per_planeswalker.into_iter().collect::<Vec<_>>();
+    planeswalkers.sort_unstable();
+    for (planeswalker, provided) in planeswalkers {
+        if let Some(maximum) = max_creatures_can_attack_planeswalker_each_combat(game, planeswalker)
+            && provided > maximum
+        {
+            return Err(CombatError::TooManyAttackers { maximum, provided });
+        }
+    }
+    Ok(())
+}
+
 /// Declares attackers for combat.
 ///
 /// This function validates all attackers and taps those without vigilance.
@@ -737,6 +773,7 @@ pub fn declare_attackers(
             return Err(CombatError::TooManyAttackers { maximum, provided });
         }
     }
+    planeswalker_attack_caps_hold(game, declarations.iter().map(|(_, target)| target))?;
 
     // The game-loop declaration owner stages taps before costs, freezes
     // vigilance and attack requirements, restores failed payments, and owns
@@ -858,8 +895,15 @@ fn declare_blockers_internal(
             });
         }
 
-        // Must be untapped
-        if game.is_tapped(*blocker_id) {
+        // Must be untapped, unless it can block as though it were untapped
+        // (CR 509.1a).
+        if game.is_tapped(*blocker_id)
+            && !game.object_has_ability_with_effects(
+                *blocker_id,
+                &StaticAbility::can_block_as_though_untapped(),
+                &all_effects,
+            )
+        {
             return Err(CombatError::CreatureTapped(*blocker_id));
         }
 
@@ -980,6 +1024,23 @@ fn declare_blockers_internal(
             maximum: max_blockers,
             provided: blocking_creature_count,
         });
+    }
+    // "[player] can't block with more than N creatures" (Mirri, Weatherlight
+    // Duelist) caps that player's own blocking creatures (CR 509.1c).
+    if blocking_creature_count > 0 {
+        let mut by_controller = std::collections::HashMap::<PlayerId, usize>::new();
+        for &blocker in &own_blockers {
+            if let Some(object) = game.object(blocker) {
+                *by_controller.entry(game.controller_of(object)).or_default() += 1;
+            }
+        }
+        for (player, provided) in by_controller {
+            if let Some(maximum) = game.max_blocking_creatures_for_player(player)
+                && provided > maximum
+            {
+                return Err(CombatError::TooManyBlockingCreatures { maximum, provided });
+            }
+        }
     }
 
     // Second pass: validate minimum/maximum blockers.
@@ -1263,7 +1324,12 @@ fn legal_block_edge(
             crate::types::CardType::Battle,
             effects,
         )
-        && !game.is_tapped(blocker_id)
+        && (!game.is_tapped(blocker_id)
+            || game.object_has_ability_with_effects(
+                blocker_id,
+                &StaticAbility::can_block_as_though_untapped(),
+                effects,
+            ))
         && !game.object_has_ability_with_effects(blocker_id, &StaticAbility::cant_block(), effects)
         && game.can_block_attacker(blocker_id, attacker_id)
         && game.can_be_blocked(attacker_id)
@@ -1480,7 +1546,22 @@ fn block_declaration_obeying_more_requirements_exists(
         let distinct_blockers = attackers_by_blocker.len();
         let introduces_blocker = !attackers_by_blocker.contains_key(&blocker);
         let within_global_cap = max_creatures_can_block_each_combat(game)
-            .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum);
+            .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum)
+            && (!introduces_blocker
+                || game.object(blocker).is_none_or(|object| {
+                    let controller = game.controller_of(object);
+                    game.max_blocking_creatures_for_player(controller).is_none_or(|maximum| {
+                        let declared = attackers_by_blocker
+                            .keys()
+                            .filter(|declared| {
+                                game.object(**declared).is_some_and(|declared| {
+                                    game.controller_of(declared) == controller
+                                })
+                            })
+                            .count();
+                        declared < maximum
+                    })
+                }));
         let within_blocker_capacity =
             blocker_count < max_attackers_this_blocker_can_block(game, blocker, effects);
         let within_attacker_capacity = game

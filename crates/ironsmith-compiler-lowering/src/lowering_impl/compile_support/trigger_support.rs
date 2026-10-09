@@ -355,7 +355,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 }
                 _ => None,
             };
-            let trigger = Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect());
+            let zones: Vec<_> = branches.iter().map(crate::lower::base_trigger_functional_zones).collect();
+            let same_zones = zones.windows(2).all(|pair| pair[0].len() == pair[1].len()
+                && pair[0].iter().all(|zone| pair[1].contains(zone)));
+            let trigger = Trigger::any_of(branches.into_iter().zip(zones).map(|(branch, zones)| {
+                let trigger = compile_trigger_spec(branch);
+                if same_zones { trigger } else { Trigger::zone_gated(trigger, zones) }
+            }).collect());
             if let Some(description) = play_description {
                 trigger.with_display_label(description)
             } else {
@@ -790,9 +796,17 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             another,
             source_filter,
             caused_by_source_entering,
-        } => {
-            Trigger::ability_triggered_qualified(another, source_filter, caused_by_source_entering)
-        }
+            caused_by_source_attacking,
+        } => match source_filter {
+            Some(source_filter) if caused_by_source_attacking => {
+                Trigger::ability_triggered_by_source_attacking(source_filter)
+            }
+            source_filter => Trigger::ability_triggered_qualified(
+                another,
+                source_filter,
+                caused_by_source_entering,
+            ),
+        },
         TriggerSpec::DamageReceived {
             target,
             combat,
@@ -1334,6 +1348,11 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_postcombat_main_phase_with_surface(player, surface)
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
+        // Only a delayed registration links to a shield; as an ordinary
+        // triggered ability the event has no "this way" referent.
+        TriggerSpec::DamagePreventedThisWay { .. } => {
+            Trigger::state_based("Whenever damage is prevented this way")
+        }
         TriggerSpec::ThisEntersBattlefield { origin_condition } => match origin_condition {
             None => Trigger::this_enters_battlefield(),
             Some(origin_condition) => Trigger::new(
@@ -1492,8 +1511,25 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                         .unwrap_or(right);
                     format!("{left} and {right}")
                 });
-            let trigger =
-                Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right));
+            // CR 113.6: when the arms are observed from different zones, the
+            // ability functions from their union, but each arm keeps its own
+            // zones ("cycle this card" after cycling; "cycle another card"
+            // only while the permanent is on the battlefield).
+            let left_zones = crate::lower::base_trigger_functional_zones(&left);
+            let right_zones = crate::lower::base_trigger_functional_zones(&right);
+            let same_zones = left_zones.len() == right_zones.len()
+                && left_zones.iter().all(|zone| right_zones.contains(zone));
+            let gate = |trigger: Trigger, zones: Vec<crate::zone::Zone>| {
+                if same_zones {
+                    trigger
+                } else {
+                    Trigger::zone_gated(trigger, zones)
+                }
+            };
+            let trigger = Trigger::either(
+                gate(compile_trigger_spec(*left), left_zones),
+                gate(compile_trigger_spec(*right), right_zones),
+            );
             if let Some(display) = display
                 .or(source_and_or_other_display)
                 .or(repeated_intro_display)

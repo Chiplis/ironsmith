@@ -1,0 +1,26 @@
+[
+ {
+  "name": "Altar of the Wretched",
+  "oracle_id": "c551f007-9740-4a2a-8ef5-7be1a7afe14b",
+  "oracle_text": "When this artifact enters, you may sacrifice a nontoken creature. If you do, draw X cards, then mill X cards, where X is that creature's power.\nCraft with one or more creatures {2}{B}{B}\n{2}{B}: Return this card from your graveyard to your hand.",
+  "text": "Mana cost: {2}{B}\nType: Artifact\nWhen this artifact enters, you may sacrifice a nontoken creature. If you do, draw X cards, then mill X cards, where X is that creature's power.\nCraft with one or more creatures {2}{B}{B}\n{2}{B}: Return this card from your graveyard to your hand."
+ },
+ {
+  "name": "Paleontologist's Pick-Axe",
+  "oracle_id": "9b0c6b77-69df-4330-86a7-8dc4666abd38",
+  "oracle_text": "Whenever equipped creature attacks, draw a card, then discard a card.\nEquip {1}\nCraft with one or more creatures {5}",
+  "text": "Mana cost: {2}\nType: Artifact — Equipment\nWhenever equipped creature attacks, draw a card, then discard a card.\nEquip {1}\nCraft with one or more creatures {5}"
+ },
+ {
+  "name": "Saheeli's Lattice",
+  "oracle_id": "ef8df503-6160-4e40-a689-49e97fd56cd0",
+  "oracle_text": "When this artifact enters, you may discard a card. If you do, draw two cards.\nCraft with one or more Dinosaurs {4}{R}",
+  "text": "Mana cost: {1}{R}\nType: Artifact\nWhen this artifact enters, you may discard a card. If you do, draw two cards.\nCraft with one or more Dinosaurs {4}{R}"
+ },
+ {
+  "name": "Throne of the Grim Captain",
+  "oracle_id": "a7c96442-706b-4fd8-9b38-052872dafe58",
+  "oracle_text": "{T}: Mill two cards.\nCraft with a Dinosaur, a Merfolk, a Pirate, and a Vampire {4}",
+  "text": "Mana cost: {2}\nType: Legendary Artifact\n{T}: Mill two cards.\nCraft with a Dinosaur, a Merfolk, a Pirate, and a Vampire {4}"
+ }
+]

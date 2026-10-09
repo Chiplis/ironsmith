@@ -469,6 +469,9 @@ struct BattlefieldFlags {
     battle_protectors: HashMap<ObjectId, PlayerId>,
     /// Creatures that are monstrous (from monstrosity ability).
     monstrous: HashSet<ObjectId>,
+    /// Permanents that have dealt damage since they entered the battlefield
+    /// (Karakyk Guardian's "hasn't dealt damage yet").
+    dealt_damage_since_entered: HashSet<ObjectId>,
     /// Permanents that are suspected.
     suspected: HashSet<ObjectId>,
     /// Permanents that are prepared (CR: the Prepared designation).
@@ -683,6 +686,9 @@ struct AuxiliaryTrackingState {
     combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
     /// Timestamp counter for combat-choice control effects.
     combat_choice_control_timestamp: u64,
+    /// "You choose how each player votes this turn" (Illusion of Choice):
+    /// (controller, turn number), latest last.
+    vote_control_effects: Vec<(PlayerId, u32)>,
     /// Highest pregame draft-note number recorded by a player for a named card.
     draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
     /// Colors selected during draft instructions, grouped by player and the
@@ -1134,6 +1140,10 @@ pub struct EffectStore {
     pub goad_effects: Vec<GoadEffectInstance>,
     /// (permanent identity, required defender, turn). These are requirements, not restrictions.
     pub attack_player_requirements: Vec<(ObjectId, PlayerId, u32)>,
+    /// (permanent identity, its controller at resolution): "attacks during
+    /// its controller's next combat phase if able" (CR 508.1d). Active during
+    /// that player's turn and spent when that turn's combat phase ends.
+    pub next_combat_attack_requirements: Vec<(ObjectId, PlayerId)>,
     /// Latest resolved removal of the goaded designation for each permanent.
     pub goad_cleared_at: HashMap<ObjectId, u64>,
 }
@@ -1180,6 +1190,7 @@ impl Default for EffectStore {
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
             attack_player_requirements: Vec::new(),
+            next_combat_attack_requirements: Vec::new(),
             goad_cleared_at: HashMap::new(),
         }
     }
@@ -1195,6 +1206,10 @@ pub struct ChoiceStore {
     pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
     /// Chosen colors for permanents ("as this enters, choose a color").
     pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+    /// Several chosen colors for one permanent ("as this enters, choose two
+    /// colors", Seal of the Guildpact). Single-color readers keep using
+    /// `chosen_colors`; set readers union both.
+    pub chosen_color_sets: HashMap<ObjectId, crate::color::ColorSet>,
     /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
     pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen land types for permanents ("as this enters, choose a land type").
@@ -1211,6 +1226,9 @@ pub struct ChoiceStore {
     pub chosen_card_types: HashMap<ObjectId, crate::types::CardType>,
     /// Chosen players for permanents ("as this enters, choose a player").
     pub chosen_players: HashMap<ObjectId, PlayerId>,
+    /// Several players chosen by one permanent ("as this enters, choose two
+    /// players", Sower of Discord), in choice order.
+    pub chosen_player_sets: HashMap<ObjectId, Vec<PlayerId>>,
     /// Singular objects chosen by a source and referenced by a later ability.
     /// Snapshots retain stable identity and last-known characteristics when the
     /// chosen object changes zones.
@@ -1855,6 +1873,10 @@ pub struct CantEffectTracker {
     /// Positive attack requirements from resolving rule effects, not abilities.
     pub must_attack: HashMap<ObjectId, usize>,
 
+    /// Requirements to attack a specific player if able (CR 508.1d), from
+    /// resolving rule effects. Each entry counts once per requiring effect.
+    pub must_attack_players: HashMap<ObjectId, Vec<PlayerId>>,
+
     /// Positive block requirements from source-owned rules.
     pub must_block: HashMap<ObjectId, usize>,
 
@@ -1868,6 +1890,18 @@ pub struct CantEffectTracker {
     /// Permanents that can't untap during their controller's untap step.
     /// Example: "It doesn't untap during its controller's untap step"
     pub cant_untap: HashSet<ObjectId>,
+
+    /// Permanents that can't become untapped by any means.
+    /// Example: Blossombind "Enchanted creature can't become untapped".
+    pub cant_become_untapped: HashSet<ObjectId>,
+
+    /// Creatures that can't be tapped to pay a crew cost.
+    /// Example: Revoke Privileges "can't attack, block, or crew Vehicles".
+    pub cant_crew: HashSet<ObjectId>,
+
+    /// Hosts that can't have matching attachments attached to them.
+    /// Example: Anti-Magic Aura "can't be enchanted by other Auras".
+    pub cant_be_attached_by: Vec<CantBeAttachedBy>,
 
     /// Permanents that can't be destroyed (indestructible via effect, not ability).
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
@@ -1930,6 +1964,21 @@ pub struct CantEffectTracker {
     /// without hard-coding one tracker set per variant.
     pub cant_cast_limit_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
 
+    /// Counted cast limits ("can cast no more than two spells each turn",
+    /// Fires of Invention): the matching spell filter and its maximum.
+    pub cant_cast_more_than: HashMap<PlayerId, Vec<(crate::target::ObjectFilter, u32)>>,
+
+    /// Players who draw from the bottom of their library (River Song).
+    pub draws_from_bottom: HashSet<PlayerId>,
+
+    /// Attackers that can't attack particular planeswalkers or battles
+    /// ("can't attack Jaces you control").
+    pub cant_attack_permanents: HashMap<ObjectId, HashSet<ObjectId>>,
+
+    /// Players who can't activate any abilities, mana abilities included,
+    /// from any zone (City of Solitude during other players' turns).
+    pub cant_activate_abilities: HashSet<PlayerId>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -1988,6 +2037,14 @@ pub struct CantEffectTracker {
 
     /// Players who can't become the monarch.
     pub cant_become_monarch: HashSet<PlayerId>,
+
+    /// Players who can't venture into the dungeon more than once each turn
+    /// (Keen-Eared Sentry).
+    pub cant_venture_more_than_once_each_turn: HashSet<PlayerId>,
+
+    /// The most creatures each player may declare as blockers (Mirri,
+    /// Weatherlight Duelist: "can't block with more than one creature").
+    pub max_blocking_creatures_by_player: HashMap<PlayerId, usize>,
 
     /// Permanents that can't be targeted.
     /// Example: Hexproof/Shroud (tracked separately), but also effects like
@@ -2183,6 +2240,24 @@ pub struct PendingRestartBattlefieldEntry {
     pub enters_tapped: bool,
 }
 
+/// One "can't be enchanted/equipped by ..." prohibition on a host.
+#[derive(Debug, Clone)]
+pub struct CantBeAttachedBy {
+    pub host: ObjectId,
+    pub attachments: crate::target::ObjectFilter,
+    pub controller: PlayerId,
+    pub source: Option<ObjectId>,
+}
+
+impl CantBeAttachedBy {
+    pub fn forbids(&self, game: &GameState, host: ObjectId, attachment: &crate::object::Object) -> bool {
+        self.host == host && {
+            let ctx = game.filter_context_for(self.controller, self.source);
+            self.attachments.matches(attachment, &ctx, game)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RestrictionEffectInstance {
     pub restriction: crate::effect::Restriction,
@@ -2198,6 +2273,9 @@ pub struct RestrictionEffectInstance {
     /// Exact affected incarnation whose current controller owns the next step.
     /// None preserves fixed-player native owners such as exert.
     pub untap_step_object: Option<ObjectId>,
+    /// Further untap steps of the same player a next-untap-step restriction
+    /// still covers after the next one ("next two untap steps").
+    pub additional_untap_steps: u32,
     /// Creation timestamp, for rule modifications that must be applied in
     /// timestamp order (maximum hand size, CR 613.11 / 402.2).
     pub timestamp: u64,
@@ -2476,6 +2554,22 @@ impl CantEffectTracker {
                         | (
                             ironsmith_core::LandwalkKind::ArtifactLand,
                             crate::static_abilities::LandwalkKind::ArtifactLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::LegendaryLand,
+                            crate::static_abilities::LandwalkKind::LegendaryLand,
+                        )
+                        | (
+                            ironsmith_core::LandwalkKind::SnowLand,
+                            crate::static_abilities::LandwalkKind::SnowLand,
+                        ) => true,
+                        (
+                            ironsmith_core::LandwalkKind::ChosenType { snow: left },
+                            crate::static_abilities::LandwalkKind::ChosenType { snow: right },
+                        ) => left == right,
+                        (
+                            ironsmith_core::LandwalkKind::SacrificedLandTypes,
+                            crate::static_abilities::LandwalkKind::SacrificedLandTypes,
                         ) => true,
                         _ => false,
                     })
@@ -2605,6 +2699,12 @@ impl CantEffectTracker {
         for (object, count) in other.must_attack {
             *self.must_attack.entry(object).or_default() += count;
         }
+        for (object, players) in other.must_attack_players {
+            self.must_attack_players
+                .entry(object)
+                .or_default()
+                .extend(players);
+        }
         for (object, maximum) in other.maximum_blockers {
             self.maximum_blockers
                 .entry(object)
@@ -2613,6 +2713,9 @@ impl CantEffectTracker {
         }
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
+        self.cant_become_untapped.extend(other.cant_become_untapped);
+        self.cant_crew.extend(other.cant_crew);
+        self.cant_be_attached_by.extend(other.cant_be_attached_by);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
@@ -2653,6 +2756,19 @@ impl CantEffectTracker {
                 self.add_cast_limit_filter(player, filter);
             }
         }
+        self.draws_from_bottom.extend(other.draws_from_bottom);
+        self.cant_activate_abilities.extend(other.cant_activate_abilities);
+        for (creature, permanents) in other.cant_attack_permanents {
+            self.cant_attack_permanents
+                .entry(creature)
+                .or_default()
+                .extend(permanents);
+        }
+        for (player, limits) in other.cant_cast_more_than {
+            for (filter, maximum) in limits {
+                self.add_counted_cast_limit(player, filter, maximum);
+            }
+        }
         self.cant_draw.extend(other.cant_draw);
         self.cant_draw_extra_cards
             .extend(other.cant_draw_extra_cards);
@@ -2679,6 +2795,11 @@ impl CantEffectTracker {
             .extend(other.cant_lose_game_for_zero_life);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
+        self.cant_venture_more_than_once_each_turn
+            .extend(other.cant_venture_more_than_once_each_turn);
+        for (player, maximum) in other.max_blocking_creatures_by_player {
+            self.limit_blocking_creatures(player, maximum);
+        }
         self.cant_be_targeted.extend(other.cant_be_targeted);
         self.cant_be_targeted_from
             .extend(other.cant_be_targeted_from.clone());
@@ -2718,10 +2839,14 @@ impl CantEffectTracker {
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
         self.must_attack.clear();
+        self.must_attack_players.clear();
         self.must_block.clear();
         self.maximum_blockers.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();
+        self.cant_become_untapped.clear();
+        self.cant_crew.clear();
+        self.cant_be_attached_by.clear();
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
@@ -2737,6 +2862,10 @@ impl CantEffectTracker {
         self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_limit_filters.clear();
+        self.cant_cast_more_than.clear();
+        self.draws_from_bottom.clear();
+        self.cant_activate_abilities.clear();
+        self.cant_attack_permanents.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -2754,6 +2883,8 @@ impl CantEffectTracker {
         self.cant_lose_game_for_zero_life.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
+        self.cant_venture_more_than_once_each_turn.clear();
+        self.max_blocking_creatures_by_player.clear();
         self.cant_be_targeted.clear();
         self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
@@ -2837,6 +2968,13 @@ impl CantEffectTracker {
         !self.cant_attack_alone.contains(&creature)
     }
 
+    /// Check if a creature can attack a particular planeswalker or battle.
+    pub fn can_attack_permanent(&self, creature: ObjectId, permanent: ObjectId) -> bool {
+        self.cant_attack_permanents
+            .get(&creature)
+            .is_none_or(|banned| !banned.contains(&permanent))
+    }
+
     /// Check if a creature can block.
     pub fn can_block(&self, creature: ObjectId) -> bool {
         !self.cant_block.contains(&creature)
@@ -2875,7 +3013,7 @@ impl CantEffectTracker {
 
     /// Check if a permanent can untap during untap step.
     pub fn can_untap(&self, permanent: ObjectId) -> bool {
-        !self.cant_untap.contains(&permanent)
+        !self.cant_untap.contains(&permanent) && !self.cant_become_untapped.contains(&permanent)
     }
 
     /// Check if a permanent can untap during the specified player's untap step.
@@ -2885,7 +3023,8 @@ impl CantEffectTracker {
         permanent_controller: PlayerId,
         untap_player: PlayerId,
     ) -> bool {
-        permanent_controller != untap_player || !self.cant_untap.contains(&permanent)
+        !self.cant_become_untapped.contains(&permanent)
+            && (permanent_controller != untap_player || !self.cant_untap.contains(&permanent))
     }
 
     /// Check if damage can be prevented.
@@ -2932,6 +3071,25 @@ impl CantEffectTracker {
         !self.cant_become_monarch.contains(&player)
     }
 
+    /// Record a "can't block with more than N creatures" cap; the most
+    /// restrictive cap applies.
+    pub fn limit_blocking_creatures(&mut self, player: PlayerId, maximum: usize) {
+        self.max_blocking_creatures_by_player
+            .entry(player)
+            .and_modify(|current| *current = (*current).min(maximum))
+            .or_insert(maximum);
+    }
+
+    /// The most creatures this player may block with, if capped.
+    pub fn max_blocking_creatures_for_player(&self, player: PlayerId) -> Option<usize> {
+        self.max_blocking_creatures_by_player.get(&player).copied()
+    }
+
+    /// Whether this player is limited to one venture each turn.
+    pub fn venture_limited_to_once_each_turn(&self, player: PlayerId) -> bool {
+        self.cant_venture_more_than_once_each_turn.contains(&player)
+    }
+
     /// Check if a player can draw cards at all.
     pub fn can_draw(&self, player: PlayerId) -> bool {
         !self.cant_draw.contains(&player)
@@ -2959,6 +3117,12 @@ impl CantEffectTracker {
     /// Check if a player can activate non-mana abilities.
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         !self.cant_activate_non_mana_abilities.contains(&player)
+            && !self.cant_activate_abilities.contains(&player)
+    }
+
+    /// Check if a player can activate abilities at all, mana abilities included.
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        !self.cant_activate_abilities.contains(&player)
     }
 
     /// Check if activated abilities of a permanent can be activated (including mana abilities).
@@ -3041,6 +3205,30 @@ impl CantEffectTracker {
         if !filters.iter().any(|existing| existing == &spell_filter) {
             filters.push(spell_filter);
         }
+    }
+
+    /// Add a counted cast limit ("no more than `maximum` matching spells each
+    /// turn"). The strictest maximum per filter wins.
+    pub fn add_counted_cast_limit(
+        &mut self,
+        player: PlayerId,
+        spell_filter: crate::target::ObjectFilter,
+        maximum: u32,
+    ) {
+        let limits = self.cant_cast_more_than.entry(player).or_default();
+        if let Some(existing) = limits.iter_mut().find(|(filter, _)| filter == &spell_filter) {
+            existing.1 = existing.1.min(maximum);
+        } else {
+            limits.push((spell_filter, maximum));
+        }
+    }
+
+    /// Get active counted cast limits for a player, if any.
+    pub fn counted_cast_limits_for_player(
+        &self,
+        player: PlayerId,
+    ) -> Option<&[(crate::target::ObjectFilter, u32)]> {
+        self.cant_cast_more_than.get(&player).map(Vec::as_slice)
     }
 
     /// Get active cast-limit filters for a player, if any.
@@ -5736,6 +5924,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::TotalPower(filter)
             | crate::effect::Value::TotalToughness(filter) => {
                 Self::object_filter_is_tap_sensitive(filter)
@@ -5852,6 +6041,7 @@ impl GameState {
             crate::effect::Value::Count(filter)
             | crate::effect::Value::CountScaled(filter, _)
             | crate::effect::Value::GreatestCount(filter)
+            | crate::effect::Value::LeastCount(filter)
             | crate::effect::Value::GreatestSharedCreatureTypeCount(filter)
             | crate::effect::Value::GreatestSharedNameCount(filter)
             | crate::effect::Value::TotalPower(filter)
@@ -5965,6 +6155,7 @@ impl GameState {
             || filter.controlled_continuously_since_turn_began.is_some()
             || filter.didnt_enter_battlefield_this_turn
             || filter.entered_battlefield_this_turn
+            || filter.turned_face_up_this_turn
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn
@@ -6053,6 +6244,7 @@ impl GameState {
             | crate::target::PlayerFilter::Attacking
             | crate::target::PlayerFilter::Defending
             | crate::target::PlayerFilter::CastCardTypeThisTurn(_)
+            | crate::target::PlayerFilter::TurnHistory(_)
             | crate::target::PlayerFilter::AttackedBySourceThisTurn => true,
             crate::target::PlayerFilter::WasDealtDamageBySourceThisGame { .. }
             | crate::target::PlayerFilter::LostLifeThisTurn { .. } => true,
@@ -6062,6 +6254,7 @@ impl GameState {
             crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
             | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
             | crate::target::PlayerFilter::OpponentOf(base)
+            | crate::target::PlayerFilter::PlayerToLeftOf(base)
             | crate::target::PlayerFilter::MaxSpeed { base, .. }
             | crate::target::PlayerFilter::Target(base) => {
                 Self::player_filter_is_turn_context_sensitive(base)
@@ -6629,6 +6822,7 @@ impl GameState {
                 expires_end_of_turn,
                 consumed_next_untap: false,
                 untap_step_object: None,
+                additional_untap_steps: 0,
                 timestamp,
             });
     }
@@ -7339,6 +7533,27 @@ impl GameState {
             .filter_map(move |&(id, player, turn)| {
                 (id == creature && turn == self.turn.turn_number).then_some(player)
             })
+            // Rule-effect requirements ("attacks that player this combat if
+            // able") last for their restriction duration.
+            .chain(
+                self.effect_store
+                    .cant_effects
+                    .must_attack_players
+                    .get(&creature)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            )
+    }
+
+    /// CR 508.1d: a pending "attacks during its controller's next combat
+    /// phase if able" requirement applies on that player's turn.
+    pub fn has_next_combat_attack_requirement(&self, creature: ObjectId) -> bool {
+        let active = self.turn.active_player;
+        self.effect_store
+            .next_combat_attack_requirements
+            .iter()
+            .any(|&(id, player)| id == creature && player == active)
     }
 
     pub fn is_goaded(&self, creature: ObjectId) -> bool {
@@ -7374,6 +7589,12 @@ impl GameState {
     /// This is shared by the ordinary end-of-combat step and CR 724.2, whose
     /// procedure skips that step and therefore cannot rely on its event.
     pub fn cleanup_effects_end_of_combat(&mut self) {
+        // The active player's next combat phase is over: spend its pending
+        // attack requirements.
+        let active = self.turn.active_player;
+        self.effect_store
+            .next_combat_attack_requirements
+            .retain(|&(_, player)| player != active);
         self.cleanup_restrictions_end_of_combat();
         self.cleanup_combat_damage_assignment_suppressions_end_of_combat();
         self.effect_store.continuous_effects.cleanup_end_of_combat();
@@ -8098,6 +8319,40 @@ impl GameState {
         self.effect_store.cant_effects.can_become_monarch(player)
     }
 
+    /// The most creatures this player may declare as blockers this combat,
+    /// from "can't block with more than N creatures" (CR 509.1c).
+    pub fn max_blocking_creatures_for_player(&self, player: PlayerId) -> Option<usize> {
+        self.effect_store
+            .cant_effects
+            .max_blocking_creatures_for_player(player)
+    }
+
+    /// Whether this player may venture into the dungeon now: a player limited
+    /// to one venture each turn can't once a venture of theirs completed this
+    /// turn (Keen-Eared Sentry, CR 701.49).
+    pub fn can_venture_into_dungeon(&self, player: PlayerId) -> bool {
+        !self
+            .effect_store
+            .cant_effects
+            .venture_limited_to_once_each_turn(player)
+            || self.player_venture_count_this_turn(player) == 0
+    }
+
+    /// How many times this player ventured into the dungeon this turn.
+    pub fn player_venture_count_this_turn(&self, player: PlayerId) -> usize {
+        self.turn_store
+            .turn_history
+            .event_records
+            .iter()
+            .chain(self.turn_store.turn_history.staged_event_records.iter())
+            .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|event| {
+                event.action == crate::events::KeywordActionKind::VentureIntoDungeon
+                    && event.player == player
+            })
+            .count()
+    }
+
     /// Can the player cast spells?
     pub fn can_cast_spells(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_cast_spells(player)
@@ -8108,6 +8363,13 @@ impl GameState {
         self.effect_store
             .cant_effects
             .can_activate_non_mana_abilities(player)
+    }
+
+    /// Can the player activate abilities at all (mana abilities included)?
+    pub fn can_activate_abilities(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_activate_abilities(player)
     }
 
     /// Can activated abilities of this permanent be activated (including mana abilities)?
@@ -8591,18 +8853,31 @@ impl GameState {
         Some(info)
     }
 
+    /// The card a draw by `player` takes: the top of their library (CR
+    /// 121.1), or the bottom while a draw-from-bottom rule applies to them.
+    pub fn next_draw_card(&self, player: PlayerId) -> Option<ObjectId> {
+        let library = &self.player(player)?.library;
+        if self
+            .effect_store
+            .cant_effects
+            .draws_from_bottom
+            .contains(&player)
+        {
+            library.first().copied()
+        } else {
+            library.last().copied()
+        }
+    }
+
     /// Draws cards for a player, moving them from library to hand.
     /// Uses move_object to properly update the object's zone.
     /// Returns the new ObjectIds of the drawn cards.
     pub fn draw_cards(&mut self, player: PlayerId, count: usize) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            // Get the top card of the library (last element)
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            // The top card of the library (last element), or the bottom card
+            // under a draw-from-bottom rule (River Song).
+            let card_id = self.next_draw_card(player);
 
             if let Some(id) = card_id {
                 // Move from library to hand
@@ -8627,11 +8902,7 @@ impl GameState {
     ) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            let card_id = if let Some(player_obj) = self.player(player) {
-                player_obj.library.last().copied()
-            } else {
-                None
-            };
+            let card_id = self.next_draw_card(player);
 
             let Some(id) = card_id else {
                 self.record_empty_library_draw_attempt(player);

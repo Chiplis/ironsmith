@@ -710,6 +710,17 @@ fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
                 EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::IfResult {
                     predicate: crate::IfResultPredicate::DieValue(_), ..
                 }) => {}
+                // "Roll a d20 and subtract ... . If the result is 0 or less,
+                // discard your hand." (The Deck of Many Things): a condition
+                // that only reads the roll's own (modified) result is part of
+                // the roll's result handling, like a numeric row.
+                EffectAst::Conditionals(crate::model::ast::ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::ValueComparison {
+                        left: crate::effect::Value::PendingPriorEffectMetric(query),
+                        ..
+                    },
+                    ..
+                }) if query.action == Some(ironsmith_core::PriorEffectAction::Rolled) => {}
                 other => return Some(other),
             }
         }
@@ -745,7 +756,13 @@ fn is_trigger_result_followup_line(line: &PreprocessedLine, owner_tokens: &[Owne
         // N+ is also the printed Station striation syntax. A resolving
         // ability may consume a numeric row only when it owns a local roll;
         // unrelated activations and triggers must leave striations alone.
-        return has_local_die_result_owner(owner_tokens);
+        // A row that only fixes X belongs to a roll followed by the
+        // sentences that read X (Wand of Wonder).
+        return has_local_die_result_owner(owner_tokens)
+            || (crate::effect_sentences::die_x_table::die_x_row(&line.tokens).is_some()
+                && crate::effect_sentences::die_x_table::owner_rolls_before_x_sentences(
+                    owner_tokens,
+                ));
     }
     if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
         return true;
@@ -877,6 +894,33 @@ pub(super) fn extend_statement_line_with_result_followups(
     (statement, next_idx)
 }
 
+/// A conditional "..., <action> instead." line restates the action of the
+/// statement's final sentence: both name the same action verb, and that
+/// sentence is not itself already a replacement. Unrelated "instead" lines
+/// (a different action, or a statement that performed no such action) stay
+/// their own lines.
+fn is_restatement_of_statement(line: &[OwnedLexToken], statement: &[OwnedLexToken]) -> bool {
+    let Some(action) =
+        super::super::grammar::effects::followup_shapes::conditional_instead_restatement_action(line)
+    else {
+        return false;
+    };
+    let Some((restated_verb, _)) = crate::effect_sentences::find_verb(action) else {
+        return false;
+    };
+    let Some(last_sentence) = split_lexed_sentences(statement)
+        .into_iter()
+        .rev()
+        .find(|sentence| !sentence.is_empty())
+    else {
+        return false;
+    };
+    if last_sentence.iter().any(|token| token.is_word("instead")) {
+        return false;
+    }
+    crate::effect_sentences::find_verb(last_sentence).is_some_and(|(verb, _)| verb == restated_verb)
+}
+
 pub(super) fn extend_statement_line_with_result_followups_in_place(
     items: &[PreprocessedItem],
     idx: usize,
@@ -888,10 +932,14 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
         if is_station_result_boundary(items, next_idx, line) {
             break;
         }
-        if super::is_nonkeyword_choice_labeled_line(line) {
+        // "Adamant — If ..., it deals 4 damage instead." restates the
+        // preceding spell statement's action; kept apart it has no action of
+        // its own to replace.
+        let conditional_instead = is_restatement_of_statement(&line.tokens, &statement.parse_tokens);
+        if !conditional_instead && super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line, &statement.parse_tokens) {
+        if !conditional_instead && !is_trigger_result_followup_line(line, &statement.parse_tokens) {
             break;
         }
 
@@ -1004,13 +1052,7 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     if let Some(first) = sentences.first_mut()
         && first.first().is_some_and(|token| token.is_word("as"))
         && first.get(1).is_some_and(|token| token.is_word("this"))
-        && let Some(timing_idx) = crate::slice_primitives::select_position(first, |token| {
-            token.is_word("enters") || token.is_word("transforms")
-        })
-        && (first[timing_idx].is_word("enters")
-            || first
-                .get(timing_idx + 1)
-                .is_some_and(|token| token.is_word("into")))
+        && let Some(timing_idx) = as_this_replacement_timing_idx(first)
         && let Some(comma_idx) =
             crate::slice_primitives::select_position(&first[timing_idx + 1..], |token| {
                 token.is_comma()
@@ -1020,7 +1062,67 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     {
         first.drain(..=comma_idx);
     }
+    inline_counted_number_sentence(&mut sentences);
     sentences
+}
+
+/// "Count the number of cards in your library. Your life total becomes that
+/// number." (Invincible Hymn): the counting sentence performs no action; its
+/// quantity is read once, at the following instruction, so "that number" is
+/// the counted quantity itself.
+fn inline_counted_number_sentence(sentences: &mut Vec<Vec<OwnedLexToken>>) {
+    let [count, consumer] = sentences.as_slice() else {
+        return;
+    };
+    let quantity = count
+        .iter()
+        .skip(1)
+        .filter(|token| !token.is_period())
+        .cloned()
+        .collect::<Vec<_>>();
+    if !count.first().is_some_and(|token| token.is_word("count"))
+        || quantity.len() < 4
+        || !quantity[0].is_word("the")
+        || !quantity[1].is_word("number")
+        || !quantity[2].is_word("of")
+    {
+        return;
+    }
+    let anaphors = consumer
+        .windows(2)
+        .enumerate()
+        .filter(|(_, pair)| pair[0].is_word("that") && pair[1].is_word("number"))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    let [anaphor] = anaphors.as_slice() else {
+        return;
+    };
+    let mut rewritten = consumer[..*anaphor].to_vec();
+    rewritten.extend(quantity);
+    rewritten.extend_from_slice(&consumer[anaphor + 2..]);
+    *sentences = vec![rewritten];
+}
+
+/// The index of the timing word of an "As this <subject> enters / transforms
+/// into / is turned face up, <instruction>" replacement intro (CR 614.1c,
+/// CR 702.37 face-up replacements). The facts parser records which event
+/// the program is bound to; the statement body is the instruction after the
+/// comma.
+fn as_this_replacement_timing_idx(first: &[OwnedLexToken]) -> Option<usize> {
+    if let Some(timing_idx) = crate::slice_primitives::select_position(first, |token| {
+        token.is_word("enters") || token.is_word("transforms")
+    }) && (first[timing_idx].is_word("enters")
+        || first
+            .get(timing_idx + 1)
+            .is_some_and(|token| token.is_word("into")))
+    {
+        return Some(timing_idx);
+    }
+    let is_idx = crate::slice_primitives::select_position(first, |token| token.is_word("is"))?;
+    let face_up = first.get(is_idx + 1..is_idx + 4)?;
+    (face_up[0].is_word("turned") && face_up[1].is_word("face") && face_up[2].is_word("up")
+        && first.get(is_idx + 4).is_some_and(OwnedLexToken::is_comma))
+    .then_some(is_idx + 3)
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {

@@ -108,6 +108,9 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             **trigger = rewrite_trigger_model_words(trigger, change)?;
             *condition = rewrite_condition_words(condition, change)?;
         }
+        K::ZoneGated { trigger, zones: _ } => {
+            **trigger = rewrite_trigger_model_words(trigger, change)?;
+        }
         K::ThisAttacksWhileYouControl { filter }
         | K::ThisAttacksPlayerWhoControlsAtLeast { count: _, filter }
         | K::Attacks { filter } | K::AttacksAndIsntBlocked { filter }
@@ -246,7 +249,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *activator = rewrite_player_filter_words(activator, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
-        K::AbilityTriggered { another: _, source_filter, caused_by_source_entering: _ } => {
+        K::AbilityTriggered { source_filter, .. } => {
             rewrite_optional_filter(source_filter, change)?;
         }
         K::IsDealtDamage {
@@ -443,6 +446,11 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     if let Some(native::OrTrigger { triggers }) = trigger.downcast_ref::<native::OrTrigger>() {
         let [left, right] = triggers.as_slice() else { return Err(Error::TriggeredAbility); };
         return Ok(K::Either { left: Box::new(complete_model(left)?), right: Box::new(complete_model(right)?) });
+    }
+    if let Some(native::ZoneGatedTrigger { trigger, zones }) =
+        trigger.downcast_ref::<native::ZoneGatedTrigger>()
+    {
+        return Ok(K::ZoneGated { trigger: Box::new(complete_model(trigger)?), zones: zones.clone() });
     }
     if let Some(native::ConditionQualifiedTrigger {
         trigger, condition, surface, stun_counter_reminder_surface,
@@ -651,6 +659,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     });
     exact!(AbilityTriggeredTrigger, n, K::AbilityTriggered {
         another: n.another, source_filter: n.source_filter.clone(), caused_by_source_entering: n.caused_by_source_entering,
+        caused_by_source_attacking: n.caused_by_source_attacking,
     });
     exact!(IsDealtDamageTrigger, n, K::IsDealtDamage {
         target: n.target.clone(), combat_only: n.combat_only, noncombat_only: n.noncombat_only,

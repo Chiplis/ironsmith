@@ -69,6 +69,8 @@ pub fn parse_token_definition_shape_tokens(
         Some(BuiltinTokenShape::RoyalRole)
     } else if all(&["cursed", "role"]) {
         Some(BuiltinTokenShape::CursedRole)
+    } else if all(&["virtuous", "role"]) {
+        Some(BuiltinTokenShape::VirtuousRole)
     } else if has("blood") && !has("creature") {
         Some(BuiltinTokenShape::Blood)
     } else if has("powerstone") && !has("creature") {
@@ -114,6 +116,7 @@ pub fn parse_token_definition_shape_tokens(
             BuiltinTokenShape::SorcererRole => &["sorcerer", "role"],
             BuiltinTokenShape::RoyalRole => &["royal", "role"],
             BuiltinTokenShape::CursedRole => &["cursed", "role"],
+            BuiltinTokenShape::VirtuousRole => &["virtuous", "role"],
             BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
             | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
         };
@@ -162,6 +165,48 @@ pub fn parse_token_definition_shape_tokens(
             colors: token_colors(&words),
             token_rules: rules::parse_token_rules_surfaces_tokens(&scope.rule_source),
         }));
+    }
+
+    // "a [tapped] colorless land token [named <name>]": a land token whose
+    // land types (if any) give it intrinsic mana abilities (CR 305.6). Every
+    // descriptor word must be accounted for.
+    if has("land")
+        && pt.is_none()
+        && !["creature", "artifact", "enchantment", "planeswalker", "battle"]
+            .iter()
+            .any(|kind| has(kind))
+    {
+        let descriptors = words.iter().take_while(|word| **word != "named");
+        let mut subtypes = Vec::new();
+        let mut complete = true;
+        for word in descriptors {
+            if matches!(*word, "land" | "colorless" | "legendary" | "tapped" | "a" | "an") {
+                continue;
+            }
+            match leaf::parse_leaf_subtype_complete(word).ok().filter(|subtype| {
+                ironsmith_core::SubtypeFamily::Land.all_subtypes().contains(subtype)
+            }) {
+                Some(subtype) => subtypes.push(subtype),
+                None => complete = false,
+            }
+        }
+        if complete {
+            return Some(TokenDefinitionSpec::Land(LandTokenShape {
+                name: scope.name.clone().unwrap_or_else(|| {
+                    if subtypes.is_empty() {
+                        "Land".into()
+                    } else {
+                        subtypes
+                            .iter()
+                            .map(|subtype| format!("{subtype:?}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                }),
+                subtypes,
+                legendary: has("legendary"),
+            }));
+        }
     }
 
     let equipment_subject =

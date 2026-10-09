@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Misty Knight, Hero for Hire",
+    "oracle_id": "5b090ba3-0ecb-4585-b5b7-9d6028c32487",
+    "text": "Mana cost: {1}{R}\nType: Legendary Creature — Human Detective Hero\nPower/Toughness: 3/1\n{2}, {T}, Discard a card: Draw a card for each card you've discarded this turn."
+  },
+  {
+    "name": "Living Laser",
+    "oracle_id": "fd15e02a-dd1e-42ee-8c69-a3e5bcb5ede6",
+    "text": "Mana cost: {4}{R}\nType: Legendary Creature — Elemental Villain\nPower/Toughness: 4/4\nHaste\nWhenever Living Laser attacks, for each card you've discarded this turn, create a token that's a copy of Living Laser, except the token isn't legendary. The tokens enter tapped and attacking. Exile the tokens at the beginning of the next end step."
+  },
+  {
+    "name": "Jiang Yanggu, Alone",
+    "oracle_id": "fa8b3557-b35a-4a68-ab85-cf09683f3bc5",
+    "text": "Mana cost: {4}{R}\nType: Legendary Creature — Human Berserker\nPower/Toughness: 4/4\nMenace\nWhenever a creature you control attacks a player alone, discard a card, then draw a card. Then put a +1/+1 counter on that creature for each card you've discarded this turn."
+  },
+  {
+    "name": "Change of Fortune",
+    "oracle_id": "925feb7e-7876-430b-b95a-92b236a2e409",
+    "text": "Mana cost: {3}{R}\nType: Sorcery\nDiscard your hand, then draw a card for each card you've discarded this turn."
+  },
+  {
+    "name": "Astonishing Spider-Man",
+    "oracle_id": "24059283-edbd-4817-9f35-4be02f07b8f8",
+    "text": "Mana cost: {2}{U/R}{U/R}\nType: Legendary Creature — Spider Human Hero\nPower/Toughness: 4/4\nReach\nWhenever Astonishing Spider-Man attacks, you may discard your hand. If you do, draw a card for each card you've discarded this turn."
+  },
+  {
+    "name": "Green Goblin, Revenant",
+    "oracle_id": "67175889-02f9-4ad8-a9ab-11db44328b67",
+    "text": "Mana cost: {3}{B}{R}\nType: Legendary Creature — Goblin Human Villain\nPower/Toughness: 3/3\nFlying, deathtouch\nWhenever Green Goblin attacks, discard a card. Then draw a card for each card you've discarded this turn."
+  }
+]

@@ -13,6 +13,9 @@ pub struct RollDiceChooseResultEffect {
     pub count: u32,
     pub sides: u32,
     pub die_text: Option<String>,
+    /// "... and ignore the lower roll": the result is the highest roll,
+    /// with no choice (Berserker's Frenzy).
+    pub ignore_lower: bool,
 }
 
 impl RollDiceChooseResultEffect {
@@ -22,6 +25,7 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text: None,
+            ignore_lower: false,
         }
     }
 
@@ -36,7 +40,14 @@ impl RollDiceChooseResultEffect {
             count,
             sides,
             die_text,
+            ignore_lower: false,
         }
+    }
+
+    /// Keep the highest roll instead of choosing one.
+    pub fn with_ignore_lower(mut self, ignore_lower: bool) -> Self {
+        self.ignore_lower = ignore_lower;
+        self
     }
 }
 
@@ -81,6 +92,14 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     .enumerate()
                     .map(|(idx, roll)| SelectableOption::new(idx, roll.result.to_string()))
                     .collect::<Vec<_>>();
+                // "Roll two d20 and ignore the lower roll": the higher roll is
+                // the result; nothing is chosen (CR 706.1).
+                let highest_idx = rolls
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, roll)| roll.result)
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0);
                 let choice_ctx = SelectOptionsContext::new(
                     player,
                     Some(ctx.source),
@@ -89,17 +108,21 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     1,
                     1,
                 );
-                let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let chosen_idx = selected
-                    .into_iter()
-                    .next()
-                    .filter(|idx| *idx < rolls.len())
-                    .unwrap_or(0);
+                let chosen_idx = if self.ignore_lower {
+                    highest_idx
+                } else {
+                    let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    selected
+                        .into_iter()
+                        .next()
+                        .filter(|idx| *idx < rolls.len())
+                        .unwrap_or(0)
+                };
                 let chosen = rolls[chosen_idx];
                 let other = rolls
                     .iter()

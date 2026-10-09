@@ -198,12 +198,11 @@ pub fn parse_subject_cant_be_blocked_line(
     if subject_facts.has_rejected_clause_word {
         return Ok(None);
     }
-    if subject_facts.mentions_power_or_toughness {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported power-or-toughness cant-be-blocked subject (clause: '{}')",
-            crate::lexer::token_word_refs(tokens).join(" ")
-        )));
-    }
+    // "Creatures you control with power or toughness 1 or less can't be
+    // blocked." (Tetsuko Umezawa): the object-filter grammar lowers the
+    // either-characteristic comparison to a power/toughness disjunction, and
+    // the runtime evaluates P/T-reading filters on calculated characteristics,
+    // so the restriction follows the creature's current P/T (CR 509.1b).
 
     let subject = first_spell_each_turn_subject(subject_tokens)
         .map(Ok)
@@ -1728,36 +1727,37 @@ pub fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
-    let grants_conspire = actions
+    // Conspire and demonstrate granted to spells are typed spell-keyword
+    // grants the engine discovers while the spell is cast (CR 601.2b).
+    if actions
         .iter()
-        .filter(|action| matches!(action, KeywordAction::Conspire))
-        .count();
-    if grants_conspire > 0 {
+        .all(|action| matches!(action, KeywordAction::Conspire | KeywordAction::Demonstrate))
+    {
+        let AnthemSubjectAst::Filter(filter) = &subject else {
+            return Ok(None);
+        };
+        let display = crate::lexer::render_token_slice(tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
         let mut compiled = Vec::new();
-        for _ in 0..grants_conspire {
-            match &subject {
-                AnthemSubjectAst::Source => {
-                    let ability =
-                        StaticAbilityAst::Static(StaticAbility::keyword_marker("Conspire"));
-                    if let Some(condition) = &condition {
-                        compiled.push(StaticAbilityAst::ConditionalStaticAbility {
-                            ability: Box::new(ability),
-                            condition: condition.clone(),
-                        });
-                    } else {
-                        compiled.push(ability);
-                    }
-                }
-                AnthemSubjectAst::Filter(filter) => {
-                    compiled.push(StaticAbilityAst::GrantStaticAbility {
-                        filter: filter.clone(),
-                        ability: Box::new(StaticAbilityAst::Static(StaticAbility::keyword_marker(
-                            "Conspire",
-                        ))),
-                        condition: condition.clone(),
-                    });
-                }
-            }
+        for action in &actions {
+            let Some(ability) = crate::keyword_static::granted_intrinsic_spell_keyword_ability(
+                filter.clone(),
+                action,
+                &subject_tokens,
+                display.clone(),
+            ) else {
+                return Ok(None);
+            };
+            let ability = StaticAbilityAst::Static(ability);
+            compiled.push(match &condition {
+                Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(ability),
+                    condition: condition.clone(),
+                },
+                None => ability,
+            });
         }
         return Ok(Some(
             compiled
@@ -1969,6 +1969,81 @@ pub fn parse_each_creature_cant_be_blocked_by_more_than_line(
     Ok(Some(StaticAbilityAst::WithSetQuantifierSurface {
         ability: Box::new(ability),
         surface: ironsmith_core::SetQuantifierSurface::Each,
+    }))
+}
+
+/// "Boars you control can't be blocked by more than one creature"
+/// (Rocksteady, Crash Courser) and "Each creature you control with menace
+/// can't be blocked except by three or more creatures" (Sonorous
+/// Howlbonder): the source-only blocker-count restrictions (CR 509.1b/c)
+/// granted to every object in an authored set.
+pub fn parse_filtered_blocker_count_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let Some(cant_idx) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..cant_idx]);
+    let subject_words = crate::lexer::token_word_refs(&subject_tokens);
+    let Some(first) = subject_words.first() else {
+        return Ok(None);
+    };
+    // The source itself keeps its own static production; leading conditions
+    // and durations have their own owners.
+    if matches!(
+        *first,
+        "this" | "it" | "as" | "if" | "until" | "enchanted" | "equipped" | "during"
+    ) || subject_words.iter().any(|word| matches!(*word, "long" | "turn" | "has" | "have")) {
+        return Ok(None);
+    }
+    let Some(fact) =
+        crate::grammar::activation_costs::cant_shapes::parse_blocking_cant_fact_tokens(
+            &tokens[cant_idx..],
+        )
+    else {
+        return Ok(None);
+    };
+    let granted = match fact {
+        crate::grammar::activation_costs::cant_shapes::BlockingCantFact::MaximumBlockers {
+            maximum_blockers,
+            ..
+        } => {
+            // "each creature ..." already has its dedicated production.
+            if matches!(parse_each_creature_cant_be_blocked_by_more_than_line(&tokens), Ok(Some(_))) {
+                return Ok(None);
+            }
+            StaticAbility::cant_be_blocked_by_more_than(maximum_blockers)
+        }
+        crate::grammar::activation_costs::cant_shapes::BlockingCantFact::MinimumBlockers {
+            minimum_blockers,
+            ..
+        } => StaticAbility::cant_be_blocked_except_by_n_or_more(minimum_blockers),
+        _ => return Ok(None),
+    };
+    let each = *first == "each";
+    let filter_tokens = if each { &subject_tokens[1..] } else { &subject_tokens[..] };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Ok(filter) = parse_object_filter(filter_tokens, false) else {
+        return Ok(None);
+    };
+    let ability = StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability: Box::new(StaticAbilityAst::Static(granted)),
+        condition: None,
+    };
+    Ok(Some(if each {
+        StaticAbilityAst::WithSetQuantifierSurface {
+            ability: Box::new(ability),
+            surface: ironsmith_core::SetQuantifierSurface::Each,
+        }
+    } else {
+        ability
     }))
 }
 
@@ -2709,7 +2784,11 @@ pub fn parse_source_counter_threshold_keyword_and_subtype_line(
     };
 
     let subject_tokens = trim_commas(&tokens[subject_start..have_token_idx]);
-    if subject_tokens.is_empty() {
+    if subject_tokens.is_empty()
+        || subject_tokens.iter().any(|token| token.is_any_word(&["get", "gets", "is", "are"]))
+    {
+        // A coordinated pump or color change before "has" belongs to its
+        // complete compound reader, rather than to this grant-only subject.
         return Ok(None);
     }
     let subject = parse_anthem_subject(&subject_tokens)?;
@@ -2823,7 +2902,18 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     // reference instead of falling through to the tolerant creature filter.
     let tokens =
         crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    // "Creatures you control also get +1/+0 ...": the additive adverb between
+    // the subject and its verb is cumulative wording only. Each static
+    // ability applies independently (CR 613.4c), so it never narrows or
+    // widens the affected set.
+    let tokens = match tokens.split_last() {
+        Some((last, head)) if last.is_word("also") && !head.is_empty() => head,
+        _ => tokens,
+    };
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
+    if subject_words.as_slice() == ["also"] {
+        return Err(CardTextError::ParseError("anthem adverb has no subject".to_string()));
+    }
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
     }
@@ -4103,6 +4193,14 @@ pub fn parse_anthem_clause(
                                     | Value::DistinctManaValues(_)
                                     | Value::DistinctPowers(_)
                                     | Value::CountPlayersBelowHalfStartingLifeTotal(_)
+                            )
+                            // "for each opponent you have" (Blazing Sunsteel):
+                            // a live player count, not an object filter.
+                            || matches!(
+                                value.unhinted(),
+                                Value::CountPlayers(
+                                    PlayerFilter::Opponent | PlayerFilter::Any | PlayerFilter::You
+                                )
                             )
                         {
                             value_scale = Some(

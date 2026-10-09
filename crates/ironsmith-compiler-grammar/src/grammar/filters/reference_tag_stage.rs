@@ -129,6 +129,8 @@ const EXCLUSION_RELATION_IGNORED_PREFIXES: &[&[&str]] =
 const REST_REVEALED_OBJECT_PHRASES: &[&[&str]] = &[
     &["rest"],
     &["rest", "of", "revealed", "cards"],
+    &["rest", "of", "cards"],
+    &["rest", "of", "those", "cards"],
     &["remaining", "revealed", "cards"],
 ];
 const TAGGED_COUNTER_STATE_DISJUNCTION_PHRASES: &[&[&str]] = &[
@@ -1116,6 +1118,21 @@ fn has_non_mana_activated_ability_phrase(words: &[&str]) -> bool {
         ],
     ];
     parse_phrase_choice_anywhere(words, NON_MANA_ACTIVATED_ABILITY_PHRASES).is_some()
+}
+
+/// "(nonlands) with activated abilities" / "(a permanent) with an activated
+/// ability" as the last qualifier: any activated ability, mana abilities
+/// included. A trailing "that ..." restriction belongs to the narrower
+/// phrases above.
+fn has_any_activated_ability_phrase(words: &[&str]) -> bool {
+    const ANY_ACTIVATED_ABILITY_PHRASES: &[&[&str]] = &[
+        &["with", "activated", "abilities"],
+        &["with", "activated", "ability"],
+    ];
+    ANY_ACTIVATED_ABILITY_PHRASES.iter().any(|phrase| {
+        words.len() >= phrase.len() && words[words.len() - phrase.len()..] == **phrase
+    }) && !has_tap_activated_ability_phrase(words)
+        && !has_non_mana_activated_ability_phrase(words)
 }
 
 fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &[OwnedLexToken]) {

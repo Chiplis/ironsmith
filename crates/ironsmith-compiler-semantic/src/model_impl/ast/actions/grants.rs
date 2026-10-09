@@ -11,6 +11,11 @@ pub enum GrantActionAst {
         allow_colorless: bool,
         allow_artifacts: bool,
         choose_card_type: bool,
+        /// "you and each permanent you control gain protection from the
+        /// color of your choice" (Faith's Shield): a quantified object set
+        /// that gains the same chosen protection alongside `target`. One
+        /// choice covers both recipients.
+        also_each: Option<ObjectFilter>,
     },
     GrantPlayTaggedUntilEndOfTurn {
         tag: TagRef,
@@ -62,6 +67,9 @@ pub enum GrantActionAst {
         /// Whether lands played through this exact permission enter tapped.
         lands_enter_tapped: bool,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+        /// Restrict the persistent permission to turns in which its player
+        /// attacked with enough matching creatures.
+        during_turns_attacked_with: Option<ironsmith_core::effect::AttackedWithTurnCondition>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagRef,

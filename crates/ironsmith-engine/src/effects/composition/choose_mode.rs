@@ -97,6 +97,7 @@ impl EffectExecutor for ChooseModeEffect {
             mode_additional_mana_costs: self.mode_additional_mana_costs.clone(),
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
             conditional_mode_range: self.conditional_mode_range.clone(),
+            cast_chooser: self.cast_chooser.clone(),
         })
     }
 

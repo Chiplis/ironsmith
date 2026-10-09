@@ -827,6 +827,18 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::LandsPlayed(player) => {
+            let player = describe_history_player_subject(player);
+            if is_present {
+                Some(format!("{player} played a land this turn"))
+            } else if is_absent {
+                Some(format!("{player} didn't play a land this turn"))
+            } else {
+                Some(format!(
+                    "{player} played {count_text} or more lands this turn"
+                ))
+            }
+        }
         ironsmith_core::TurnHistoryCount::CardsDrawn(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -1325,7 +1337,7 @@ fn describe_attachment_state_disjunction(condition: &Condition) -> Option<String
             Condition::TaggedObjectMatchedLastKnown(tag, filter) => (true, tag, filter),
             _ => return None,
         };
-        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+        if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
             return None;
         }
         let [constraint] = filter.tagged_constraints.as_slice() else {
@@ -1376,14 +1388,14 @@ pub(in crate::compiled_text) fn attachment_state_disjunction_reference_tag(
             | Condition::TaggedObjectMatchedLastKnown(tag, filter) => (tag, filter),
             _ => return None,
         };
-        if !matches!(tag.as_str(), "enchanted" | "equipped") {
+        if !matches!(tag.as_str(), "enchanted" | "equipped" | "fortified") {
             return None;
         }
         let [constraint] = filter.tagged_constraints.as_slice() else {
             return None;
         };
         if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
         {
             return None;
         }
@@ -1474,6 +1486,9 @@ pub(crate) fn describe_coin_result_comparison_for(
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if let Some(text) = describe_each_quality_control_condition(condition) {
+        return text;
+    }
     if let Condition::CountComparison {
         count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
@@ -2155,6 +2170,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let object_text = with_indefinite_article(&filter.description());
             format!("you have {object_text} in hand")
         }
+        Condition::TopCardOfYourLibraryMatches(filter) => {
+            let object_text = with_indefinite_article(&filter.description());
+            format!("the top card of your library is {object_text}")
+        }
         Condition::YourTurn => "it's your turn".to_string(),
         Condition::CurrentTurnIsExtra => "it's an extra turn".to_string(),
         Condition::YourFirstTurnsOfTheGameOrFewer(3) => {
@@ -2361,6 +2380,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
         Condition::SourceControllersCombatPhase => "it's your combat phase".to_string(),
         Condition::SourceControllersEndStep => "during your end step".to_string(),
+        Condition::OpponentsEndStep => "during each opponent's end step".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
@@ -3204,7 +3224,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     format!("{object} was {action} this way")
                 };
             }
-            if is_implicit_reference_tag(tag.as_str()) {
+            // A condition over the declared choice set ("Choose target creature
+            // you control and target creature an opponent controls. Put a
+            // counter on the creature you control if it has power 4 or
+            // greater") reads as a pronoun for the consequence's object.
+            if is_implicit_reference_tag(tag.as_str()) || tag.as_str() == "__chosen_objects__" {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
                     return "that enchantment is an Aura".to_string();
@@ -3644,6 +3668,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     object_text,
                     destination
                 )
+            } else if filter.zone == Some(Zone::Hand) {
+                // "If you put an artifact card into your hand this way"
+                // (Chrome Courier, Town Greeter): the remembered card set is
+                // checked for a member that now is in that player's hand.
+                let object = describe_nonbattlefield_card_filter_without_zone(filter, Zone::Hand);
+                format!(
+                    "{} put {} into {} hand this way",
+                    describe_player_filter(player),
+                    with_indefinite_article(strip_leading_article(&object)),
+                    describe_possessive_player_filter(player),
+                )
             } else {
                 format!(
                     "{} had the tagged object '{}' matching {}",
@@ -3797,7 +3832,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 )
             }
         }
-        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+        Condition::SourceInGraveyardWithCardsAbove {
+            filter,
+            directly_above: true,
+            ..
+        } => {
+            let card = filter.description();
+            format!(
+                "this card is in your graveyard with {} directly above it",
+                with_indefinite_article(&card)
+            )
+        }
+        Condition::SourceInGraveyardWithCardsAbove { filter, count, .. } => {
             let count = small_number_word(*count).unwrap_or_else(|| count.to_string());
             let cards = crate::compiled_text::pluralize_noun_phrase_for_trigger(
                 &filter.description(),
@@ -3827,6 +3873,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::DuringYourTurn => "during your turn",
                 crate::ability::ActivationTiming::DuringOpponentsTurn => "during opponents' turns",
                 crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => "by the controller of the enchanted creature",
+                crate::ability::ActivationTiming::AnyTimeByOpponents => "by an opponent",
+                crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
+                    "by an opponent at sorcery speed"
+                }
+                crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
+                    "by the attacked player during the declare attackers step"
+                }
                 crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                     "during the activating player's turn before the end step"
                 }
@@ -3848,10 +3901,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::MaxActivationsPerTurn(limit) => {
             format!("this ability has been activated fewer than {limit} times this turn")
         }
+        Condition::MaxActivationsPerTurnCount(_) => {
+            "this ability has been activated fewer times this turn than the counted number"
+                .to_string()
+        }
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
+        Condition::SourceHasDealtDamageSinceEntered => "this permanent has dealt damage".to_string(),
         Condition::SourceIsHarnessed => "this permanent is harnessed".to_string(),
+        Condition::SourceIsPrepared => "this creature is prepared".to_string(),
         Condition::SourceIsRenowned => "this creature is renowned".to_string(),
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()
@@ -7250,4 +7309,92 @@ fn describe_damage_presence_comparison(
         }
         _ => None,
     }
+}
+
+/// "you control a land of each basic land type and a creature of each color"
+/// (Coalition Victory): the lowered condition is a conjunction of five
+/// `PlayerControls` leaves per quality, one per basic land type (Plains to
+/// Forest) or per color (white to green), each over the same base filter.
+fn describe_each_quality_control_condition(condition: &Condition) -> Option<String> {
+    fn flatten<'a>(condition: &'a Condition, out: &mut Vec<&'a Condition>) {
+        if let Condition::And(left, right) = condition {
+            flatten(left, out);
+            flatten(right, out);
+        } else {
+            out.push(condition);
+        }
+    }
+    const BASIC_LAND_TYPES: [Subtype; 5] = [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ];
+    const COLORS: [crate::color::ColorSet; 5] = [
+        crate::color::ColorSet::WHITE,
+        crate::color::ColorSet::BLUE,
+        crate::color::ColorSet::BLACK,
+        crate::color::ColorSet::RED,
+        crate::color::ColorSet::GREEN,
+    ];
+    if !matches!(condition, Condition::And(_, _)) {
+        return None;
+    }
+    let mut leaves = Vec::new();
+    flatten(condition, &mut leaves);
+    if leaves.len() % 5 != 0 {
+        return None;
+    }
+    let mut player = None;
+    let mut items = Vec::new();
+    for group in leaves.chunks(5) {
+        let filters = group
+            .iter()
+            .map(|leaf| match leaf {
+                Condition::PlayerControls { player, filter } => Some((player, filter)),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let (group_player, first) = filters[0];
+        if player.is_some_and(|existing| existing != group_player) {
+            return None;
+        }
+        player = Some(group_player);
+        let by_type = first.subtypes.as_slice() == [Subtype::Plains];
+        let by_color = first.colors == Some(crate::color::ColorSet::WHITE);
+        let mut base = first.clone();
+        if by_type {
+            base.subtypes.clear();
+        } else if by_color {
+            base.colors = None;
+        } else {
+            return None;
+        }
+        for (index, (leaf_player, filter)) in filters.iter().enumerate() {
+            let expected = if by_type {
+                base.clone().with_subtype(BASIC_LAND_TYPES[index])
+            } else {
+                base.clone().with_colors(COLORS[index])
+            };
+            if *leaf_player != group_player || **filter != expected {
+                return None;
+            }
+        }
+        let mut noun = base.clone();
+        noun.controller = None;
+        let noun = noun.description();
+        let quality = if by_type { "basic land type" } else { "color" };
+        items.push(format!(
+            "{} of each {quality}",
+            with_indefinite_article(strip_leading_article(&noun))
+        ));
+    }
+    let player = player?;
+    Some(format!(
+        "{} {} {}",
+        describe_player_filter(player),
+        if matches!(player, PlayerFilter::You) { "control" } else { "controls" },
+        join_with_and(&items)
+    ))
 }

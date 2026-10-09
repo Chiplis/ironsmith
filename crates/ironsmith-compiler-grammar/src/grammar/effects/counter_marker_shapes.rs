@@ -53,6 +53,9 @@ pub struct SacrificeAtEndOfCombatShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ForEachCounterKindShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
+    /// "give that permanent or player another counter of that kind": only
+    /// the put half, with no put-or-remove choice.
+    pub put_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -464,6 +467,22 @@ fn put_or_remove_counter_kind_tail<'a>(input: &mut LexStream<'a>) -> WResult<()>
     .parse_next(input)
 }
 
+/// "give that permanent or player another counter of that kind": the
+/// recipient is the counter holder named by the leading clause.
+fn give_another_counter_of_that_kind_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::kw("give").parse_next(input)?;
+    alt((
+        primitives::phrase(&["that", "permanent", "or", "player"]),
+        primitives::phrase(&["that", "creature", "or", "player"]),
+        primitives::phrase(&["that", "permanent"]),
+        primitives::phrase(&["that", "creature"]),
+        primitives::phrase(&["that", "player"]),
+        primitives::kw("it").void(),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["another", "counter", "of", "that", "kind"]).parse_next(input)
+}
+
 fn parse_for_each_counter_kind_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ForEachCounterKindShape<'a>> {
@@ -471,15 +490,28 @@ fn parse_for_each_counter_kind_lexed<'a>(
     let target_tokens = repeat_till(
         1..,
         any.void(),
-        peek((opt(primitives::comma()), put_or_remove_counter_kind_tail)),
+        peek((
+            opt(primitives::comma()),
+            alt((
+                put_or_remove_counter_kind_tail,
+                give_another_counter_of_that_kind_tail,
+            )),
+        )),
     )
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    put_or_remove_counter_kind_tail.parse_next(input)?;
+    let put_only = alt((
+        put_or_remove_counter_kind_tail.value(false),
+        give_another_counter_of_that_kind_tail.value(true),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(ForEachCounterKindShape { target_tokens })
+    Ok(ForEachCounterKindShape {
+        target_tokens,
+        put_only,
+    })
 }
 
 pub fn parse_for_each_counter_kind_tokens(

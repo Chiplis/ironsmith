@@ -74,6 +74,7 @@ pub(crate) use action_observation::{
 pub(crate) mod outcome_recording;
 pub mod permanents;
 pub mod player;
+pub(crate) mod player_reference_binding;
 pub mod replacement;
 pub mod restrictions;
 mod runtime;
@@ -132,15 +133,17 @@ pub use combat::{
     AssignNoCombatDamageEffect, BecomeBlockedEffect, ClearGoadEffect, CombatDamagePreventionTarget,
     EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
     FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
+    MustAttackPlayerThisTurnEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
-    SetBasePowerToughnessEffect,
+    ReselectAttackTargetEffect, SetBasePowerToughnessEffect,
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
     BolsterEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, CollectEvidenceEffect, CollectManaPaymentsEffect,
+    BindXValueEffect,
     ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
     EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
@@ -156,6 +159,8 @@ pub use composition::{
     TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    ChoosePlayerOptionEffect, ControlVotesThisTurnEffect, PlayerOptionChooser,
+    player_option_choice_tag,
 };
 pub use continuous::{
     ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification,
@@ -169,6 +174,7 @@ pub(crate) use counters::remove_any_counters_among_valid_targets_with_tags;
 pub use counters::{
     DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect,
     MoveCountersEffect, MoveOneCounterEffect, ProliferateEffect, PutCounterOfChosenKindEffect,
+    PutCounterOfKindChosenFromEffect,
     PutCountersEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
 };
@@ -204,16 +210,19 @@ pub use permanents::{
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
-    RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SneakCostEffect,
+    RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SetDayNightEffect,
+    DayNightDesignation, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
     TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
     UnlockRoomDoorEffect, UntapEffect,
 };
+pub use player::{KeepGreatestManaValuePlayersEffect, TagPlayersEffect};
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChoosePlayerEffect,
+    ChooseFriendsOrFoesEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
     DrawTheGameEffect, EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
@@ -221,12 +230,13 @@ pub use player::{
     ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
-    IncreaseSpeedEffect, LoseTheGameEffect, MayCastForMadnessCostEffect,
+    IncreaseSpeedEffect, LoseTheGameEffect, GrantLoyaltyActivationAllowanceEffect,
+    LoyaltyActivationAllowance, LoyaltyActivationScope, MayCastForMadnessCostEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
     RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RevealChosenSubtypeEffect,
     ReverseTurnOrderEffect, RingTemptsYouEffect, RippleEffect, RollDiceChooseResultEffect,
-    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
+    RollDieEffect, RollToVisitAttractionsEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
     SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipScheduledEffect,
     SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect,
     WinTheGameEffect,

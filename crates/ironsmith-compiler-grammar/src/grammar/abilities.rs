@@ -1300,7 +1300,7 @@ fn parse_this_creature_cant_attack_its_owner_line<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     (
-        primitives::phrase(&["this", "creature"]),
+        winnow::combinator::alt((primitives::phrase(&["this", "creature"]), primitives::phrase(&["this"]))),
         winnow::combinator::alt((primitives::kw("cant"), primitives::kw("can't"))),
         primitives::phrase(&["attack", "its", "owner"]),
         primitives::sentence_end(),
@@ -1353,7 +1353,37 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
         primitives::kw("have"),
         primitives::kw("this"),
         opt(primitives::kw("creature")),
-        primitives::phrase(&["assign", "its", "combat", "damage", "as", "though", "it"]),
+        primitives::kw("assign"),
+        // A named character card refers to itself with a personal pronoun
+        // ("You may have Wolverine assign his combat damage as though he
+        // weren't blocked."); the pronoun never changes the referent.
+        winnow::combinator::alt((
+            primitives::kw("its"),
+            primitives::kw("his"),
+            primitives::kw("her"),
+            primitives::kw("their"),
+        )),
+        primitives::phrase(&["combat", "damage", "as", "though"]),
+        winnow::combinator::alt((
+            primitives::kw("it"),
+            primitives::kw("he"),
+            primitives::kw("she"),
+            primitives::kw("they"),
+        )),
+        winnow::combinator::alt((
+            primitives::kw("werent"),
+            primitives::kw("weren't"),
+            primitives::kw("wasnt"),
+            primitives::kw("wasn't"),
+        )),
+        (primitives::kw("blocked"), primitives::sentence_end()),
+    )
+        .void()
+        .parse_next(input)
+}
+
+fn parse_werent_blocked_tail<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
+    (
         winnow::combinator::alt((
             primitives::kw("werent"),
             primitives::kw("weren't"),
@@ -1365,6 +1395,57 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
     )
         .void()
         .parse_next(input)
+}
+
+/// "for each creature you control, you may have that creature assign its
+/// combat damage as though it weren't blocked" (Siege Behemoth): each of your
+/// creatures has the unblocked-assignment permission (CR 510.1c).
+fn parse_each_controlled_may_assign_damage_as_unblocked<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&["for", "each", "creature", "you", "control"]),
+        opt(primitives::comma()),
+        primitives::phrase(&[
+            "you", "may", "have", "that", "creature", "assign", "its", "combat", "damage", "as",
+            "though", "it",
+        ]),
+        parse_werent_blocked_tail,
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_each_controlled_may_assign_damage_as_unblocked_lexed(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, parse_each_controlled_may_assign_damage_as_unblocked)
+        .is_some()
+}
+
+/// "You may have creatures you control assign their combat damage this turn
+/// as though they weren't blocked." (Predatory Focus): a resolving grant of
+/// the permission to the creatures you control (CR 510.1c, 611.2c).
+fn parse_controlled_creatures_may_assign_this_turn_as_unblocked<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&[
+            "you", "may", "have", "creatures", "you", "control", "assign", "their", "combat",
+            "damage", "this", "turn", "as", "though", "they",
+        ]),
+        parse_werent_blocked_tail,
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_controlled_creatures_may_assign_this_turn_as_unblocked_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        parse_controlled_creatures_may_assign_this_turn_as_unblocked,
+    )
+    .is_some()
 }
 
 pub fn is_may_assign_damage_as_unblocked_line_lexed(tokens: &[OwnedLexToken]) -> bool {

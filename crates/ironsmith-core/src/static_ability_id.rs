@@ -188,6 +188,7 @@ pub enum StaticAbilityId {
     PlayersCantCycle,
     PlayersSkipUpkeep,
     PlayerSkipsDrawStep,
+    PlayersSkipUntapStep,
     PlayersSkipExtraTurns,
     DamageNotRemovedDuringCleanup,
     BlackManaMayBePaidWithLife,
@@ -397,6 +398,30 @@ pub enum StaticAbilityId {
     FirstCoinBatchHeadsWin,
     /// Standalone paired private inspection; appended for wire compatibility.
     LookAtSourceExiledCards,
+    /// Generic "<event> instead" replacement; appended for wire compatibility.
+    EventReplacementWithEffects,
+    /// "You may pay <mana> rather than pay the echo cost for permanents you
+    /// control"; appended for wire compatibility.
+    EchoCostAlternative,
+    /// A keyword granted to matching spells as they are cast (CR 601.2b);
+    /// appended for wire compatibility.
+    GrantSpellKeyword,
+    /// Filtered permission to cast from a zone with a keyword's alternative
+    /// cost; appended for wire compatibility.
+    AlternativeCastFromZoneForFilter,
+    /// "No more than N creatures can attack this planeswalker each combat";
+    /// appended for wire compatibility.
+    MaxCreaturesCanAttackSourceEachCombat,
+    /// "can block as though it were untapped"; appended for wire compatibility.
+    CanBlockAsThoughUntapped,
+    /// Blocker-side "can block creatures with landwalk abilities as though
+    /// they didn't have those abilities"; appended for wire compatibility.
+    CanBlockAsThoughNoLandwalk,
+    /// "If <creature> attacks, <creatures> attack if able"; appended for wire
+    /// compatibility.
+    ConditionalAttackRequirement,
+    /// Generic amount-modifying replacement; appended for wire compatibility.
+    EventAmountReplacement,
 }
 
 impl StaticAbilityId {
@@ -480,6 +505,9 @@ impl StaticAbilityId {
             | CanBlockAdditionalForEach
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
+            | MaxCreaturesCanAttackSourceEachCombat
+            | CanBlockAsThoughUntapped
+            | CanBlockAsThoughNoLandwalk
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater
@@ -495,6 +523,7 @@ impl StaticAbilityId {
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
             | GoadMatching
+            | ConditionalAttackRequirement
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
@@ -583,6 +612,7 @@ impl StaticAbilityId {
             | PlayersCantCycle
             | PlayersSkipUpkeep
             | PlayerSkipsDrawStep
+            | PlayersSkipUntapStep
             | PlayersSkipExtraTurns
             | DamageNotRemovedDuringCleanup
             | BlackManaMayBePaidWithLife
@@ -715,6 +745,9 @@ impl StaticAbilityId {
             | MultiplyTokenCreationReplacement
             | RedirectDrawReplacement
             | DrawReplacementWithEffects
+            | EventReplacementWithEffects
+            | EchoCostAlternative
+            | EventAmountReplacement
             | CreateOneOfEachTokenReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
@@ -764,7 +797,9 @@ impl StaticAbilityId {
             | Toxic
             | TrampleOverPlaneswalkers
             | ForetellSpecialActionModifier
-            | NativeAlternativeCastFromZone => {}
+            | NativeAlternativeCastFromZone
+            | GrantSpellKeyword
+            | AlternativeCastFromZoneForFilter => {}
         }
     }
 
@@ -907,6 +942,7 @@ impl StaticAbilityId {
                 | CanAttackAsThoughHaste
                 | ActivateAbilitiesAsThoughHaste
                 | MustAttack
+                | ConditionalAttackRequirement
                 | MustBlock
                 | CantAttack
                 | CantAttackItsOwner

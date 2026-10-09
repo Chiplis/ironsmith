@@ -269,6 +269,14 @@ pub fn parse_roll(
             ));
         }
     };
+    // "roll to visit your Attractions" (CR 701.52): a keyword action, not a
+    // die named by the clause.
+    if matches!(
+        crate::lexer::token_word_refs(tokens).as_slice(),
+        ["to", "visit", "your" | "their", "attractions"]
+    ) {
+        return Ok(EffectAst::subject_verb_roll_to_visit_attractions(player));
+    }
     let Some(shape) = misc_action_shapes::parse_roll_die_prefix_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
@@ -276,6 +284,9 @@ pub fn parse_roll(
         )));
     };
     let tail = &tokens[shape.consumed..];
+    if let Some(effect) = parse_roll_plus_dice_per_mana_spent(player, &shape, tail)? {
+        return Ok(effect);
+    }
     let result_modifier = if tail.is_empty() {
         None
     } else {
@@ -311,6 +322,64 @@ pub fn parse_roll(
         *modifier = result_modifier;
     }
     Ok(effect)
+}
+
+/// "Roll a six-sided die plus an additional six-sided die for each mana from
+/// Treasures spent to activate this ability." (Mr. House): one roll, then one
+/// more roll per qualifying mana spent on the activation (CR 706.1).
+fn parse_roll_plus_dice_per_mana_spent(
+    player: PlayerAst,
+    shape: &misc_action_shapes::RollDieShape,
+    tail: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tail);
+    let Some(die_idx) = words.iter().position(|word| *word == "die") else {
+        return Ok(None);
+    };
+    if words.get(..3) != Some(&["plus", "an", "additional"][..])
+        || words.get(die_idx + 1..die_idx + 5) != Some(&["for", "each", "mana", "from"][..])
+    {
+        return Ok(None);
+    }
+    let Some(spent_idx) = words.iter().position(|word| *word == "spent") else {
+        return Ok(None);
+    };
+    if words.get(spent_idx..) != Some(&["spent", "to", "activate", "this", "ability"][..])
+        || spent_idx <= die_idx + 5
+    {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(tail);
+    let (Some(die_span), Some(filter_span)) = (
+        view.token_span_for_words(3, die_idx + 1),
+        view.token_span_for_words(die_idx + 5, spent_idx),
+    ) else {
+        return Ok(None);
+    };
+    let mut additional = crate::lexer::lex_line("a", 0)?;
+    additional.extend_from_slice(&tail[die_span]);
+    let Some(additional_shape) = misc_action_shapes::parse_roll_die_prefix_tokens(&additional)
+    else {
+        return Ok(None);
+    };
+    if additional_shape.sides != shape.sides {
+        return Ok(None);
+    }
+    let source_filter = parse_object_filter(&tail[filter_span], false)?;
+    let roll = EffectAst::subject_verb_roll_die_with_surface(player, shape.sides, shape.surface.clone());
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            roll.clone(),
+            EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::RepeatEffects {
+                count: Value::ManaFromSourceSpentToCastThisSpell {
+                    source_filter,
+                    include_source_noun: false,
+                    reference: ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility,
+                },
+                effects: vec![roll],
+            }),
+        ],
+    }))
 }
 
 pub fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -492,6 +561,29 @@ pub fn parse_get(
             if let Some(count) =
                 crate::effect_sentences::verb_handlers::parse_life_equal_to_value(&amount_tokens)?
             {
+                return Ok(EffectAst::subject_verb_rad_counters(player, count));
+            }
+        }
+        // "you get half X rad counters, rounded up" (Contaminated Drink).
+        if let Some((half, rest)) = count_tokens.split_first()
+            && half.is_word("half")
+            && let Some((base, used)) = parse_value(rest)
+            && used == rest.len()
+        {
+            let rounding_words = tail
+                .iter()
+                .filter(|token| !token.is_comma())
+                .map(OwnedLexToken::parser_text)
+                .collect::<Vec<_>>();
+            let rounded = match rounding_words.as_slice() {
+                ["rounded", "down"] => Some(Value::HalfRoundedDown(Box::new(base))),
+                ["rounded", "up"] => Some(Value::HalfRoundedDown(Box::new(Value::Add(
+                    Box::new(base),
+                    Box::new(Value::Fixed(1)),
+                )))),
+                _ => None,
+            };
+            if let Some(count) = rounded {
                 return Ok(EffectAst::subject_verb_rad_counters(player, count));
             }
         }

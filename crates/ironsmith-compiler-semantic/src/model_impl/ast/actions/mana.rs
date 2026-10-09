@@ -58,6 +58,7 @@ pub enum ManaActionAst {
         /// Inclusive typed maximum for a printed `{X}` payment whose X is
         /// chosen by the paying player.
         x_maximum: Option<Value>,
+        independent_x_choice: bool,
     },
     DoubleManaPool,
     EmptyManaPool,

@@ -295,6 +295,9 @@ impl StaticAbility {
             Some(StaticAbilityId::PlayerSkipsDrawStep) => {
                 Self::player_skips_draw_step(crate::target::PlayerFilter::You)
             }
+            Some(StaticAbilityId::PlayersSkipUntapStep) => {
+                Self::players_skip_untap_steps(crate::target::PlayerFilter::Any)
+            }
             Some(StaticAbilityId::PlayersSkipExtraTurns) => {
                 Self::players_skip_extra_turns(crate::target::PlayerFilter::Any)
             }

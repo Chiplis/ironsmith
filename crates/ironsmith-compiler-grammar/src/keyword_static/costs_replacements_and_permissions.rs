@@ -382,6 +382,58 @@ pub fn parse_optional_life_additional_cost_reduction_line(
 fn parse_cost_reduction_characteristic_intersection(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::CostReductionCharacteristicIntersection>, CardTextError> {
+    // "for each of the chosen colors it is" (Seal of the Guildpact): the
+    // spell's colors among the source's chosen colors.
+    if (0..tokens.len()).any(|start| {
+        crate::grammar::primitives::parse_prefix(
+            &tokens[start..],
+            crate::grammar::primitives::phrase(&[
+                "for", "each", "of", "the", "chosen", "colors", "it", "is",
+            ]),
+        )
+        .is_some()
+    }) {
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::source_chosen_colors(),
+        ));
+    }
+    // "for each card with the same name as that spell in your graveyard"
+    // (Locket of Yesterdays): one per comparison card named like the spell.
+    for start in 0..tokens.len() {
+        let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+            &tokens[start..],
+            crate::grammar::primitives::phrase(&["for", "each"]),
+        ) else {
+            continue;
+        };
+        let Some((name_start, _, after)) = crate::grammar::primitives::find_prefix(rest, || {
+            crate::grammar::primitives::phrase(&[
+                "with", "the", "same", "name", "as", "that", "spell",
+            ])
+        }) else {
+            continue;
+        };
+        let mut comparison_tokens = rest[..name_start].to_vec();
+        comparison_tokens.extend_from_slice(after);
+        let comparison_tokens = trim_commas(&comparison_tokens);
+        if comparison_tokens.is_empty() {
+            continue;
+        }
+        let comparison = parse_object_filter(&comparison_tokens, false)?;
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::new(
+                ironsmith_core::ObjectCharacteristic::Name,
+                comparison,
+            )
+            .counting_matching_objects()
+            .with_comparison_surface(
+                render_token_slice(&comparison_tokens)
+                    .trim()
+                    .trim_end_matches('.')
+                    .to_string(),
+            ),
+        ));
+    }
     let characteristic_at = |start: usize| {
         if tokens.get(start).is_some_and(|token| token.is_word("card"))
             && tokens
@@ -1365,6 +1417,29 @@ pub fn parse_flashback_cost_modifier_line(
             "missing flashback cost modifier amount".to_string(),
         ));
     }
+    // Anything after "less"/"more" must be owned, never dropped: "{1} less for
+    // each time you've cast your commander from the command zone this game"
+    // (Henzie) scales the amount.
+    let direction_idx = remaining_words
+        .iter()
+        .position(|word| matches!(*word, "less" | "more"))
+        .unwrap_or(0);
+    let direction_tail = &remaining_words[direction_idx + 1..];
+    let amount_value = if direction_tail.is_empty() {
+        amount_value
+    } else {
+        let Some((per_each, used)) = parse_for_each_count_value_words(direction_tail) else {
+            return Ok(None);
+        };
+        if used != direction_tail.len() {
+            return Ok(None);
+        }
+        match amount_value {
+            Value::Fixed(1) => per_each,
+            Value::Fixed(amount) => Value::Scaled(Box::new(per_each), amount),
+            _ => return Ok(None),
+        }
+    };
 
     let mut filter = ObjectFilter::default();
     filter.alternative_cast = Some(kind);
@@ -2288,6 +2363,10 @@ pub fn complete_characteristic_subject(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if !tokens.iter().all(|token| token.as_word().is_some()) { return Ok(None); }
     let words = parser_token_word_refs(tokens);
+    if words.first().is_some_and(|word| matches!(*word, "and" | "or" | "and/or"))
+        || words.windows(2).any(|pair| pair.iter().all(|word| matches!(*word, "and" | "or" | "and/or"))) {
+        return Ok(None);
+    }
     if words.contains(&"instead") || words.last().is_some_and(|word| matches!(*word, "and" | "or" | "and/or")) {
         return Ok(None);
     }
@@ -2623,6 +2702,14 @@ pub fn parse_all_are_color_and_type_addition_line(
 pub fn parse_all_creatures_are_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The dedicated colorless productions own their complete lines (CR
+    // 105.2c); reading them again as a set-colors effect is a second,
+    // non-equivalent interpretation of the same sentence.
+    if is_all_permanents_colorless_line_lexed(tokens)
+        || keyword_static_lines::parse_all_cards_spells_permanents_colorless_tokens(tokens)
+    {
+        return Ok(None);
+    }
     let Some(fact) = type_and_color_facts::parse_subject_color_tokens(tokens) else {
         return Ok(None);
     };
@@ -3526,6 +3613,14 @@ pub fn parse_double_counters_replacement_line(
                 display_text_for_tokens(tokens, true),
             )
         }
+        keyword_static_lines::CounterReplacementShape::EnergyYouGetPlus { additional } => {
+            StaticAbility::add_player_counters_placement_replacement(
+                PlayerFilter::You,
+                Some(CounterType::Energy),
+                additional,
+                display_text_for_tokens(tokens, true),
+            )
+        }
         keyword_static_lines::CounterReplacementShape::ActorAnyKindMultiply { opponent, halve } => {
             StaticAbility::actor_counter_multiplier_replacement(
                 if opponent {
@@ -3620,16 +3715,35 @@ pub fn parse_token_creation_templates_line(
     let token_filter = filter.unwrap_or_else(|| ObjectFilter::default().token());
     let mut templates = Vec::new();
     for descriptor in shape.templates {
-        let mut recipe = vec![
-            OwnedLexToken::word("create", TextSpan::synthetic()),
-            OwnedLexToken::word("one", TextSpan::synthetic()),
-        ];
+        // "tokens that are copies of enchanted permanent": one copy per
+        // replaced token (CR 707.2).
+        let descriptor_words = parser_token_word_refs(descriptor);
+        let copy_of = match descriptor_words.as_slice() {
+            ["tokens", "that", "are", "copies", "of", ..] => Some(5),
+            ["token", "thats", "a", "copy", "of", ..] | ["token", "that's", "a", "copy", "of", ..] => Some(5),
+            _ => None,
+        };
+        let mut recipe = if let Some(prefix_words) = copy_of {
+            let start = crate::lexer::TokenWordView::new(descriptor)
+                .token_span_for_words(0, prefix_words)
+                .map(|span| span.end)
+                .ok_or_else(|| CardTextError::ParseError("token copy template".to_string()))?;
+            let mut recipe = crate::lexer::lex_line("create a token that's a copy of", 0)?;
+            recipe.extend_from_slice(&descriptor[start..]);
+            templates.extend(crate::clause_support::parse_effect_sentences_lexed(&recipe)?);
+            continue;
+        } else {
+            vec![
+                OwnedLexToken::word("create", TextSpan::synthetic()),
+                OwnedLexToken::word("one", TextSpan::synthetic()),
+            ]
+        };
         recipe.extend_from_slice(descriptor);
         templates.extend(crate::clause_support::parse_effect_sentences_lexed(
             &recipe,
         )?);
     }
-    Ok(Some(StaticAbilityAst::TokenCreationTemplates {
+    let ability = StaticAbilityAst::TokenCreationTemplates {
         controller: PlayerFilter::You,
         token_filter,
         templates,
@@ -3637,6 +3751,21 @@ pub fn parse_token_creation_templates_line(
         choose_one: shape.choose_one,
         optional: shape.optional,
         display: display_text_for_tokens(tokens, true),
+    };
+    if !shape.first_time_each_turn {
+        return Ok(Some(ability));
+    }
+    // CR 614.1: only the first token creation event of the turn qualifies,
+    // so no token has been created under your control this turn yet.
+    Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(ability),
+        condition: crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::TurnHistoryCount(
+                ironsmith_core::TurnHistoryCount::TokensCreated(PlayerFilter::You),
+            ),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(0),
+        },
     }))
 }
 
@@ -4475,6 +4604,11 @@ pub fn parse_fixed_mana_cost_instead_of_mana_cost_grant_line(
 pub fn parse_grant_flash_to_noncreature_spells_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The complete free-cast rule already includes the flash grant; reading
+    // only its timing suffix would discard its payment and beneficiary.
+    if matches!(parse_player_may_cast_spells_free_and_flash_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     match parse_permission_clause_spec(tokens)? {
         Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player,
@@ -4834,7 +4968,10 @@ pub fn parse_you_may_static_grant_line(
             lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) => {
             let singular_spell = late_static_facts::contains_singular_cast_spell(tokens);
+            // A once-per-turn budget makes the singular wording a standing
+            // permission rather than a one-shot resolution.
             if singular_spell
+                && spec.usage_limit.is_none()
                 && spec.additional_zones.is_empty()
                 && spec.zone == Zone::Hand
                 && matches!(
@@ -5294,6 +5431,7 @@ fn graveyard_cards_have_retrace_ability(
     } else {
         ObjectFilter {
             card_types: fact.card_types,
+            subtypes: fact.subtypes,
             ..ObjectFilter::default()
         }
     };
@@ -5605,6 +5743,10 @@ pub fn parse_effect_discard_to_library_replacement_line(
 pub fn parse_draw_replace_exile_top_face_down_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // A flavor-word label ("Binding Contract — If you would draw a card, ...")
+    // names the ability; it is not part of the replacement's event.
+    let tokens =
+        crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
     if is_draw_replace_exile_top_face_down_line_lexed(tokens) {
         return Ok(Some(StaticAbility::draw_replacement_exile_top_face_down()));
     }
@@ -5710,6 +5852,8 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     // Preserve the existing specialized readings' ownership (and their exact
     // semantics such as a count modification versus an executable program).
     if matches!(parse_conditional_draw_replacement_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replacement_double_line(tokens), Ok(Some(_)))
+        || matches!(parse_draw_replace_exile_top_face_down_line(tokens), Ok(Some(_)))
         || matches!(parse_draw_extra_cards_replacement_line(tokens), Ok(Some(_)))
         || matches!(
             parse_if_opponent_would_draw_redirect_line(tokens),
@@ -5719,6 +5863,9 @@ pub fn parse_if_you_would_draw_instead_effects_line(
             parse_draw_replacement_skip_empty_library_line(tokens),
             Ok(Some(_))
         )
+        // "If you would draw a card, draw two cards instead" is the
+        // dedicated doubling replacement (CR 614.1a).
+        || matches!(parse_draw_replacement_double_line(tokens), Ok(Some(_)))
         || matches!(
             parse_draw_replacement_exile_top_and_play_line(tokens),
             Ok(Some(_))
@@ -6435,6 +6582,7 @@ pub fn parse_exile_would_die_instead_line(
         }
         keyword_static_lines::ExileWouldDieSpec::SimpleCreature {
             controller: player,
+            other,
             follow_up_tokens,
         } => {
             let player = match player {
@@ -6442,8 +6590,12 @@ pub fn parse_exile_would_die_instead_line(
                 keyword_static_lines::ReplacementPlayerKind::You => PlayerFilter::You,
                 keyword_static_lines::ReplacementPlayerKind::Opponent => PlayerFilter::Opponent,
             };
+            let mut filter = ObjectFilter::creature().controlled_by(player);
+            if other {
+                filter = filter.other();
+            }
             StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
-                ObjectFilter::creature().controlled_by(player),
+                filter,
                 None,
                 Vec::new(),
                 super::super::clause_support::parse_effect_sentences_lexed(&follow_up_tokens)?,
@@ -6690,6 +6842,61 @@ pub fn parse_pay_life_or_enter_tapped_line(
     Ok(Some(StaticAbility::pay_life_or_enter_tapped(fact.amount)))
 }
 
+/// "Koh has all activated and triggered abilities of the last chosen card."
+/// (CR 613.1f): two copy grants on this object. "The [last] chosen <noun>"
+/// is the object this source most recently chose and remembered.
+pub fn parse_copy_activated_and_triggered_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    const MARKER: &[&str] = &["all", "activated", "and", "triggered", "abilities", "of"];
+    let Some(has_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return Ok(None);
+    };
+    if has_idx == 0 || words.get(has_idx + 1..has_idx + 1 + MARKER.len()) != Some(MARKER) {
+        return Ok(None);
+    }
+    if crate::util::source_reference_surface_for_words(&words[..has_idx]).is_none() {
+        return Ok(None);
+    }
+    let filter_words = &words[has_idx + 1 + MARKER.len()..];
+    let filter = match filter_words {
+        ["the", "last", "chosen", _] | ["the", "chosen", _] => {
+            let mut filter = ObjectFilter::default();
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+            filter
+        }
+        _ => {
+            let Some(span) = crate::lexer::TokenWordView::new(&tokens)
+                .token_span_for_words(has_idx + 1 + MARKER.len(), words.len())
+            else {
+                return Ok(None);
+            };
+            match parse_object_filter(&tokens[span], false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            }
+        }
+    };
+    let display = words.join(" ");
+    let activated = crate::static_abilities::CopyActivatedAbilities::new(filter.clone())
+        .with_exclude_source_id(true)
+        .with_display(display.clone());
+    let triggered =
+        crate::static_abilities::CopyTriggeredAbilities::new(filter).with_display(display);
+    Ok(Some(vec![
+        StaticAbilityAst::Static(StaticAbility::copy_activated_abilities(activated)),
+        StaticAbilityAst::Static(StaticAbility::copy_triggered_abilities(triggered)),
+    ]))
+}
+
 pub fn parse_copy_activated_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -6721,14 +6928,42 @@ pub fn parse_copy_activated_abilities_line(
 
     let filter_tokens =
         trim_edge_punctuation(&tokens[fact.filter_start_token..fact.filter_end_token]);
-    let filter_tokens = strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    let mut filter_tokens =
+        strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    // "lands your opponents control except mana abilities" (Sharkey).
+    let exclude_mana_end = {
+        let words = parser_token_word_refs(&filter_tokens);
+        if words.ends_with(&["except", "mana", "abilities"]) {
+            match crate::lexer::TokenWordView::new(&filter_tokens)
+                .token_span_for_words(0, words.len() - 3)
+            {
+                Some(span) => Some(span.end),
+                None => return Ok(None),
+            }
+        } else {
+            None
+        }
+    };
+    let exclude_mana_abilities = exclude_mana_end.is_some();
+    if let Some(end) = exclude_mana_end {
+        filter_tokens.truncate(end);
+    }
     let force_once_each_turn = fact.once_each_turn_word_start.is_some();
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let mut filter = match parse_object_filter(&filter_tokens, false) {
-        Ok(filter) => filter,
-        Err(_) => return Ok(None),
+    let source_reference = crate::util::source_reference_surface_for_words(
+        &parser_token_word_refs(&filter_tokens),
+    )
+    .is_some();
+    let mut filter = if source_reference {
+        // "the loyalty abilities of Kasmina": the donor is this object.
+        ObjectFilter::source()
+    } else {
+        match parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
     };
     if fact.exclude_source_name {
         // "that don't have the same name as this creature" is carried by
@@ -6780,6 +7015,7 @@ pub fn parse_copy_activated_abilities_line(
     let mut ability = crate::static_abilities::CopyActivatedAbilities::new(filter)
         .with_exclude_source_name(fact.exclude_source_name)
         .with_exclude_source_id(true)
+        .with_exclude_mana_abilities(exclude_mana_abilities)
         .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);
@@ -6850,6 +7086,45 @@ pub fn copy_activated_display_source_noun(word: &str) -> bool {
         || parse_subtype_flexible(word).is_some()
 }
 
+/// CR 609.4b: the permission changes only how mana may be spent to cast the
+/// matching spells.
+fn mana_spend_any_color_to_cast_permission(
+    player: keyword_static_lines::ManaSpendPlayerKind,
+    filter_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<(crate::effect::ManaSpendPermission, String), CardTextError> {
+    let player = match player {
+        keyword_static_lines::ManaSpendPlayerKind::You => PlayerFilter::You,
+        keyword_static_lines::ManaSpendPlayerKind::Any => PlayerFilter::Any,
+    };
+    let mut filter = parse_object_filter(filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported mana spend cast filter (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.has_mana_cost = false;
+    Ok((
+        crate::effect::ManaSpendPermission::any_color_for_casting_matching(player, filter),
+        clause_words.join(" "),
+    ))
+}
+
+/// Only mana of `symbol` converts, and only for the source's own
+/// activation costs (CR 609.4b).
+fn mana_spend_symbol_for_source_activation_permission(
+    symbol: ManaSymbol,
+    clause_words: &[&str],
+) -> (crate::effect::ManaSpendPermission, String) {
+    let mut permission =
+        crate::effect::ManaSpendPermission::any_color_for_activation(PlayerFilter::You, ObjectFilter::source());
+    permission.mode = ironsmith_core::value_model::ManaSpendMode::Normal;
+    permission.any_color_mana_symbol = Some(symbol);
+    (permission, clause_words.join(" "))
+}
+
 pub fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -6901,6 +7176,13 @@ pub fn parse_spend_mana_as_any_color_line(
                 clause_words.join(" "),
             )
         }
+        keyword_static_lines::ManaSpendPermissionShape::AnyColorToCast {
+            player,
+            filter_tokens,
+        } => mana_spend_any_color_to_cast_permission(player, filter_tokens, &clause_words)?,
+        keyword_static_lines::ManaSpendPermissionShape::SymbolAsAnyColorForSourceActivation {
+            symbol,
+        } => mana_spend_symbol_for_source_activation_permission(symbol, &clause_words),
         keyword_static_lines::ManaSpendPermissionShape::AnyColor {
             player,
             activation_filter_tokens,

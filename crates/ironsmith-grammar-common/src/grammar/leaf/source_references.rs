@@ -455,9 +455,59 @@ fn is_name_article(word: &str) -> bool {
     matches!(word, "a" | "an" | "the")
 }
 
+/// Closed-class rules-text words (conjunctions, prepositions, determiners and
+/// pronouns). A card name that merely begins with one ("And They Shall Know
+/// No Fear", "Into the Roil", "No Mercy") never uses it as a short name, and
+/// aliasing it would rewrite ordinary connectives into source references.
+fn is_rules_function_word(word: &str) -> bool {
+    matches!(
+        word,
+        "and"
+            | "or"
+            | "of"
+            | "to"
+            | "in"
+            | "into"
+            | "on"
+            | "onto"
+            | "for"
+            | "from"
+            | "with"
+            | "without"
+            | "by"
+            | "at"
+            | "as"
+            | "if"
+            | "when"
+            | "whenever"
+            | "then"
+            | "unless"
+            | "until"
+            | "it"
+            | "its"
+            | "they"
+            | "their"
+            | "them"
+            | "you"
+            | "your"
+            | "all"
+            | "each"
+            | "no"
+            | "not"
+            | "that"
+            | "this"
+            | "out"
+            | "over"
+            | "under"
+            | "up"
+            | "down"
+    )
+}
+
 fn short_name_is_distinct_name(short_name: &str) -> bool {
     let lower = short_name.to_ascii_lowercase();
     !is_name_article(&lower)
+        && !is_rules_function_word(&lower)
         && parse_leaf_color_complete(&lower).is_err()
         && parse_leaf_card_type_complete(&lower).is_err()
         && match parse_leaf_subtype_flexible_complete(&lower) {

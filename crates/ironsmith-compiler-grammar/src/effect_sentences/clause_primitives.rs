@@ -369,7 +369,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "choose-card-name-clause",
-            &["choose"],
+            &["choose", "that", "target"],
             parse_choose_card_name_clause,
         ),
         specific_primitive!(
@@ -485,6 +485,14 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_cast_or_play_tagged_clause,
         ),
         specific_primitive!(
+            "collection-cast-clause",
+            // "you may cast ... from among ..." is read by the
+            // cast-or-play-tagged clause's fallback; only the imperative
+            // form opens with `cast`.
+            &["cast"],
+            crate::permission_helpers::collection_casts::parse_collection_cast_clause,
+        ),
+        specific_primitive!(
             "prevent-next-damage-clause",
             &["prevent", "the"],
             parse_prevent_next_damage_clause,
@@ -519,11 +527,30 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "attack-if-able-clause",
+            // "Creatures target player controls attack this turn if able."
+            // (Incite War) and "Enchanted creature attacks this turn if able."
+            // (Nettling Curse) open with their subject's noun or attachment
+            // word; the complete requirement shape still owns the clause.
             &[
-                "all", "another", "attack", "attacks", "each", "it", "that", "they", "those",
-                "target", "up",
+                "all", "another", "attack", "attacks", "creatures", "each", "enchanted",
+                "equipped", "it", "that", "they", "those", "target", "up",
             ],
             parse_attack_this_turn_if_able_clause,
+        ),
+        specific_primitive!(
+            "time-travel-clause",
+            &["time", "then"],
+            parse_time_travel_clause,
+        ),
+        specific_primitive!(
+            "reselect-attack-target-clause",
+            &["reselect"],
+            parse_reselect_attack_target_clause,
+        ),
+        specific_primitive!(
+            "attack-player-if-able-clause",
+            &["it", "that", "they", "target", "this", "up", "until"],
+            parse_attack_player_if_able_clause,
         ),
         specific_primitive!(
             "must-be-blocked-clause",
@@ -670,6 +697,9 @@ pub fn parse_repeat_this_process_clause(
             }
             clause_shapes::RepeatProcessShape::Additional(count) => {
                 EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count })
+            }
+            clause_shapes::RepeatProcessShape::ExcludingPriorChoices => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices)
             }
         }),
     )
@@ -853,6 +883,124 @@ pub fn parse_attack_this_turn_if_able_clause(
         filter,
         vec![ability],
         duration,
+    )))
+}
+
+/// "time travel" / "time travel three times" / "time travel, then time
+/// travel" (CR 701.55): the keyword action, repeated when counted.
+pub fn parse_time_travel_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(count) = clause_shapes::parse_time_travel_count_shape(tokens) else {
+        return Ok(None);
+    };
+    let single = super::dispatch_entry::time_travel_effect_ast();
+    Ok(Some(if count == 1 {
+        single
+    } else {
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+            count: Value::Fixed(count as i32),
+            effects: vec![single],
+        })
+    }))
+}
+
+/// "reselect which player or permanent target attacking creature is
+/// attacking" (Portal Mage) / "reselect which player this creature is
+/// attacking" (Capricopian): the creature stays attacking; its controller
+/// chooses anew among what it could attack (CR 508.1b).
+pub fn parse_reselect_attack_target_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(shape) = clause_shapes::parse_reselect_attack_target_shape(tokens) else {
+        return Ok(None);
+    };
+    let subject_tokens = shape.attacker_tokens;
+    let target = if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            crate::util::span_from_tokens(subject_tokens),
+        )
+    } else {
+        parse_target_phrase(subject_tokens)?
+    };
+    Ok(Some(EffectAst::subject_verb_reselect_attack_target(
+        target,
+        shape.players_only,
+    )))
+}
+
+/// "This creature attacks that player this combat if able." (Ruhan of the
+/// Fomori, Raving Dead): a rule effect requiring the named creature to attack
+/// one specific player if able (CR 508.1d), for this combat or this turn.
+pub fn parse_attack_player_if_able_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::effect::Until;
+
+    let clause = LexedClause::new(tokens);
+    let Some(shape) = clause_shapes::parse_attack_player_requirement_shape(tokens) else {
+        return Ok(None);
+    };
+    // "Until your next turn, up to one target creature attacks a player each
+    // combat if able" (Nahiri, the Unforgiving): "each combat" needs the
+    // stated leading duration.
+    let (leading, subject_storage) = match parse_restriction_duration(shape.subject_tokens)? {
+        Some((duration, remainder)) => (Some(duration), remainder),
+        None => (None, shape.subject_tokens.to_vec()),
+    };
+    let until = match (shape.duration, leading) {
+        (clause_shapes::AttackPlayerRequirementDuration::Turn, None) => Until::EndOfTurn,
+        (clause_shapes::AttackPlayerRequirementDuration::Combat, None) => Until::EndOfCombat,
+        (clause_shapes::AttackPlayerRequirementDuration::EachCombat, Some(duration)) => duration,
+        _ => return Ok(None),
+    };
+    let player = match shape.player {
+        clause_shapes::AttackRequirementPlayer::ThatPlayer => PlayerFilter::IteratedPlayer,
+        clause_shapes::AttackRequirementPlayer::You => PlayerFilter::You,
+        // Any player the creature can attack; the controller is never an
+        // attack target (CR 508.1b), so the requirement is met by attacking
+        // any opponent.
+        clause_shapes::AttackRequirementPlayer::APlayer => PlayerFilter::Opponent,
+    };
+    let subject_clause = LexedClause::new(&subject_storage).trimmed();
+    let subject_tokens = subject_clause.tokens();
+    let attackers = if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("that") || token.is_word("it"))
+    {
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+    } else if starts_with_target_indicator(subject_tokens) {
+        let attacker_target = parse_target_phrase(subject_tokens)?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(attacker_target),
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::must_attack_player(
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                        player,
+                    ),
+                    until,
+                    None,
+                ),
+            ],
+        }));
+    } else {
+        let target = parse_target_phrase(subject_tokens)?;
+        target_ast_to_object_filter(target).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported attacker subject in attacks-player-if-able clause (clause: '{}')",
+                clause.text()
+            ))
+        })?
+    };
+    Ok(Some(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_attack_player(attackers, player),
+        until,
+        None,
     )))
 }
 
@@ -1040,8 +1188,19 @@ pub fn parse_must_block_if_able_clause(
             )))
         }
         clause_shapes::MustBlockShape::AllCreatures {
+            blocker_filter_tokens,
             attacker_and_duration_tokens,
         } => {
+            let blockers = match blocker_filter_tokens {
+                Some(tokens) => {
+                    let filter = parse_object_filter(tokens, false)?;
+                    if !filter.card_types.contains(&crate::types::CardType::Creature) {
+                        return Ok(None);
+                    }
+                    filter
+                }
+                None => ObjectFilter::creature(),
+            };
             let (duration, attacker_tokens) = if let Some((duration, remainder)) =
                 parse_restriction_duration(attacker_and_duration_tokens)?
             {
@@ -1069,7 +1228,7 @@ pub fn parse_must_block_if_able_clause(
                         attacker_target,
                         attacker_tag.clone().into(),
                     )],
-                    ObjectFilter::creature(),
+                    blockers.clone(),
                     ObjectFilter::tagged(attacker_tag),
                     duration,
                 )));
@@ -1083,7 +1242,7 @@ pub fn parse_must_block_if_able_clause(
                 })?;
             Ok(Some(forced_block_effect(
                 Vec::new(),
-                ObjectFilter::creature(),
+                blockers.clone(),
                 attacker_filter,
                 duration,
             )))
@@ -1287,6 +1446,39 @@ pub fn parse_until_duration_triggered_clause(
         ));
     }
 
+    // "Until end of turn, whenever target creature deals damage, you gain
+    // that much life." (Spiritualize): the event subject is a target of the
+    // scheduling spell, chosen as it is cast (CR 601.2c). Declare it, then
+    // watch that object instead of matching any creature.
+    let declared_subject_target: Option<EffectAst> = if matches!(trigger_words.get(1), Some(&"target")) {
+        let subject_end = trigger_tokens
+            .iter()
+            .position(|token| token.is_word("deals"));
+        match (subject_end, damage_source_filter_mut(&mut trigger)) {
+            (Some(end), Some(source)) if end > 2 => {
+                let filter = parse_object_filter(&trigger_tokens[2..end], false)?;
+                let tag = crate::util::helper_tag_for_tokens(tokens, "targeted");
+                *source = filter
+                    .clone()
+                    .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+                Some(EffectAst::TagReferenced {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only(
+                        crate::cards::builders::TargetAst::Object(
+                            filter,
+                            span_from_tokens(tokens),
+                            None,
+                        ),
+                    )),
+                    tag: crate::tag::TagRef::of(tag),
+                })
+            }
+            // Other event shapes keep their existing reading.
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     let either_of_watched_objects =
         crate::word_primitives::sequence_occurs(&trigger_words, &["either", "of", "those"]);
 
@@ -1303,16 +1495,40 @@ pub fn parse_until_duration_triggered_clause(
         restrict_play_or_cast_trigger_to_prior_cards(&mut trigger);
     }
 
-    Ok(Some(EffectAst::Delayed(
-        DelayedEffectAst::DelayedTriggerForDuration {
-            trigger,
-            effects,
-            one_shot: false,
-            duration,
-            either_of_watched_objects,
-            while_any_tagged_object_in_zone: None,
+    let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects,
+        one_shot: false,
+        duration,
+        either_of_watched_objects,
+        while_any_tagged_object_in_zone: None,
+    });
+    Ok(Some(match declared_subject_target {
+        Some(declaration) => EffectAst::Sequence {
+            effects: vec![declaration, delayed],
         },
-    )))
+        None => delayed,
+    }))
+}
+
+/// The damage source of a "whenever [object] deals ... damage" event.
+fn damage_source_filter_mut(
+    trigger: &mut crate::model::ast::TriggerSpec,
+) -> Option<&mut ObjectFilter> {
+    use crate::model::ast::TriggerSpec;
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => {
+            damage_source_filter_mut(trigger)
+        }
+        TriggerSpec::DealsDamage { source, .. }
+        | TriggerSpec::DealsDamageTo { source, .. }
+        | TriggerSpec::DealsDamageToPlayer { source, .. }
+        | TriggerSpec::DealsCombatDamage(source)
+        | TriggerSpec::DealsCombatDamageTo { source, .. }
+        | TriggerSpec::DealsCombatDamageToPlayer { source, .. }
+        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, .. } => Some(source),
+        _ => None,
+    }
 }
 
 /// Bind the played land / cast spell of a "... this way" play-or-cast
@@ -1719,7 +1935,49 @@ pub fn parse_deal_damage_equal_to_power_clause(
                     ],
                 }));
             }
-            let mut target = parse_target_phrase(target_tokens)?;
+            // "to each creature and each planeswalker" (Corpse Explosion):
+            // one simultaneous damage event to the union of both sets.
+            let union_target = if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each"))
+            {
+                crate::effect_sentences::parse_each_object_set_union(&target_tokens[1..])?.map(
+                    |union| TargetAst::Object(union, None, span_from_tokens(target_tokens)),
+                )
+            } else {
+                None
+            };
+            // "to that player and each creature that player controls"
+            // (Cerebral Eruption): the named player and the object set.
+            if union_target.is_none()
+                && let Some((player, mut filter)) =
+                    crate::effect_sentences::parse_player_and_each_object_recipients(target_tokens)?
+            {
+                filter.set_plural_object_noun_surface(true);
+                let pair = vec![
+                    EffectAst::subject_verb_damage_with_source(
+                        source.clone(),
+                        amount.clone(),
+                        player,
+                    ),
+                    EffectAst::subject_verb_damage_with_source(
+                        source,
+                        amount,
+                        TargetAst::Object(filter, None, span_from_tokens(target_tokens)),
+                    ),
+                ];
+                return Ok(Some(match iterated_source_filter {
+                    Some(filter) => EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                        filter,
+                        effects: pair,
+                    }),
+                    None => EffectAst::Sequence { effects: pair },
+                }));
+            }
+            let mut target = match union_target {
+                Some(target) => target,
+                None => parse_target_phrase(target_tokens)?,
+            };
             // "Target creature an opponent controls deals damage equal to
             // its power to that player": the only player named is the
             // targeted source's controller (lowering binds it to the source's
@@ -1812,6 +2070,16 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     if shape
         .left_tokens
         .is_some_and(|left| left.iter().any(|token| token.is_word("may")))
+    {
+        return Ok(None);
+    }
+    // "When you do, it fights ..." / "If you do, it fights ...": the leading
+    // result clause owns the sentence (a reflexive trigger, CR 603.12); its
+    // words are never part of the first fighter's description.
+    if shape
+        .left_tokens
+        .and_then(|left| left.first())
+        .is_some_and(|token| token.is_any_word(&["when", "whenever", "if"]))
     {
         return Ok(None);
     }

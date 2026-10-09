@@ -459,6 +459,24 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn devour_variant(
+        self,
+        devour: crate::effects::DevourEffect,
+        presentation_multiplier: u32,
+    ) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                vec![crate::effect::Effect::new(devour)].into(),
+                "this creature",
+                false,
+                false,
+                Some(PresentationLabel::Keyword(PresentationKeyword::Devour(
+                    presentation_multiplier,
+                ))),
+            ),
+        ))
+    }
+
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_dies(),
@@ -1019,10 +1037,24 @@ impl CardDefinitionBuilder {
     }
 
     pub fn encore(self, cost: ManaCost) -> Self {
-        let cost = TotalCost::from_costs(vec![
-            crate::costs::Cost::mana(cost),
-            crate::costs::Cost::exile_self(),
-        ]);
+        self.encore_with_mana_payment(crate::costs::Cost::mana(cost))
+    }
+
+    /// A granted encore whose cost comes from the card that has it: its mana
+    /// cost, or generic mana equal to its mana value (CR 702.141).
+    pub fn encore_from_source_cost(self, mana_value_generic: bool) -> Self {
+        let dynamic = if mana_value_generic {
+            ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::ManaValueOf(
+                Box::new(crate::target::ChooseSpec::Source),
+            ))
+        } else {
+            ironsmith_core::DynamicManaCost::from_source_mana_cost()
+        };
+        self.encore_with_mana_payment(crate::costs::Cost::dynamic_mana(dynamic))
+    }
+
+    fn encore_with_mana_payment(self, payment: crate::costs::Cost) -> Self {
+        let cost = TotalCost::from_costs(vec![payment, crate::costs::Cost::exile_self()]);
         let mut copy = crate::effects::CreateTokenCopyEffect::new(
             crate::target::ChooseSpec::Source,
             1,
@@ -1122,6 +1154,19 @@ impl CardDefinitionBuilder {
     }
 
     pub fn ninjutsu(self, cost: ManaCost) -> Self {
+        self.ninjutsu_from_zones(cost, vec![crate::zone::Zone::Hand])
+    }
+
+    /// CR 702.49d: commander ninjutsu functions from the hand and from the
+    /// command zone.
+    pub fn commander_ninjutsu(self, cost: ManaCost) -> Self {
+        self.ninjutsu_from_zones(
+            cost,
+            vec![crate::zone::Zone::Hand, crate::zone::Zone::Command],
+        )
+    }
+
+    fn ninjutsu_from_zones(self, cost: ManaCost, zones: Vec<crate::zone::Zone>) -> Self {
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
             crate::costs::Cost::effect(crate::effect::Effect::new(
@@ -1133,7 +1178,7 @@ impl CardDefinitionBuilder {
             total_cost,
             vec![crate::effect::Effect::ninjutsu()],
             crate::ability::ActivationTiming::DuringCombat,
-        ).in_zones(vec![crate::zone::Zone::Hand]);
+        ).in_zones(zones);
         if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
             activated.keyword = Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu);
         }
@@ -2352,6 +2397,24 @@ impl CardDefinitionBuilder {
             vec![crate::effect::Effect::pump(
                 amount as i32,
                 amount as i32,
+                crate::target::ChooseSpec::Source,
+                crate::effect::Until::EndOfTurn,
+            )],
+        ))
+    }
+
+    /// "Bushido X, where X is ...": whenever this creature blocks or becomes
+    /// blocked, it gets +X/+X until end of turn, X read as the trigger
+    /// resolves (CR 702.45a).
+    pub fn bushido_value(self, amount: Value) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::either(
+                crate::triggers::Trigger::this_blocks(),
+                crate::triggers::Trigger::this_becomes_blocked(),
+            ),
+            vec![crate::effect::Effect::pump(
+                amount.clone(),
+                amount,
                 crate::target::ChooseSpec::Source,
                 crate::effect::Until::EndOfTurn,
             )],

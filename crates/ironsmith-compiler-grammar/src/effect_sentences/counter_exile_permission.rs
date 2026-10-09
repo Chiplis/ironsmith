@@ -40,9 +40,15 @@ pub(crate) fn is_candidate(tokens: &[OwnedLexToken]) -> bool {
     // Ordinary unconditional two-sentence exile counters remain outside this owner. Once
     // a permission is authored, however, a missing/garbled lifetime cannot
     // fall back to the lossy generic counter-destination recognizer.
+    // Immediate casting in the same resolution is a different permission
+    // lifetime from the durable while-exiled owner below.
+    if !durable_tail && contains(&["then", "you", "may", "cast", "it", "without", "paying", "its", "mana", "cost"]) {
+        return false;
+    }
     has_permanent_counter_exile_gate(tokens)
         || (counter_reference && cast_or_play_tail && words.contains(&"exile"))
         || (durable_tail
+            && words.contains(&"exile")
             && (counter_reference || words.first().is_some_and(|word| *word == "counter")))
 }
 

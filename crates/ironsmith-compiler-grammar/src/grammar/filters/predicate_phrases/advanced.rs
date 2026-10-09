@@ -18,6 +18,12 @@ mod combat_participants;
 #[path = "advanced/damage_history.rs"]
 mod damage_history;
 
+#[path = "advanced/library_top.rs"]
+mod library_top;
+
+#[path = "advanced/source_damage_history.rs"]
+mod source_damage_history;
+
 #[path = "advanced/extrema.rs"]
 mod extrema;
 
@@ -328,6 +334,23 @@ fn parse_turn_history_intervening_predicate(
             crate::tag::CompilerReferenceTag::It.bind(),
             filter,
         )));
+    }
+    // "Destroy target creature if no other creature has greater power."
+    // (Getaway Glamer): the target's power is at least every creature's.
+    if surface::exact_words(&words, &["no", "other", "creature", "has", "greater", "power"]) {
+        return Ok(Some(PredicateAst::TargetHasGreatestPowerAmongCreatures));
+    }
+    // "destroy that creature if it didn't attack this turn" (Aggression)
+    if surface::exact_words(&words, &["it", "didnt", "attack", "this", "turn"])
+        || surface::exact_words(&words, &["it", "didn't", "attack", "this", "turn"])
+        || surface::exact_words(&words, &["it", "did", "not", "attack", "this", "turn"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.attacked_this_turn = true;
+        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+        )))));
     }
     if surface::exact_words(&words, &["it", "has", "madness"]) {
         return Ok(Some(PredicateAst::TaggedMatches(
@@ -3038,7 +3061,15 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     ) {
         return Some(PredicateAst::ThisSpellWasCastFromNonHand);
     }
-    let zone = spell_cast_origin_zone_clause(origin_clause)?;
+    // "If this spell was cast from your hand" (Apex of Power, Transpose):
+    // the spell's own owner-relative origin (CR 601.2a), read exactly as the
+    // pronoun spelling above.
+    let origin_words = origin_clause.word_refs();
+    let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
+        parse_zone_word(origin_words[1])?
+    } else {
+        spell_cast_origin_zone_clause(origin_clause)?
+    };
     Some(PredicateAst::ThisSpellWasCastFromZone(zone))
 }
 
@@ -4360,7 +4391,16 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
         filter.owner = Some(PlayerFilter::You);
     }
 
-    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
+    // "if a creature card is in your graveyard": an indefinite article
+    // states presence, not an exact cardinality of one.
+    let indefinite = subject_tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["a", "an"]));
+    let (operator, count) = if indefinite {
+        (crate::effect::ValueComparisonOperator::GreaterThanOrEqual, 1)
+    } else {
+        comparison_to_value_comparison_operator(comparison)?
+    };
     Some(PredicateAst::ValueComparison {
         left: Value::Count(filter),
         operator,
@@ -5865,6 +5905,12 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         tokens
     };
     if let Some(predicate) = combat_participants::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = library_top::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = source_damage_history::parse(predicate_tokens) {
         return Ok(predicate);
     }
     if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {

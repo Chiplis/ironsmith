@@ -50,6 +50,8 @@ pub use bundle_rules::*;
 pub mod become_shapes;
 #[path = "effects/chain_carry.rs"]
 pub mod chain_carry;
+#[path = "effects/single_target_retarget.rs"]
+pub mod single_target_retarget;
 #[path = "effects/chain_splitting.rs"]
 pub mod chain_splitting;
 #[path = "effects/combat_damage_family_shapes.rs"]
@@ -66,6 +68,8 @@ pub mod coordination;
 mod damage;
 #[path = "effects/life_condition_targets.rs"]
 mod life_condition_targets;
+#[path = "effects/leading_condition_targets.rs"]
+mod leading_condition_targets;
 #[path = "effects/toughness_assignment.rs"]
 pub mod toughness_assignment;
 pub use damage::*;
@@ -1076,6 +1080,60 @@ fn parse_prevent_damage_source_excluding_target(
     Ok(Some((source_filter, excluded_target)))
 }
 
+/// The creatures outside "<set> creatures and <set> creatures", where each
+/// set is "enchanted" or a card type ("enchantment creatures"). Other set
+/// shapes are declined.
+fn excepted_creature_sets_complement(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = parser_token_word_refs(tokens);
+    let mut filter = ObjectFilter::creature();
+    for part in words.split(|word| *word == "and" || *word == "or") {
+        match part {
+            ["enchanted", "creatures"] => {
+                filter.without_attached_object = Some(Box::new(
+                    ObjectFilter::default().with_subtype(crate::types::Subtype::Aura),
+                ));
+            }
+            [card_type, "creatures"] => {
+                let card_type = crate::util::parse_card_type(card_type)?;
+                if card_type == crate::types::CardType::Creature {
+                    return None;
+                }
+                filter.excluded_card_types.push(card_type);
+            }
+            _ => return None,
+        }
+    }
+    Some(filter)
+}
+
+/// "it and each creature it's blocking" (Sewers of Estark): the spell's
+/// target creature plus every attacking creature it blocks. A blocker is in
+/// combat with exactly the attackers it blocks (CR 506.4), so the second arm
+/// is "attacking creature in combat with the target". Both arms are
+/// target-relative and are resolved into identity shields at resolution.
+fn target_and_each_creature_it_blocks_source_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let matches = [
+        ["it", "and", "each", "creature", "it's", "blocking"],
+        ["it", "and", "each", "creature", "its", "blocking"],
+    ]
+    .iter()
+    .any(|phrase| crate::word_primitives::parse_sequence_complete(words, phrase));
+    if !matches {
+        return None;
+    }
+    let mut target_creature = ObjectFilter::creature();
+    target_creature.is_target_object = true;
+
+    let mut blocked_attackers = ObjectFilter::creature();
+    blocked_attackers.attacking = true;
+    blocked_attackers.in_combat_with = Some(ObjectRef::Target);
+
+    let mut source_filter = ObjectFilter::default();
+    source_filter.any_of = vec![target_creature, blocked_attackers];
+    source_filter.set_conjunctive_set_surface(true);
+    Some(source_filter)
+}
+
 pub fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1152,14 +1210,44 @@ pub fn parse_prevent_damage_sentence_lexed(
         )));
     }
 
+    // "... this turn except combat damage that would be dealt by enchanted
+    // creatures and enchantment creatures." (Inspire Awe): prevent combat
+    // damage from every creature outside the excepted creature sets
+    // (CR 615.1).
+    if let Some((_, excepted_tokens)) = primitives::parse_prefix(
+        &core_tokens,
+        primitives::phrase(&[
+            "that", "would", "be", "dealt", "except", "combat", "damage", "that", "would", "be",
+            "dealt", "by",
+        ]),
+    ) && let Some(source_filter) = excepted_creature_sets_complement(excepted_tokens)
+    {
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                source_filter,
+                duration.clone(),
+            ),
+        ));
+    }
+
     if let Some((_, source_tokens)) =
         primitives::strip_lexed_prefix_phrases(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES)
     {
         // A target-relative source set must retain both identity arms. Parsing
         // this as an ordinary object filter makes "that creature" resolve to
         // the most recent collected set and silently drops the spell target.
+        let source_words = parser_token_word_refs(source_tokens);
+        if let Some(source_filter) = target_and_each_creature_it_blocks_source_filter(&source_words)
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    duration.clone(),
+                ),
+            ));
+        }
         if crate::word_primitives::parse_sequence_complete(
-            &parser_token_word_refs(source_tokens),
+            &source_words,
             &[
                 "that", "creature", "and", "each", "creature", "blocking", "it",
             ],
@@ -1493,6 +1581,9 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = single_target_retarget::parse(tokens)? {
+        return Ok(effects);
+    }
     // A condition can introduce a target without making its predicate part of
     // target legality. Declare that target first, then test the chosen type at
     // resolution. The whole consequence remains inside the condition.
@@ -1518,6 +1609,12 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
                 }),
             ]);
         }
+    }
+    if let Some(effects) = leading_condition_targets::leading_object_target_condition(
+        tokens,
+        parse_effect_chain_lexed,
+    ) {
+        return Ok(effects);
     }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
@@ -1710,6 +1807,18 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     }
 
+    if let Some(effects) = parse_mana_gated_restriction_pair(tokens)? {
+        return Ok(Some(effects));
+    }
+    // "Ferocious — If you control a creature with power 4 or greater, those
+    // creatures don't untap during their controllers' next untap steps."
+    // (Icy Blast, Send to Sleep): a leading state condition over a restriction
+    // on objects an earlier instruction named. The condition is checked as the
+    // instruction resolves, so it gates the restriction effect itself.
+    if let Some(conditional) = parse_leading_condition_anaphoric_cant_sentence(tokens)? {
+        return Ok(Some(conditional));
+    }
+
     if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::no_maximum_hand_size(player),
@@ -1826,6 +1935,25 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         ]));
     }
 
+    // "This turn, creatures can't attack unless their controller pays {X}
+    // for each attacking creature they control" (War Tax), "until your next
+    // turn, ... pays 2 life for each of those creatures" (Sivitri): a
+    // resolving effect's attack tax (CR 508.1g-h, 611.2a).
+    if let Some(fact) =
+        super::activation_costs::cant_shapes::parse_general_attack_tax_tokens(&clause_tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_cant_starting_with_duration_surface(
+                crate::effect::Restriction::attack_tax(fact.into_rule()),
+                duration,
+                crate::effect::RestrictionStart::Immediate,
+                duration_surface,
+                source_tapped_duration
+                    .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+            ),
+        ]));
+    }
+
     let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
         return Err(CardTextError::ParseError(format!(
             "unsupported restriction clause body (clause: '{}')",
@@ -1862,6 +1990,114 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     }
 
     Ok(Some(effects))
+}
+
+/// "Target player can't play lands this turn if {R} was spent to cast this
+/// spell and can't cast creature spells this turn if {W} was spent to cast
+/// this spell." (Moonhold): two restrictions on one target, each applied
+/// only when its own mana-spent condition holds at resolution (CR 601.2h,
+/// 608.2c). Both halves share the subject and its single target.
+fn parse_mana_gated_restriction_pair(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let is_cant = |token: &OwnedLexToken| {
+        token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+    };
+    let Some(split) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("and") && is_cant(&pair[1]))
+    else {
+        return Ok(None);
+    };
+    let first = &tokens[..split];
+    let Some(cant_idx) = first.iter().position(is_cant) else {
+        return Ok(None);
+    };
+    let mut second = first[..cant_idx].to_vec();
+    second.extend_from_slice(&tokens[split + 1..]);
+    let mut target: Option<crate::cards::builders::TargetAst> = None;
+    let mut gated = Vec::new();
+    for segment in [first.to_vec(), second] {
+        let Some(if_idx) = segment.iter().rposition(|token| token.is_word("if")) else {
+            return Ok(None);
+        };
+        let Some(predicate) = crate::grammar::primitives::probe_shape(
+            super::filters::parse_predicate(&segment[if_idx + 1..]),
+        ) else {
+            return Ok(None);
+        };
+        if !matches!(predicate, PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }) {
+            return Ok(None);
+        }
+        let body = &segment[..if_idx];
+        let body_words = token_word_refs(body);
+        let Some(body) = body_words
+            .ends_with(&["this", "turn"])
+            .then(|| &body[..body.len().saturating_sub(2)])
+        else {
+            return Ok(None);
+        };
+        let Some(parsed) =
+            crate::activation_and_restrictions::activation_restriction_clauses::parse_cant_restriction_clause(body)?
+        else {
+            return Ok(None);
+        };
+        if let Some(parsed_target) = parsed.target {
+            match &target {
+                Some(existing) if *existing != parsed_target => return Ok(None),
+                Some(_) => {}
+                None => target = Some(parsed_target),
+            }
+        }
+        gated.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::subject_verb_cant(
+                parsed.restriction,
+                crate::effect::Until::EndOfTurn,
+                None,
+            )],
+            if_false: Vec::new(),
+        }));
+    }
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let mut effects = vec![EffectAst::subject_verb_target_only(target)];
+    effects.extend(gated);
+    Ok(Some(effects))
+}
+
+fn parse_leading_condition_anaphoric_cant_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
+    let Some(comma) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    let condition_tokens = &tokens[1..comma];
+    let body = trim_lexed_commas(&tokens[comma + 1..]);
+    // Only an anaphoric subject ("those creatures", "that creature", "they")
+    // is claimed; result intros and self restrictions keep their owners.
+    if condition_tokens.is_empty()
+        || !body
+            .first()
+            .is_some_and(|token| token.is_any_word(&["those", "that", "they"]))
+        || split_leading_result_prefix_lexed(tokens).is_some()
+    {
+        return Ok(None);
+    }
+    let Some(effects) = parse_cant_effect_sentence_with_grammar_entrypoint_lexed(body)? else {
+        return Ok(None);
+    };
+    let predicate = super::filters::parse_condition_predicate_lexed(condition_tokens)?;
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: effects,
+        if_false: Vec::new(),
+    })]))
 }
 
 pub fn parse_cant_effect_sentence(

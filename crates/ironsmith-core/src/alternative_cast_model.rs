@@ -10,6 +10,9 @@ pub enum AlternativeCastKeyword {
     Bestow,
     Blitz,
     Warp,
+    /// CR 702.190a sneak, a named alternative cost; appended for wire
+    /// compatibility.
+    Sneak,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -123,6 +126,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     },
     Flashback {
         total_cost: TotalCost<C>,
+        /// "If you cast this spell this way, X can't be 0" (Light Up the
+        /// Night): the smallest X this method allows (CR 107.3, CR 601.2b).
+        #[cfg_attr(feature = "serde", serde(default))]
+        x_minimum: u32,
     },
     Harmonize {
         total_cost: TotalCost<C>,
@@ -240,6 +247,11 @@ where
             Self::Bestow { .. } => Some(AlternativeCastKeyword::Bestow),
             Self::Blitz { .. } => Some(AlternativeCastKeyword::Blitz),
             Self::Warp { .. } => Some(AlternativeCastKeyword::Warp),
+            // Sneak is a named composed alternative cost; its timing and
+            // resolution are keyed to the same method name.
+            Self::Composed { .. } if self.name().eq_ignore_ascii_case("Sneak") => {
+                Some(AlternativeCastKeyword::Sneak)
+            }
             _ => None,
         }
     }
@@ -268,7 +280,7 @@ where
             Self::Overload { cost, .. } => Some(cost),
             Self::Cleave { cost, .. } => Some(cost),
             Self::Awaken { cost, .. } => Some(cost),
-            Self::Flashback { total_cost } => total_cost.mana_cost(),
+            Self::Flashback { total_cost, .. } => total_cost.mana_cost(),
             Self::Harmonize { total_cost } => total_cost.mana_cost(),
             Self::Retrace { total_cost } => total_cost.mana_cost(),
             Self::JumpStart { .. } => None,
@@ -291,7 +303,7 @@ where
         }
 
         match self {
-            Self::Flashback { total_cost } => non_mana_components(total_cost),
+            Self::Flashback { total_cost, .. } => non_mana_components(total_cost),
             Self::Blitz { total_cost } | Self::Madness { total_cost } => {
                 non_mana_components(total_cost)
             }
@@ -314,7 +326,7 @@ where
 
     pub fn total_cost(&self) -> Option<&TotalCost<C>> {
         match self {
-            Self::Flashback { total_cost } => Some(total_cost),
+            Self::Flashback { total_cost, .. } => Some(total_cost),
             Self::Blitz { total_cost } | Self::Madness { total_cost } => Some(total_cost),
             Self::Harmonize { total_cost } => Some(total_cost),
             Self::Retrace { total_cost } => Some(total_cost),
@@ -682,8 +694,12 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                     mapped
                 },
             },
-            Self::Flashback { total_cost } => AlternativeCastingMethod::Flashback {
+            Self::Flashback {
+                total_cost,
+                x_minimum,
+            } => AlternativeCastingMethod::Flashback {
                 total_cost: map_total_cost(total_cost)?,
+                x_minimum,
             },
             Self::Harmonize { total_cost } => AlternativeCastingMethod::Harmonize {
                 total_cost: map_total_cost(total_cost)?,

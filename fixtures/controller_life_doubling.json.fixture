@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Celestial Mantle",
+    "oracle_id": "7417bc73-a75a-4c3a-88d2-17b43e225c2c",
+    "mana_cost": "{3}{W}{W}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +3/+3.\nWhenever enchanted creature deals combat damage to a player, double its controller's life total.",
+    "text": "Mana cost: {3}{W}{W}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +3/+3.\nWhenever enchanted creature deals combat damage to a player, double its controller's life total."
+  }
+]

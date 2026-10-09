@@ -81,6 +81,10 @@ pub enum TokenActionAst {
         set_base_power_toughness_to_source_totals: bool,
         starting_loyalty: Option<u32>,
         granted_abilities: Vec<GrantedAbilityAst>,
+        /// CR 707.9b: "except its name is X" / "... named X".
+        set_name: Option<String>,
+        /// CR 707.9b: "except it's legendary".
+        added_supertypes: Vec<Supertype>,
     },
     CreateTokenWithMods {
         name: String,

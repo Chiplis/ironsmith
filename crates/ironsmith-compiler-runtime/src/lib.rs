@@ -180,6 +180,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             compiler::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            compiler::effects::continuous::RuntimeModification::RetainSourceColors => {
+                ironsmith::effects::continuous::RuntimeModification::RetainSourceColors
+            }
             compiler::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter) => {
                 ironsmith::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)
             }
@@ -412,6 +415,9 @@ fn convert_derived_alternative_cast(
         }
         compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
             ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
+        }
+        compiler::grant::DerivedAlternativeCast::MadnessFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::MadnessFromCardManaCost
         }
         compiler::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
             ironsmith::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }

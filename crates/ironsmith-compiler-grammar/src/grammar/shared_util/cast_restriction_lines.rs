@@ -78,6 +78,19 @@ fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
         ["during", "your", "turn"] => Some((Timing::DuringYourTurn, "Cast this spell only during your turn.")),
         ["during", "an", "opponents", "turn"] | ["during", "an", "opponent's", "turn"] | ["during", "an", "opponent", "s", "turn"] =>
             Some((Timing::DuringOpponentsTurn, "Cast this spell only during an opponent's turn.")),
+        // CR 506-511 turn-structure windows named by Oracle timing riders.
+        ["before", "blockers", "are", "declared"] =>
+            Some((Timing::BeforeBlockersAreDeclared, "Cast this spell only before blockers are declared.")),
+        ["before", "combat", "or", "during", "combat", "before", "blockers", "are", "declared"] =>
+            Some((Timing::BeforeBlockersAreDeclared, "Cast this spell only before combat or during combat before blockers are declared.")),
+        ["during", "your", "declare", "attackers", "step"] =>
+            Some((Timing::DuringYourDeclareAttackersStep, "Cast this spell only during your declare attackers step.")),
+        ["during", "the", "declare", "blockers", "step", "on", "an", "opponents" | "opponent's", "turn"]
+        | ["during", "the", "declare", "blockers", "step", "on", "an", "opponent", "s", "turn"] =>
+            Some((Timing::DuringDeclareBlockersStepOnOpponentsTurn, "Cast this spell only during the declare blockers step on an opponent's turn.")),
+        ["during", "an", "opponents" | "opponent's", "turn", "before", "attackers", "are", "declared"]
+        | ["during", "an", "opponent", "s", "turn", "before", "attackers", "are", "declared"] =>
+            Some((Timing::DuringOpponentsTurnBeforeAttackersAreDeclared, "Cast this spell only during an opponent's turn, before attackers are declared.")),
         _ => None,
     };
     if let Some((timing,display))=typed { return Some((Restriction::timing(timing),display)); }
@@ -208,6 +221,11 @@ fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
             &["if", "a", "creature", "is", "attacking", "you"],
             Restriction::if_creature_is_attacking_you,
             "Cast this spell only if a creature is attacking you.",
+        ),
+        (
+            &["if", "a", "creature", "died", "this", "turn"],
+            Restriction::if_creature_died_this_turn,
+            "Cast this spell only if a creature died this turn.",
         ),
         (
             &["after", "combat"],

@@ -1,0 +1,545 @@
+[
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Brilliance Unleashed",
+    "oracle_id": "b047cd3f-9129-41cc-8b91-b0dc970f5068",
+    "mana_cost": "{4}{U}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose one or both —\n• Brilliance Unleashed deals 5 damage to target creature.\n• Choose target artifact card in your graveyard. Return it to the battlefield if it's an artifact creature card. Otherwise, return it to the battlefield and it's a 3/3 Robot artifact creature with flying."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Fang, Roku's Companion",
+    "oracle_id": "6665bfe2-942c-4b3d-a976-776fe00c99f4",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Legendary Creature — Dragon",
+    "oracle_text": "Flying\nWhenever Fang attacks, another target legendary creature you control gets +X/+0 until end of turn, where X is Fang's power.\nWhen Fang dies, if he wasn't a Spirit, return this card to the battlefield under your control. He's a Spirit in addition to his other types.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Princess Yue",
+    "oracle_id": "08c59e5e-d01c-49b7-a812-8ea75e9e945d",
+    "mana_cost": "{2}{U}",
+    "type_line": "Legendary Creature — Human Noble Ally",
+    "oracle_text": "When Princess Yue dies, if she was a nonland creature, return this card to the battlefield tapped under your control. She's a land named Moon. She gains \"{T}: Add {C}.\"\n{T}: Scry 2.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Sauron, Dino Devotee",
+    "oracle_id": "f5295bfe-7e73-44ad-9cfd-200e31c5d52b",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Legendary Creature — Dinosaur Vampire Villain",
+    "oracle_text": "Flying\nWhenever Sauron enters or attacks, choose one —\n• Cure Cancer — You gain 3 life.\n• Turn People into Dinosaurs — Put a saurian counter on another target creature. It's a green Dinosaur with base power and toughness 5/5 for as long as it has a saurian counter on it.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "The Master, Transcendent",
+    "oracle_id": "40262ae5-1472-4777-b759-d1752c0b0148",
+    "mana_cost": "{1}{B}{G}{U}",
+    "type_line": "Legendary Artifact Creature — Mutant",
+    "oracle_text": "When The Master enters, target player gets two rad counters.\n{T}: Put target creature card in a graveyard that was milled this turn onto the battlefield under your control. It's a green Mutant with base power and toughness 3/3.",
+    "power": "2",
+    "toughness": "4"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Yedora, Grave Gardener",
+    "oracle_id": "1fa20b05-cc06-4fb7-ae76-677a29e2185a",
+    "mana_cost": "{4}{G}",
+    "type_line": "Legendary Creature — Treefolk Druid",
+    "oracle_text": "Whenever another nontoken creature you control dies, you may return it to the battlefield face down under its owner's control. It's a Forest land.",
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Eluge, the Shoreless Sea",
+    "oracle_id": "027989e7-20c4-4773-b6b4-20337cc5fe8c",
+    "mana_cost": "{1}{U}{U}{U}",
+    "type_line": "Legendary Creature — Elemental Fish",
+    "oracle_text": "Eluge's power and toughness are each equal to the number of Islands you control.\nWhenever Eluge enters or attacks, put a flood counter on target land. It's an Island in addition to its other types for as long as it has a flood counter on it.\nThe first instant or sorcery spell you cast each turn costs {U} less to cast for each land you control with a flood counter on it.",
+    "power": "*",
+    "toughness": "*"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Cavernous Maw",
+    "oracle_id": "952ab8fe-f7d3-4673-89de-8c6d3f8a081f",
+    "mana_cost": "",
+    "type_line": "Land — Cave",
+    "oracle_text": "{T}: Add {C}.\n{2}: This land becomes a 3/3 Elemental creature until end of turn. It's still a Cave land. Activate only if the number of other Caves you control plus the number of Cave cards in your graveyard is three or greater."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Chainer, Dementia Master",
+    "oracle_id": "cb905eb0-bb20-41c0-9695-0f5c71972561",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Legendary Creature — Human Minion",
+    "oracle_text": "All Nightmares get +1/+1.\n{B}{B}{B}, Pay 3 life: Put target creature card from a graveyard onto the battlefield under your control. That creature is black and is a Nightmare in addition to its other creature types.\nWhen Chainer leaves the battlefield, exile all Nightmares.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Quicksilver Fountain",
+    "oracle_id": "0e7cf14a-6149-4ba9-b3f5-c5faf9f772bc",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each player's upkeep, that player puts a flood counter on target non-Island land they control of their choice. That land is an Island for as long as it has a flood counter on it.\nAt the beginning of each end step, if all lands on the battlefield are Islands, remove all flood counters from them."
+  },
+  {
+    "cluster": "copular_contraction_animation",
+    "name": "Grimoire of the Dead",
+    "oracle_id": "922c6e1b-abcf-40e0-847e-9ebb7d0b6fd4",
+    "mana_cost": "{4}",
+    "type_line": "Legendary Artifact — Book",
+    "oracle_text": "{1}, {T}, Discard a card: Put a study counter on Grimoire of the Dead.\n{T}, Remove three study counters from Grimoire of the Dead and sacrifice it: Put all creature cards from all graveyards onto the battlefield under your control. They're black Zombies in addition to their other colors and types."
+  },
+  {
+    "cluster": "contracted_suspicion_clear",
+    "name": "Airtight Alibi",
+    "oracle_id": "cb666ea8-55e3-4e27-ae6d-806677dfc17a",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Flash\nEnchant creature\nWhen this Aura enters, untap enchanted creature. It gains hexproof until end of turn. If it's suspected, it's no longer suspected.\nEnchanted creature gets +2/+2 and can't become suspected."
+  },
+  {
+    "cluster": "contracted_suspicion_clear",
+    "name": "Eliminate the Impossible",
+    "oracle_id": "c78d4cec-6764-4cce-96d2-a2d85a57b218",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected."
+  },
+  {
+    "cluster": "its_controller_manifest_dread",
+    "name": "Fear of Impostors",
+    "oracle_id": "628ae0e4-5d54-48a1-a24c-b9c1d862df9d",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Enchantment Creature — Nightmare",
+    "oracle_text": "Flash\nWhen this creature enters, counter target spell. Its controller manifests dread.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "its_controller_manifest_dread",
+    "name": "Unwanted Remake",
+    "oracle_id": "90aa9113-5148-486b-a1c6-b4230e6d3e41",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature. Its controller manifests dread."
+  },
+  {
+    "cluster": "opponent_only_activation",
+    "name": "Detention Vortex",
+    "oracle_id": "5383a1c1-662f-46fe-a0e5-0f38efe1a37a",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant nonland permanent\nEnchanted permanent can't attack or block, and its activated abilities can't be activated.\n{3}: Destroy this Aura. Only your opponents may activate this ability and only as a sorcery."
+  },
+  {
+    "cluster": "dungeon_game_noun_alias",
+    "name": "Dungeon Descent",
+    "oracle_id": "f086a63c-0c62-4674-bd27-82e7aed12b1a",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "This land enters tapped.\n{T}: Add {C}.\n{4}, {T}, Tap an untapped legendary creature you control: Venture into the dungeon. Activate only as a sorcery."
+  },
+  {
+    "cluster": "dungeon_game_noun_alias",
+    "name": "Dungeon Map",
+    "oracle_id": "20f1bba5-d398-4d6e-a76a-75e29df42aec",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}: Add {C}.\n{3}, {T}: Venture into the dungeon. Activate only as a sorcery."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Raphael, Most Attitude",
+    "oracle_id": "eaf194a7-d95f-4738-9052-92ad00443a76",
+    "mana_cost": "{3}{R}",
+    "type_line": "Legendary Creature — Mutant Ninja Turtle",
+    "oracle_text": "Menace\nAlliance — Whenever another creature you control enters, you may exile the top card of your library.\nWhenever Raphael attacks, until end of turn, you may play a card exiled with Raphael.",
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Kayla's Music Box",
+    "oracle_id": "8110f15d-82db-4299-a959-09c22475daec",
+    "mana_cost": "{2}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "{W}, {T}: Look at the top card of your library, then exile it face down.\n{T}: Until end of turn, you may play cards you own exiled with Kayla's Music Box."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Gix, Yawgmoth Praetor",
+    "oracle_id": "928d977e-cff0-4e0e-83bb-16d73a754f35",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Legendary Creature — Phyrexian Praetor",
+    "oracle_text": "Whenever a creature deals combat damage to one of your opponents, its controller may pay 1 life. If they do, they draw a card.\n{4}{B}{B}{B}, Discard X cards: Exile the top X cards of target opponent's library. You may play lands and cast spells from among cards exiled this way without paying their mana costs.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Magus of the Mind",
+    "oracle_id": "b39d98c3-0173-4d7c-83d0-f80db82fc9ba",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "{U}, {T}, Sacrifice this creature: Shuffle your library, then exile the top X cards, where X is one plus the number of spells cast this turn. Until end of turn, you may play lands and cast spells from among cards exiled this way without paying their mana costs.",
+    "power": "4",
+    "toughness": "5"
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Howltooth Hollow",
+    "oracle_id": "463fc699-f4fc-4112-a6b3-6dcb642203e6",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "Hideaway 4\nThis land enters tapped.\n{T}: Add {B}.\n{B}, {T}: You may play the exiled card without paying its mana cost if each player has no cards in hand."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Extract Power",
+    "oracle_id": "5c30a92b-2e88-4e66-b0a5-fa05304136e7",
+    "mana_cost": "{5}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top card of each player's library, then exile those cards face down. You may play them without paying their mana costs for as long as they remain exiled."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Elkin Bottle",
+    "oracle_id": "1e381361-7404-4654-bfb4-5ea65f6e4dce",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "{3}, {T}: Exile the top card of your library. Until the beginning of your next upkeep, you may play that card."
+  },
+  {
+    "cluster": "exile_play_permission_variants",
+    "name": "Klaw, Master of Sound",
+    "oracle_id": "8eaa8833-ab9e-4bd8-92de-63e195b8d912",
+    "mana_cost": "{2}{B}",
+    "type_line": "Legendary Creature — Elemental Rogue Villain",
+    "oracle_text": "Deathtouch\nWhenever you play a card from exile, Klaw gains indestructible until end of turn.\nWhenever Klaw deals combat damage to a player, look at the top card of that player's library, then exile it face down. You may play it for as long as it remains exiled. Mana of any type can be spent to cast a spell this way.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Ruhan of the Fomori",
+    "oracle_id": "82d109ea-3421-46eb-9bbf-f7f28b548ea6",
+    "mana_cost": "{1}{U}{R}{W}",
+    "type_line": "Legendary Creature — Giant Warrior",
+    "oracle_text": "At the beginning of combat on your turn, choose an opponent at random. Ruhan attacks that player this combat if able.",
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Raving Dead",
+    "oracle_id": "30e5d70e-6547-483a-a4ab-4c2eed296543",
+    "mana_cost": "{4}{B}",
+    "type_line": "Creature — Zombie",
+    "oracle_text": "Deathtouch\nAt the beginning of combat on your turn, choose an opponent at random. This creature attacks that player this combat if able.\nWhenever this creature deals combat damage to a player, that player loses half their life, rounded down.",
+    "power": "2",
+    "toughness": "6"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Ursine Monstrosity",
+    "oracle_id": "647feda9-2876-4430-902f-10dc1f4f99a9",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Bear Mutant",
+    "oracle_text": "Trample\nAt the beginning of combat on your turn, mill a card and choose an opponent at random. This creature attacks that player this combat if able. Until end of turn, this creature gains indestructible and gets +1/+1 for each card type among cards in your graveyard.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "attack_specific_player_requirement",
+    "name": "Nahiri, the Unforgiving",
+    "oracle_id": "d71d42e0-cd56-4f53-95ff-ecab7f8c6552",
+    "mana_cost": "{1}{R}{R/W/P}{W}",
+    "type_line": "Legendary Planeswalker — Nahiri",
+    "oracle_text": "Compleated\n+1: Until your next turn, up to one target creature attacks a player each combat if able.\n+1: Discard a card, then draw a card.\n0: Exile target creature or Equipment card with mana value less than Nahiri's loyalty from your graveyard. Create a token that's a copy of it. That token gains haste. Exile it at the beginning of the next end step.",
+    "loyalty": "5"
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Vaan, Street Thief",
+    "oracle_id": "24fd1f47-bb15-45c6-a7b1-ba8eb3bb8b1d",
+    "mana_cost": "{2}{R}",
+    "type_line": "Legendary Creature — Human Scout",
+    "oracle_text": "Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.\nWhenever you cast a spell you don't own, put a +1/+1 counter on each Scout, Pirate, and Rogue you control.",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Oakhollow Village",
+    "oracle_id": "177b7fe4-8565-4631-b4d9-8b2b4282f3ac",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "{T}: Add {C}.\n{T}: Add {G}. Spend this mana only to cast a creature spell.\n{G}, {T}: Put a +1/+1 counter on each Frog, Rabbit, Raccoon, or Squirrel you control that entered the battlefield this turn."
+  },
+  {
+    "cluster": "subtype_object_list_split",
+    "name": "Mirkwood",
+    "oracle_id": "cd49aa99-bf84-4edd-aecc-6dae78b73412",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "This land enters tapped.\n{T}: Add {B} or {G}.\n{2}{B}{G}, {T}, Sacrifice this land: Put two +1/+1 counters on target Bear, Spider, or Wolf you control. Activate only as a sorcery."
+  },
+  {
+    "cluster": "face_up_effect_targets",
+    "name": "Ugin's Mastery",
+    "oracle_id": "d6158860-ada8-4e39-8156-23dee2f68f79",
+    "mana_cost": "{4}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you cast a colorless creature spell, manifest the top card of your library.\nWhenever you attack with creatures with total power 6 or greater, you may turn a face-down creature you control face up."
+  },
+  {
+    "cluster": "face_up_effect_targets",
+    "name": "Zimone, Mystery Unraveler",
+    "oracle_id": "75bf0f27-9df1-4ab4-97a8-94bb3223bdf9",
+    "mana_cost": "{2}{G}{U}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "Landfall — Whenever a land you control enters, manifest dread if this is the first time this ability has resolved this turn. Otherwise, you may turn a permanent you control face up.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Misleading Signpost",
+    "oracle_id": "eaffdf95-8e20-408d-99fa-3adc9e19523d",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact",
+    "oracle_text": "Flash\nWhen this artifact enters during the declare attackers step, you may reselect which player or permanent target attacking creature is attacking.\n{T}: Add {U}."
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Portal Mage",
+    "oracle_id": "4d19ea6d-cabe-4a25-a911-dd744517dd73",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, you may reselect which player or permanent target attacking creature is attacking.",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "cluster": "reselect_attack_target",
+    "name": "Windshaper Planetar",
+    "oracle_id": "c47050c2-9b46-427e-85d6-058fd6a61e67",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flash\nFlying\nWhen this creature enters during the declare attackers step, for each attacking creature, you may reselect which player or permanent that creature is attacking.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "manifest_top_count",
+    "name": "Omarthis, Ghostfire Initiate",
+    "oracle_id": "50676eba-a55a-4749-bb07-74a30e015781",
+    "mana_cost": "{X}{X}",
+    "type_line": "Legendary Creature — Spirit Snake",
+    "oracle_text": "Omarthis enters with X +1/+1 counters on it.\nWhenever you put one or more +1/+1 counters on another colorless creature, you may put a +1/+1 counter on Omarthis.\nWhen Omarthis dies, manifest a number of cards from the top of your library equal to the number of counters on it.",
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "cluster": "flashback_cost_reference",
+    "name": "Sphinx of Forgotten Lore",
+    "oracle_id": "ddb7e868-8f1d-4d57-9ee2-ebadb17b398a",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Creature — Sphinx",
+    "oracle_text": "Flash\nFlying\nWhenever this creature attacks, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to that card's mana cost.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "amount_and_color_coordination",
+    "name": "Willowdusk, Essence Seer",
+    "oracle_id": "94723d61-3e29-4180-91bc-df37c4086a66",
+    "mana_cost": "{1}{B}{G}",
+    "type_line": "Legendary Creature — Dryad Druid",
+    "oracle_text": "{1}, {T}: Choose another target creature. Put a number of +1/+1 counters on it equal to the amount of life you gained this turn or the amount of life you lost this turn, whichever is greater. Activate only as a sorcery.",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "cluster": "amount_and_color_coordination",
+    "name": "Lightwielder Paladin",
+    "oracle_id": "ad62e9d6-61bc-485f-a9b8-2ef9ba98a4b0",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Human Knight",
+    "oracle_text": "First strike\nWhenever this creature deals combat damage to a player, you may exile target black or red permanent that player controls.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Parting of the Ways",
+    "oracle_id": "58d5b285-eb0c-4478-b137-26a897075f70",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Exile the top five cards of your library. For each nonland card exiled this way, put a number of time counters on that card equal to its mana value. If it doesn't have suspend, it gains suspend.\nII — Time travel, then time travel.\nIII — For each opponent, destroy up to one target artifact that player controls."
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Tenth Doctor",
+    "oracle_id": "23af0a0a-1d12-47c7-b191-2bd3f84eea93",
+    "mana_cost": "{3}{U}{R}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "Allons-y! — Whenever you attack, exile cards from the top of your library until you exile a nonland card. Put three time counters on it. If it doesn't have suspend, it gains suspend.\nTimey-Wimey — {7}: Time travel three times. Activate only as a sorcery.",
+    "power": "3",
+    "toughness": "5"
+  },
+  {
+    "cluster": "time_travel_clause",
+    "name": "The Girl in the Fireplace",
+    "oracle_id": "39068bf1-cae4-4ac9-82ef-4e81bf59446e",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Create a 1/1 white Human Noble creature token with vanishing 3 and \"Prevent all damage that would be dealt to this token.\"\nII — Create a 2/2 white Horse creature token with \"Doctors you control have horsemanship.\"\nIII — Whenever a creature you control deals combat damage to a player this turn, time travel."
+  },
+  {
+    "cluster": "attacked_player_activation",
+    "name": "Capricopian",
+    "oracle_id": "3a5a6732-bdfa-4b64-b897-6817983dbb0e",
+    "mana_cost": "{X}{G}",
+    "type_line": "Creature — Goat Hydra",
+    "oracle_text": "This creature enters with X +1/+1 counters on it.\n{2}: Put a +1/+1 counter on this creature, then you may reselect which player this creature is attacking. Only the player this creature is attacking may activate this ability and only during the declare attackers step.",
+    "power": "0",
+    "toughness": "0"
+  },
+  {
+    "cluster": "prevention_follow_up_repeat",
+    "name": "Immortal Coil",
+    "oracle_id": "c85fc672-12d8-4ab0-b18d-ccd590ac063c",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Artifact",
+    "oracle_text": "{T}, Exile two cards from your graveyard: Draw a card.\nIf damage would be dealt to you, prevent that damage. Exile a card from your graveyard for each 1 damage prevented this way.\nWhen there are no cards in your graveyard, you lose the game."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Abstruse Appropriation",
+    "oracle_id": "61a23402-3244-4b5e-9134-98e1f82eda65",
+    "mana_cost": "{2}{W}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Devoid\nExile target nonland permanent. You may cast that card for as long as it remains exiled, and you may spend colorless mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "exile_play_mana_spend_permissions",
+    "name": "Curse of Hospitality",
+    "oracle_id": "0fb70b94-0847-4155-8953-cb53fef82ef1",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment — Aura Curse",
+    "oracle_text": "Enchant player\nCreatures attacking enchanted player have trample.\nWhenever a creature deals combat damage to enchanted player, that player exiles the top card of their library. Until end of turn, that creature's controller may play that card and they may spend mana as though it were mana of any color to cast that spell."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Write into Being",
+    "oracle_id": "4fc69345-4c1f-4113-8e1c-15b8e2e597fc",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top two cards of your library. Manifest one of those cards, then put the other on the top or bottom of your library."
+  },
+  {
+    "cluster": "manifest_face_down_selection",
+    "name": "Jeskai Infiltrator",
+    "oracle_id": "39b359c1-48b8-43a7-b972-54764eadd2c7",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Monk",
+    "oracle_text": "This creature can't be blocked as long as you control no other creatures.\nWhen this creature deals combat damage to a player, exile it and the top card of your library in a face-down pile, shuffle that pile, then manifest those cards.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "cluster": "forced_attack_reassignment",
+    "name": "Portal Manipulator",
+    "oracle_id": "0dd3127e-de13-4785-b5f2-0af996e9f15f",
+    "mana_cost": "{2}{W/U}{W/U}",
+    "type_line": "Creature — Human Wizard",
+    "oracle_text": "Flash\nWhen this creature enters during the declare attackers step, choose target player and any number of target attacking creatures their opponents control. Those creatures are now attacking that player.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Firemind's Foresight",
+    "oracle_id": "bf5765e0-def0-4ddf-9cd7-083feae71660",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Search your library for an instant card with mana value 3, reveal it, and put it into your hand. Then repeat this process for instant cards with mana values 2 and 1. Then shuffle."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Protection Racket",
+    "oracle_id": "4b51edb1-37cc-4993-a8a5-2eb5f79fa191",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, repeat the following process for each opponent in turn order. Reveal the top card of your library. That player may pay life equal to that card's mana value. If they do, exile that card. Otherwise, put it into your hand."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Horus Heresy",
+    "oracle_id": "fc315174-d063-41dd-9379-11d95c5fd4ed",
+    "mana_cost": "{3}{U}{B}{R}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — For each opponent, gain control of up to one target nonlegendary creature that player controls for as long as this Saga remains on the battlefield.\nII — Draw a card for each creature you control but don't own.\nIII — Starting with you, each player chooses a creature. Destroy each creature chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "The Legend of Yangchen // Avatar Yangchen",
+    "oracle_id": "521a63cf-5e83-4649-9800-c62b2fc474d6",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "I — Starting with you, each player chooses up to one permanent with mana value 3 or greater from among permanents your opponents control. Exile those permanents.\nII — You may have target opponent draw three cards. If you do, draw three cards.\nIII — Exile this Saga, then return it to the battlefield transformed under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Grenzo's Rebuttal",
+    "oracle_id": "afcfcb74-ee64-4528-8498-2e8109ad5142",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 4/4 red Ogre creature token. Starting with you, each player chooses an artifact, a creature, and a land from among the permanents controlled by the player to their left. Destroy each permanent chosen this way."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Rejoin the Fight",
+    "oracle_id": "d22ea32b-2128-4dcc-8b1c-c4c52f0b2f45",
+    "mana_cost": "{5}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Mill three cards. Then starting with the next opponent in turn order, each opponent chooses a creature card in your graveyard that hasn't been chosen. Return each card chosen this way to the battlefield under your control."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Manifold Insights",
+    "oracle_id": "9c793037-6ba8-400a-b24d-6032141e8dae",
+    "mana_cost": "{2}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Reveal the top ten cards of your library. Starting with the next opponent in turn order, each opponent chooses a different nonland card from among them. Put the chosen cards into your hand and the rest on the bottom of your library in a random order."
+  },
+  {
+    "cluster": "repeat_process_variants",
+    "name": "Timesifter",
+    "oracle_id": "99f8805f-6618-4838-a4e7-a3660e3b087f",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each upkeep, each player exiles the top card of their library. The player who exiled the card with the greatest mana value takes an extra turn after this one. If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Thieves' Auction",
+    "oracle_id": "230ee0b4-eb75-457f-b171-72d585cfb5aa",
+    "mana_cost": "{4}{R}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exile all nontoken permanents. Starting with you, each player chooses one of the exiled cards and puts it onto the battlefield tapped under their control. Repeat this process until all cards exiled this way have been chosen."
+  }
+]

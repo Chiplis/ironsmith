@@ -136,6 +136,47 @@ pub fn parse_attached_gets_tail_tokens(
     })
 }
 
+/// "Enchanted creature gets +0/+2 and can't be the target of spells"
+/// (Spectral Shield): a fixed modifier coordinated with an arbitrary negated
+/// object restriction. The closed combat restrictions keep their own typed
+/// production in [`parse_attached_gets_tail_tokens`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttachedGetsNegatedRestrictionSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub get_token: usize,
+    pub and_token: usize,
+    pub negated_tail: &'a [OwnedLexToken],
+}
+
+pub fn parse_attached_gets_and_negated_restriction_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedGetsNegatedRestrictionSpec<'_>> {
+    let (subject, _) = primitives::parse_prefix(tokens, parse_attached_subject_lexed)?;
+    let get_token = find_get(tokens)?;
+    let relative_and = find_and(tokens.get(get_token + 1..)?)?;
+    let and_token = get_token + 1 + relative_and;
+    // Exactly one modifier word sits between the verb and the conjunction.
+    if and_token != get_token + 2 {
+        return None;
+    }
+    let negated_tail = trim_lexed_commas(tokens.get(and_token + 1..)?);
+    if !negated_tail
+        .first()
+        .is_some_and(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+        || parse_attached_restriction_tail_tokens(negated_tail).is_some()
+    {
+        return None;
+    }
+    Some(AttachedGetsNegatedRestrictionSpec {
+        subject,
+        subject_tokens: tokens.get(..get_token)?,
+        get_token,
+        and_token,
+        negated_tail,
+    })
+}
+
 pub fn parse_attached_legendary_gets_has_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedLegendaryGetsHasSpec<'_>> {
@@ -184,11 +225,24 @@ pub fn parse_attached_gets_and_has_tokens(
         return None;
     }
     let get_token = find_get(tokens)?;
-    let relative_and = find_and(tokens.get(get_token + 1..)?)?;
+    // An "and" inside the bonus's count ("for each Aura and Equipment
+    // attached to it") belongs to that count. Only the junction introducing
+    // the grant separates the stat bonus from the ability.
+    let (relative_and, modal, _) = primitives::find_prefix(
+        tokens.get(get_token + 1..)?,
+        || winnow::combinator::alt((
+            primitives::phrase(&["and", "has"]).value(false),
+            primitives::phrase(&["and", "have"]).value(false),
+            primitives::phrase(&["and", "can"]).value(true),
+        )),
+    )?;
     let and_token = get_token + 1 + relative_and;
-    let relative_has = find_has(tokens.get(and_token + 1..)?)?;
-    let has_token = and_token + 1 + relative_has;
-    let ability_tokens = trim_lexed_commas(tokens.get(has_token + 1..)?);
+    let (has_token, ability_tokens) = if modal {
+        (and_token, trim_lexed_commas(tokens.get(and_token + 1..) ?))
+    } else {
+        let has_token = and_token + 1;
+        (has_token, trim_lexed_commas(tokens.get(has_token + 1..)?))
+    };
     if ability_tokens.is_empty() {
         return None;
     }

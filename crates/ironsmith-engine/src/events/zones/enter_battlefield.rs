@@ -415,6 +415,9 @@ impl EnterBattlefieldEvent {
             if let Some(color) = choices.chosen_color {
                 prospective.set_chosen_color(self.object, color);
             }
+            if let Some(colors) = choices.chosen_color_set {
+                prospective.set_chosen_colors(self.object, colors);
+            }
             if let Some(subtype) = choices.chosen_basic_land_type {
                 prospective.set_chosen_basic_land_type(self.object, subtype);
             }
@@ -429,6 +432,9 @@ impl EnterBattlefieldEvent {
             }
             if let Some(player) = choices.chosen_player {
                 prospective.set_chosen_player(self.object, player);
+            }
+            if let Some(players) = choices.chosen_player_set.clone() {
+                prospective.set_chosen_players(self.object, players);
             }
             if let Some(option) = &choices.chosen_named_option {
                 prospective.set_chosen_named_option(self.object, option.clone());

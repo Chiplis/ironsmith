@@ -1327,6 +1327,7 @@ dependencies = [
  "ironsmith-compiler-source",
  "ironsmith-compiler-syntax",
  "ironsmith-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -1411,6 +1412,7 @@ dependencies = [
  "ironsmith-compiler-ast",
  "ironsmith-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

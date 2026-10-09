@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Forgotten Lore",
+    "oracle_id": "ca9f538d-4191-448a-870d-f645b7c37c1b",
+    "text": "Mana cost: {G}\nType: Sorcery\nTarget opponent chooses a card in your graveyard. You may pay {G}. If you do, repeat this process except that opponent can't choose a card already chosen for Forgotten Lore. Then put the last chosen card into your hand."
+  },
+  {
+    "name": "Shrouded Lore",
+    "oracle_id": "f21bd7b6-a03f-402e-a2b1-899ccbd9f0cf",
+    "text": "Mana cost: {B}\nType: Sorcery\nTarget opponent chooses a card in your graveyard. You may pay {B}. If you do, repeat this process except that opponent can't choose a card already chosen for Shrouded Lore. Then put the last chosen card into your hand."
+  },
+  {
+    "name": "Crooked Scales",
+    "oracle_id": "49c47768-fcc7-4091-b06d-d8a2bd7d1cc9",
+    "text": "Mana cost: {4}\nType: Artifact\n{4}, {T}: Flip a coin. If you win the flip, destroy target creature an opponent controls. If you lose the flip, destroy target creature you control unless you pay {3} and repeat this process."
+  }
+]

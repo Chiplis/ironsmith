@@ -1,13 +1,59 @@
 use super::*;
 
+/// Splits "its name is <name>" or "named <name>" (ending at "and" or the end
+/// of the exception) out of a copy exception.
+fn split_copy_name_exception<'a>(words: &[&'a str]) -> (Option<Vec<String>>, Vec<&'a str>) {
+    let marker = words
+        .windows(3)
+        .position(|window| window == ["its", "name", "is"])
+        .map(|idx| (idx, idx + 3))
+        .or_else(|| {
+            words
+                .iter()
+                .position(|word| *word == "named")
+                .map(|idx| (idx, idx + 1))
+        });
+    let Some((marker_start, name_start)) = marker else {
+        return (None, words.to_vec());
+    };
+    let name_end = words[name_start..]
+        .iter()
+        .position(|word| *word == "and")
+        .map_or(words.len(), |offset| name_start + offset);
+    if name_end == name_start {
+        return (None, words.to_vec());
+    }
+    let name = words[name_start..name_end]
+        .iter()
+        .map(|word| (*word).to_string())
+        .collect();
+    let mut kept = words[..marker_start].to_vec();
+    let mut rest = &words[name_end..];
+    if kept.is_empty() && rest.first() == Some(&"and") {
+        rest = &rest[1..];
+    }
+    kept.extend_from_slice(rest);
+    (Some(name), kept)
+}
+
 pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec, CardTextError> {
-    let modifier_words = last_class_location(tail_words, CreationWordClass::Except)
+    let raw_modifier_words = last_class_location(tail_words, CreationWordClass::Except)
         .and_then(|idx| tail_words.get(idx + 1..))
         .unwrap_or_default();
-    let surface = CreationWords::new(modifier_words);
     let mut spec = CopyModifierSpec::default();
-    if modifier_words.is_empty() {
+    if raw_modifier_words.is_empty() {
         return Ok(spec);
+    }
+    // CR 707.9b: the name exception is removed before the characteristic
+    // words are read, so name words never become subtypes or colors.
+    let (name_words, kept_words) = split_copy_name_exception(raw_modifier_words);
+    spec.name_words = name_words;
+    let modifier_words: &[&str] = &kept_words;
+    let surface = CreationWords::new(modifier_words);
+    if modifier_words.iter().any(|word| *word == "legendary")
+        && !surface.has_phrase(CreationPhrase::NotLegendary)
+    {
+        push_unique(&mut spec.added_supertypes, Supertype::Legendary);
     }
 
     if surface.has(CreationWordClass::LoseVerb) && surface.has(CreationWordClass::Soulbond) {
@@ -84,10 +130,44 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                 && CreationWords::new(modifier_words).has_literal(keyword))
     };
     if grants_keyword(CreationPhrase::WithFlying, "flying") {
-        spec.granted_abilities.push(StaticAbility::flying());
+        push_unique(&mut spec.granted_abilities, StaticAbility::flying());
     }
     if grants_keyword(CreationPhrase::WithTrample, "trample") {
-        spec.granted_abilities.push(StaticAbility::trample());
+        push_unique(&mut spec.granted_abilities, StaticAbility::trample());
+    }
+    // "... and they have vigilance and menace" (Rebuild the City): the
+    // keyword list after the last grant verb (CR 707.9a). Reading stops at
+    // the first word that isn't a keyword, leaving quoted or self-referential
+    // grants ("has this ability") to their own owners.
+    if let Some(grant_idx) = modifier_words
+        .iter()
+        .rposition(|word| matches!(*word, "has" | "have" | "gain" | "gains"))
+    {
+        let list = &modifier_words[grant_idx + 1..];
+        let mut idx = 0;
+        while idx < list.len() {
+            let (ability, used) = match &list[idx..] {
+                ["and", ..] => {
+                    idx += 1;
+                    continue;
+                }
+                ["first", "strike", ..] => (StaticAbility::first_strike(), 2),
+                ["double", "strike", ..] => (StaticAbility::double_strike(), 2),
+                ["vigilance", ..] => (StaticAbility::vigilance(), 1),
+                ["menace", ..] => (StaticAbility::menace(), 1),
+                ["haste", ..] => (StaticAbility::haste(), 1),
+                ["reach", ..] => (StaticAbility::reach(), 1),
+                ["lifelink", ..] => (StaticAbility::lifelink(), 1),
+                ["deathtouch", ..] => (StaticAbility::deathtouch(), 1),
+                ["hexproof", ..] => (StaticAbility::hexproof(), 1),
+                ["defender", ..] => (StaticAbility::defender(), 1),
+                ["flying", ..] => (StaticAbility::flying(), 1),
+                ["trample", ..] => (StaticAbility::trample(), 1),
+                _ => break,
+            };
+            push_unique(&mut spec.granted_abilities, ability);
+            idx += used;
+        }
     }
     if let Some(amount) =
         crate::slice_primitives::find_window_by(modifier_words, 2, |pair| pair[0] == "toxic")

@@ -120,6 +120,26 @@ pub(super) fn parse_effect_clause_unstacked(
     if let Some(effect) = parse_each_player_with_life_clause(tokens)? {
         return Ok(effect);
     }
+    // "it deals 2 damage to you unless it came under your control this turn"
+    // (Erg Raiders): a resolution-time state exception, not a payment.
+    if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
+        && unless > 0
+        && crate::lexer::token_word_refs(&tokens[unless + 1..]).as_slice()
+            == ["it", "came", "under", "your", "control", "this", "turn"]
+    {
+        let effect = parse_effect_clause_unstacked(&tokens[..unless])?;
+        return Ok(EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::Not(Box::new(
+                    crate::cards::builders::PredicateAst::Source(
+                        crate::cards::builders::SourcePredicateAst::SourceCameUnderYourControlThisTurn,
+                    ),
+                )),
+                if_true: vec![effect],
+                if_false: Vec::new(),
+            },
+        ));
+    }
     if let Some(effect) = crate::effect_sentences::clause_pattern_helpers::parse_can_attack_as_though_no_defender_clause(tokens)? {
         return Ok(effect);
     }
@@ -150,6 +170,17 @@ pub(super) fn parse_effect_clause_unstacked(
             "unsupported complete negated restriction clause (clause: '{}')",
             render_lower_words(tokens)
         )));
+    }
+    // "... and it's a 3/3 Robot artifact creature with flying" (Brilliance
+    // Unleashed): a contracted pronoun copula split off as its own clause
+    // states the object's new characteristics, read as "becomes".
+    // A descriptor the become grammar cannot read keeps the clause's other
+    // readings.
+    if let Some((subject, animation)) =
+        clause_grammar::parse_contracted_pronoun_copula_shape(tokens)
+        && let Ok(effect) = parse_become_clause(&subject, &animation)
+    {
+        return Ok(effect);
     }
     let (verb, _) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
@@ -321,15 +352,31 @@ pub(super) fn parse_effect_clause_unstacked(
         && !subject_tokens.is_empty()
         && let Some(shape) = clause_grammar::parse_protection_choice_shape(rest)
     {
+        let chooser = match shape.chooser {
+            clause_grammar::ProtectionChoiceChooserShape::You => PlayerAst::You,
+            clause_grammar::ProtectionChoiceChooserShape::TargetController => {
+                PlayerAst::ItsController
+            }
+        };
+        // "you and each permanent you control gain protection from the color
+        // of your choice" (Faith's Shield): one choice, granted to the player
+        // and to each member of the object set.
+        if let Some((player, also_each)) =
+            crate::effect_sentences::parse_player_and_each_object_recipients(subject_tokens)?
+        {
+            return Ok(EffectAst::subject_verb_grant_protection_choice_with_each(
+                player,
+                also_each,
+                chooser,
+                shape.includes_colorless,
+                shape.includes_artifacts,
+                shape.chooses_card_type,
+            ));
+        }
         let target = parse_target_phrase(subject_tokens)?;
         return Ok(EffectAst::subject_verb_grant_protection_choice(
             target,
-            match shape.chooser {
-                clause_grammar::ProtectionChoiceChooserShape::You => PlayerAst::You,
-                clause_grammar::ProtectionChoiceChooserShape::TargetController => {
-                    PlayerAst::ItsController
-                }
-            },
+            chooser,
             shape.includes_colorless,
             shape.includes_artifacts,
             shape.chooses_card_type,
