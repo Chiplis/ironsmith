@@ -540,6 +540,27 @@ fn parse_tagged_permission_target_lexed<'a>(
                 &["permanent"],
                 &["card"],
                 &["land"],
+                &["saga"],
+            ])),
+        )
+            .value((
+                TaggedPermissionReference::SourceExiled,
+                false,
+                TaggedPermissionTargetSurface::Other,
+                None,
+            )),
+        // "you may cast spells from among cards exiled with this Saga" (King
+        // Narfi's Betrayal): the source-linked exile pool; "cast spells"
+        // excludes lands.
+        (
+            primitives::phrase(&["spells", "from", "among", "cards", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"],
+                &["artifact"],
+                &["enchantment"],
+                &["permanent"],
+                &["card"],
+                &["saga"],
             ])),
         )
             .value((

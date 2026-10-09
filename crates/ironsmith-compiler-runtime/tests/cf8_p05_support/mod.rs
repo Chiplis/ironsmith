@@ -11,6 +11,21 @@ pub fn rows(cluster: &str) -> Vec<serde_json::Value> {
     all.into_iter().filter(|row| row["cluster"] == cluster).collect()
 }
 
+/// Rows of other packages' cards that need a p05-owned mechanism.
+pub fn dependant_rows(cluster: &str) -> Vec<serde_json::Value> {
+    let all: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../../../fixtures/cf8_p05_dependants.json.fixture"))
+            .unwrap();
+    all.into_iter().filter(|row| row["cluster"] == cluster).collect()
+}
+
+pub fn dependant_row(cluster: &str, name: &str) -> serde_json::Value {
+    dependant_rows(cluster)
+        .into_iter()
+        .find(|row| row["name"] == name)
+        .unwrap_or_else(|| panic!("{name} missing from {cluster}"))
+}
+
 pub fn row(cluster: &str, name: &str) -> serde_json::Value {
     rows(cluster)
         .into_iter()
