@@ -285,6 +285,18 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield
     ),
     primitive!(
+        "random-hand-reveal-then-loses-mana-value-life",
+        179,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("opponent"),
+            LexRuleHeadHint::Single("that"),
+        ],
+        parse_sentence_random_hand_reveal_then_loses_mana_value_life
+    ),
+    primitive!(
         "target-player-reveals-random-card-from-hand",
         180,
         PreDiagnostic,
