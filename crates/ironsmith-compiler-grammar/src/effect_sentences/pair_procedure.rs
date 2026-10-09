@@ -57,6 +57,8 @@ mod counter_total_limit;
 mod collect_mana_payments;
 #[path = "pair_procedure/life_bid.rs"]
 mod life_bid;
+#[path = "pair_procedure/viewer_face_down_play.rs"]
+mod viewer_face_down_play;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -161,6 +163,22 @@ struct Shape {
 /// document's, as the registry kept the rule consuming the longest program,
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("viewer-face-down-exile-play-with-mana-rider"),
+        head: HeadDiscriminator::words(&["its"]),
+        consumed: 3,
+        read: |sentences, index| {
+            statements(sentences, index, viewer_face_down_play::read(sentences, index, true))
+        },
+    },
+    Shape {
+        id: RuleId::new("viewer-face-down-exile-play"),
+        head: HeadDiscriminator::words(&["its"]),
+        consumed: 2,
+        read: |sentences, index| {
+            statements(sentences, index, viewer_face_down_play::read(sentences, index, false))
+        },
+    },
     Shape {
         id: RuleId::new("counter-placement-ability-total-limit"),
         head: HeadDiscriminator::words(&["put"]),
