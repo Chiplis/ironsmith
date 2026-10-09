@@ -6732,6 +6732,13 @@ fn resolve_effect_result_values_in_fields(
                 Ok(())
             }
         Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
+            Ok(())
+        }
+        Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)
                 || local_random_result_bindings::Family::Reveal.query(query) => {
             let family = if local_random_result_bindings::Family::Number.query(query) {
@@ -7800,6 +7807,12 @@ fn resolve_effect_result_value(
                 metric: *metric,
                 offset: *offset,
             };
+        }
+        Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::filtered_hand_reveal_query(query)
+                && state.reveal_result_producers.last().is_some_and(Option::is_some) =>
+        {
+            *value = local_random_result_bindings::Family::Reveal.bind(query, state)?;
         }
         Value::PendingPriorEffectMetric(query)
             if local_random_result_bindings::Family::Number.query(query)

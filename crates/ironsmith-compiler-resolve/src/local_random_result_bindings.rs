@@ -4,6 +4,20 @@ use super::*;
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Family { Die, Coin, Number, Color, Reveal }
 
+/// "for each card of the chosen type / with the chosen name revealed this way"
+/// (Blood Oath, Thought Hemorrhage): a filtered count of the cards an exact
+/// local hand reveal showed. Bound only when such a reveal precedes it; other
+/// reveal shapes keep the generic prior-result binding.
+pub(super) fn filtered_hand_reveal_query(query: &ironsmith_core::PriorEffectMetricQuery) -> bool {
+    query.action == Some(PriorEffectAction::Revealed)
+        && query.source == EffectMetricSource::AffectedObjects
+        && query.metric == EffectMetric::Count
+        && query.color_choice.is_none()
+        && query.filter.is_some()
+        && query.player.is_none()
+        && query.counter_type.is_none()
+}
+
 impl Family {
     pub(super) fn query(self, query: &ironsmith_core::PriorEffectMetricQuery) -> bool {
         if self == Self::Color { return false; }
@@ -98,7 +112,10 @@ impl Family {
         if self != Self::Reveal { return true; }
         fn consumes(family: Family, value: &Value) -> bool {
             match value {
-                Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. } => family.query(query),
+                Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. } => {
+                    family.query(query)
+                        || (family == Family::Reveal && filtered_hand_reveal_query(query))
+                }
                 Value::SurfaceHinted { value, .. } | Value::Scaled(value, _)
                 | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => consumes(family, value),
                 Value::Add(a, b) | Value::Min(a, b) => consumes(family, a) || consumes(family, b),
