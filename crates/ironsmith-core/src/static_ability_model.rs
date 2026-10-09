@@ -1561,6 +1561,25 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         replacement_mana_cost: ManaCost,
         display: String,
     },
+    /// A keyword granted to matching spells as they are cast (CR 601.2b,
+    /// 601.2f): "Each Sliver spell you cast has replicate. The replicate cost
+    /// is equal to its mana cost." The engine discovers it while casting.
+    /// Appended to preserve published payload variant ordinals.
+    GrantSpellKeyword {
+        filter: ObjectFilter,
+        keyword: crate::GrantedSpellKeyword<C>,
+        /// Authored "Each ..." subject surface; presentation only.
+        #[cfg_attr(feature = "serde", serde(default))]
+        set_quantifier_surface: Option<SetQuantifierSurface>,
+    },    /// "You may cast creature spells from your graveyard using their sneak
+    /// abilities." (Ninja Teen): matching cards may be cast from `zone` with
+    /// their `method` alternative cost, printed or granted. Appended to
+    /// preserve published payload variant ordinals.
+    AlternativeCastFromZoneForFilter {
+        filter: ObjectFilter,
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1766,6 +1785,9 @@ where
                 }
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
+                }
+                DerivedAlternativeCast::MadnessFromCardManaCost => {
+                    DerivedAlternativeCast::MadnessFromCardManaCost
                 }
                 DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
                     DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
@@ -2002,6 +2024,24 @@ where
                     .map(&mut *map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
                 display,
+            },
+            StaticAbilityPayload::GrantSpellKeyword {
+                filter,
+                keyword,
+                set_quantifier_surface,
+            } => StaticAbilityPayload::GrantSpellKeyword {
+                filter,
+                keyword: keyword.try_map(&mut *map_cost)?,
+                set_quantifier_surface,
+            },
+            StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
+            } => StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
             },
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
@@ -7052,6 +7092,41 @@ impl<
                 filter,
                 replacement_mana_cost,
                 display,
+            },
+        }
+    }
+    /// Matching cards may be cast from `zone` using their `method`
+    /// alternative cost ("... using their sneak abilities").
+    pub fn alternative_cast_from_zone_for_filter(
+        filter: ObjectFilter,
+        zone: Zone,
+        method: crate::alternative_cast_model::AlternativeCastKeyword,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::AlternativeCastFromZoneForFilter),
+            label: display.into(),
+            payload: StaticAbilityPayload::AlternativeCastFromZoneForFilter {
+                filter,
+                zone,
+                method,
+            },
+        }
+    }
+    /// A keyword granted to matching spells as they are cast (CR 601.2b).
+    pub fn grant_spell_keyword(
+        filter: ObjectFilter,
+        keyword: crate::GrantedSpellKeyword<C>,
+        set_quantifier_surface: Option<SetQuantifierSurface>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::GrantSpellKeyword),
+            label: display.into(),
+            payload: StaticAbilityPayload::GrantSpellKeyword {
+                filter,
+                keyword,
+                set_quantifier_surface,
             },
         }
     }

@@ -1139,6 +1139,9 @@ fn convert_derived_alternative_cast(
         wire::WireDerivedAlternativeCast::ManaValueAsGenericFromHand => {
             crate::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }
+        wire::WireDerivedAlternativeCast::MadnessFromCardManaCost => {
+            crate::grant::DerivedAlternativeCast::MadnessFromCardManaCost
+        }
         wire::WireDerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
             crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
         }

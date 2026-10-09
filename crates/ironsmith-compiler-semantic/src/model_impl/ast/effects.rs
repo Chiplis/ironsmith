@@ -3426,8 +3426,30 @@ impl EffectAst {
                 mode,
                 require_change,
                 copy_reference_plural: false,
+                new_target_restriction: None,
             }),
         )
+    }
+
+    /// Attach "The new target must be ..." to a stack retarget instruction.
+    /// Returns false when this effect is not a retarget.
+    pub fn set_retarget_new_target_restriction(
+        &mut self,
+        restriction: ironsmith_core::NewTargetRestriction,
+    ) -> bool {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
+                    new_target_restriction,
+                    ..
+                }),
+            ..
+        }) = self
+        {
+            *new_target_restriction = Some(restriction);
+            return true;
+        }
+        false
     }
 
     /// Preserve an authored plural copy back-reference ("the copies").
@@ -5041,6 +5063,26 @@ impl EffectAst {
                 count,
                 sides,
                 surface,
+                ignore_lower: false,
+            }),
+        )
+    }
+
+    /// "Roll two d20 and ignore the lower roll."
+    pub fn subject_verb_roll_dice_ignore_lower_with_surface(
+        player: PlayerAst,
+        count: u32,
+        sides: u32,
+        surface: Option<DieSurface>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult {
+                count,
+                sides,
+                surface,
+                ignore_lower: true,
             }),
         )
     }

@@ -32,6 +32,84 @@ mechanics), so the package splits into many small clusters rather than one.
   ledger (p05 attack requirements / exile play permissions, p06 would-instead replacements,
   p09 choices/votes, p10 restrictions and library exile-until, p12 ability copying).
 
+## Round 3 (on cf8/integration)
+- Shared casting-keyword grant path (`keyword_static/granted_casting_keywords.rs`, replacing the
+  warp-only rule): warp, prowl, freerunning, miracle granted in hand (spell subjects map to those
+  cards in hand, so no new zone permission); jump-start granted in the graveyard.
+- Granted encore with derived costs (`KeywordAction::EncoreFromSourceCost`, graveyard grant).
+- Commander ninjutsu (`KeywordAction::CommanderNinjutsu`, Hand+Command functional zones).
+- Retarget "The new target must be ..." (`StackActionAst::RetargetStackObject.new_target_restriction`).
+- Paid-method cost modifiers: the existing rule was unreachable except for flashback; head hints
+  added, and a trailing "for each ..." is now owned instead of silently dropped.
+- Temporary damage multipliers: duration before recipient, and no-recipient form.
+- Rampage possession keyword (Rapid Fire); Sands of Time is handled by p03's skip-untap static.
+- Still blocked: granted replicate/offspring/demonstrate/sneak/madness (need a typed granted
+  optional-cost / trigger mechanism; madness is p06's replacement family), and the remaining
+  cast-timing spell bodies (Berserker's Frenzy, Camouflage, Illusionist's Gambit, Siren's Call).
+
+## Round 4
+- Typed granted spell keywords (`StaticAbilityPayload::GrantSpellKeyword`, `StaticAbilityId::GrantSpellKeyword`,
+  core `granted_spell_keyword_model.rs`): replicate (fixed or "equal to its mana cost"), offspring, conspire,
+  demonstrate granted to spells. Engine `granted_spell_keywords.rs` discovers every applicable grant (battlefield
+  statics and grants attached to the spell) at cast time (CR 601.2b): costs become optional costs with a per-grant
+  discriminator; native Replicate/GrantedConspire copy triggers fire from the paid costs; offspring attaches its
+  CR 702.175a ETB trigger to the spell's incarnation; demonstrate triggers are synthesized on SpellCast.
+  The conspire display-text match (`granted_conspire_count`) and marker grant are gone; Wort / Raiding Schemes /
+  Rassilon now compile to the typed grant (collateral, not package cards). Grammar: `granted_spell_keywords.rs`
+  plus the anthem-grant conspire branch (now also demonstrate).
+- Granted sneak: shared casting-keyword path grants a Composed "Sneak" cost in hand or graveyard; new
+  `AlternativeCastFromZoneForFilter` permission ("cast creature spells from your graveyard using their sneak
+  abilities", `AlternativeCastKeyword::Sneak`) admits printed or granted sneak methods in legal-action enumeration;
+  SneakCostEffect accepts a graveyard source.
+- Granted madness: `DerivedAlternativeCast::MadnessFromCardManaCost` granted in hand/exile/graveyard/library; the
+  engine-native DiscardWithMadness replacement (not p06's EventReplacementWithEffects) now also applies when madness
+  is granted, and MayCastForMadnessCostEffect casts via the granted method from exile. Granted madness can't be an
+  ordinary cast from exile (authorization guard in legal actions).
+- Cast-timing bodies: referenced-creature combat sentences (`attacks that combat if able`, `can't attack you or
+  planeswalkers you control that combat` → RestrictionStart::LastAddedCombatPhase; `They block this turn if able`
+  → MustBlock); "Roll two d20 and ignore the lower roll" (`RollDiceChooseResultEffect.ignore_lower`); player-relation
+  subject "the active player"; block-declaration control already existed (ControlCombatChoicesThisTurn).
+- Taunt: next-turn requirement accepts "attack you"; engine binds the targeted controller in MustAttackPlayer.
+
+### Round 4 risk notes
+- New appended enum variants: StaticAbilityPayload::{GrantSpellKeyword, AlternativeCastFromZoneForFilter},
+  StaticAbilityId::{GrantSpellKeyword, AlternativeCastFromZoneForFilter}, AlternativeCastKeyword::Sneak,
+  DerivedAlternativeCast::MadnessFromCardManaCost, SentencePreludeShape::RollDiceIgnoreLower; new field
+  RandomActionAst::RollDiceChooseResult.ignore_lower and RollDiceChooseResultEffect.ignore_lower (core serde default,
+  engine struct). Arms added in core try_map, text_change_statics, compiler-runtime convert, artifact materializer,
+  engine grant materialize, sentence registry.
+- `AlternativeCastingMethod::keyword()` now maps a Composed method named "Sneak" to `AlternativeCastKeyword::Sneak`.
+- Granted offspring: a printed offspring trigger's discriminator-less paid query also sees a granted payment.
+- Shard_06 engine test now attaches the typed conspire grant instead of a KeywordMarker.
+- Referenced-creature readers rely on the It tag binding to "those creatures"/"they" (unverified without a build).
+- Still blocked here: Siren's Call (exception sentence + delayed "that player" binding), Camouflage (pile-based
+  random block assignment).
+
+## Round 5
+- Offspring instances are separate (CR 702.175b): printed offspring now carries its own `printed-N` discriminator
+  (lowering `materialize_optional_cost`), so its ETB trigger checks only its own payment; a granted instance
+  already had its own. Test: printed offspring + Zinnia paying 0, 1 or 2 costs creates 0, 1 or 2 tokens.
+- Verified by reading: referenced-creature restrictions resolve `It` through `resolve_restriction_it_tag`
+  (MustAttack, MustBlock, AttackPlayerOrPlaneswalkersControlledBy) against the lowering reference env, whose last
+  object tag comes from RemoveFromCombat/untap (Illusionist's Gambit) or ChooseObjects (Berserker's Frenzy); the
+  engine collapses the tagged filter to exactly those creatures.
+- Siren's Call: new line family `continuous-control-exception` folds "Ignore this effect for each creature the
+  player didn't control continuously since the beginning of the turn" into the preceding instruction's filter via
+  the existing continuous-control predicate and binds "that player" to the active player when the card's previous
+  player-naming line names the active player (claimed only then).
+- Final-Word Phantom: new `Condition::OpponentsEndStep` (appended) and a "During each opponent's end step," leading
+  condition over a complete static.
+- Nahiri, Storm of Stone: the leading-condition wrapper reads two complete statics joined by "and" (only when the
+  whole remainder isn't one static, exactly one split reads, and the right half isn't a bare keyword list).
+- Magnigoth Treefolk: domain landwalk as five land-type-conditioned landwalk statics.
+- Taunt (round 4 tail): next-turn requirement "attack you" plus targeted-controller binding for MustAttackPlayer.
+
+### Round 5 risk notes
+- `LINE_FAMILY_RULES` grew to 33 entries; the new continuous-control rule runs first and re-dispatches a rewritten
+  line (synthetic tokens "the active player has controlled continuously since the beginning of the turn").
+- `Condition::OpponentsEndStep` arms: condition_eval, dependency, text_change_predicates, condition_rendering.
+- Engine-side dead (cfg ironsmith_runtime_parser_tests) offspring tests still expect the plain "Offspring" label.
+
 ## Source-proposed clusters
 ### absorb-keyword (1): Lymph Sliver
 - Fix: Absorb had no grammar. New registry rule lowers 'Absorb N' and '<subject> have absorb N' to the existing PreventMatchingDamage self-prevention (amount N, target = this object) that the spelled-out CR 702.64a sentence already compiles to (probe), granted via GrantStaticAbility.
@@ -61,6 +139,14 @@ mechanics), so the package splits into many small clusters rather than one.
 - Fix: is_named_deck_construction now also accepts 'a deck can have up to <N> cards named X' -> DeckConstructionRuleText; wasm pregame deck_construction_copy_limit already parses 'a deck can have up to N'. Other lines already compile.
 - Files: crates/ironsmith-compiler-grammar/src/grammar/semantic_lowering/static_shapes.rs
 - Test: crates/ironsmith-compiler-runtime/tests/bounded_named_deck_limits.rs::bounded_named_deck_rule_is_a_deck_construction_rule_on_both_routes
+### cast-this-spell-only-timing (1): Rapid Fire
+- Fix: Timing: new ThisSpellCastTiming::BeforeBlockersAreDeclared. Body: probe showed 'If it doesn't have flying, ...' compiles but 'rampage' was not a possession keyword; added Marker('rampage'), which matches the printed/granted 'rampage N' keyword marker (CR 702.23).
+- Files: crates/ironsmith-compiler-grammar/src/grammar/shared_util/cast_restriction_lines.rs, crates/ironsmith-compiler-grammar/src/grammar/shared_util/reference_shapes/reference.rs, crates/ironsmith-core/src/spell_timing_model.rs, crates/ironsmith-engine/src/decision/mana.rs
+- Test: crates/ironsmith-compiler-runtime/tests/cast_timing_windows.rs::rapid_fire_compiles_with_its_window_and_conditional_rampage
+### commander-ninjutsu (1): Yuriko, the Tiger's Shadow
+- Fix: New KeywordAction::CommanderNinjutsu(cost) (grammar rule emits it; lowering builds the ninjutsu ability with functional zones Hand+Command, CR 702.49d). NinjutsuEffect/NinjutsuCostEffect source-zone checks accept the command zone; the ability's functional zones still gate plain ninjutsu to the hand. Command-zone abilities are already enumerated by collect_non_battlefield_source_ids.
+- Files: crates/ironsmith-compiler-grammar/src/keyword_static/commander_ninjutsu.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs, crates/ironsmith-compiler-lowering/src/card_builders.rs, crates/ironsmith-compiler-lowering/src/keyword_actions.rs, crates/ironsmith-compiler-semantic/src/payload.rs, crates/ironsmith-engine/src/effects/permanents/ninjutsu.rs
+- Test: crates/ironsmith-compiler-runtime/tests/commander_ninjutsu.rs::yuriko_ninjutsu_functions_from_hand_and_command_zone
 ### counted-number-sentence (1): Invincible Hymn
 - Fix: 'Count the number of X.' has no verb the effect grammar knows; statement sentence normalization now inlines 'the number of X' into the following sentence's single 'that number' anaphor (probe: 'Your life total becomes the number of cards in your library.' compiles).
 - Files: crates/ironsmith-compiler-grammar/src/document_parser/statement_recognition.rs
@@ -81,10 +167,14 @@ mechanics), so the package splits into many small clusters rather than one.
 - Fix: Only the unfiltered 'All creatures able to block this creature do so' was supported. New registry rule (head 'all') parses 'All <blocker filter> able to block this creature do so' into Restriction::MustBlockSpecificAttacker(filter+Creature, source) (CR 509.1c); engine requirement maximisation already generic.
 - Files: crates/ironsmith-compiler-grammar/src/keyword_static/filtered_lure.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
 - Test: crates/ironsmith-compiler-runtime/tests/filtered_lure_requirements.rs::only_matching_blockers_are_required_to_block
-### granted-hand-warp (1): Tannuk, Steadfast Second
-- Fix: New registry rule parses '<hand-card filter> have warp <mana cost>' into Grants(AlternativeCast(Warp{cost})) in Zone::Hand. Engine: granted alternative casts resolve through resolve_play_from_alternative_method, and stack_resolution's cast_with_warp checks that resolved method, so the end-step exile/recast applies (CR 702.185). Filter parse of the conjunctive card list is unverified without a build.
-- Files: crates/ironsmith-compiler-grammar/src/keyword_static/granted_hand_warp.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
-- Test: crates/ironsmith-compiler-runtime/tests/granted_hand_warp.rs::tannuk_grants_warp_to_matching_hand_cards
+### granted-casting-keyword (5): Hunting Velociraptor, Lorehold, the Historian, Niv-Mizzet, Supreme, Tannuk, Steadfast Second, Ezio Auditore da Firenze
+- Fix: Shared casting-keyword grant path: '<subject> have|has <warp|prowl|freerunning|miracle> <cost>' grants the typed alternative cast in the hand (spell subjects 'X spells you cast' map to those cards in hand; no new zone permission), 'has jump-start' grants JumpStart in the graveyard. Engine resolves granted casts through resolve_play_from_alternative_method, so method-keyed behaviour (warp exile, jump-start exile, miracle draw trigger reads granted Miracle casts, prowl/freerunning conditions) applies.
+- Files: crates/ironsmith-compiler-grammar/src/keyword_static/granted_casting_keywords.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
+- Test: crates/ironsmith-compiler-runtime/tests/granted_casting_keywords.rs::granted_casting_keywords_compile_to_zone_scoped_alternative_cast_grants
+### granted-encore (3): Wire Surgeons, Graywater's Fixer, Sliver Gravemother
+- Fix: New KeywordAction::EncoreFromSourceCost{mana_value_generic} lowered by the existing encore builder with a DynamicManaCost (the card's mana cost, or generic equal to ManaValueOf(Source)); grammar rule emits GrantKeywordAction over a graveyard-scoped card filter, and the keyword grant expands through executable_object_abilities_for_keyword_action like scavenge's graveyard grant (CR 702.141).
+- Files: crates/ironsmith-compiler-grammar/src/keyword_static/granted_encore.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs, crates/ironsmith-compiler-lowering/src/card_builders.rs, crates/ironsmith-compiler-lowering/src/keyword_actions.rs, crates/ironsmith-compiler-lowering/src/lowering_impl/runtime_static_ability_helpers.rs, crates/ironsmith-compiler-semantic/src/payload.rs
+- Test: crates/ironsmith-compiler-runtime/tests/granted_encore.rs::granted_encore_grants_a_graveyard_activated_ability_with_a_derived_cost
 ### granted-provoke (1): Hunter Sliver
 - Fix: Provoke parsed as an intrinsic keyword (probe) but was absent from KeywordAction::lowers_to_static_ability and executable_object_abilities_for_keyword_action, so grant lines rejected it. Added alongside exalted: the grant expands the printed provoke attack trigger onto each Sliver (CR 702.39).
 - Files: crates/ironsmith-compiler-lowering/src/lowering_impl/runtime_static_ability_helpers.rs, crates/ironsmith-compiler-semantic/src/payload.rs
@@ -101,6 +191,14 @@ mechanics), so the package splits into many small clusters rather than one.
 - Fix: No general 'During your turn, <static>' / 'As long as <cond>, <static>' composition existed; each condition-aware static rule handled its own surface. New last-resort registry rule (heads during your / as long) splits the leading condition, requires that no other rule reads the whole line (thread-local reentrancy guard), parses the single-sentence remainder with the full static registry and wraps each result in ConditionalStaticAbility (CR 604.2/611.3a). Not build-verified: relies on remainder rules parse_prevent_all_damage_to_you_line / parse_attached_prevent_all_damage_dealt_to_attached_line and the full-party condition.
 - Files: crates/ironsmith-compiler-grammar/src/keyword_static/leading_condition_wrapper.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
 - Test: crates/ironsmith-compiler-runtime/tests/leading_condition_wrapped_statics.rs::personal_sanctuary_prevention_is_gated_on_your_turn
+### paid-method-cost-modifier (2): Henzie "Toolbox" Torre, Warbringer
+- Fix: parse_flashback_cost_modifier_line already read every AlternativeCastKind ('<kind> costs you pay cost {N} less') and the engine's spell_matches_cost_modifier_filter already requires the casting method to be that kind (casting_method_matches_alternative_kind), but the rule's head hints were derived from its name ('flashback' only). Added dash/blitz/escape/madness/miracle/suspend/foretell/jump-start heads. Also: words after less/more were silently ignored; they must now parse as a 'for each' count (scaling the amount) or the line is declined. Henzie's tail maps to Value::CommanderCastCount(You).
+- Files: crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs, crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
+- Test: crates/ironsmith-compiler-runtime/tests/paid_method_cost_modifiers.rs::henzie_scales_blitz_reduction_by_commander_casts
+### players-skip-untap-step (1): Sands of Time
+- Fix: Handled by p03's merged parse_skip_untap_steps_line ('Each player skips their untap step.' -> PlayersSkipUntapStep static, turn_runner consults player_skips_untap_step); the upkeep untap/tap line already compiled.
+- Files: 
+- Test: None
 ### plural-hand-discard (1): Wheel and Deal
 - Fix: Probe: 'Any number of target opponents each discard their hand, then draw seven cards.' compiles; only the plural 'their hands' failed. Added 'their hands' to the discard hand references (each player's own hand).
 - Files: crates/ironsmith-compiler-grammar/src/grammar/effects/sacrifice_discard_shapes/discard.rs
@@ -109,6 +207,10 @@ mechanics), so the package splits into many small clusters rather than one.
 - Fix: Imperative 'Double all damage that <X> would deal' required an explicit source-noun shape after 'that'; when that fails it now falls back to the named-dealer filter (same as the no-'that' Mjolnir form), producing the existing multiply_damage_amount_replacement (CR 614.1a). Probe: equivalent 'If a creature you control with a counter on it would deal damage, it deals double that damage instead' already compiles.
 - Files: crates/ironsmith-compiler-grammar/src/grammar/keyword_static_lines/damage_combat.rs
 - Test: crates/ironsmith-compiler-runtime/tests/relative_clause_damage_doublers.rs::raphael_doubles_damage_from_countered_creatures_you_control
+### retarget-new-target-restriction (1): Rebound
+- Fix: StackActionAst::RetargetStackObject gained new_target_restriction (core NewTargetRestriction); a trailing 'The new target must be <player|object filter>.' sentence is split off in parse_effect_sentences_lexed and attached to the last retarget instruction (error if none); lowering applies RetargetStackObjectEffect::with_restriction, which the engine already enforces (CR 115.7). Probe: the first sentence alone already compiled.
+- Files: crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry.rs, crates/ironsmith-compiler-grammar/src/effect_sentences/mod.rs, crates/ironsmith-compiler-grammar/src/effect_sentences/new_target_restriction.rs, crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch/subject_verb_middle.rs, crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs, crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/stack.rs, crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs
+- Test: crates/ironsmith-compiler-runtime/tests/retarget_new_target_restrictions.rs::rebound_retargets_only_to_a_player
 ### scaled-for-each-mill (1): Urborg Lhurgoyf
 - Fix: Mill's trailing 'for each X' was only accepted with a count of one ('mill a card for each'); a fixed count N>1 now becomes Value::Scaled(each, N). Kick count comes from the existing 'time it was kicked' count shape; as-enters program path already compiles plain mill (probe).
 - Files: crates/ironsmith-compiler-grammar/src/grammar/effects/misc_action_shapes.rs
@@ -117,6 +219,10 @@ mechanics), so the package splits into many small clusters rather than one.
 - Fix: Probe: 'Each opponent chooses a creature they control. Tap the chosen creatures. Goad the chosen creatures.' compiles; 'Tap and goad ...' errored ('tap clause missing target'). parse_effect_sentences_lexed now splits an untargeted '(un)tap and goad <object>' sentence into two ordered sentences on the same object.
 - Files: crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry.rs, crates/ironsmith-compiler-grammar/src/effect_sentences/mod.rs, crates/ironsmith-compiler-grammar/src/effect_sentences/shared_object_verb_pairs.rs
 - Test: crates/ironsmith-compiler-runtime/tests/shared_object_verb_pairs.rs::fell_beasts_shriek_taps_then_goads_the_chosen_creatures
+### temporary-damage-multiplier (2): Insult // Injury, Isengard Unleashed
+- Fix: Reused the existing temporary damage-multiplier registration (RegisterDamageMultiplier, mode UntilEndOfTurn). Gaps: the shape required the recipient before 'this turn' (Isengard has 'this turn to ...'), and the temporary reader's recipient whitelist lacked 'no recipient' (Insult) and 'an opponent or a permanent an opponent controls'. Probe: 'Damage can't be prevented this turn.' compiles.
+- Files: crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/temporary_damage_multiplier.rs, crates/ironsmith-compiler-grammar/src/grammar/keyword_static_lines/damage_combat.rs
+- Test: crates/ironsmith-compiler-runtime/tests/temporary_source_damage_multipliers.rs::insult_doubles_all_damage_from_your_sources_this_turn
 ### type-qualified-typecycling (1): Sojourner's Companion
 - Fix: Keyword dispatch only recognised '<x>cycling' or 'basic landcycling' heads, so 'Artifact landcycling {2}' never reached the cycling parser (whose filter grammar already accepts prefix atoms). Dispatch now admits <card type> <x>cycling; a multi-card-type typecycling quality is conjunctive (all_card_types), CR 702.29e.
 - Files: crates/ironsmith-compiler-grammar/src/activation_and_restrictions/keyword_activated_lines.rs, crates/ironsmith-compiler-grammar/src/grammar/keyword_dispatch.rs
@@ -137,13 +243,10 @@ mechanics), so the package splits into many small clusters rather than one.
 - **auras-equipment-modified-grant** (1): Silkguard — Probe: 'Auras, Equipment, and modified creatures you control have hexproof.' and the two-item 'gain ... until end of turn' compile; only the three-item serial subject with 'gain ... until end of turn' is rejected by the effect ability-grant dispatcher. Not fixed without a build to trace the gate.
 - **banding-desert-prevention** (1): Camel — Banding is not implemented; 'creatures banded with this creature' cannot be expressed.
 - **behold-entry-condition** (1): Theorist's Sanctum — Probe: 'As this land enters, you may reveal a Jace card from your hand. If you don't, ...' and 'Behold a Jace.' compile; behold (choose a Jace you control OR reveal one) is not an option of the reveal-or-enters-tapped payload, and as-enters programs cannot express 'enters tapped'.
-- **blitz-cost-reduction-commander-tax** (1): Henzie "Toolbox" Torre — Needs a cost modifier keyed on the casting method being paid: ObjectFilter.alternative_cast tests whether the spell HAS the alternative cost (object_has_alternative_cast_kind), not whether it is being cast for it, so 'Dash/Blitz costs you pay cost {N} less' cannot be expressed faithfully with the existing CompilerCostReduction. Henzie also scales by commander-cast count.
-- **cast-this-spell-only-timing** (5): Rapid Fire — Timing rider now parses (BeforeBlockersAreDeclared).; Berserker's Frenzy — Timing rider now parses (new ThisSpellCastTiming::BeforeBlockersAreDeclared, CR 506-509 windows); the d20 body remains unsupported.; Camouflage — Timing rider now parses (DuringYourDeclareAttackersStep); body unsupported.; Illusionist's Gambit — Timing rider now parses (DuringDeclareBlockersStepOnOpponentsTurn); body unsupported.; Siren's Call — Timing rider now parses (DuringOpponentsTurnBeforeAttackersAreDeclared); body unsupported.
-- **change-target-to-player** (1): Rebound — Probe: 'Change the target of target spell that targets only a player.' compiles; the follow-up 'The new target must be a player.' has no grammar. Engine RetargetStackObjectEffect already supports with_restriction(NewTargetRestriction::Player); needs a new_target_restriction field on StackActionAst::RetargetStackObject (~10 constructor sites) plus the follow-up sentence parser (also Reflecting Mirror, Silver Wyvern).
+- **cast-this-spell-only-timing** (4): Berserker's Frenzy — Timing rider now parses (new ThisSpellCastTiming::BeforeBlockersAreDeclared, CR 506-509 windows); the d20 body remains unsupported.; Camouflage — Timing rider now parses (DuringYourDeclareAttackersStep); body unsupported.; Illusionist's Gambit — Timing rider now parses (DuringDeclareBlockersStepOnOpponentsTurn); body unsupported.; Siren's Call — Timing rider parses (DuringOpponentsTurnBeforeAttackersAreDeclared). Probe: the body's delayed 'destroy all non-Wall creatures that player controls that didn't attack this turn' compiles but 'that player' is not bound to 'the active player' of the first sentence (IteratedPlayer invariant), and 'Ignore this effect for each creature the player didn't control continuously since the beginning of the turn' has no grammar.
 - **chosen-type-outside-battlefield** (3): Arcane Adaptation — Needs the chosen creature type applied to creature spells and owned cards in every zone (CR 205 type change outside the battlefield).; Conspiracy — Same as Arcane Adaptation (setting rather than adding the type).; Leyline of Transformation — Same as Arcane Adaptation.
 - **coin-flip-entry-characteristics** (1): Molten Sentry — Needs coin-flip-dependent entry characteristics (P/T and keyword) as an entry replacement.
 - **colorless-damage-sources** (1): Ghostly Flame — Needs a continuous rule making matching permanents and spells colorless sources of damage.
-- **commander-ninjutsu** (1): Yuriko, the Tiger's Shadow — Needs KeywordAction::CommanderNinjutsu (ninjutsu ability functioning in hand and command zone, CR 702.49d) through the ~10 exhaustive KeywordAction sites (semantic payload, engine builders copy, lowering helpers), and NinjutsuEffect accepting a command-zone source.
 - **comparative-player-restrictions** (1): Ward of Bones — needs cast/player restrictions and library look/exile-until moves (owned by p10). Needs per-type 'controls more X than you' cast and play restrictions.
 - **compound-your-turn-static** (1): Nahiri, Storm of Stone — 'creatures you control have first strike and equip abilities you activate cost {1} less' under 'during your turn' – compound static with an equip cost modifier.
 - **conditional-anthem-otherwise** (1): Mishra's Domination — Needs 'As long as you control enchanted creature, it gets +2/+2. Otherwise, it can't block.' – a two-branch static condition.
@@ -152,10 +255,7 @@ mechanics), so the package splits into many small clusters rather than one.
 - **control-scoped-goad** (1): Vislor Turlough — Needs 'goaded for as long as they control it' after donating control.
 - **counter-removal-cast-cost** (1): Dawnhand Dissident — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Needs casting from linked exile by removing counters from among creatures as an additional cost.
 - **damage-as-though-infect-to-you** (1): Phyrexian Unlife — Probe: no runtime for 'damage is dealt to you as though its source had infect' (CR 702.90b poison conversion for a player).
-- **damage-cant-be-prevented-and-doubling** (1): Insult // Injury — needs 'would X ... instead' replacement family (owned by p06). Probe: 'Damage can't be prevented this turn.' compiles; the temporary 'If a source you control would deal damage this turn, it deals double that damage instead.' errors 'missing damage amount'.
-- **damage-cant-be-prevented-and-tripling** (1): Isengard Unleashed — needs 'would X ... instead' replacement family (owned by p06). Same temporary damage-multiplier gap as Insult // Injury (tripling, opponent-scoped recipient).
 - **damage-source-history-condition** (1): Suffocation — needs cast/player restrictions and library look/exile-until moves (owned by p10). Needs a cast restriction on damage dealt to you this turn by a red instant or sorcery spell and the 'controller of the last such spell' reference.
-- **dash-cost-reduction** (1): Warbringer — Needs a cost modifier keyed on the casting method being paid: ObjectFilter.alternative_cast tests whether the spell HAS the alternative cost (object_has_alternative_cast_kind), not whether it is being cast for it, so 'Dash/Blitz costs you pay cost {N} less' cannot be expressed faithfully with the existing CompilerCostReduction.
 - **deck-construction-color-circling** (1): Cryptic Spires — Un-card deck-construction colour circling not modelled.
 - **die-roll-loyalty-table** (1): Comet, Stellar Pup — Comet's [0] ability rolls a d6 into a result table whose rows use loyalty-symbol shorthand ('1 or 2 — [+2], then ...' = put loyalty counters); no grammar for loyalty-shorthand die-table rows.
 - **die-roll-result-adjustment-with-cost** (1): Xenosquirrels — Die-roll adjustment exists only as typed specs; 'after you roll a die, you may remove a +1/+1 counter ... if you do, increase or decrease the result by 1' needs an optional cost-gated +/-1 adjustment choice.
@@ -174,18 +274,13 @@ mechanics), so the package splits into many small clusters rather than one.
 - **fame-or-fortune-vote** (1): Seize the Spotlight — needs multi-choice designations / votes (owned by p09). Needs per-opponent named choice with per-choice effects.
 - **gain-activated-abilities-of-target** (1): Grell Philosopher — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Needs 'each Horror you control gains all activated abilities of target artifact until end of turn' plus a scoped 'spend blue mana as though any color to activate those abilities' rider and a compound 'when this enters and at the beginning of your upkeep' trigger; no temporary ability-copy-from-target effect with linked mana-spending permission.
 - **global-damage-as-though-wither** (1): Everlasting Torment — Probe: no grammar or runtime for 'All damage is dealt as though its source had wither' (global damage-result overlay, CR 702.80).
-- **granted-demonstrate** (1): Silverquill Lecturer — Granting demonstrate (cast-trigger copy) to creature spells not supported.
+- **granted-demonstrate** (1): Silverquill Lecturer — Granted demonstrate is a cast trigger on spells; needs a granted triggered keyword on stack objects (the casting-keyword grant path covers alternative casts only).
 - **granted-draw-replacement-to-commanders** (1): Scion of Halaster — needs 'would X ... instead' replacement family (owned by p06). Needs a granted quoted first-draw-each-turn replacement on commander creatures.
-- **granted-encore** (3): Wire Surgeons — Granting encore to graveyard cards (activated ability from graveyard) not supported.; Graywater's Fixer — Granting encore with an X mana-value cost not supported.; Sliver Gravemother — Granting encore with an X mana-value cost not supported.
-- **granted-freerunning** (1): Ezio Auditore da Firenze — Granting freerunning {B}{B} to Assassin spells not supported.
-- **granted-jump-start** (1): Niv-Mizzet, Supreme — Granting jump-start to filtered graveyard cards not supported.
-- **granted-madness** (1): Falkenrath Gorger — needs 'would X ... instead' replacement family (owned by p06). Granting madness (discard-to-exile replacement) to Vampire cards outside the battlefield not supported.
-- **granted-miracle** (1): Lorehold, the Historian — Granting miracle {2} to hand cards needs miracle-on-draw to consult granted alternative costs.
-- **granted-offspring** (1): Zinnia, Valley's Voice — Granting offspring (optional additional cost + token-copy trigger) to spells not supported.
-- **granted-prowl** (1): Hunting Velociraptor — Granting prowl {2}{R} to Dinosaur spells: prowl grant not supported.
+- **granted-madness** (1): Falkenrath Gorger — needs 'would X ... instead' replacement family (owned by p06): madness is a discard-to-exile replacement plus trigger built on the card; a grant to cards 'you own that aren't on the battlefield' needs that replacement to read granted madness.
+- **granted-offspring** (1): Zinnia, Valley's Voice — Granted offspring is an optional additional cost plus a linked ETB token-copy trigger; needs the typed granted optional cost described for replicate plus a cast-paid ETB trigger grant.
 - **granted-quoted-replacement** (1): Pulmonic Sliver — needs 'would X ... instead' replacement family (owned by p06). Needs a granted quoted optional self-replacement ('If this permanent would be put into a graveyard, you may put it on top of its owner's library instead').
-- **granted-replicate** (3): Djinn Illuminatus — Granting replicate to spells (optional additional cost) not supported.; Hatchery Sliver — Granting replicate to Sliver spells not supported.; Threefold Signal — Granting replicate {3} to exactly-three-colour spells not supported.
-- **granted-sneak** (1): Ninja Teen — Granting sneak to graveyard creature cards plus a graveyard-cast permission via sneak; sneak grant not supported.
+- **granted-replicate** (3): Djinn Illuminatus — Granted replicate needs a typed granted optional cost: the engine only discovers granted optional costs per keyword (ensure_granted_conspire_optional_costs / ensure_granted_casualty_optional_costs, conspire matched by marker display text). Needs a typed 'granted optional cost' static (kind Replicate, fixed or source-mana-cost price) consulted at cast; the Replicate copy trigger in triggers/check.rs already keys on OptionalCostKind::Replicate. Not built (would add a stringly path).; Hatchery Sliver — Granted replicate needs a typed granted optional cost: the engine only discovers granted optional costs per keyword (ensure_granted_conspire_optional_costs / ensure_granted_casualty_optional_costs, conspire matched by marker display text). Needs a typed 'granted optional cost' static (kind Replicate, fixed or source-mana-cost price) consulted at cast; the Replicate copy trigger in triggers/check.rs already keys on OptionalCostKind::Replicate. Not built (would add a stringly path).; Threefold Signal — Granted replicate needs a typed granted optional cost: the engine only discovers granted optional costs per keyword (ensure_granted_conspire_optional_costs / ensure_granted_casualty_optional_costs, conspire matched by marker display text). Needs a typed 'granted optional cost' static (kind Replicate, fixed or source-mana-cost price) consulted at cast; the Replicate copy trigger in triggers/check.rs already keys on OptionalCostKind::Replicate. Not built (would add a stringly path).
+- **granted-sneak** (1): Ninja Teen — Granted sneak (return-unblocked-attacker alternative cast, CR 702.190) from the graveyard plus 'You may cast creature spells from your graveyard using their sneak abilities' (a zone permission keyed on one method); sneak is a special-form keyword with no AlternativeCastingMethod, so the casting-keyword grant path cannot express it.
 - **graveyard-cast-life-cost-your-turn** (1): Festival of Embers — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Needs a during-your-turn graveyard cast permission with a life additional cost for instants/sorceries.
 - **hexproof-from-own-colors** (1): Tam, Mindful First-Year — Needs 'hexproof from each of its colors' (self-colour-relative protection).
 - **hidden-items** (1): Goblin Game — Hidden object game not implemented.
@@ -199,7 +294,6 @@ mechanics), so the package splits into many small clusters rather than one.
 - **per-player-linked-exile-this-turn** (1): Uba Mask — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Needs per-player 'cards they exiled with this this turn' play permission.
 - **player-conditional-restrictions** (1): Angelic Arbiter — needs cast/player restrictions and library look/exile-until moves (owned by p10). Needs restrictions on each opponent who cast a spell this turn (player-scoped conditional restriction).
 - **player-level-attack-requirement** (2): Seeker of Slaanesh — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Needs a player-scoped requirement 'must attack with at least one creature each combat if able' in the CR 508.1d requirement maximisation (current scoring is per-creature additive).; Trove of Temptation — needs attack requirements toward a player / play-from-exile-graveyard variants / spend-as-any-color (owned by p05). Same as Seeker of Slaanesh, additionally restricted to attacking you or your planeswalkers.
-- **players-skip-untap-step** (1): Sands of Time — Needs a static 'each player skips their untap step' (engine has PlayersSkipUpkeep/PlayerSkipsDrawStep statics and one-shot scheduled step skips, but no static untap-step skip; requires a new StaticAbilityId + payload + turn_runner check).
 - **power-up-additional-activation** (1): Wonder Man, Hollywood Hero — Needs an extra activation allowance for power-up abilities.
 - **prevention-by-targeting-spell** (1): Bronze Horse — Probe: 'Prevent all damage that would be dealt to this creature by spells that target it.' has no grammar (source filter 'spell that targets this object').
 - **secret-choices** (1): Call to the Void — needs multi-choice designations / votes (owned by p09). Secret simultaneous choices not implemented.

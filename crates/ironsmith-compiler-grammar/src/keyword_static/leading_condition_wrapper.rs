@@ -35,6 +35,8 @@ impl Drop for WrappingGuard {
 
 enum LeadingCondition<'a> {
     YourTurn,
+    /// "During each opponent's end step, ..." (Final-Word Phantom).
+    EachOpponentsEndStep,
     AsLongAs(&'a [OwnedLexToken]),
 }
 
@@ -48,6 +50,20 @@ fn split_leading_condition(
         let remainder = trim_lexed_commas(rest);
         if remainder.len() < rest.len() && !remainder.is_empty() {
             return Some((LeadingCondition::YourTurn, remainder));
+        }
+        return None;
+    }
+    if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::any_phrase(&[
+            &["during", "each", "opponent's", "end", "step"],
+            &["during", "each", "opponents", "end", "step"],
+            &["during", "each", "opponent", "s", "end", "step"],
+        ]),
+    ) {
+        let remainder = trim_lexed_commas(rest);
+        if remainder.len() < rest.len() && !remainder.is_empty() {
+            return Some((LeadingCondition::EachOpponentsEndStep, remainder));
         }
         return None;
     }
@@ -78,7 +94,7 @@ pub fn parse_leading_condition_wrapped_static_line(
         .first()
         .is_some_and(|token| token.is_any_word(&["it", "its", "it's", "they", "their"]));
     let condition_is_about_this_object = match &condition {
-        LeadingCondition::YourTurn => false,
+        LeadingCondition::YourTurn | LeadingCondition::EachOpponentsEndStep => false,
         LeadingCondition::AsLongAs(condition_tokens) => condition_tokens
             .first()
             .is_some_and(|token| token.is_word("this")),
@@ -113,11 +129,17 @@ pub fn parse_leading_condition_wrapped_static_line(
         let _guard = WrappingGuard::set(false);
         match parse_static_ability_ast_line_lexed(remainder) {
             Ok(Some(inner)) if !inner.is_empty() => inner,
-            _ => return Ok(None),
+            _ => match parse_conjoined_static_sentences(remainder) {
+                Some(inner) => inner,
+                None => return Ok(None),
+            },
         }
     };
     let condition = match condition {
         LeadingCondition::YourTurn => PredicateAst::YourTurn,
+        LeadingCondition::EachOpponentsEndStep => {
+            PredicateAst::Bound(Box::new(crate::ConditionExpr::OpponentsEndStep))
+        }
         LeadingCondition::AsLongAs(condition_tokens) => {
             parse_static_condition_clause(condition_tokens)?
         }
@@ -131,4 +153,40 @@ pub fn parse_leading_condition_wrapped_static_line(
             })
             .collect(),
     ))
+}
+
+/// "creatures you control have first strike and equip abilities you activate
+/// cost {1} less to activate" (Nahiri, Storm of Stone): two complete static
+/// sentences joined by "and" under one leading condition. Only claimed when
+/// the whole remainder is not itself one static ability, both halves are, and
+/// the second half is not a bare keyword list (which would belong to the
+/// first half's grant).
+fn parse_conjoined_static_sentences(remainder: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
+    let body = trim_edge_punctuation(remainder);
+    let mut found = None;
+    for (idx, token) in body.iter().enumerate() {
+        if !token.is_word("and") || idx == 0 || idx + 1 >= body.len() {
+            continue;
+        }
+        let (left, right) = (&body[..idx], &body[idx + 1..]);
+        if parse_ability_line(right).is_some() {
+            continue;
+        }
+        let Ok(Some(mut first)) = parse_static_ability_ast_line_lexed(left) else {
+            continue;
+        };
+        let Ok(Some(second)) = parse_static_ability_ast_line_lexed(right) else {
+            continue;
+        };
+        if first.is_empty() || second.is_empty() {
+            continue;
+        }
+        if found.is_some() {
+            // Two different splits read: ambiguous, claim neither.
+            return None;
+        }
+        first.extend(second);
+        found = Some(first);
+    }
+    found
 }

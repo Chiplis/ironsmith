@@ -23,7 +23,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         .unwrap_or_default();
     if !matches!(
         recipient.as_slice(),
-        ["a", "creature"]
+        // "If a source you control would deal damage this turn, it deals
+        // double that damage instead." (Insult): any recipient.
+        []
+            | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
+            | ["a", "creature"]
             | ["creature"]
             | ["an", "opponent"]
             | ["a", "player"]

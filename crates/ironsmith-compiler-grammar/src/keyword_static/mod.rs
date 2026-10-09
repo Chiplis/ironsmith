@@ -34,12 +34,25 @@ pub use prevention_follow_ups::{
 };
 mod leading_conditional_sentence_chain;
 mod devour_quality;
+mod granted_encore;
+pub use granted_encore::parse_granted_encore_line;
+mod commander_ninjutsu;
+pub use commander_ninjutsu::parse_commander_ninjutsu_line;
 mod base_toughness_line;
 pub use base_toughness_line::parse_base_toughness_only_line;
 mod absorb_keyword;
 pub use absorb_keyword::parse_absorb_keyword_line;
-mod granted_hand_warp;
-pub use granted_hand_warp::parse_granted_hand_warp_line;
+mod granted_casting_keywords;
+pub use granted_casting_keywords::{
+    parse_cast_from_zone_using_keyword_abilities_line, parse_granted_casting_keyword_line,
+    parse_granted_madness_line,
+};
+mod granted_spell_keywords;
+mod domain_landwalk;
+pub use domain_landwalk::parse_domain_landwalk_line;
+pub use granted_spell_keywords::{
+    granted_intrinsic_spell_keyword_ability, parse_granted_spell_keyword_line,
+};
 mod leading_condition_wrapper;
 pub use leading_condition_wrapper::parse_leading_condition_wrapped_static_line;
 mod filtered_lure;
@@ -860,6 +873,22 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_leading_condition_wrapped_static_line" => vec![
             StaticAbilityLineHeadHint::Pair("during", "your"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
+        "parse_commander_ninjutsu_line" => vec![StaticAbilityLineHeadHint::Pair("commander", "ninjutsu")],
+        // The rule reads every alternative casting kind ("Dash costs you pay
+        // cost {2} less", Warbringer), not only flashback.
+        "parse_flashback_cost_modifier_line" => vec![
+            StaticAbilityLineHeadHint::Single("flashback"),
+            StaticAbilityLineHeadHint::Single("dash"),
+            StaticAbilityLineHeadHint::Single("blitz"),
+            StaticAbilityLineHeadHint::Single("escape"),
+            StaticAbilityLineHeadHint::Single("madness"),
+            StaticAbilityLineHeadHint::Single("miracle"),
+            StaticAbilityLineHeadHint::Single("suspend"),
+            StaticAbilityLineHeadHint::Single("foretell"),
+            StaticAbilityLineHeadHint::Single("jump"),
+            StaticAbilityLineHeadHint::Single("jump-start"),
+            StaticAbilityLineHeadHint::Single("jumpstart"),
         ],
         "parse_devour_quality_line" => vec![StaticAbilityLineHeadHint::Single("devour")],
         "parse_each_player_additional_land_play_line" => vec![
@@ -1831,6 +1860,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_devour_quality_line),
+        single_static_ability_ast_rule!(parse_granted_encore_line),
+        single_static_ability_ast_rule!(parse_commander_ninjutsu_line),
         single_static_ability_ast_rule!(parse_each_player_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
         single_static_ability_ast_rule!(
@@ -1856,7 +1887,11 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
         multi_static_ability_ast_rule!(parse_cant_clauses),
-        single_static_ability_ast_rule!(parse_granted_hand_warp_line),
+        single_static_ability_ast_rule!(parse_granted_casting_keyword_line),
+        single_static_ability_ast_rule!(parse_granted_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_cast_from_zone_using_keyword_abilities_line),
+        single_static_ability_ast_rule!(parse_granted_madness_line),
+        multi_static_ability_ast_rule!(parse_domain_landwalk_line),
         single_static_ability_ast_rule!(parse_base_toughness_only_line),
         multi_static_ability_ast_passthrough_rule!(parse_absorb_keyword_line),
         multi_static_ability_ast_passthrough_rule!(parse_leading_condition_wrapped_static_line),

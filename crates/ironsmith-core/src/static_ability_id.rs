@@ -403,6 +403,12 @@ pub enum StaticAbilityId {
     /// "You may pay <mana> rather than pay the echo cost for permanents you
     /// control"; appended for wire compatibility.
     EchoCostAlternative,
+    /// A keyword granted to matching spells as they are cast (CR 601.2b);
+    /// appended for wire compatibility.
+    GrantSpellKeyword,
+    /// Filtered permission to cast from a zone with a keyword's alternative
+    /// cost; appended for wire compatibility.
+    AlternativeCastFromZoneForFilter,
 }
 
 impl StaticAbilityId {
@@ -773,7 +779,9 @@ impl StaticAbilityId {
             | Toxic
             | TrampleOverPlaneswalkers
             | ForetellSpecialActionModifier
-            | NativeAlternativeCastFromZone => {}
+            | NativeAlternativeCastFromZone
+            | GrantSpellKeyword
+            | AlternativeCastFromZoneForFilter => {}
         }
     }
 

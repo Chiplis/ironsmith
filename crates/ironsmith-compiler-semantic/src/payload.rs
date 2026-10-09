@@ -74,9 +74,14 @@ pub enum KeywordAction {
     Unearth(ManaCost),
     Embalm(ManaCost),
     Encore(ManaCost),
+    /// Encore whose cost is derived from the card that has it (a granted
+    /// encore, CR 702.141): its mana cost, or {X} where X is its mana value.
+    EncoreFromSourceCost { mana_value_generic: bool },
     Eternalize(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Emerge(ManaCost),
     Ninjutsu(ManaCost),
+    /// CR 702.49d: ninjutsu that also functions from the command zone.
+    CommanderNinjutsu(ManaCost),
     Backup(u32),
     Cipher,
     Dash(ManaCost),
@@ -447,7 +452,14 @@ impl KeywordAction {
             Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
             Self::Eternalize(cost) => format!("Eternalize {}", cost.display()),
             Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
+            Self::EncoreFromSourceCost { mana_value_generic: false } => {
+                "Encore. Its encore cost is equal to its mana cost".to_string()
+            }
+            Self::EncoreFromSourceCost { mana_value_generic: true } => {
+                "Encore {X}, where X is its mana value".to_string()
+            }
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
+            Self::CommanderNinjutsu(cost) => format!("Commander ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
             Self::Dash(cost) => format!("Dash {}", cost.to_oracle()),

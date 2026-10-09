@@ -572,7 +572,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::TriggeringSpellWasKicked | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures | Condition::TargetManaValueLteColorsSpentToCastThisSpell
         | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::SourceControllersMainPhase
-        | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceIsTapped
+        | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::OpponentsEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
         | Condition::SourceHasDealtDamageSinceEntered
         | Condition::SourceIsHarnessed | Condition::SourceIsPrepared | Condition::SourceIsRenowned | Condition::SourceIsFaceDown

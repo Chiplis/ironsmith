@@ -106,6 +106,21 @@ pub(super) fn read_roll_dice_choose_one_result(
             ),
         ]));
     }
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceIgnoreLower {
+        count,
+        sides,
+        surface,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_roll_dice_ignore_lower_with_surface(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(surface),
+            ),
+        ]));
+    }
     Ok(None)
 }
 pub(super) fn read_sentence_delayed_timing_suffix(

@@ -231,6 +231,15 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     *exiles_after_resolution,
                 ))
             }
+            // CR 702.35a: the madness cost is the card's own mana cost. The
+            // method exists wherever the card has madness; only the madness
+            // trigger authorizes casting with it.
+            Self::MadnessFromCardManaCost => {
+                let mana_cost = card.mana_cost_owned()?;
+                Some(AlternativeCastingMethod::Madness {
+                    total_cost: TotalCost::mana(mana_cost),
+                })
+            }
         }
     }
 }

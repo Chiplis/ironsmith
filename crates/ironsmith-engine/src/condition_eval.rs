@@ -6010,6 +6010,10 @@ fn evaluate_condition_in_context(
             && matches!(game.turn.phase, crate::game_state::Phase::Combat)),
         Condition::SourceControllersEndStep => Ok(game.is_active_player(shared.controller)
             && game.turn.phase == crate::game_state::Phase::Ending),
+        Condition::OpponentsEndStep => Ok(game
+            .are_opponents(shared.controller, game.turn.active_player)
+            && game.turn.phase == crate::game_state::Phase::Ending
+            && game.turn.step == Some(crate::game_state::Step::End)),
         Condition::SourceIsRenowned => Ok(game.is_renowned(shared.source)),
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             Ok(game.is_active_player(shared.controller)

@@ -57,6 +57,9 @@ pub enum DerivedAlternativeCast<C> {
         condition: Option<ThisSpellCostCondition>,
         exiles_after_resolution: bool,
     },
+    /// Madness (CR 702.35a) whose cost is the card's mana cost ("The madness
+    /// cost is equal to its mana cost."). Appended for wire compatibility.
+    MadnessFromCardManaCost,
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -72,6 +75,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::LifeEqualManaValueFromHand { .. } => "Pay life equal to mana value",
             Self::LifeEqualManaValueFromZone { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
+            Self::MadnessFromCardManaCost => "Madness",
         }
     }
 
@@ -127,6 +131,7 @@ impl<C> DerivedAlternativeCast<C> {
                 condition,
                 exiles_after_resolution,
             },
+            Self::MadnessFromCardManaCost => DerivedAlternativeCast::MadnessFromCardManaCost,
         })
     }
 }

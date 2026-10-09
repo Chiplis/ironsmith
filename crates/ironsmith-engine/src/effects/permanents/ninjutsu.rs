@@ -182,7 +182,9 @@ impl EffectExecutor for NinjutsuCostEffect {
                 let Some(source_obj) = game.object(ctx.source) else {
                     return Err(ExecutionError::ObjectNotFound(ctx.source));
                 };
-                if source_obj.zone != Zone::Hand {
+                // CR 702.49d: commander ninjutsu also functions from the command zone; the
+                // activated ability's functional zones decide which a given card allows.
+                if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
                     return Err(ExecutionError::Impossible(
                         "Ninjutsu source must be in hand".to_string(),
                     ));
@@ -230,7 +232,9 @@ impl CostExecutableEffect for NinjutsuCostEffect {
                 "Ninjutsu source does not exist".to_string(),
             ));
         };
-        if source_obj.zone != Zone::Hand {
+        // CR 702.49d: commander ninjutsu also functions from the command zone; the
+        // activated ability's functional zones decide which a given card allows.
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
             return Err(CostValidationError::Other(
                 "Ninjutsu source must be in hand".to_string(),
             ));
@@ -284,9 +288,12 @@ impl EffectExecutor for SneakCostEffect {
                 let Some(source_obj) = game.object(ctx.source) else {
                     return Err(ExecutionError::ObjectNotFound(ctx.source));
                 };
-                if !matches!(source_obj.zone, Zone::Hand | Zone::Stack) {
+                // A sneak spell is cast from hand, or from the graveyard under
+                // a separate permission (Ninja Teen); while its costs are paid
+                // it is on the stack (CR 601.2a).
+                if !matches!(source_obj.zone, Zone::Hand | Zone::Graveyard | Zone::Stack) {
                     return Err(ExecutionError::Impossible(
-                        "Sneak source must be in hand or on the stack".to_string(),
+                        "Sneak source must be in hand, the graveyard or on the stack".to_string(),
                     ));
                 }
 
@@ -331,9 +338,9 @@ impl CostExecutableEffect for SneakCostEffect {
                 "Sneak source does not exist".to_string(),
             ));
         };
-        if !matches!(source_obj.zone, Zone::Hand | Zone::Stack) {
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Graveyard | Zone::Stack) {
             return Err(CostValidationError::Other(
-                "Sneak source must be in hand or on the stack".to_string(),
+                "Sneak source must be in hand, the graveyard or on the stack".to_string(),
             ));
         }
 
@@ -426,7 +433,9 @@ impl EffectExecutor for NinjutsuEffect {
                         EffectOutcome::target_invalid(),
                     ));
                 };
-                if source_obj.zone != Zone::Hand {
+                // CR 702.49d: commander ninjutsu also functions from the command zone; the
+                // activated ability's functional zones decide which a given card allows.
+                if !matches!(source_obj.zone, Zone::Hand | Zone::Command) {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::target_invalid(),
                     ));

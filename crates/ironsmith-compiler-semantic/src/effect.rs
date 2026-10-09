@@ -1535,6 +1535,25 @@ impl Effect {
         )
     }
 
+    pub fn roll_dice_choose_result_with_surface_ignoring_lower(
+        count: u32,
+        sides: u32,
+        player: crate::target::PlayerFilter,
+        surface: Option<crate::model::ast::DieSurface>,
+        ignore_lower: bool,
+    ) -> Self {
+        let rendered_die = surface.map(|surface| surface.render(sides));
+        Self::new(
+            crate::effects::RollDiceChooseResultEffect::new_with_die_text(
+                player,
+                count,
+                sides,
+                rendered_die,
+            )
+            .with_ignore_lower(ignore_lower),
+        )
+    }
+
     pub fn fight(a: crate::target::ChooseSpec, b: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::FightEffect::new(a, b))
     }

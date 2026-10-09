@@ -119,6 +119,7 @@ pub use loyalty_activation_allowance::{
     GrantLoyaltyActivationAllowanceEffect, LoyaltyActivationAllowance, LoyaltyActivationScope,
 };
 pub use may_cast_madness::MayCastForMadnessCostEffect;
+pub(crate) use may_cast_madness::granted_madness_route;
 pub use may_cast_matching_spell::MayCastMatchingSpellWithoutPayingManaCostEffect;
 pub use may_cast_miracle::MayCastForMiracleCostEffect;
 pub use pay_energy::{PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect};

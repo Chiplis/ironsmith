@@ -46,6 +46,35 @@ fn put_madness_card_into_graveyard(
     Ok(outcome)
 }
 
+/// Madness granted to a card by another object ("Each Vampire creature card
+/// you own that isn't on the battlefield has madness. The madness cost is
+/// equal to its mana cost.", Falkenrath Gorger) while it is in `zone`: the
+/// granted method's casting route and cost (CR 702.35a).
+pub(crate) fn granted_madness_route(
+    game: &GameState,
+    card_id: crate::ids::ObjectId,
+    zone: Zone,
+) -> Option<(CastingMethod, crate::cost::TotalCost)> {
+    let card = game.object(card_id)?;
+    let base = card.alternative_casts.len();
+    game.effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(game, card_id, zone, card.owner)
+        .iter()
+        .enumerate()
+        .find_map(|(offset, grant)| {
+            let cost = grant.method.madness_cost()?.clone();
+            Some((
+                CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone,
+                    use_alternative: Some(base + offset),
+                },
+                cost,
+            ))
+        })
+}
+
 impl EffectExecutor for MayCastForMadnessCostEffect {
     fn execute(
         &self,
@@ -61,16 +90,20 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             return Ok(EffectOutcome::target_invalid());
         }
         let owner = card.owner;
-        let Some((madness_index, madness_cost)) = card
+        let printed = card
             .alternative_casts
             .iter()
             .enumerate()
             .find_map(|(index, method)| match method {
                 crate::alternative_cast::AlternativeCastingMethod::Madness { total_cost } => {
-                    Some((index, total_cost.clone()))
+                    Some((CastingMethod::Alternative(index), total_cost.clone()))
                 }
                 _ => None,
-            })
+            });
+        // A printed madness ability, else one granted to the card while it
+        // is in exile.
+        let Some((casting_method, madness_cost)) =
+            printed.or_else(|| granted_madness_route(game, card_id, Zone::Exile))
         else {
             return put_madness_card_into_graveyard(game, ctx, card_id);
         };
@@ -89,7 +122,6 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             return put_madness_card_into_graveyard(game, ctx, card_id);
         }
 
-        let casting_method = CastingMethod::Alternative(madness_index);
         game.authorize_madness_cast(card_id);
         let result = crate::game_loop::cast_spell_from_resolving_effect(
             game,

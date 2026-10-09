@@ -6174,6 +6174,14 @@ pub fn parse_effect_sentences_lexed(
     if let Some(split) = super::shared_object_verb_pairs::split_shared_object_verb_pairs(tokens) {
         return parse_effect_sentences_lexed(&split);
     }
+    if let Some((instructions, restriction)) =
+        super::new_target_restriction::split_new_target_restriction(tokens)
+    {
+        let restriction = super::new_target_restriction::parse_new_target_restriction(restriction)?;
+        let mut effects = parse_effect_sentences_lexed(instructions)?;
+        super::new_target_restriction::attach_new_target_restriction(&mut effects, restriction)?;
+        return Ok(effects);
+    }
     if let Some(effects) = super::counter_exile_permission::parse(tokens)? {
         return Ok(effects);
     }

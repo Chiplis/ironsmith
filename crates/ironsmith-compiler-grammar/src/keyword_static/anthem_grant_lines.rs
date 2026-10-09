@@ -1727,36 +1727,37 @@ pub fn parse_granted_keyword_static_line(
         return Ok(None);
     }
 
-    let grants_conspire = actions
+    // Conspire and demonstrate granted to spells are typed spell-keyword
+    // grants the engine discovers while the spell is cast (CR 601.2b).
+    if actions
         .iter()
-        .filter(|action| matches!(action, KeywordAction::Conspire))
-        .count();
-    if grants_conspire > 0 {
+        .all(|action| matches!(action, KeywordAction::Conspire | KeywordAction::Demonstrate))
+    {
+        let AnthemSubjectAst::Filter(filter) = &subject else {
+            return Ok(None);
+        };
+        let display = crate::lexer::render_token_slice(tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
         let mut compiled = Vec::new();
-        for _ in 0..grants_conspire {
-            match &subject {
-                AnthemSubjectAst::Source => {
-                    let ability =
-                        StaticAbilityAst::Static(StaticAbility::keyword_marker("Conspire"));
-                    if let Some(condition) = &condition {
-                        compiled.push(StaticAbilityAst::ConditionalStaticAbility {
-                            ability: Box::new(ability),
-                            condition: condition.clone(),
-                        });
-                    } else {
-                        compiled.push(ability);
-                    }
-                }
-                AnthemSubjectAst::Filter(filter) => {
-                    compiled.push(StaticAbilityAst::GrantStaticAbility {
-                        filter: filter.clone(),
-                        ability: Box::new(StaticAbilityAst::Static(StaticAbility::keyword_marker(
-                            "Conspire",
-                        ))),
-                        condition: condition.clone(),
-                    });
-                }
-            }
+        for action in &actions {
+            let Some(ability) = crate::keyword_static::granted_intrinsic_spell_keyword_ability(
+                filter.clone(),
+                action,
+                &subject_tokens,
+                display.clone(),
+            ) else {
+                return Ok(None);
+            };
+            let ability = StaticAbilityAst::Static(ability);
+            compiled.push(match &condition {
+                Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(ability),
+                    condition: condition.clone(),
+                },
+                None => ability,
+            });
         }
         return Ok(Some(
             compiled

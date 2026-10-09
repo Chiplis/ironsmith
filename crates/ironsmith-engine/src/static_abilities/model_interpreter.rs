@@ -2389,6 +2389,21 @@ impl StaticAbility {
         Self::from_model(CompiledStaticAbility::enchant(filter))
     }
 
+    /// A keyword granted to matching spells as they are cast (CR 601.2b).
+    pub fn grant_spell_keyword(
+        filter: crate::target::ObjectFilter,
+        keyword: ironsmith_core::GrantedSpellKeyword<crate::costs::Cost>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::from_model(CompiledStaticAbility::grant_spell_keyword(
+            filter,
+            keyword,
+            set_quantifier_surface,
+            display,
+        ))
+    }
+
     pub fn enchant_filter(&self) -> Option<&crate::object::AuraAttachmentFilter> {
         match &self.compiled_model()?.payload {
             ironsmith_core::StaticAbilityPayload::Enchant(filter) => Some(filter),
@@ -2504,6 +2519,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
         if self.model.label == "Aftermath" {
             return "Aftermath".to_string();
+        }
+        // CR 601.2b: the typed grant reads as "<spells> have <keyword>".
+        if let ironsmith_core::StaticAbilityPayload::GrantSpellKeyword {
+            filter,
+            keyword,
+            set_quantifier_surface,
+        } = &self.model.payload
+        {
+            let (subject, singular) =
+                super::continuous::grant_subject_with_set_quantifier(filter, *set_quantifier_surface);
+            let verb = if singular { "has" } else { "have" };
+            return format!("{subject} {verb} {}.", keyword.display());
         }
         if let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } =
             &self.model.payload

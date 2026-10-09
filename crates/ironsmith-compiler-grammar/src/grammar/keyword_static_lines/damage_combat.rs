@@ -212,6 +212,31 @@ fn parse_named_damage_dealer_shape_lexed<'a>(
     })
 }
 
+fn damage_multiplier_recipient_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<&'a [OwnedLexToken]> {
+    primitives::kw("to").parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(alt((
+            primitives::phrase(&["this", "turn"]).void(),
+            primitives::kw("while").void(),
+            (
+                opt(primitives::comma()),
+                alt((
+                    primitives::phrase(&["it", "deals"]),
+                    primitives::phrase(&["that", "source", "deals"]),
+                )),
+            )
+                .void(),
+        ))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)
+}
+
 fn parse_damage_multiplier_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageMultiplierSpec<'a>> {
@@ -225,34 +250,15 @@ fn parse_damage_multiplier_lexed<'a>(
     .parse_next(input)?;
     // The recipient ends before either the duration, a live condition, or
     // the replacement clause. None of those are part of its object filter.
-    let damaged_tokens = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
-        Some(
-            repeat_till::<_, _, (), _, _, _, _>(
-                1..,
-                any.void(),
-                peek(alt((
-                    primitives::phrase(&["this", "turn"]).void(),
-                    primitives::kw("while").void(),
-                    (
-                        opt(primitives::comma()),
-                        alt((
-                            primitives::phrase(&["it", "deals"]),
-                            primitives::phrase(&["that", "source", "deals"]),
-                        )),
-                    )
-                        .void(),
-                ))),
-            )
-            .map(|((), _)| ())
-            .take()
-            .parse_next(input)?,
-        )
-    } else {
-        None
-    };
+    let mut damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
     let this_turn = opt(primitives::phrase(&["this", "turn"]))
         .parse_next(input)?
         .is_some();
+    // "would deal damage this turn to an opponent or a permanent an opponent
+    // controls" (Isengard Unleashed): the duration may precede the recipient.
+    if this_turn && damaged_tokens.is_none() {
+        damaged_tokens = opt(damage_multiplier_recipient_lexed).parse_next(input)?;
+    }
     let condition_tokens = opt((
         primitives::kw("while"),
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::comma()))

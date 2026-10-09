@@ -225,6 +225,12 @@ fn parse_relation_subject_word_slice(
                 // pronoun's player, not of the ability's controller.
                 relation_phrase(&["their", "opponents"])
                     .map(|()| PlayerFilter::OpponentOf(Box::new(pronoun_player_filter.clone()))),
+                // "creatures the active player controls" (Siren's Call).
+                alt((
+                    relation_phrase(&["the", "active", "player"]),
+                    relation_phrase(&["active", "player"]),
+                ))
+                .value(PlayerFilter::Active),
             )),
         )),
     ))

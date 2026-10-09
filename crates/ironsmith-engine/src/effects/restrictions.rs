@@ -264,7 +264,13 @@ fn normalize_restriction_for_resolution(
         // creature and the player are the ones this resolution named
         // (CR 608.2c), so a later choice cannot redirect the requirement.
         Restriction::MustAttackPlayer { attackers, player } => Restriction::must_attack_player(
-            collapse_tagged_filter_to_specific_objects(attackers, ctx, game),
+            // A targeted controller ("creatures that player controls attack
+            // you", Taunt) keeps the announced player once target slots end.
+            collapse_tagged_filter_to_specific_objects(
+                &bind_restriction_target_players(attackers, ctx, game),
+                ctx,
+                game,
+            ),
             // A group ("a player": any opponent) stays a group; a single
             // named player is bound now.
             if matches!(
