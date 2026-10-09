@@ -1,0 +1,18 @@
+[
+ {
+  "name": "Hisoka, Minamo Sensei",
+  "oracle_id": "b69701d6-8e46-4184-991b-9f5e95a5e16d",
+  "mana_cost": "{2}{U}{U}",
+  "type_line": "Legendary Creature — Human Wizard",
+  "oracle_text": "{2}{U}, Discard a card: Counter target spell if it has the same mana value as the discarded card.",
+  "power": "1",
+  "toughness": "3"
+ },
+ {
+  "name": "Counterbalance",
+  "oracle_id": "088dfd02-c0e0-41d1-9923-efe023fb2ad1",
+  "mana_cost": "{U}{U}",
+  "type_line": "Enchantment",
+  "oracle_text": "Whenever an opponent casts a spell, you may reveal the top card of your library. If you do, counter that spell if it has the same mana value as the revealed card."
+ }
+]
