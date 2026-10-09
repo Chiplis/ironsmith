@@ -2911,6 +2911,9 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
         _ => tokens,
     };
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
+    if subject_words.as_slice() == ["also"] {
+        return Err(CardTextError::ParseError("anthem adverb has no subject".to_string()));
+    }
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
     }

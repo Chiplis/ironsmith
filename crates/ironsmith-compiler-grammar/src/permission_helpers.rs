@@ -1210,7 +1210,11 @@ pub fn parse_permission_clause_spec_lexed(
         && prefixed_lifetime.is_none()
         && let Some(parsed) =
             permission_source_exiled_facts::parse_spells_from_source_exiled_tokens(rest_tokens)
-        && trim_lexed_commas(parsed.tail_tokens).is_empty()
+        && crate::grammar::primitives::probe_all(
+            parsed.tail_tokens,
+            crate::grammar::primitives::sentence_end(),
+            "source-linked static permission tail",
+        ).is_some()
     {
         let Some(mut filter) =
             permission_subject_facts::parse_cast_permission_filter_tokens(parsed.subject_tokens)?

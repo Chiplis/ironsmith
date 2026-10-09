@@ -2606,6 +2606,11 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     if let Some(abilities) = parse_conditional_source_characteristics_and_predicate_line(tokens)? {
         return Ok(Some(abilities));
     }
+    // Complete sibling stat/grant clauses must own the line before a
+    // characteristic-only or attached-continuation probe can reject a tail.
+    if let Some(abilities) = parse_composed_anthem_effects_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_carried_attached_subject_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -4391,10 +4396,26 @@ pub fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<iro
 pub fn parse_composed_anthem_effects_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let stripped;
+    let tokens = if tokens.iter().any(|token| token.kind == TokenKind::LParen) {
+        let Some(body) = crate::util::strip_parenthetical_tokens_checked(tokens) else {
+            return Ok(None);
+        };
+        stripped = body;
+        stripped.as_slice()
+    } else {
+        tokens
+    };
     if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens) {
         let Some(abilities) = parse_composed_anthem_effects_line(split.remainder_tokens)? else {
             return Ok(None);
         };
+        // A single complete anthem already owns its condition and value
+        // binding. Wrapping it here creates a second, non-equivalent registry
+        // reading. Composition owns only multiple sibling abilities.
+        if abilities.len() < 2 {
+            return Ok(None);
+        }
         let condition = parse_static_condition_clause(split.condition_tokens)?;
         return abilities.into_iter()
             .map(|ability| add_static_ability_ast_condition(ability, condition.clone()))
@@ -4408,11 +4429,22 @@ pub fn parse_composed_anthem_effects_line(
         return Ok(None);
     }
 
-    let comma_segments = anthem_grant_grammar::split_trailing_grant_segments(tokens);
+    let mut comma_segments = anthem_grant_grammar::split_trailing_grant_segments(tokens);
     if comma_segments.len() < 2 {
         return Ok(None);
     }
 
+    // A trailing value definition scopes all sibling predicates. Preserve
+    // it for each modifier that actually uses X; it is not another ability.
+    let value_tail = if comma_segments.len() > 2
+        && comma_segments.last().is_some_and(|tail| {
+            keyword_static_lines::parse_where_x_value_prefix_tokens(&trim_commas(tail)).is_some()
+        })
+    {
+        comma_segments.pop()
+    } else {
+        None
+    };
     if comma_segments.len() == 2 {
         let where_tail = trim_commas(&comma_segments[1]);
         if keyword_static_lines::parse_where_x_value_prefix_tokens(&where_tail).is_some() {
@@ -4482,8 +4514,45 @@ pub fn parse_composed_anthem_effects_line(
             segment = expanded;
         }
 
+        if let Some(value_tail) = &value_tail
+            && segment.iter().any(|token| token.is_word("get") || token.is_word("gets"))
+            && segment.iter().any(|token| token.parser_text().split('/').any(|part| {
+                matches!(part, "x" | "+x" | "-x")
+            }))
+        {
+            segment.push(OwnedLexToken::comma(TextSpan::synthetic()));
+            segment.extend_from_slice(value_tail);
+        }
+
         let parsed_segment =
-            if let Some(abilities) = parse_anthem_and_type_color_addition_line(&segment)? {
+            if parsed.omitted_subject
+                && parsed.body_tokens.first().is_some_and(|token| {
+                    token.is_word("attack") || token.is_word("attacks")
+                })
+            {
+                let Some(ability) = parse_attacks_each_combat_if_able_line(&segment)? else {
+                    return Ok(None);
+                };
+                vec![ability]
+            } else if parsed.omitted_subject
+                && parsed.body_tokens.first().is_some_and(|token| {
+                    token.is_word("has") || token.is_word("have") || token.is_word("can")
+                })
+            {
+                let grant_tokens = if parsed.body_tokens[0].is_word("can") {
+                    parsed.body_tokens
+                } else {
+                    &parsed.body_tokens[1..]
+                };
+                let Some(tail) = parse_heterogeneous_granted_tail(
+                    grant_tokens, &crate::lexer::token_word_refs(tokens), true,
+                )? else {
+                    return Ok(None);
+                };
+                lower_granted_tail_for_anthem_subject(
+                    &parse_anthem_subject(&subject_tokens)?, &None, tail,
+                )
+            } else if let Some(abilities) = parse_anthem_and_type_color_addition_line(&segment)? {
                 abilities.into_iter().map(StaticAbilityAst::from).collect()
             } else if let Some(abilities) = parse_anthem_and_keyword_line(&segment)? {
                 abilities

@@ -47,6 +47,9 @@ fn parse_anthem_action_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::kw("gets"),
         primitives::kw("have"),
         primitives::kw("has"),
+        primitives::kw("can"),
+        primitives::kw("attack"),
+        primitives::kw("attacks"),
     ))
     .void()
     .parse_next(input)

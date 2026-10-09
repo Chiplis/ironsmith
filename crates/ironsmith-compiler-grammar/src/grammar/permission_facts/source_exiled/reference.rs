@@ -52,7 +52,7 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
         .parse_next(input)?
         .is_some();
     primitives::phrase(&["exiled", "with", "this"]).parse_next(input)?;
-    let source_kind = alt((
+    let source_kind = opt(alt((
         primitives::kw("enchantment").value("enchantment"),
         primitives::kw("class").value("Class"),
         primitives::kw("artifact").value("artifact"),
@@ -60,14 +60,14 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
         primitives::kw("permanent").value("permanent"),
         primitives::kw("card").value("card"),
         primitives::kw("land").value("land"),
-    ))
+    )))
     .parse_next(input)?;
     Ok((
         owned_by_you,
         SourceExiledReference {
-            surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(format!(
-                "this {source_kind}"
-            )),
+            surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                source_kind.map_or_else(|| "this".to_string(), |kind| format!("this {kind}")),
+            ),
         },
     ))
 }

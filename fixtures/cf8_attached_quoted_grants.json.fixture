@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Aether Web",
+    "oracle_id": "97e7778f-971c-4425-8f6d-f4ff3fae000f",
+    "text": "Mana cost: {1}{G}\nType: Enchantment — Aura\nFlash (You may cast this spell any time you could cast an instant.)\nEnchant creature\nEnchanted creature gets +1/+1, has reach, and can block creatures with shadow as though they didn't have shadow. (Creatures with reach can block creatures with flying.)"
+  },
+  {
+    "name": "Avarice Amulet",
+    "oracle_id": "4c71074b-b8bf-47f4-87e4-67c275abdbc5",
+    "text": "Mana cost: {4}\nType: Artifact — Equipment\nEquipped creature gets +2/+0 and has vigilance and \"At the beginning of your upkeep, draw a card.\"\nWhenever equipped creature dies, target opponent gains control of this Equipment.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Commanding Presence",
+    "oracle_id": "03160a74-8b83-4e07-b702-977a91a6311f",
+    "text": "Mana cost: {3}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2 and has first strike and \"Whenever this creature deals combat damage to a player, create a 1/1 white Human Soldier creature token.\""
+  },
+  {
+    "name": "Giant's Amulet",
+    "oracle_id": "016a6ec3-f4f6-4b47-9931-e0b14a25bd5e",
+    "text": "Mana cost: {U}\nType: Artifact — Equipment\nWhen this Equipment enters, you may pay {3}{U}. If you do, create a 4/4 blue Giant Wizard creature token, then attach this Equipment to it.\nEquipped creature gets +0/+1 and has \"This creature has hexproof as long as it's untapped.\"(It can't be the target of spells or abilities your opponents control.)\nEquip {2}"
+  },
+  {
+    "name": "Kaldra Compleat",
+    "oracle_id": "7359e82b-db79-488d-a1d4-75a00f12a4cf",
+    "text": "Mana cost: {7}\nType: Legendary Artifact — Equipment\nLiving weapon\nIndestructible\nEquipped creature gets +5/+5 and has first strike, trample, indestructible, haste, and \"Whenever this creature deals combat damage to a creature, exile that creature.\"\nEquip {7}"
+  },
+  {
+    "name": "Medic's Kitesail",
+    "oracle_id": "eacfe895-5106-437c-b8c1-2ff03c107744",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+0 and has flying and \"Whenever this creature attacks, you gain 1 life.\"\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Mirror Shield",
+    "oracle_id": "57f2858e-5793-41fc-9bbb-1fdd3b99fe79",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +0/+2 and has hexproof and \"Whenever a creature with deathtouch blocks or becomes blocked by this creature, destroy that creature.\"\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Staggering Insight",
+    "oracle_id": "09071f5f-c9cb-43a9-b41d-faf6caf3beff",
+    "text": "Mana cost: {W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has lifelink and \"Whenever this creature deals combat damage to a player, draw a card.\""
+  },
+  {
+    "name": "Take Flight",
+    "oracle_id": "b4cf61e5-b2b7-4fb9-addf-db84dec49681",
+    "text": "Mana cost: {3}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+0 and has flying and \"Whenever this creature attacks, draw a card.\""
+  },
+  {
+    "name": "The Reaver Cleaver",
+    "oracle_id": "37a2a31d-51e6-4c07-b4c2-b206ad40eb42",
+    "text": "Mana cost: {2}{R}\nType: Legendary Artifact — Equipment\nEquipped creature gets +1/+1 and has trample and \"Whenever this creature deals combat damage to a player or planeswalker, create that many Treasure tokens.\"\nEquip {3}"
+  },
+  {
+    "name": "Vibranium Strike Gauntlets",
+    "oracle_id": "4a9d36eb-db72-459a-8de9-6d04a1d7563c",
+    "text": "Mana cost: {4}\nType: Artifact — Equipment\nFlash\nWhen this Equipment enters, attach it to target creature you control.\nEquipped creature gets +3/+0 and has trample and \"Whenever this creature deals combat damage to a player, draw a card.\"\nEquip {3}"
+  },
+  {
+    "name": "Web-Shooters",
+    "oracle_id": "ec528198-a38a-4ef7-9804-78a25c94ecc1",
+    "text": "Mana cost: {1}{W}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has reach and \"Whenever this creature attacks, tap target creature an opponent controls.\"\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Elturel Survivors",
+    "oracle_id": "373ccd23-5c98-4368-995a-e6503cd0dbd8",
+    "text": "Mana cost: {3}{R}\nType: Creature — Tiefling Peasant\nPower/Toughness: 0/4\nTrample, myriad (Whenever this creature attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)\nAs long as this creature is attacking, it gets +X/+0, where X is the number of lands defending player controls."
+  },
+  {
+    "name": "Sardian Cliffstomper",
+    "oracle_id": "20f3bc44-c7fa-4d5a-adb9-2dd1d2d66ffe",
+    "text": "Mana cost: {1}{R}\nType: Creature — Minotaur Barbarian\nPower/Toughness: 0/4\nAs long as it's your turn and you control four or more Mountains, this creature gets +X/+0, where X is the number of Mountains you control."
+  },
+  {
+    "name": "Skeletal Swarming",
+    "oracle_id": "93ab7462-ceef-4bc7-a9fe-8af8ceb78e1c",
+    "text": "Mana cost: {3}{B}{G}\nType: Enchantment\nEach Skeleton you control has trample, attacks each combat if able, and gets +X/+0, where X is the number of other Skeletons you control.\nAt the beginning of your end step, create a tapped 1/1 black Skeleton creature token. If a creature died this turn, create two of those tokens instead."
+  },
+  {
+    "name": "Master Chef",
+    "oracle_id": "9eab87ff-82a0-4655-b6ea-00b27e882449",
+    "text": "Mana cost: {2}{G}\nType: Legendary Enchantment — Background\nCommander creatures you own have \"This creature enters with an additional +1/+1 counter on it\" and \"Other creatures you control enter with an additional +1/+1 counter on them.\""
+  },
+  {
+    "name": "Rona, Disciple of Gix",
+    "oracle_id": "409305b3-5373-4376-8096-c04a73184cef",
+    "text": "Mana cost: {1}{U}{B}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 2/2\nWhen Rona enters, you may exile target historic card from your graveyard. (Artifacts, legendaries, and Sagas are historic.)\nYou may cast spells from among cards exiled with Rona.\n{4}, {T}: Exile the top card of your library."
+  },
+  {
+    "name": "Thran Power Suit",
+    "oracle_id": "3952c288-5633-4e40-abe6-18940d079644",
+    "text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 for each Aura and Equipment attached to it and has ward {2}. (Whenever equipped creature becomes the target of a spell or ability an opponent controls, counter it unless that player pays {2}.)\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  }
+]

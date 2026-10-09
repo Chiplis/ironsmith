@@ -2925,6 +2925,12 @@ fn parse_filtered_etb_counter_otherwise_count(
 pub fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // Entry text inside a quoted grant belongs to the granted ability,
+    // not to the outer filtered instruction. Reading through quotes can
+    // discard sibling grants and change which permanent owns the effect.
+    if tokens.iter().any(OwnedLexToken::is_quote) {
+        return Ok(None);
+    }
     if let Some(branches) = split_filtered_etb_counter_if_otherwise(tokens) {
         // Own an entry-counter instruction before interpreting its condition.
         let Some(primary) =

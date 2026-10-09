@@ -269,6 +269,12 @@ pub(crate) fn parse_collection_cast_clause(
         CollectionMarker::ManaValue => return Ok(None),
     };
 
+    // An uncounted permission over the source's linked cards is an
+    // ongoing static permission. It must not be folded into a neighboring
+    // activated instruction as an immediate collection cast.
+    if matches!(collection, Collection::SourceLinked { .. }) && authored_count.is_none() {
+        return Ok(None);
+    }
     let subject_words = token_word_refs(subject_tokens);
     let plural_subject = matches!(subject_words.last(), Some(&"spells" | &"cards"));
     let mut filter = if matches!(subject_words.as_slice(), ["card"] | ["cards"]) {

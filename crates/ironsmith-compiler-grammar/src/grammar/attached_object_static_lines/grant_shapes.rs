@@ -225,15 +225,22 @@ pub fn parse_attached_gets_and_has_tokens(
         return None;
     }
     let get_token = find_get(tokens)?;
-    let relative_and = find_and(tokens.get(get_token + 1..)?)?;
+    // An "and" inside the bonus's count ("for each Aura and Equipment
+    // attached to it") belongs to that count. Only the junction introducing
+    // the grant separates the stat bonus from the ability.
+    let (relative_and, modal, _) = primitives::find_prefix(
+        tokens.get(get_token + 1..)?,
+        || winnow::combinator::alt((
+            primitives::phrase(&["and", "has"]).value(false),
+            primitives::phrase(&["and", "have"]).value(false),
+            primitives::phrase(&["and", "can"]).value(true),
+        )),
+    )?;
     let and_token = get_token + 1 + relative_and;
-    let tail = tokens.get(and_token + 1..)?;
-    // Modal permissions are abilities in their own right, without "has".
-    let (has_token, ability_tokens) = if tail.first().is_some_and(|token| token.is_word("can")) {
-        (and_token, trim_lexed_commas(tail))
+    let (has_token, ability_tokens) = if modal {
+        (and_token, trim_lexed_commas(tokens.get(and_token + 1..) ?))
     } else {
-        let relative_has = find_has(tail)?;
-        let has_token = and_token + 1 + relative_has;
+        let has_token = and_token + 1;
         (has_token, trim_lexed_commas(tokens.get(has_token + 1..)?))
     };
     if ability_tokens.is_empty() {
