@@ -1981,6 +1981,12 @@ pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Valu
             .or_else(|| {
                 effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
                     .map(|shape| shape.where_tokens)
+            })
+            .or_else(|| {
+                let index = tokens.iter().position(|token| token.is_word("where"))?;
+                (tokens.get(index + 1).is_some_and(|token| token.is_word("x"))
+                    && tokens.get(index + 2).is_some_and(|token| token.is_word("is")))
+                    .then_some(&tokens[index..])
             })?;
     let binding_tokens = crate::util::trim_edge_punctuation_tokens(binding_tokens);
     if let Some(value) =

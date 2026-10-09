@@ -5030,6 +5030,13 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::MoveTaggedGroupToZone { .. }
         | EffectAst::RestartGame { .. }
         | EffectAst::PlaySubgame { .. } => true,
+        EffectAst::ControlFlow(_) => {
+            let mut produces = false;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                produces |= nested.iter().any(effect_can_supply_prior_effect_memory);
+            });
+            produces
+        }
         _ => false,
     }
 }
