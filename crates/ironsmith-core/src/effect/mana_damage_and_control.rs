@@ -3928,6 +3928,10 @@ pub enum RestrictionDurationSurface {
     Default,
     LeadingUntilEndOfTurn,
     LeadingUntilYourNextTurn,
+    /// "This turn and next turn, ..." (Peace Talks): an end-of-turn duration
+    /// that spans through the end of the next turn (CR 611.2a). The engine
+    /// extends the restriction's end-of-turn expiry by one turn. Appended.
+    ThisTurnAndNextTurn,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

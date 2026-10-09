@@ -638,6 +638,15 @@ impl EffectExecutor for CantEffect {
                 starts_next_turn_of,
                 ctx.tagged_objects.clone(),
             );
+            // "This turn and next turn" (CR 611.2a): the end-of-turn duration
+            // runs through the end of the turn after this one.
+            if self.duration_surface == ironsmith_core::RestrictionDurationSurface::ThisTurnAndNextTurn
+                && matches!(duration, Until::EndOfTurn)
+                && starts_next_turn_of.is_none()
+                && let Some(added) = game.effect_store.restriction_effects.last_mut()
+            {
+                added.expires_end_of_turn = added.expires_end_of_turn.saturating_add(1);
+            }
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())

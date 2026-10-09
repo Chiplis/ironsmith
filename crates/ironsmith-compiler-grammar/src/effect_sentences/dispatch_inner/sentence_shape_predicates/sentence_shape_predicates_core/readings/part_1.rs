@@ -420,3 +420,86 @@ pub(super) fn read_target_gets_unblockable(
     }
     Ok(None)
 }
+
+/// "This turn and next turn, creatures can't attack, and players and
+/// permanents can't be the targets of spells or activated abilities." (Peace
+/// Talks): each listed restriction lasts through the end of the next turn
+/// (CR 611.2a).
+pub(super) fn read_this_turn_and_next_turn_restrictions(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = trim_edge_punctuation(input.tokens);
+    let Some(((), rest)) = primitives::parse_prefix(
+        &tokens,
+        primitives::phrase(&["this", "turn", "and", "next", "turn"]),
+    ) else {
+        return Ok(None);
+    };
+    let rest = crate::lexer::trim_lexed_commas(rest);
+    let mut restrictions = Vec::new();
+    for clause in primitives::split_lexed_slices_on_comma(rest) {
+        let clause = crate::lexer::trim_lexed_commas(clause);
+        let clause = match clause.first() {
+            Some(first) if first.is_word("and") => &clause[1..],
+            _ => clause,
+        };
+        let words = crate::lexer::parser_token_word_refs(clause);
+        if matches!(
+            words.as_slice(),
+            [
+                "players", "and", "permanents", "can't" | "cant" | "cannot", "be", "the",
+                "targets" | "target", "of", "spells", "or", "activated", "abilities"
+            ]
+        ) {
+            let spells_or_activated = crate::target::ObjectFilter {
+                any_of: vec![
+                    crate::target::ObjectFilter {
+                        stack_kind: Some(crate::filter::StackObjectKind::Spell),
+                        ..crate::target::ObjectFilter::default()
+                    },
+                    crate::target::ObjectFilter {
+                        stack_kind: Some(crate::filter::StackObjectKind::ActivatedAbility),
+                        ..crate::target::ObjectFilter::default()
+                    },
+                ],
+                ..crate::target::ObjectFilter::default()
+            };
+            restrictions.push(crate::effect::Restriction::BeTargetedPlayerFrom(
+                crate::target::PlayerFilter::Any,
+                spells_or_activated.clone(),
+            ));
+            restrictions.push(crate::effect::Restriction::be_targeted_from(
+                crate::target::ObjectFilter::permanent(),
+                spells_or_activated,
+            ));
+            continue;
+        }
+        let Some(parsed) =
+            crate::activation_and_restrictions::activation_restriction_clauses::parse_cant_restriction_clause(clause)?
+        else {
+            return Ok(None);
+        };
+        if parsed.target.is_some() {
+            return Ok(None);
+        }
+        restrictions.push(parsed.restriction);
+    }
+    if restrictions.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        restrictions
+            .into_iter()
+            .map(|restriction| {
+                EffectAst::subject_verb_cant_starting_with_duration_surface(
+                    restriction,
+                    crate::effect::Until::EndOfTurn,
+                    crate::effect::RestrictionStart::Immediate,
+                    crate::effect::RestrictionDurationSurface::ThisTurnAndNextTurn,
+                    None,
+                )
+            })
+            .collect(),
+    ))
+}
