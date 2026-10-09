@@ -182,6 +182,9 @@ pub fn parse_quoted_activated_ability_grant_line(
         return Ok(None);
     }
     let Ok(subject) = parse_anthem_subject(&tokens[..has]) else { return Ok(None); };
+    // Filtered and attached grants already have their own complete owners.
+    // This fills the source-grant arm used by omitted-subject composition.
+    if !matches!(subject, AnthemSubjectAst::Source) { return Ok(None); }
     let Some(ability) = parse_activated_line(body)? else { return Ok(None); };
     let scope = fixed_anthem_clause(subject, 0, 0, None);
     Ok(Some(vec![grant_object_ability_for_anthem_subject(
