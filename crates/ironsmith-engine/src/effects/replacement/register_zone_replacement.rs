@@ -8,9 +8,6 @@ use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
-/// Frozen tag naming the card a stack zone replacement follows onto the stack.
-const FOLLOWED_CARD_TAG: &str = "__zone_replacement_followed_card__";
-
 /// Registers a concrete zone-change replacement effect for the currently resolved object(s).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterZoneReplacementEffect {
@@ -91,8 +88,8 @@ impl RegisterZoneReplacementEffect {
                 // "You may cast that card this turn. If that spell would be
                 // put into a graveyard, ..." (Quintorius): the replacement is
                 // created for a card that is not yet a spell. Casting it makes
-                // a new object (CR 400.7), so the replacement follows the
-                // card's stable identity onto the stack instead of the old id.
+                // a new object (CR 400.7); `execute` registers it as followed so
+                // the manager rebinds it to that spell (and ends it otherwise).
                 let follows_onto_stack = self.from_zone == Some(Zone::Stack)
                     && game
                         .object(object_id)
@@ -120,29 +117,13 @@ impl RegisterZoneReplacementEffect {
                         self.linked_exile_follow_up,
                     ),
                 };
-                let matcher = match game.object(object_id) {
-                    Some(object) if follows_onto_stack => {
-                        let tag = crate::tag::TagKey::from(FOLLOWED_CARD_TAG);
-                        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
-                        crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                            ObjectFilter::default().match_tagged(
-                                tag.clone(),
-                                crate::filter::TaggedOpbjectRelation::SameStableId,
-                            ),
-                            self.from_zone,
-                            self.to_zone,
-                        )
-                        .with_frozen_tagged_objects(std::collections::HashMap::from([(
-                            tag,
-                            vec![snapshot],
-                        )]))
-                    }
-                    _ => crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-                        ObjectFilter::specific(object_id),
-                        self.from_zone,
-                        self.to_zone,
-                    ),
-                };
+                // A followed card's matcher is rebound to its spell when it is
+                // cast (ReplacementEffectManager::rebind_followed_object).
+                let matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(object_id),
+                    self.from_zone,
+                    self.to_zone,
+                );
                 ReplacementEffect::with_matcher(ctx.source, ctx.controller, matcher, replacement)
             })
             .collect())
@@ -340,7 +321,31 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
             Err(err) => return Err(err),
         };
 
-        for replacement in replacements {
+        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        for (index, replacement) in replacements.into_iter().enumerate() {
+            // "You may cast that card this turn. If that spell would be put
+            // into a graveyard, ..." (Quintorius): the card is not yet a
+            // spell. The replacement waits for that card: casting it rebinds
+            // the replacement to the new spell object, any other zone change
+            // ends it (CR 400.7), and if the card is still uncast at cleanup it
+            // ends with the turn's other one-shots.
+            if self.from_zone == Some(Zone::Stack)
+                && let Some(&object_id) = object_ids.get(index)
+                && game
+                    .object(object_id)
+                    .is_some_and(|object| object.zone != Zone::Stack)
+            {
+                game.effect_store.replacement_effects.add_followed_one_shot_effect(
+                    replacement,
+                    crate::replacement::FollowedReplacementObject {
+                        object: object_id,
+                        from_zone: self.from_zone,
+                        to_zone: self.to_zone,
+                        on_stack: false,
+                    },
+                );
+                continue;
+            }
             match self.mode {
                 ReplacementApplyMode::OneShot => {
                     game.effect_store
@@ -369,7 +374,6 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
             }
         }
 
-        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         Ok(EffectOutcome::with_objects(object_ids))
     }
 
@@ -557,6 +561,116 @@ mod tests {
             game.player(alice).unwrap().library.first(),
             Some(&moved),
             "the spell went to the bottom, under {filler:?}"
+        );
+    }
+
+    fn register_library_bottom_for_exiled_card(
+        game: &mut GameState,
+        alice: PlayerId,
+        card: crate::ids::ObjectId,
+    ) {
+        let effect = RegisterZoneReplacementEffect::new(
+            ChooseSpec::SpecificObject(card),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Library,
+            ReplacementApplyMode::OneShot,
+        )
+        .with_library_placement(ironsmith_core::ZoneReplacementLibraryPlacement::Bottom);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(card, alice, &mut dm);
+        let _ = execute_effect(game, &crate::effect::Effect::new(effect), &mut ctx)
+            .expect("replacement registration should succeed");
+    }
+
+    /// A card that leaves exile other than by being cast is a new object the
+    /// replacement no longer refers to (CR 400.7): the replacement ends, so a
+    /// later cast of that card goes to the graveyard normally.
+    #[test]
+    fn test_followed_stack_replacement_ends_when_card_moves_elsewhere() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = create_creature(&mut game, alice, Zone::Exile);
+        let stable_id = game.object(card).expect("card should exist").stable_id;
+        let baseline = game.effect_store.replacement_effects.effects().len();
+        register_library_bottom_for_exiled_card(&mut game, alice, card);
+        assert_eq!(game.effect_store.replacement_effects.effects().len(), baseline + 1);
+
+        let in_hand = game
+            .move_object(card, Zone::Hand, crate::events::cause::EventCause::from_game_rule())
+            .expect("card moves to hand");
+        assert_eq!(
+            game.effect_store.replacement_effects.effects().len(),
+            baseline,
+            "the replacement ended with the exiled object"
+        );
+        let spell = game
+            .move_object(in_hand, Zone::Stack, crate::events::cause::EventCause::from_game_rule())
+            .expect("the card is cast later");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(spell, alice, &mut dm);
+        let _ = execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(spell),
+                Zone::Graveyard,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve");
+        let moved = game.find_object_by_stable_id(stable_id).expect("card exists");
+        assert_eq!(game.object(moved).unwrap().zone, Zone::Graveyard);
+    }
+
+    /// The permission to cast the card is "this turn": an uncast card loses
+    /// the replacement at cleanup, while a card already cast keeps it for its
+    /// spell, which it then replaces exactly once.
+    #[test]
+    fn test_followed_stack_replacement_expires_uncast_and_applies_once_when_cast() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let uncast = create_creature(&mut game, alice, Zone::Exile);
+        game.effect_store.replacement_effects.clear_one_shot_effects();
+        let baseline = game.effect_store.replacement_effects.effects().len();
+        register_library_bottom_for_exiled_card(&mut game, alice, uncast);
+        game.effect_store.replacement_effects.clear_one_shot_effects();
+        assert_eq!(
+            game.effect_store.replacement_effects.effects().len(),
+            baseline,
+            "an uncast card's replacement ends at cleanup"
+        );
+
+        let card = create_creature(&mut game, alice, Zone::Exile);
+        let stable_id = game.object(card).expect("card should exist").stable_id;
+        register_library_bottom_for_exiled_card(&mut game, alice, card);
+        let spell = game
+            .move_object(card, Zone::Stack, crate::events::cause::EventCause::from_game_rule())
+            .expect("the card is cast");
+        game.effect_store.replacement_effects.clear_one_shot_effects();
+        assert_eq!(
+            game.effect_store.replacement_effects.effects().len(),
+            baseline + 1,
+            "the spell keeps its replacement across cleanup"
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(spell, alice, &mut dm);
+        let _ = execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(spell),
+                Zone::Graveyard,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve");
+        let moved = game.find_object_by_stable_id(stable_id).expect("card exists");
+        assert_eq!(game.object(moved).unwrap().zone, Zone::Library);
+        assert_eq!(
+            game.effect_store.replacement_effects.effects().len(),
+            baseline,
+            "the replacement applied once"
         );
     }
 
