@@ -12,6 +12,7 @@ mod temporary_attack_requirement;
 mod attacked_turn_permission;
 mod graveyard_self_cast;
 mod temporary_mana_clause;
+mod conditional_protection_list;
 pub(crate) mod guessed_free_cast;
 pub(crate) mod counted_number;
 pub(crate) mod copied_cards_cast;
