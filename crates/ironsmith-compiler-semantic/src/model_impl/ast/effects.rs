@@ -2917,6 +2917,7 @@ impl EffectAst {
         granted_abilities: Vec<GrantedAbilityAst>,
         set_base_power_toughness: Option<(Value, Value)>,
         copy_exception_surface: Option<String>,
+        retain_source_colors: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2938,6 +2939,7 @@ impl EffectAst {
                 granted_abilities,
                 set_base_power_toughness,
                 copy_exception_surface,
+                retain_source_colors,
             }),
         )
     }

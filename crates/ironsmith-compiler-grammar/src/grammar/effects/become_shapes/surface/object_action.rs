@@ -170,6 +170,28 @@ pub fn parse_become_copy_exception_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomeCopyExceptionShape> {
     let tokens = trim_lexed_commas(tokens);
+    // "it doesn't copy that creature's color [and <more exceptions>]"
+    // (Vesuvan Doppelganger, CR 707.9b): the copy keeps its own colors.
+    if let Some((_, rest)) = primitives::strip_lexed_prefix_phrases(
+        tokens,
+        &[
+            &["it", "doesn't", "copy", "that", "creature's", "color"],
+            &["it", "doesnt", "copy", "that", "creatures", "color"],
+            &["it", "doesn't", "copy", "that", "creatures", "color"],
+            &["it", "does", "not", "copy", "that", "creature's", "color"],
+        ],
+    ) {
+        let rest = trim_lexed_commas(rest);
+        let rest = primitives::strip_lexed_prefix_phrases(rest, &[&["and"]])
+            .map_or(rest, |(_, rest)| trim_lexed_commas(rest));
+        let mut shape = if rest.is_empty() {
+            BecomeCopyExceptionShape::default()
+        } else {
+            parse_become_copy_exception_shape(rest)?
+        };
+        shape.retain_source_colors = true;
+        return Some(shape);
+    }
     if let Some(parsed) = parse_structured_become_copy_exception_shape(tokens) {
         return Some(parsed);
     }
@@ -193,6 +215,21 @@ pub fn parse_become_copy_exception_shape(
         &[&["it", "has"], &["he", "has"], &["she", "has"]],
     ) {
         let ability_tokens = trim_lexed_commas(ability_tokens);
+        // "it has this ability and \"Whenever ...\"" (Aurora Shifter): the
+        // copy keeps the ability that made it a copy and gains the quoted one
+        // (CR 707.9a).
+        if let Some((_, rest)) =
+            primitives::strip_lexed_prefix_phrases(ability_tokens, &[&["this", "ability", "and"]])
+        {
+            let rest = trim_lexed_commas(rest);
+            if !rest.is_empty() {
+                return Some(BecomeCopyExceptionShape {
+                    preserve_source_abilities: true,
+                    granted_ability_tokens: Some(rest.to_vec()),
+                    ..Default::default()
+                });
+            }
+        }
         if !ability_tokens.is_empty() {
             return Some(BecomeCopyExceptionShape {
                 granted_ability_tokens: Some(ability_tokens.to_vec()),

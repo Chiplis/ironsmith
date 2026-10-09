@@ -4641,11 +4641,25 @@ impl GoadEffect {
 pub struct MustAttackPlayerThisTurnEffect {
     pub target: ChooseSpec,
     pub player: ChooseSpec,
+    /// "attacks during its controller's next combat phase if able" (Trench
+    /// Behemoth): the requirement names no player and waits for the
+    /// creature's controller's next combat phase; `player` is unused.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controllers_next_combat: bool,
 }
 
 impl MustAttackPlayerThisTurnEffect {
     pub fn new(target: ChooseSpec, player: ChooseSpec) -> Self {
-        Self { target, player }
+        Self {
+            target,
+            player,
+            controllers_next_combat: false,
+        }
+    }
+
+    pub fn with_controllers_next_combat(mut self, controllers_next_combat: bool) -> Self {
+        self.controllers_next_combat = controllers_next_combat;
+        self
     }
 }
 

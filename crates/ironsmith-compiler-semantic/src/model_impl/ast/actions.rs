@@ -1796,6 +1796,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 granted_abilities,
                 set_base_power_toughness,
                 copy_exception_surface,
+                retain_source_colors,
             }) => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -1814,6 +1815,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("granted_abilities", granted_abilities)
                 .field("set_base_power_toughness", set_base_power_toughness)
                 .field("copy_exception_surface", copy_exception_surface)
+                .field("retain_source_colors", retain_source_colors)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,
@@ -2700,10 +2702,24 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
                 f.debug_tuple("BecomePlotted").field(target).finish()
             }
-            Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, player }) => f
+            Self::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, allow_lock }) => {
+                f.debug_tuple(if *allow_lock {
+                    "LockOrUnlockTargetRoomDoor"
+                } else {
+                    "UnlockTargetRoomDoor"
+                })
+                .field(target)
+                .finish()
+            }
+            Self::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
+                target,
+                player,
+                controllers_next_combat,
+            }) => f
                 .debug_struct("MustAttackPlayerThisTurn")
                 .field("target", target)
                 .field("player", player)
+                .field("controllers_next_combat", controllers_next_combat)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Prepare { target, unprepare }) => {
                 if *unprepare {

@@ -1415,6 +1415,15 @@ impl Trigger {
         ))
     }
 
+    /// "Whenever a creature you control attacking causes a triggered ability
+    /// of that creature to trigger".
+    pub fn ability_triggered_by_source_attacking(source_filter: ObjectFilter) -> Self {
+        Self::new(
+            AbilityTriggeredTrigger::new_qualified(false, Some(source_filter), false)
+                .with_caused_by_source_attacking(true),
+        )
+    }
+
     /// Create a qualified "when [player] activates [ability]" trigger.
     pub fn ability_activated_qualified(
         activator: PlayerFilter,

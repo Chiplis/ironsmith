@@ -19,6 +19,28 @@ impl EffectExecutor for MustAttackPlayerThisTurnEffect {
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
             Err(error) => return Err(error),
         };
+        if self.controllers_next_combat {
+            let mut count = 0;
+            for id in objects {
+                if !game
+                    .object(id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+                    || !game.current_is_creature(id)
+                {
+                    continue;
+                }
+                let Some(controller) = game.controller_of_id(id) else {
+                    continue;
+                };
+                // CR 508.1d: the requirement applies during the controller's
+                // next combat phase and is spent when that combat ends.
+                game.effect_store
+                    .next_combat_attack_requirements
+                    .push((id, controller));
+                count += 1;
+            }
+            return Ok(EffectOutcome::count(count));
+        }
         let player = match resolve_player_from_spec(game, &self.player, ctx) {
             Ok(player) => player,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),

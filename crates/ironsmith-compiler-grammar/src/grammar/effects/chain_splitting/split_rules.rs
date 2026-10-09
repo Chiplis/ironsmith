@@ -40,6 +40,13 @@ pub fn split_effect_chain_on_and_tokens(
         }
         let current_words = crate::lexer::parser_token_word_refs(current);
         let remaining_words = crate::lexer::parser_token_word_refs(remaining);
+        // "create a tapped and attacking token" (CR 508.4): the conjunction
+        // joins two entry states of one token, never two actions.
+        if current_words.last() == Some(&"tapped")
+            && remaining_words.first() == Some(&"attacking")
+        {
+            continue;
+        }
         if crate::word_primitives::contains_all_words(&current_words, &["damage", "to"])
             && crate::word_primitives::parse_sequence_prefix(&remaining_words, &["each"])
             && crate::word_primitives::parse_sequence_suffix(
@@ -49,7 +56,17 @@ pub fn split_effect_chain_on_and_tokens(
         {
             continue;
         }
-        let remaining_starts_action = find_chain_verb_tokens(remaining).is_some()
+        // "you gain 3 life and that creature fights up to one target creature"
+        // (Tolsimir, Friend to Wolves): a subject + "fights" clause is its own
+        // action (CR 701.14a) even though "fight" isn't a chain verb.
+        let remaining_is_fight = remaining_words
+            .iter()
+            .take(4)
+            .skip(1)
+            .any(|word| matches!(*word, "fights" | "fight"))
+            && !current_words.iter().any(|word| matches!(*word, "fights" | "fight"));
+        let remaining_starts_action = remaining_is_fight
+            || find_chain_verb_tokens(remaining).is_some()
             || has_extended_effect_head_tokens(remaining)
             || starts_with_player_may_tokens(remaining)
             || remaining

@@ -827,6 +827,7 @@ fn test_spell_zone_filter_matches_stack_spell_with_graveyard_alternative_cast() 
         .expect("stack spell should exist")
         .alternative_casts
         .push(AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::mana(ManaCost::default()),
         });
     game.push_to_stack(

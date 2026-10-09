@@ -333,6 +333,34 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             return Ok(TriggerSpec::ThisPhasesOut);
         }
 
+        // "a creature you control attacking causes a triggered ability of
+        // that creature to trigger" (Firebender Ascension): an ability of that
+        // source triggered on its own attack (CR 508.1m).
+        if let Some(attacking_idx) =
+            crate::slice_primitives::select_position(&words, |word| *word == "attacking")
+            && attacking_idx > 0
+            && words.get(attacking_idx + 1..).is_some_and(|tail| {
+                crate::word_primitives::parse_sequence_complete(
+                    tail,
+                    &[
+                        "causes", "a", "triggered", "ability", "of", "that", "creature", "to",
+                        "trigger",
+                    ],
+                )
+            })
+        {
+            let attacking_token_idx = trigger_word_token_start(tokens, attacking_idx)
+                .ok_or_else(|| CardTextError::ParseError("missing attacking source".to_string()))?;
+            let source_tokens = strip_leading_articles(&tokens[..attacking_token_idx]);
+            let source_filter = parse_object_filter_lexed(&source_tokens, false)?;
+            return Ok(TriggerSpec::AbilityTriggered {
+                another: false,
+                source_filter: Some(source_filter),
+                caused_by_source_entering: false,
+                caused_by_source_attacking: true,
+            });
+        }
+
         if let Some(entering_idx) =
             crate::slice_primitives::select_position(&words, |word| *word == "entering")
             && entering_idx > 0
@@ -366,6 +394,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 another: false,
                 source_filter: Some(source_filter),
                 caused_by_source_entering: true,
+                caused_by_source_attacking: false,
             });
         }
     }
@@ -1501,6 +1530,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             another: true,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
         });
     }
     if crate::word_primitives::parse_any_sequence_complete(
@@ -1514,6 +1544,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             another: false,
             source_filter: None,
             caused_by_source_entering: false,
+            caused_by_source_attacking: false,
         });
     }
 

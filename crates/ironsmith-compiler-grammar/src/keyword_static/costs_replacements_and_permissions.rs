@@ -3707,16 +3707,35 @@ pub fn parse_token_creation_templates_line(
     let token_filter = filter.unwrap_or_else(|| ObjectFilter::default().token());
     let mut templates = Vec::new();
     for descriptor in shape.templates {
-        let mut recipe = vec![
-            OwnedLexToken::word("create", TextSpan::synthetic()),
-            OwnedLexToken::word("one", TextSpan::synthetic()),
-        ];
+        // "tokens that are copies of enchanted permanent": one copy per
+        // replaced token (CR 707.2).
+        let descriptor_words = parser_token_word_refs(descriptor);
+        let copy_of = match descriptor_words.as_slice() {
+            ["tokens", "that", "are", "copies", "of", ..] => Some(5),
+            ["token", "thats", "a", "copy", "of", ..] | ["token", "that's", "a", "copy", "of", ..] => Some(5),
+            _ => None,
+        };
+        let mut recipe = if let Some(prefix_words) = copy_of {
+            let start = crate::lexer::TokenWordView::new(descriptor)
+                .token_span_for_words(0, prefix_words)
+                .map(|span| span.end)
+                .ok_or_else(|| CardTextError::ParseError("token copy template".to_string()))?;
+            let mut recipe = crate::lexer::lex_line("create a token that's a copy of", 0)?;
+            recipe.extend_from_slice(&descriptor[start..]);
+            templates.extend(crate::clause_support::parse_effect_sentences_lexed(&recipe)?);
+            continue;
+        } else {
+            vec![
+                OwnedLexToken::word("create", TextSpan::synthetic()),
+                OwnedLexToken::word("one", TextSpan::synthetic()),
+            ]
+        };
         recipe.extend_from_slice(descriptor);
         templates.extend(crate::clause_support::parse_effect_sentences_lexed(
             &recipe,
         )?);
     }
-    Ok(Some(StaticAbilityAst::TokenCreationTemplates {
+    let ability = StaticAbilityAst::TokenCreationTemplates {
         controller: PlayerFilter::You,
         token_filter,
         templates,
@@ -3724,6 +3743,21 @@ pub fn parse_token_creation_templates_line(
         choose_one: shape.choose_one,
         optional: shape.optional,
         display: display_text_for_tokens(tokens, true),
+    };
+    if !shape.first_time_each_turn {
+        return Ok(Some(ability));
+    }
+    // CR 614.1: only the first token creation event of the turn qualifies,
+    // so no token has been created under your control this turn yet.
+    Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(ability),
+        condition: crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::TurnHistoryCount(
+                ironsmith_core::TurnHistoryCount::TokensCreated(PlayerFilter::You),
+            ),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(0),
+        },
     }))
 }
 
@@ -6795,6 +6829,61 @@ pub fn parse_pay_life_or_enter_tapped_line(
     Ok(Some(StaticAbility::pay_life_or_enter_tapped(fact.amount)))
 }
 
+/// "Koh has all activated and triggered abilities of the last chosen card."
+/// (CR 613.1f): two copy grants on this object. "The [last] chosen <noun>"
+/// is the object this source most recently chose and remembered.
+pub fn parse_copy_activated_and_triggered_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    const MARKER: &[&str] = &["all", "activated", "and", "triggered", "abilities", "of"];
+    let Some(has_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "has" | "have"))
+    else {
+        return Ok(None);
+    };
+    if has_idx == 0 || words.get(has_idx + 1..has_idx + 1 + MARKER.len()) != Some(MARKER) {
+        return Ok(None);
+    }
+    if crate::util::source_reference_surface_for_words(&words[..has_idx]).is_none() {
+        return Ok(None);
+    }
+    let filter_words = &words[has_idx + 1 + MARKER.len()..];
+    let filter = match filter_words {
+        ["the", "last", "chosen", _] | ["the", "chosen", _] => {
+            let mut filter = ObjectFilter::default();
+            filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+            filter
+        }
+        _ => {
+            let Some(span) = crate::lexer::TokenWordView::new(&tokens)
+                .token_span_for_words(has_idx + 1 + MARKER.len(), words.len())
+            else {
+                return Ok(None);
+            };
+            match parse_object_filter(&tokens[span], false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            }
+        }
+    };
+    let display = words.join(" ");
+    let activated = crate::static_abilities::CopyActivatedAbilities::new(filter.clone())
+        .with_exclude_source_id(true)
+        .with_display(display.clone());
+    let triggered =
+        crate::static_abilities::CopyTriggeredAbilities::new(filter).with_display(display);
+    Ok(Some(vec![
+        StaticAbilityAst::Static(StaticAbility::copy_activated_abilities(activated)),
+        StaticAbilityAst::Static(StaticAbility::copy_triggered_abilities(triggered)),
+    ]))
+}
+
 pub fn parse_copy_activated_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -6826,14 +6915,42 @@ pub fn parse_copy_activated_abilities_line(
 
     let filter_tokens =
         trim_edge_punctuation(&tokens[fact.filter_start_token..fact.filter_end_token]);
-    let filter_tokens = strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    let mut filter_tokens =
+        strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+    // "lands your opponents control except mana abilities" (Sharkey).
+    let exclude_mana_end = {
+        let words = parser_token_word_refs(&filter_tokens);
+        if words.ends_with(&["except", "mana", "abilities"]) {
+            match crate::lexer::TokenWordView::new(&filter_tokens)
+                .token_span_for_words(0, words.len() - 3)
+            {
+                Some(span) => Some(span.end),
+                None => return Ok(None),
+            }
+        } else {
+            None
+        }
+    };
+    let exclude_mana_abilities = exclude_mana_end.is_some();
+    if let Some(end) = exclude_mana_end {
+        filter_tokens.truncate(end);
+    }
     let force_once_each_turn = fact.once_each_turn_word_start.is_some();
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let mut filter = match parse_object_filter(&filter_tokens, false) {
-        Ok(filter) => filter,
-        Err(_) => return Ok(None),
+    let source_reference = crate::util::source_reference_surface_for_words(
+        &parser_token_word_refs(&filter_tokens),
+    )
+    .is_some();
+    let mut filter = if source_reference {
+        // "the loyalty abilities of Kasmina": the donor is this object.
+        ObjectFilter::source()
+    } else {
+        match parse_object_filter(&filter_tokens, false) {
+            Ok(filter) => filter,
+            Err(_) => return Ok(None),
+        }
     };
     if fact.exclude_source_name {
         // "that don't have the same name as this creature" is carried by
@@ -6885,6 +7002,7 @@ pub fn parse_copy_activated_abilities_line(
     let mut ability = crate::static_abilities::CopyActivatedAbilities::new(filter)
         .with_exclude_source_name(fact.exclude_source_name)
         .with_exclude_source_id(true)
+        .with_exclude_mana_abilities(exclude_mana_abilities)
         .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);

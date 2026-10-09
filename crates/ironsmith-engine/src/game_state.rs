@@ -1140,6 +1140,10 @@ pub struct EffectStore {
     pub goad_effects: Vec<GoadEffectInstance>,
     /// (permanent identity, required defender, turn). These are requirements, not restrictions.
     pub attack_player_requirements: Vec<(ObjectId, PlayerId, u32)>,
+    /// (permanent identity, its controller at resolution): "attacks during
+    /// its controller's next combat phase if able" (CR 508.1d). Active during
+    /// that player's turn and spent when that turn's combat phase ends.
+    pub next_combat_attack_requirements: Vec<(ObjectId, PlayerId)>,
     /// Latest resolved removal of the goaded designation for each permanent.
     pub goad_cleared_at: HashMap<ObjectId, u64>,
 }
@@ -1186,6 +1190,7 @@ impl Default for EffectStore {
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
             attack_player_requirements: Vec::new(),
+            next_combat_attack_requirements: Vec::new(),
             goad_cleared_at: HashMap::new(),
         }
     }
@@ -7541,6 +7546,16 @@ impl GameState {
             )
     }
 
+    /// CR 508.1d: a pending "attacks during its controller's next combat
+    /// phase if able" requirement applies on that player's turn.
+    pub fn has_next_combat_attack_requirement(&self, creature: ObjectId) -> bool {
+        let active = self.turn.active_player;
+        self.effect_store
+            .next_combat_attack_requirements
+            .iter()
+            .any(|&(id, player)| id == creature && player == active)
+    }
+
     pub fn is_goaded(&self, creature: ObjectId) -> bool {
         !self.active_goaders_for(creature).is_empty()
     }
@@ -7574,6 +7589,12 @@ impl GameState {
     /// This is shared by the ordinary end-of-combat step and CR 724.2, whose
     /// procedure skips that step and therefore cannot rely on its event.
     pub fn cleanup_effects_end_of_combat(&mut self) {
+        // The active player's next combat phase is over: spend its pending
+        // attack requirements.
+        let active = self.turn.active_player;
+        self.effect_store
+            .next_combat_attack_requirements
+            .retain(|&(_, player)| player != active);
         self.cleanup_restrictions_end_of_combat();
         self.cleanup_combat_damage_assignment_suppressions_end_of_combat();
         self.effect_store.continuous_effects.cleanup_end_of_combat();

@@ -511,7 +511,7 @@ fn catalog_past_in_flames_grants_only_the_current_graveyard_cards() {
             .granted_alternative_casts_for_card(&game, id, Zone::Graveyard, alice);
         assert_eq!(grants.len(), 1, "{id:?}: {grants:#?}");
         assert!(
-            matches!(&grants[0].method, engine::alternative_cast::AlternativeCastingMethod::Flashback { total_cost } if total_cost.mana_cost() == instant.card.mana_cost.as_ref())
+            matches!(&grants[0].method, engine::alternative_cast::AlternativeCastingMethod::Flashback { total_cost, .. } if total_cost.mana_cost() == instant.card.mana_cost.as_ref())
         );
     }
     for id in ineligible.into_iter().chain([late]) {

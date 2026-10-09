@@ -66,7 +66,7 @@ fn every_frozen_body_retains_its_typed_selector_duration_and_secondary_mechanics
             assert!(changes.iter().all(|change| change.duration == expected_duration), "{name}");
             match name {
                 "Alter Reality" => assert!(definition.alternative_casts.iter().any(|method| matches!(method,
-                    ironsmith::alternative_cast::AlternativeCastingMethod::Flashback { total_cost }
+                    ironsmith::alternative_cast::AlternativeCastingMethod::Flashback { total_cost, .. }
                         if total_cost.mana_cost().is_some_and(|cost| cost.mana_value() == 2)))),
                 "Artificial Evolution" => assert_eq!(changes[0].selection,
                     TextChangeSelection::Creature { excluded_new: vec![ironsmith::Subtype::Wall] }),

@@ -1044,7 +1044,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // counters on them"), so no lexical head enumerates this rule's
         // subjects. Its own grammar requires the "has/have all activated
         // abilities of" marker, which guards the whole-line candidacy.
-        "parse_copy_activated_abilities_line" => Vec::new(),
+        "parse_copy_activated_abilities_line"
+        | "parse_copy_activated_and_triggered_abilities_line" => Vec::new(),
         "parse_attached_has_and_loses_keywords_line"
         | "parse_attached_has_keywords_and_is_goaded_line"
         | "parse_attached_has_keywords_and_negated_restriction_line"
@@ -1618,6 +1619,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_choose_basic_land_type_then_pay_life_line),
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
         single_static_ability_ast_rule!(parse_reveal_card_or_enter_tapped_line),
+        multi_static_ability_ast_passthrough_rule!(parse_copy_activated_and_triggered_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
         single_static_ability_ast_passthrough_rule!(parse_enchanted_has_activated_ability_line),
@@ -6355,7 +6357,7 @@ pub fn parse_enter_as_copy_as_enters_line(
             clause_words.join(" ")
         )));
     }
-    let copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup> =
+    let mut copy_followups: Vec<ironsmith_core::EnterAsCopyFollowup> =
         copy_followup.into_iter().collect();
     let display = render_token_slice(tokens).trim().to_string();
 
@@ -6511,6 +6513,17 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
 
+            // "except it doesn't copy that creature's color [and <more>]"
+            // (Vesuvan Doppelganger, CR 707.9b): the copy keeps its own colors.
+            let exception_tokens = match exception_tokens.and_then(|tokens| {
+                keyword_static_lines::strip_copy_color_exception_tokens(tokens)
+            }) {
+                Some(rest) => {
+                    copy_followups.push(ironsmith_core::EnterAsCopyFollowup::RetainOwnColors);
+                    (!rest.is_empty()).then_some(rest)
+                }
+                None => exception_tokens,
+            };
             if let Some(exception_tokens) = exception_tokens {
                 let exception = keyword_static_lines::parse_copy_exception_tokens(exception_tokens)
                     .ok_or_else(|| {

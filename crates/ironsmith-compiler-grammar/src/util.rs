@@ -2886,6 +2886,10 @@ pub fn parse_flashback_line(
         }
         Some(FlashbackCostClause::Cost(cost_tokens)) => cost_tokens,
     };
+    // "Flashback—{3}{R}, Remove X loyalty counters from among planeswalkers
+    // you control. If you cast this spell this way, X can't be 0." (Light Up
+    // the Night): the trailing sentence limits X for this method only.
+    let (cost_tokens, x_minimum) = split_flashback_x_cant_be_zero(cost_tokens);
 
     let total_cost = match parse_leading_mana_and_payment_total_cost(cost_tokens)? {
         Some(total_cost) => total_cost,
@@ -2903,7 +2907,28 @@ pub fn parse_flashback_line(
         },
     };
 
-    Ok(Some(AlternativeCastingMethod::Flashback { total_cost }))
+    Ok(Some(AlternativeCastingMethod::Flashback {
+        total_cost,
+        x_minimum,
+    }))
+}
+
+fn split_flashback_x_cant_be_zero(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], u32) {
+    const TAIL: &[&str] = &[
+        "if", "you", "cast", "this", "spell", "this", "way", "x", "cant", "be", "0",
+    ];
+    let Some(period) = tokens.iter().position(|token| token.kind == TokenKind::Period) else {
+        return (tokens, 0);
+    };
+    let tail_words = crate::lexer::parser_token_word_refs(&tokens[period + 1..])
+        .into_iter()
+        .map(|word| word.replace(['\'', '’'], ""))
+        .collect::<Vec<_>>();
+    if tail_words.iter().map(String::as_str).eq(TAIL.iter().copied()) {
+        (&tokens[..period], 1)
+    } else {
+        (tokens, 0)
+    }
 }
 
 /// Parse an alternative cost whose leading mana symbols are followed by a
@@ -2950,7 +2975,7 @@ mod mixed_flashback_cost_tests {
         )
         .unwrap();
         let method = parse_flashback_line(&tokens).unwrap().unwrap();
-        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+        let AlternativeCastingMethod::Flashback { total_cost, .. } = method else {
             panic!("expected flashback");
         };
         assert_eq!(total_cost.mana_cost().unwrap().to_oracle(), "{1}{U}");
@@ -2972,7 +2997,7 @@ mod mixed_flashback_cost_tests {
         let method = parse_flashback_line(&tokens)
             .expect("mixed flashback cost should parse")
             .expect("flashback should be recognized");
-        let AlternativeCastingMethod::Flashback { total_cost } = method else {
+        let AlternativeCastingMethod::Flashback { total_cost, .. } = method else {
             panic!("expected flashback alternative cost: {method:#?}");
         };
         assert_eq!(

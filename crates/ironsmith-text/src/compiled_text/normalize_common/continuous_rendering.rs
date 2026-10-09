@@ -2232,6 +2232,9 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             crate::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 clauses.push("loses this ability".to_string());
             }
+            crate::effects::continuous::RuntimeModification::RetainSourceColors => {
+                clauses.push("keeps its color".to_string());
+            }
             crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(_) => {
                 clauses.push("has enchant restriction".to_string());
             }

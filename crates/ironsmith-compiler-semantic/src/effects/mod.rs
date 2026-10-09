@@ -209,6 +209,9 @@ pub mod continuous {
         },
         RemoveAllAbilities,
         RemoveThisAbility,
+        /// "except it doesn't copy that creature's color" (CR 707.9b): the
+        /// source keeps the colors it has as the effect begins.
+        RetainSourceColors,
         SetAuraAttachmentFilter(crate::AuraAttachmentFilter),
         /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
         CopyOfWithAbilities {

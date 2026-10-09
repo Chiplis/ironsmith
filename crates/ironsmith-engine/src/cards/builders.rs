@@ -4377,6 +4377,7 @@ impl CardDefinitionBuilder {
     pub fn flashback(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Flashback {
+                x_minimum: 0,
                 total_cost: TotalCost::mana(cost),
             });
         self

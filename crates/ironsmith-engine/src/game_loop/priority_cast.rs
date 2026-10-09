@@ -826,7 +826,23 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
         return (false, 0, 0);
     }
 
-    let min_x = min_x_from_static_abilities(game, caster, stack_id).unwrap_or(0);
+    // "If you cast this spell this way, X can't be 0" binds only the method
+    // that carries it (Light Up the Night's flashback).
+    let method_min_x = match casting_method {
+        CastingMethod::Alternative(index) => spell
+            .alternative_casts
+            .get(*index)
+            .map_or(0, |method| match method {
+                crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                    x_minimum, ..
+                } => *x_minimum,
+                _ => 0,
+            }),
+        _ => 0,
+    };
+    let min_x = min_x_from_static_abilities(game, caster, stack_id)
+        .unwrap_or(0)
+        .max(method_min_x);
     // A zero-component exile FromZone alternative is the complete free price.
     // Unlike an independent AlternativePrice it has no cast_price receipt,
     // but it still fixes printed mana-cost X to zero (CR 107.3b). An X that

@@ -241,6 +241,19 @@ pub fn parse_participant_clause_shape(
             inner_tokens: trim(rest),
         });
     }
+    // "Whenever ~ attacks a player, for each other opponent, ..." (Shredder,
+    // Shadow Master): the opponents other than the attacked (defending)
+    // player.
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["for", "each", "other", "opponent"]),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::OpponentExceptDefending,
+            participant_is_actor: false,
+            inner_tokens: trim(rest),
+        });
+    }
     if let Some((_, rest)) = primitives::parse_prefix(tokens, opponent_prefix) {
         let mut scope = ForEachParticipantScope::Opponent;
         let mut inner_tokens = trim(rest);

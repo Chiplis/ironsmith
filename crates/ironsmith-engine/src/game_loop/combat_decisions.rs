@@ -168,6 +168,8 @@ fn attack_requirement_score_for_target(
         .copied()
         .unwrap_or(0);
 
+    score += usize::from(game.has_next_combat_attack_requirement(attacker.id));
+
     score += game
         .required_attack_players_this_turn(attacker.id)
         .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))

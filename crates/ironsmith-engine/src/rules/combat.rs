@@ -713,6 +713,7 @@ pub(crate) fn must_attack_with_view(
             .cant_effects
             .must_attack
             .contains_key(&creature.id)
+        || game.has_next_combat_attack_requirement(creature.id)
         || game.is_goaded(creature.id)
 }
 

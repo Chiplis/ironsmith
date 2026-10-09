@@ -1904,7 +1904,22 @@ pub fn parse_create(
         ));
     }
     if let Some(with_idx) = tail_surface.location(CreateWord::With) {
-        let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
+        // "an X/X blue Orb creature token with flying, where X is ..."
+        // (Phantasmal Sphere): an unquoted where-X binding ends the keyword
+        // list; it is bound to the dynamic power/toughness below and is not
+        // part of the token's rules text.
+        let where_x_idx = tail_surface
+            .location(CreateWord::Where)
+            .filter(|&where_idx| {
+                where_idx > with_idx
+                    && tail_words.get(where_idx + 1) == Some(&"x")
+                    && double_quoted_rule_bodies(tokens).is_empty()
+            });
+        let with_tail_end = [for_each_idx, where_x_idx]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
             let with_surface = creation_grammar::CreationWords::new(with_words);
@@ -2038,6 +2053,25 @@ pub fn parse_create(
                     crate::lexer::render_token_slice(&definition_tokens)
                 ))
             })?;
+    // "... land token named Everywhere that is every basic land type"
+    // (Overlord of the Hauntwoods): the relative clause sets the land's
+    // subtypes; it is never dropped from another kind of token.
+    if crate::word_primitives::sequence_occurs(&tail_words, &["every", "basic", "land", "type"]) {
+        let crate::model::token_definition::TokenDefinitionSpec::Land(land) = &mut definition
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported basic-land-type token clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        land.subtypes = vec![
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ];
+    }
     if has_raw_name_override {
         if let crate::model::token_definition::TokenDefinitionSpec::Builtin(template) = &definition {
             definition = crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(

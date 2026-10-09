@@ -306,6 +306,9 @@ pub struct CopyActivatedAbilities {
     pub exclude_source_id: bool,
     pub force_once_each_turn: bool,
     pub display: String,
+    /// "... except mana abilities" (Sharkey, Tyrant of the Shire).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_mana_abilities: bool,
 }
 
 impl CopyActivatedAbilities {
@@ -318,7 +321,12 @@ impl CopyActivatedAbilities {
             exclude_source_id: true,
             force_once_each_turn: false,
             display: "Has all activated abilities of matching objects".to_string(),
+            exclude_mana_abilities: false,
         }
+    }
+    pub fn with_exclude_mana_abilities(mut self, exclude: bool) -> Self {
+        self.exclude_mana_abilities = exclude;
+        self
     }
     pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {
         self.exclude_source_name = exclude;
@@ -1100,6 +1108,10 @@ pub enum EnterAsCopyFollowup {
     /// controller's untap step for as long as you control this creature"
     /// (Wall of Stolen Identity): a reflexive triggered ability (CR 603.12).
     TapCopiedObjectFrozenWhileYouControlSource,
+    /// "except it doesn't copy that creature's color" (Vesuvan Doppelganger,
+    /// CR 707.9b): the copy keeps the entering object's own colors. Applied as
+    /// the copy's copiable values are set, not as a later effect.
+    RetainOwnColors,
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.

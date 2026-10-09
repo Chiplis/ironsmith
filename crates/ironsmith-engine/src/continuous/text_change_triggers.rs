@@ -249,7 +249,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *activator = rewrite_player_filter_words(activator, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
-        K::AbilityTriggered { another: _, source_filter, caused_by_source_entering: _ } => {
+        K::AbilityTriggered { source_filter, .. } => {
             rewrite_optional_filter(source_filter, change)?;
         }
         K::IsDealtDamage {
@@ -659,6 +659,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     });
     exact!(AbilityTriggeredTrigger, n, K::AbilityTriggered {
         another: n.another, source_filter: n.source_filter.clone(), caused_by_source_entering: n.caused_by_source_entering,
+        caused_by_source_attacking: n.caused_by_source_attacking,
     });
     exact!(IsDealtDamageTrigger, n, K::IsDealtDamage {
         target: n.target.clone(), combat_only: n.combat_only, noncombat_only: n.noncombat_only,

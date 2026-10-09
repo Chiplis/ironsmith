@@ -118,6 +118,7 @@ GivePlayerCountersEffect	ironsmith_core::GivePlayerCountersEffect	player
 GainLifeEffect	ironsmith_core::GainLifeEffect	resources
 GoadEffect	ironsmith_core::GoadEffect	combat
 ClearGoadEffect	ironsmith_core::ClearGoadEffect	combat
+MustAttackPlayerThisTurnEffect	ironsmith_core::MustAttackPlayerThisTurnEffect	combat
 GrantAbilitiesTargetEffect	ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>	combat
 GrantBySpecEffect	ironsmith_core::GrantBySpecEffect<wire::WireGrantSpec, wire::WireGrantDuration>	player
 GrantEffect	ironsmith_core::GrantEffect<wire::WireGrantable, wire::WireGrantDuration>	player

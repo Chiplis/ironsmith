@@ -247,6 +247,11 @@ pub enum ManaUsageRestriction<E> {
     CastSpellOrUnlockDoorOrTurnFaceUp {
         spell_filter: ObjectFilter,
     },
+    /// "Spend this mana only to cast <spells> and unlock doors" (Smoky
+    /// Lounge): a matching spell or a Room unlock cost (CR 709.5e).
+    CastSpellOrUnlockDoor {
+        spell_filter: ObjectFilter,
+    },
     ActivateAbility,
     /// Generic CR 106.6 transaction rule. An empty `on_spend` list is a pure
     /// spending restriction; a predicate of `Any` with payloads is an
@@ -317,6 +322,9 @@ impl<E> ManaUsageRestriction<E> {
             },
             Self::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter } => {
                 ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter }
+            }
+            Self::CastSpellOrUnlockDoor { spell_filter } => {
+                ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter }
             }
             Self::ActivateAbility => ManaUsageRestriction::ActivateAbility,
             Self::PaymentTransaction {

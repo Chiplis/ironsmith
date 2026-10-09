@@ -1487,6 +1487,18 @@ mod where_x_count_readings;
 
 pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "where X is the number of opponents being attacked" (Dimir
+    // Strandcatcher): the defending players of this combat (CR 506.2).
+    let counted = words
+        .strip_prefix(&["where", "x", "is"][..])
+        .unwrap_or(&words);
+    if matches!(
+        counted,
+        ["the", "number", "of", "opponents" | "players", "being", "attacked"]
+            | ["the", "number", "of", "opponents" | "players", "youre" | "you're", "attacking"]
+    ) {
+        return Some(Value::PlayersBeingAttacked);
+    }
     if words.iter().any(|word| matches!(*word, "plus" | "minus"))
         || crate::word_primitives::sequence_occurs(&words, &["in", "excess", "of"])
     {

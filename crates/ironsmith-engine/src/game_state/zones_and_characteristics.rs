@@ -268,6 +268,8 @@ impl GameState {
                         tagged_objects,
                     );
                 }
+                // Applied with the copiable values as the object entered.
+                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors => {}
                 ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
                     // "When you do, tap the copied creature and it doesn't
                     // untap during its controller's untap step for as long as
@@ -3584,6 +3586,13 @@ impl GameState {
                         .add_reserved_entry_effect(registration, effect)?;
                 }
             } else {
+                // CR 707.9b: "it doesn't copy that creature's color" keeps the
+                // entering object's own colors as its copiable color.
+                let retained_colors = result
+                    .copy_followups
+                    .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
+                    .then(|| self.object(new_id).map(|object| object.colors()))
+                    .flatten();
                 let copy_source = self.object(copy_source_id).cloned();
                 let effects = self.all_continuous_effects();
                 let copiable_values = crate::continuous::copiable_values_with_effects(
@@ -3598,6 +3607,9 @@ impl GameState {
                     new_obj.copy_copiable_values_from(&source_obj);
                     if let Some(values) = copiable_values.as_ref() {
                         new_obj.copy_copiable_values_from_values(values);
+                    }
+                    if let Some(colors) = retained_colors {
+                        new_obj.color_override = Some(colors);
                     }
                     if let Some(name) = &result.copy_name_override {
                         new_obj.name = name.clone().into();

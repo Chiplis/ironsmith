@@ -12,6 +12,7 @@ pub struct AbilityTriggeredTrigger {
     pub another: bool,
     pub source_filter: Option<ObjectFilter>,
     pub caused_by_source_entering: bool,
+    pub caused_by_source_attacking: bool,
 }
 
 impl AbilityTriggeredTrigger {
@@ -28,7 +29,13 @@ impl AbilityTriggeredTrigger {
             another,
             source_filter,
             caused_by_source_entering,
+            caused_by_source_attacking: false,
         }
+    }
+
+    pub fn with_caused_by_source_attacking(mut self, caused_by_source_attacking: bool) -> Self {
+        self.caused_by_source_attacking = caused_by_source_attacking;
+        self
     }
 }
 
@@ -69,6 +76,13 @@ impl TriggerMatcher for AbilityTriggeredTrigger {
         {
             return false;
         }
+        // The source's own attack declaration (CR 508.1m, 508.3a) caused it.
+        if self.caused_by_source_attacking
+            && !(event.cause_kind == Some(EventKind::CreatureAttacked)
+                && event.cause_object == Some(event.source))
+        {
+            return false;
+        }
         true
     }
 
@@ -77,6 +91,18 @@ impl TriggerMatcher for AbilityTriggeredTrigger {
     }
 
     fn display(&self) -> String {
+        if self.caused_by_source_attacking {
+            let controller = self
+                .source_filter
+                .as_ref()
+                .and_then(|filter| filter.controller.as_ref())
+                .map(|controller| controller.description())
+                .unwrap_or_else(|| "a player".to_string());
+            let controls = if controller == "you" { "control" } else { "controls" };
+            return format!(
+                "Whenever a creature {controller} {controls} attacking causes a triggered ability of that creature to trigger"
+            );
+        }
         if self.caused_by_source_entering {
             let source = self
                 .source_filter
@@ -193,5 +219,38 @@ mod tests {
 
         assert!(matcher.matches(&etb, &ctx));
         assert!(!matcher.matches(&non_etb, &ctx));
+    }
+    #[test]
+    fn source_attack_qualification_requires_that_creatures_own_attack() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let watcher = CardDefinitionBuilder::new(CardId::from_raw(93), "Watcher")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let attacker = CardDefinitionBuilder::new(CardId::from_raw(94), "Attacker")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let watcher_id = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+        let attacker_id = game.create_object_from_definition(&attacker, alice, Zone::Battlefield);
+        let other_id = game.create_object_from_definition(&attacker, alice, Zone::Battlefield);
+        let stable = game.object(attacker_id).expect("attacker").stable_id;
+        let matcher = AbilityTriggeredTrigger::new_qualified(
+            false,
+            Some(ObjectFilter::creature().you_control()),
+            false,
+        )
+        .with_caused_by_source_attacking(true);
+        let ctx = TriggerContext::for_source(watcher_id, alice, &game);
+        let event = |cause: EventKind, object: ObjectId| {
+            RawEvent::new(
+                AbilityTriggeredEvent::new(attacker_id, stable, alice, TriggerIdentity(3))
+                    .with_cause(cause, Some(object), None),
+                ProvNodeId::default(),
+            )
+        };
+
+        assert!(matcher.matches(&event(EventKind::CreatureAttacked, attacker_id), &ctx));
+        assert!(!matcher.matches(&event(EventKind::CreatureAttacked, other_id), &ctx));
+        assert!(!matcher.matches(&event(EventKind::Damage, attacker_id), &ctx));
     }
 }

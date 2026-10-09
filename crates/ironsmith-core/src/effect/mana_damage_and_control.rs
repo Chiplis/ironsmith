@@ -2777,11 +2777,16 @@ pub struct PutStickerEffect {
 }
 
 /// Unlock a locked door of a Room matching `room_filter` during resolution.
+/// With `allow_lock`, the player instead chooses any door of the Room and
+/// toggles it: "lock or unlock a door of target Room you control"
+/// (CR 709.5c, CR 709.5f).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct UnlockRoomDoorEffect {
     pub player: PlayerFilter,
     pub room_filter: ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allow_lock: bool,
 }
 
 impl UnlockRoomDoorEffect {
@@ -2789,7 +2794,13 @@ impl UnlockRoomDoorEffect {
         Self {
             player,
             room_filter,
+            allow_lock: false,
         }
+    }
+
+    pub fn with_allow_lock(mut self, allow_lock: bool) -> Self {
+        self.allow_lock = allow_lock;
+        self
     }
 }
 

@@ -79,6 +79,7 @@ const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
     "this effect can't reduce the mana in that cost to less than one mana.";
 
 mod block_parsing;
+mod characteristic_modes;
 mod line_dispatch;
 mod line_family_handlers;
 mod line_recognition;

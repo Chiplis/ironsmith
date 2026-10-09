@@ -101,6 +101,26 @@ pub(crate) fn stack_entry_for_copy_target(
             })
             .cloned());
     }
+    if let Some(triggered) = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.downcast::<crate::events::AbilityTriggeredEvent>())
+        && triggered.source == target_id
+    {
+        // "copy that ability" after "... causes a triggered ability of that
+        // creature to trigger" (CR 707.10): the event names the exact
+        // triggered ability by its structural identity.
+        return Ok(game
+            .stack
+            .iter()
+            .rev()
+            .find(|entry| {
+                entry.is_ability
+                    && entry.object_id == target_id
+                    && entry.trigger_identity == Some(triggered.trigger_identity)
+            })
+            .cloned());
+    }
     // Abilities share their source's object ID (a storm trigger has its
     // spell's ID): prefer the most recent entry of the targeted kind.
     let of_kind = kind.and_then(|kind| {

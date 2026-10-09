@@ -935,6 +935,9 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             wire::WireRuntimeModification::RemoveThisAbility => {
                 crate::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            wire::WireRuntimeModification::RetainSourceColors => {
+                crate::effects::continuous::RuntimeModification::RetainSourceColors
+            }
             wire::WireRuntimeModification::SetAuraAttachmentFilter(filter) => {
                 crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)
             }

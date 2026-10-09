@@ -135,10 +135,20 @@ pub enum KeywordActionAst {
     BecomePlotted {
         target: TargetAst,
     },
+    /// "unlock a locked door of up to one target Room you control" (CR 709.5f).
+    /// With `allow_lock`: "lock or unlock a door of target Room you control"
+    /// (CR 709.5c).
+    UnlockTargetRoomDoor {
+        target: TargetAst,
+        allow_lock: bool,
+    },
     /// "<creature> attacks <player> this turn if able" (CR 508.1d).
     MustAttackPlayerThisTurn {
         target: TargetAst,
         player: TargetAst,
+        /// "attacks during its controller's next combat phase if able":
+        /// `player` is unused.
+        controllers_next_combat: bool,
     },
     Suspect {
         target: TargetAst,

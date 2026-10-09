@@ -448,6 +448,11 @@ pub enum TriggerKind {
         /// The triggering ability must have been caused by that same source
         /// entering the battlefield, rather than by an unrelated event.
         caused_by_source_entering: bool,
+        /// "a creature you control attacking causes a triggered ability of
+        /// that creature to trigger": the ability triggered on that source's
+        /// own attack declaration.
+        #[cfg_attr(feature = "serde", serde(default))]
+        caused_by_source_attacking: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -1779,6 +1784,18 @@ impl Trigger {
                 another,
                 source_filter,
                 caused_by_source_entering,
+                caused_by_source_attacking: false,
+            },
+        )
+    }
+    pub fn ability_triggered_by_source_attacking(source_filter: ObjectFilter) -> Self {
+        Self::typed(
+            "Whenever an ability triggers",
+            TriggerKind::AbilityTriggered {
+                another: false,
+                source_filter: Some(source_filter),
+                caused_by_source_entering: false,
+                caused_by_source_attacking: true,
             },
         )
     }

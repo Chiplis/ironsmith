@@ -3569,6 +3569,16 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
             }
             Some(apply_embedded_token_rules(builder, &shape.token_rules).build())
         }
+        TokenDefinitionSpec::Land(shape) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+                .token()
+                .card_types(vec![CardType::Land])
+                .subtypes(shape.subtypes);
+            if shape.legendary {
+                builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+            }
+            Some(builder.build())
+        }
         TokenDefinitionSpec::Angel => Some(
             CardDefinitionBuilder::new(CardId::new(), "Angel")
                 .token()

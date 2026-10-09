@@ -397,6 +397,9 @@ pub fn parse_become_clause(
             } else {
                 Vec::new()
             };
+            let retain_source_colors = copy_exception
+                .as_ref()
+                .is_some_and(|exception| exception.retain_source_colors);
             return Ok(EffectAst::subject_verb_become_copy(
                 target,
                 source,
@@ -444,6 +447,7 @@ pub fn parse_become_clause(
                     .and_then(|exception| exception.set_base_power_toughness)
                     .map(|(power, toughness)| (Value::Fixed(power), Value::Fixed(toughness))),
                 copy_exception.and_then(|exception| exception.surface),
+                retain_source_colors,
             ));
         }
         become_grammar::BecomeCopySourceShape::NotCopy => {}

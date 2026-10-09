@@ -303,6 +303,29 @@ fn parse_unlock_room_door(
     } else {
         words.as_slice()
     };
+    // "unlock a locked door of up to one target Room you control" (Ghostly
+    // Keybearer): the Room is announced as a target (CR 709.5f). "Lock or
+    // unlock a door of target Room you control" (Keys to the House) names any
+    // door, locked or unlocked: the only authored unlock of an unqualified
+    // door is the lock-or-unlock choice (CR 709.5c).
+    let allow_lock = matches!(words, ["a", "door", "of", ..]);
+    if let ["a", "locked", "door", "of", rest @ ..] | ["a", "door", "of", rest @ ..] = words
+        && rest.iter().any(|word| *word == "target")
+    {
+        let skip = tokens
+            .iter()
+            .position(|token| token.is_word("of"))
+            .map(|idx| idx + 1)
+            .unwrap_or(tokens.len());
+        let target = crate::util::parse_target_phrase(&tokens[skip..])?;
+        return Ok(EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            extract_subject_player(subject).unwrap_or(PlayerAst::You),
+            crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                crate::cards::builders::KeywordActionAst::UnlockTargetRoomDoor { target, allow_lock },
+            ),
+        ));
+    }
     if !crate::word_primitives::parse_sequence_complete(
         words,
         &["a", "locked", "door", "of", "a", "room", "you", "control"],

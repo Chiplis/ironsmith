@@ -1679,6 +1679,9 @@
         );
     }
     if let Some(unlock) = effect.downcast_ref::<crate::effects::UnlockRoomDoorEffect>() {
+        if unlock.allow_lock && unlock.player == PlayerFilter::You {
+            return "Lock or unlock a door of target Room you control".to_string();
+        }
         if unlock.player == PlayerFilter::You {
             return "Unlock a locked door of a Room you control".to_string();
         }

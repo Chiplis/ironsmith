@@ -32829,10 +32829,13 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Awaken { amount, cost, .. } => {
             format!("Awaken {amount}—{}", cost.to_oracle())
         }
-        AlternativeCastingMethod::Flashback { total_cost } => {
+        AlternativeCastingMethod::Flashback {
+            total_cost,
+            x_minimum,
+        } => {
             let costs = method.non_mana_costs();
             let mana_cost = total_cost.mana_cost().map(|cost| cost.to_oracle());
-            if costs.is_empty() {
+            let rendered = if costs.is_empty() {
                 format!(
                     "Flashback—{}",
                     mana_cost.unwrap_or_else(|| "{0}".to_string())
@@ -32844,6 +32847,14 @@ pub(super) fn describe_alternative_cast_line(
                 } else {
                     format!("Flashback—{extra}")
                 }
+            };
+            if *x_minimum > 0 {
+                format!(
+                    "{rendered}. If you cast this spell this way, X can't be {}",
+                    x_minimum - 1
+                )
+            } else {
+                rendered
             }
         }
         AlternativeCastingMethod::Harmonize { total_cost } => {
@@ -47485,6 +47496,7 @@ mod flashback_non_mana_cost_surface_tests {
     #[test]
     fn effect_only_flashback_omits_invented_zero_mana_cost() {
         let effect_only = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::from_cost(sacrifice_creature_cost()),
         };
         assert_eq!(
@@ -47496,6 +47508,7 @@ mod flashback_non_mana_cost_surface_tests {
     #[test]
     fn explicit_zero_and_mixed_flashback_costs_keep_their_mana_surface() {
         let explicit_zero = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::free(),
         };
         assert_eq!(
@@ -47504,6 +47517,7 @@ mod flashback_non_mana_cost_surface_tests {
         );
 
         let mixed = AlternativeCastingMethod::Flashback {
+            x_minimum: 0,
             total_cost: crate::cost::TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(crate::mana::ManaCost::from_symbols(vec![
                     crate::mana::ManaSymbol::Generic(1),

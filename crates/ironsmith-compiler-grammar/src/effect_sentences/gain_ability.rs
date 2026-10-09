@@ -1053,6 +1053,41 @@ pub fn parse_nested_quoted_static_grant(
     )
 }
 
+/// Split a granted-ability list into its items. A comma inside a quoted rule
+/// ("Whenever equipped creature attacks, tap ...,") belongs to that rule, and
+/// two adjacent quoted rules ("A," "B,") are separate items even with no
+/// comma between their quotes (Icingdeath, Frost Tyrant's token).
+fn split_top_level_granted_ability_items(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    if !tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        return split_lexed_slices_on_comma(tokens);
+    }
+    let mut items = Vec::new();
+    let mut start = 0usize;
+    let mut inside_quote = false;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote {
+            if inside_quote {
+                inside_quote = false;
+                let next_opens_quote = tokens
+                    .get(idx + 1)
+                    .is_some_and(|next| next.kind == TokenKind::Quote);
+                if next_opens_quote {
+                    items.push(&tokens[start..=idx]);
+                    start = idx + 1;
+                }
+            } else {
+                inside_quote = true;
+            }
+        } else if !inside_quote && token.is_comma() {
+            items.push(&tokens[start..idx]);
+            start = idx + 1;
+        }
+    }
+    items.push(&tokens[start..]);
+    items.retain(|item| !item.is_empty());
+    items
+}
+
 pub fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -1081,7 +1116,7 @@ pub fn parse_granted_abilities_for_gain_clause(
         ));
     }
 
-    let comma_segments = split_lexed_slices_on_comma(ability_tokens);
+    let comma_segments = split_top_level_granted_ability_items(ability_tokens);
     if comma_segments.len() > 1 {
         // Parse every comma-delimited item independently before trying the
         // whole surface. This keeps an executable keyword in the middle of a
@@ -2765,5 +2800,37 @@ mod lasting_base_pt_assignment_tests {
                 "{line}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod quoted_item_split_tests {
+    use super::*;
+
+    fn items(text: &str) -> Vec<String> {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        split_top_level_granted_ability_items(&tokens)
+            .into_iter()
+            .map(|item| crate::lexer::parser_token_word_refs(item).join(" "))
+            .collect()
+    }
+
+    #[test]
+    fn commas_inside_adjacent_quoted_rules_do_not_split_them() {
+        let split = items(
+            "\"Equipped creature gets +2/+0,\" \"Whenever equipped creature attacks, tap target creature defending player controls,\" and equip {2}",
+        );
+        assert_eq!(split.len(), 3, "{split:?}");
+        assert!(split[1].starts_with("whenever equipped creature attacks"), "{split:?}");
+        assert!(split[1].contains("tap target creature"), "{split:?}");
+    }
+
+    #[test]
+    fn keyword_then_quoted_trigger_with_inner_comma_stays_whole() {
+        let split = items(
+            "vigilance, \"Whenever this creature attacks, draw a card,\" and \"{T}: Add {C}.\"",
+        );
+        assert_eq!(split.len(), 3, "{split:?}");
+        assert!(split[1].contains("draw a card"), "{split:?}");
     }
 }

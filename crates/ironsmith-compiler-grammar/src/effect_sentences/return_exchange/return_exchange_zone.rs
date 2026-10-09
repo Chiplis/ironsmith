@@ -779,13 +779,17 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                             ReturnControllerAst::Preserve,
                         )
                     } else if let Some(attached_to) = attached_to_target {
-                        if destination.transformed || destination.converted || count_value.is_some()
-                        {
+                        // "return it to the battlefield transformed under your
+                        // control attached to target opponent" (Curse DFCs):
+                        // the transformed entry and the attachment compose
+                        // (CR 712.14a, 303.4f); converted or counted returns
+                        // remain unsupported.
+                        if destination.converted || count_value.is_some() {
                             return Err(CardTextError::ParseError(format!(
                                 "unsupported transformed/converted/dynamic return attached clause (clause: '{clause_text}')"
                             )));
                         }
-                        EffectAst::subject_verb_move_to_zone_with_attacking(
+                        let moved = EffectAst::subject_verb_move_to_zone_with_attacking(
                             target,
                             Zone::Battlefield,
                             false,
@@ -797,7 +801,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         )
                         .with_move_to_zone_verb_surface(
                             ironsmith_core::MoveToZoneVerbSurface::Return,
-                        )
+                        );
+                        if destination.transformed {
+                            moved.with_move_to_zone_transformed()
+                        } else {
+                            moved
+                        }
                     } else if destination.attacking || destination.face_down {
                         EffectAst::subject_verb_move_to_zone_with_attacking(
                             target,
