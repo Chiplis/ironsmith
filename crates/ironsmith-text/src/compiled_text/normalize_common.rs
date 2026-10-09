@@ -155,9 +155,10 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => filter.description(),
         PlayerFilter::LostLifeThisTurn { base } => format!(

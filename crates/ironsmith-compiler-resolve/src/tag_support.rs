@@ -1305,7 +1305,7 @@ pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
         | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner } => {
             player_filter_references_tag(inner, tag)
         }

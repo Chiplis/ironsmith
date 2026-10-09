@@ -1569,6 +1569,10 @@ pub enum PlayerFilter {
     /// and returns does not inherit the earlier object's damage history.
     WasDealtDamageBySourceThisGame {
         base: Box<PlayerFilter>,
+        /// Only damage dealt this turn ("target player dealt damage by this
+        /// creature this turn", Wicked Akuba). Older payloads mean this game.
+        #[cfg_attr(feature = "serde", serde(default))]
+        this_turn: bool,
     },
     /// A player matching `base` who was dealt positive combat damage this
     /// game by an object matching `sources` at the time it dealt that damage.
@@ -1728,6 +1732,15 @@ impl PlayerFilter {
     pub fn was_dealt_damage_by_source_this_game(base: PlayerFilter) -> Self {
         Self::WasDealtDamageBySourceThisGame {
             base: Box::new(base),
+            this_turn: false,
+        }
+    }
+
+    /// A player matching `base` the current source dealt damage to this turn.
+    pub fn was_dealt_damage_by_source_this_turn(base: PlayerFilter) -> Self {
+        Self::WasDealtDamageBySourceThisGame {
+            base: Box::new(base),
+            this_turn: true,
         }
     }
 
@@ -1767,7 +1780,7 @@ impl PlayerFilter {
             Self::IteratedPlayer => false,
             Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_player_filter(needle),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_player_filter(needle),
-            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_player_filter(needle),
+            Self::WasDealtDamageBySourceThisGame { base, .. } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
                 base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
@@ -1841,9 +1854,10 @@ impl PlayerFilter {
             Self::AttackedBySourceThisTurn => {
                 "a player this creature attacked this turn".to_string()
             }
-            Self::WasDealtDamageBySourceThisGame { base } => format!(
-                "{} this source has dealt damage to this game",
-                base.description()
+            Self::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+                "{} this source has dealt damage to this {}",
+                base.description(),
+                if *this_turn { "turn" } else { "game" }
             ),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
                 "{} dealt combat damage this game by {}",
@@ -7484,9 +7498,10 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn's".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game's",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}'s",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}'s",
@@ -7598,9 +7613,10 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => format!(
-            "{} this source has dealt damage to this game",
-            describe_player_filter(base)
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
+            "{} this source has dealt damage to this {}",
+            describe_player_filter(base),
+            if *this_turn { "turn" } else { "game" }
         ),
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}",

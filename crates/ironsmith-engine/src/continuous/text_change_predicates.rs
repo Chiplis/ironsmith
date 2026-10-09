@@ -44,7 +44,7 @@ pub(crate) fn rewrite_choose_spec_words(spec: &ChooseSpec, change: TextChange) -
 pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextChange) -> RewriteResult<PlayerFilter> {
     let mut rewritten = player.clone();
     match &mut rewritten {
-        PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }

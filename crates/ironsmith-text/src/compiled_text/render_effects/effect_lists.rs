@@ -984,7 +984,11 @@ pub(super) fn describe_full_game_source_damage_recipient_union(
     if players.starting_with_controller || players.stop_after_first_happened {
         return None;
     }
-    let PlayerFilter::WasDealtDamageBySourceThisGame { base } = &players.filter else {
+    let PlayerFilter::WasDealtDamageBySourceThisGame {
+        base,
+        this_turn: false,
+    } = &players.filter
+    else {
         return None;
     };
     if base.as_ref() != &PlayerFilter::Opponent {

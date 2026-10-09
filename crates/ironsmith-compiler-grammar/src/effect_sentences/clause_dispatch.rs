@@ -161,7 +161,7 @@ fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
-        | PlayerFilter::WasDealtDamageBySourceThisGame { base }
+        | PlayerFilter::WasDealtDamageBySourceThisGame { base, .. }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { base, .. } => {
             player_filter_mentions_source_object(base)

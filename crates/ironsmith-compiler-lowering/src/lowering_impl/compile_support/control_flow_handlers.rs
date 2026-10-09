@@ -1894,7 +1894,7 @@ pub fn collect_targeted_player_specs_from_player_filter(
             collect_targeted_player_specs_from_player_filter(base, specs);
             collect_targeted_player_specs_from_player_filter(excluded, specs);
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             collect_targeted_player_specs_from_player_filter(base, specs);
         }
         PlayerFilter::LostLifeThisTurn { base } => {

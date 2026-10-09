@@ -504,6 +504,25 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    // "target player dealt damage by this creature this turn" (Wicked Akuba):
+    // this exact source dealt that player positive damage this turn.
+    if let Some(source_words) = remaining_words
+        .strip_prefix(&["player", "dealt", "damage", "by"][..])
+        .or_else(|| {
+            remaining_words.strip_prefix(&["player", "who", "was", "dealt", "damage", "by"][..])
+        })
+        .and_then(|rest| rest.strip_suffix(&["this", "turn"][..]))
+        && crate::util::is_source_reference_words(source_words)
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::was_dealt_damage_by_source_this_turn(PlayerFilter::Any),
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
     // "target player who was dealt combat damage by this creature this turn".
     // A restriction sentence ("... this turn can't cast ...") has already
     // consumed the trailing turn window before the subject reaches here.

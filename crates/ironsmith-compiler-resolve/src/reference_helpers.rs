@@ -345,7 +345,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(base, choices);
             push_target_player_filter_choices(excluded, choices);
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             push_target_player_filter_choices(base, choices);
         }
         PlayerFilter::LostLifeThisTurn { base } => {
@@ -542,9 +542,10 @@ fn resolve_contextual_player_filter(
                 excluded: Box::new(excluded),
             }
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(resolve_contextual_player_filter(base, refs)?),
+                this_turn: *this_turn,
             }
         }
         PlayerFilter::LostLifeThisTurn { base } => PlayerFilter::LostLifeThisTurn {

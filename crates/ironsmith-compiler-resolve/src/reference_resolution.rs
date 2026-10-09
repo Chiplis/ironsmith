@@ -9490,7 +9490,7 @@ fn bind_unresolved_it_in_player_filter(filter: &mut PlayerFilter, seed_tag: &Tag
             bind_unresolved_it_in_player_filter(base, seed_tag)
                 + bind_unresolved_it_in_player_filter(excluded, seed_tag)
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base } => {
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, .. } => {
             bind_unresolved_it_in_player_filter(base, seed_tag)
         }
         PlayerFilter::LostLifeThisTurn { base } => {
