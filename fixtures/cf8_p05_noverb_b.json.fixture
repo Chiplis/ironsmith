@@ -533,5 +533,13 @@
     "mana_cost": "{5}",
     "type_line": "Artifact",
     "oracle_text": "At the beginning of each upkeep, each player exiles the top card of their library. The player who exiled the card with the greatest mana value takes an extra turn after this one. If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken."
+  },
+  {
+    "cluster": "ordered_player_choices",
+    "name": "Thieves' Auction",
+    "oracle_id": "230ee0b4-eb75-457f-b171-72d585cfb5aa",
+    "mana_cost": "{4}{R}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exile all nontoken permanents. Starting with you, each player chooses one of the exiled cards and puts it onto the battlefield tapped under their control. Repeat this process until all cards exiled this way have been chosen."
   }
 ]

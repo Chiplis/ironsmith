@@ -25,7 +25,7 @@ fn ordered_loops(definition: &ironsmith::cards::CardDefinition) -> Vec<ForPlayer
 #[test]
 fn every_cluster_card_compiles_strictly_on_both_routes() {
     let rows = support::rows(CLUSTER);
-    assert_eq!(rows.len(), 5);
+    assert_eq!(rows.len(), 6);
     for row in &rows {
         support::definitions(row);
     }
@@ -97,5 +97,19 @@ fn manifold_insights_opponents_choose_different_revealed_cards() {
         assert_eq!(loops[0].filter, PlayerFilter::Opponent);
         let debug = support::debug(&definition);
         assert!(debug.contains("IsNotTaggedObject"), "a different card: {debug}");
+    }
+}
+
+#[test]
+fn thieves_auction_repeats_rounds_until_every_exiled_card_was_chosen_once() {
+    for definition in support::definitions(&support::row(CLUSTER, "Thieves' Auction")) {
+        assert_eq!(ordered_loops(&definition).len(), 1);
+        let debug = support::debug(&definition);
+        assert!(debug.contains("RepeatProcessEffect"), "{debug}");
+        // A pick is never offered again, so an unplayable card can't loop.
+        assert!(debug.contains("auction_chosen"), "{debug}");
+        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+        let choices = support::effects_of::<ChooseObjectsEffect>(&definition);
+        assert!(choices.iter().all(|choice| choice.count.max == Some(1)), "{choices:#?}");
     }
 }

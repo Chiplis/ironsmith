@@ -162,6 +162,12 @@ struct Shape {
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
     Shape {
+        id: RuleId::new("round-robin-exiled-pool"),
+        head: HeadDiscriminator::words(&["exile"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, super::ordered_group_choice::read_round_robin_exiled_pool(sentences, index)),
+    },
+    Shape {
         id: RuleId::new("revealed-group-ordered-choice-hand-rest-bottom"),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 3,

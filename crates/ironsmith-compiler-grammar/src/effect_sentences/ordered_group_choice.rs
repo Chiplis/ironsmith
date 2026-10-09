@@ -169,3 +169,138 @@ pub(super) fn read_revealed_group_ordered_choice(
         ),
     ]))
 }
+
+/// "Starting with you, each player chooses one of the exiled cards and puts
+/// it onto the battlefield [tapped] under their control."
+fn round_robin_pick(input: &mut LexStream<'_>) -> winnow::error::ModalResult<bool> {
+    primitives::phrase(&["starting", "with", "you"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&[
+        "each", "player", "chooses", "one", "of", "the", "exiled", "cards", "and", "puts", "it",
+        "onto", "the", "battlefield",
+    ])
+    .parse_next(input)?;
+    let tapped = opt(primitives::kw("tapped")).parse_next(input)?.is_some();
+    primitives::phrase(&["under", "their", "control"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(tapped)
+}
+
+/// "Exile <...>. Starting with you, each player chooses one of the exiled
+/// cards and puts it onto the battlefield tapped under their control. Repeat
+/// this process until all cards exiled this way have been chosen." (Thieves'
+/// Auction): rounds in turn order (CR 101.4) over the exiled pool. Each pick
+/// joins a shared chosen set and is never offered again, so a card that
+/// can't enter (CR 303.4g) stays chosen in exile; the process repeats while
+/// an unchosen exiled card remains.
+pub(super) fn read_round_robin_exiled_pool(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(exile), Some(pick), Some(repeat)) = (
+        sentences.get(sentence_idx),
+        sentences.get(sentence_idx + 1),
+        sentences.get(sentence_idx + 2),
+    ) else {
+        return Ok(None);
+    };
+    let Some(tapped) = primitives::probe_all(
+        trim_lexed_commas(pick.lowered()),
+        round_robin_pick,
+        "round-robin-exiled-pick",
+    ) else {
+        return Ok(None);
+    };
+    if primitives::probe_all(
+        trim_lexed_commas(repeat.lowered()),
+        (
+            primitives::phrase(&[
+                "repeat", "this", "process", "until", "all", "cards", "exiled", "this", "way",
+                "have", "been", "chosen",
+            ]),
+            primitives::sentence_end(),
+        ),
+        "round-robin-repeat-until-chosen",
+    )
+    .is_none()
+    {
+        return Ok(None);
+    }
+    let exile_effects = super::parse_effect_sentence_lexed(exile.lowered())?;
+    let [exile_effect] = exile_effects.as_slice() else {
+        return Ok(None);
+    };
+
+    let pool = helper_tag_for_tokens(exile.lowered(), "auction_pool");
+    let chosen = helper_tag_for_tokens(pick.lowered(), "auction_chosen");
+    let pick_tag = helper_tag_for_tokens(pick.lowered(), "auction_pick");
+    let never_written = helper_tag_for_tokens(repeat.lowered(), "auction_empty");
+    let remaining = helper_tag_for_tokens(repeat.lowered(), "auction_remaining");
+
+    let unchosen_pool = || {
+        let mut filter = crate::target::ObjectFilter::tagged(pool.key.clone());
+        filter.zone = Some(Zone::Exile);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: chosen.key.clone(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        filter
+    };
+    let round = vec![
+        // This player's pick starts empty (the union of a never-written tag).
+        EffectAst::subject_verb_tagged_object_union(
+            crate::target::ObjectFilter::default(),
+            vec![Zone::Exile],
+            crate::tag::TagRef::of(pick_tag.clone()),
+            vec![crate::tag::TagRef::of(never_written)],
+        ),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: unchosen_pool(),
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::That,
+            tag: crate::tag::TagRef::of(pick_tag.clone()),
+            zone: Zone::Exile,
+        }),
+        EffectAst::subject_verb_put_onto_battlefield(
+            PlayerAst::That,
+            crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(pick_tag.clone()), None),
+            tapped,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+        ),
+        // The pick joins the chosen set whether or not it could enter.
+        EffectAst::subject_verb_tagged_object_union(
+            crate::target::ObjectFilter::default(),
+            vec![Zone::Exile, Zone::Battlefield],
+            crate::tag::TagRef::of(chosen.clone()),
+            vec![
+                crate::tag::TagRef::of(chosen.clone()),
+                crate::tag::TagRef::of(pick_tag),
+            ],
+        ),
+    ];
+    Ok(Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(exile_effect.clone()),
+            tag: crate::tag::TagRef::of(pool.clone()),
+        },
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+            effects: vec![
+                EffectAst::SourceSentence {
+                    effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                        effects: round,
+                    })],
+                    leading_then: false,
+                    starting_with_controller: true,
+                },
+                // Continue while an exiled card has not been chosen.
+                EffectAst::subject_verb_tag_matching_objects(
+                    unchosen_pool(),
+                    vec![Zone::Exile],
+                    crate::tag::TagRef::of(remaining),
+                ),
+            ],
+            continue_effect_index: 1,
+            continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+        }),
+    ]))
+}
