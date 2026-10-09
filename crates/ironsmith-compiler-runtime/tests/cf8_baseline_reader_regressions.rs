@@ -23,7 +23,7 @@ fn aluren_preserves_its_permission() {
         let text = support::rendered(&definition);
         assert!(text.contains("without paying"), "{text}");
         assert!(definition.spell_effect.is_none(), "permanent permission must be static");
-        assert_eq!(definition.abilities.len(), 2);
+        assert_eq!(definition.abilities.iter().filter(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Static(_))).count(), 2);
     }
 }
 
@@ -38,7 +38,6 @@ fn atomic_microsizer_preserves_its_permission() {
 
 #[test]
 fn aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_phase() {
-    use ironsmith::alternative_cast::CastingMethod;
     use ironsmith::decision::{compute_legal_actions, LegalAction};
     use ironsmith::{GameState, PlayerId, Zone};
     let alice = PlayerId(0);
@@ -57,7 +56,7 @@ fn aluren_allows_opponents_to_cast_only_small_creatures_for_free_outside_main_ph
         ] {
             let card = ironsmith_compiler_runtime::compile_to_runtime_definition(name, text, false).unwrap();
             let id = game.create_object_from_definition(&card, bob, Zone::Hand);
-            let has_free_cast = compute_legal_actions(&game, bob).unwrap().iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(_), .. } if *spell_id == id));
+            let has_free_cast = compute_legal_actions(&game, bob).unwrap().iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == id && casting_method.is_alternative()));
             assert_eq!(has_free_cast, expected, "{name}: empty mana pool, opponent's upkeep");
         }
     }
