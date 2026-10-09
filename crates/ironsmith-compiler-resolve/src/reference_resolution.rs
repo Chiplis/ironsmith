@@ -1805,9 +1805,26 @@ fn advance_reference_frame_for_effect(
                 let group = crate::tag::CompilerReferenceTag::CoordinatedCreatedResult.key();
                 let mut created = Vec::new();
                 let mut all_members_create = coordination.members.len() > 1;
+                // One conjunctive instruction ("exiles the top card of their
+                // library, a card at random from their graveyard, and a card
+                // at random from their hand"): "exiled this way" names every
+                // member's exile.
+                let exiled_alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                let mut exiled_members: Vec<TagKey> = Vec::new();
                 for member in &coordination.members {
                     let before = frame.last_object_tag.clone();
                     advance_reference_frames(&member.effects, id_gen, frame)?;
+                    if member.effects.iter().any(|effect| {
+                        is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled)
+                    }) && let Some((_, exiled)) = frame
+                        .snapshot_tag_aliases
+                        .iter()
+                        .rev()
+                        .find(|(alias, _)| alias == &exiled_alias)
+                        && !exiled_members.contains(exiled)
+                    {
+                        exiled_members.push(exiled.clone());
+                    }
                     let creates_tokens = !member.effects.is_empty()
                         && member.effects.iter().all(|effect| {
                             matches!(
@@ -1828,6 +1845,16 @@ fn advance_reference_frame_for_effect(
                         }
                         _ => all_members_create = false,
                     }
+                }
+                if exiled_members.len() > 1 {
+                    frame
+                        .snapshot_tag_aliases
+                        .retain(|(alias, _)| alias != &exiled_alias);
+                    frame.snapshot_tag_aliases.extend(
+                        exiled_members
+                            .into_iter()
+                            .map(|exiled| (exiled_alias.clone(), exiled)),
+                    );
                 }
                 frame
                     .snapshot_tag_aliases
