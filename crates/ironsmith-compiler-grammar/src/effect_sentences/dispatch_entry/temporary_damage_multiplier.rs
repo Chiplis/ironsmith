@@ -7,6 +7,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if let Some(effect) = parse_this_turn_amount_change(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = parse_each_time_target_source(tokens)? {
+        return Ok(Some(effect));
+    }
     let Some(shape) = crate::grammar::keyword_static_lines::parse_damage_multiplier_tokens(tokens)
     else {
         return Ok(None);
@@ -198,6 +201,84 @@ fn parse_this_turn_amount_change(
             },
         }),
     )))
+}
+
+/// "Each time target permanent would deal damage to a permanent or player
+/// this turn, it deals double that damage to that permanent or player
+/// instead." (Overblaze): the target is declared as the spell is cast
+/// (CR 601.2c); the registration then multiplies that object's damage for the
+/// turn, fixed to it as the spell resolves.
+fn parse_each_time_target_source(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !words.starts_with(&["each", "time", "target"]) {
+        return Ok(None);
+    }
+    let Some(would) = tokens.iter().position(|token| token.is_word("would")) else {
+        return Ok(None);
+    };
+    if would < 4 {
+        return Ok(None);
+    }
+    let Ok(target) = crate::util::parse_target_phrase(&tokens[2..would]) else {
+        return Ok(None);
+    };
+    if !matches!(target, TargetAst::Object(..)) {
+        return Ok(None);
+    }
+    // Read the rest as "if it would deal ...", the shared multiplier shape.
+    let mut rest = vec![
+        OwnedLexToken::word("if".to_string(), tokens[0].span()),
+        OwnedLexToken::word("it".to_string(), tokens[1].span()),
+    ];
+    rest.extend(tokens[would..].iter().cloned());
+    let Some(shape) = crate::grammar::keyword_static_lines::parse_damage_multiplier_tokens(&rest)
+    else {
+        return Ok(None);
+    };
+    if !shape.this_turn || shape.condition_tokens.is_some() {
+        return Ok(None);
+    }
+    let recipient = shape
+        .damaged_tokens
+        .map(crate::lexer::parser_token_word_refs)
+        .unwrap_or_default();
+    let (target_player_filter, target_object_filter) = match recipient.as_slice() {
+        ["a", "permanent", "or", "player"] | ["a", "permanent", "or", "a", "player"] => {
+            (Some(PlayerFilter::Any), Some(ObjectFilter::permanent()))
+        }
+        ["a", "creature"] => (None, Some(ObjectFilter::creature())),
+        ["a", "player"] => (Some(PlayerFilter::Any), None),
+        [] => (Some(PlayerFilter::Any), Some(ObjectFilter::default())),
+        _ => return Ok(None),
+    };
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_explicit_target_only(target),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::Replacements(
+                    ReplacementActionAst::RegisterDamageMultiplier {
+                        spec: ironsmith_core::RegisterDamageMultiplierEffect {
+                            source_filter: ObjectFilter::tagged(
+                                crate::tag::CompilerReferenceTag::It.bind(),
+                            ),
+                            target_player_filter,
+                            target_object_filter,
+                            factor: shape.factor,
+                            combat_only: shape.combat_only,
+                            noncombat_only: shape.noncombat_only,
+                            mode: ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,
+                            amount_override: None,
+                            minimum: None,
+                        },
+                    },
+                ),
+            ),
+        ],
+    }))
 }
 
 #[cfg(test)]

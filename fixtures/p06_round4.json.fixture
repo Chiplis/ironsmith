@@ -258,5 +258,15 @@
   "toughness": null,
   "loyalty": null,
   "oracle_text": "If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead."
+ },
+ {
+  "name": "Overblaze",
+  "oracle_id": "543599e2-8312-43a6-ab26-0be17e690d4f",
+  "mana_cost": "{3}{R}",
+  "type_line": "Instant — Arcane",
+  "power": null,
+  "toughness": null,
+  "loyalty": null,
+  "oracle_text": "Each time target permanent would deal damage to a permanent or player this turn, it deals double that damage to that permanent or player instead.\nSplice onto Arcane {2}{R}{R} (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)"
  }
 ]

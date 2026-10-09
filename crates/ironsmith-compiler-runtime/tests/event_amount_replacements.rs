@@ -302,3 +302,11 @@ fn twinning_staff_adds_one_spell_copy() {
 fn worship_floors_damage_life_loss_while_you_control_a_creature() {
     assert_cluster(&[("Worship", &["DamageReduceLifeBelowOne", "Creature"])]);
 }
+
+#[test]
+fn overblaze_doubles_its_targets_damage_this_turn() {
+    assert_cluster(&[(
+        "Overblaze",
+        &["TargetOnlyEffect", "RegisterDamageMultiplierEffect", "UntilEndOfTurn", "factor: 2"],
+    )]);
+}
