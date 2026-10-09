@@ -7,7 +7,7 @@ binary reproduces the baseline errors; the June `target-score` binary does not a
 was only used for early probes, later re-checked on base13).
 
 ## Counts
-- 156 cards: 32 `source-proposed`, 1 `already-on-main`, 1 `semantic-fix-collateral`, 122 `blocked`.
+- 156 cards: 46 `source-proposed`, 1 `already-on-main`, 1 `semantic-fix-collateral`, 108 `blocked` (plus Balance, a non-package `semantic-fix-collateral`).
 
 ## Clusters fixed (general mechanisms)
 
@@ -41,8 +41,34 @@ it is blocked on p09's same-name predicate).
 
 Queue items re-checked against the merged tree and left blocked with an owner:
 derived jump-start/harmonize/encore grants (no shared casting-keyword grant path exists yet; needs p02),
-partial prevention shields (needs p03), protection from a player, chosen-type landwalk grants,
-'the same way' Balance repetition, dynamic bushido and self-'has soulshift X' (see blocked list).
+partial prevention shields, protection from a player, chosen-type landwalk grants, 'the same way'
+Balance repetition, dynamic bushido and self-'has soulshift X' — all built in Round 4 below.
+
+## Round 4 (mechanisms built on cf8/integration)
+| cluster | cards | mechanism |
+|---|---|---|
+| protection-from-player | Eon Frolicker, Noble Heritage | `protection from that player` → `ProtectionFromFilter(controlled by that player)`; player grants compose the existing can't-be-targeted-from restriction + damage prevention (as `GrantAbilitiesTarget` already does for players); `you and <permanents you control> gain ...` subject (also guards the coordinated-leading-duration split that dropped "you"); engine binds Target/AliasedTarget/IteratedPlayer controller references to the concrete player as the shield/restriction/granted protection is created (`effects/player_reference_binding.rs`, CR 702.16k, 611.2c) |
+| chosen-landwalk-grant | Illusionary Presence, Barbarian Guides, Giant Slug | `LandwalkKind::ChosenType { snow }` ("[snow] landwalk of the chosen type"), materialized at grant resolution from the resolving source's chosen land type (CR 702.14a); `ChooseLandTypeEffect.basic_only` ("choose a basic land type"); "until the end of that turn" duration |
+| same-way-repetition | Balancing Act, Magus of the Balance, Restore Balance (+ Balance collateral) | pair procedure `same_way_balance`: the Balance head plus "<players> <discard cards / sacrifice X> [and ...] the same way" → one choose-then-rest step per domain in written order; new `Value::LeastCount(filter)` (fewest per player, partitioned by controller or owner) |
+| dynamic-keyword-amount | Fumiko the Lowblood, Kodama of the Center Tree | defined-X keyword reading for `[<self> has] bushido/soulshift X, where X is ...` in the keyword-line family (after self-name normalization); new `KeywordAction::BushidoValue(Value)` (CR 702.45a) |
+| partial-prevention-shield | Dark Sphere, Forcefield | `NextTimeDamagePreventionPortion` (All / HalfRoundedDown / AllBut(n)) + `combat_only` on the one-shot next-time prevention effect, applied with the existing `PreventHalfDamage` / `PreventDamageByRule(AllBut)` actions (CR 615.1, 615.7) |
+| counter-removal-followups | Leeches, Survivor's Med Kit | reference resolution tracks a counter removal's player holder as "that player"; an imperative "Sacrifice this <permanent>" is the controller's (CR 608.2c) instead of inheriting the previous sentence's target player |
+
+Re-checked "needs X (pNN)" entries (same-name, random opponent, granted casting keywords, damage
+multipliers, draw-from-bottom): none of those owned mechanisms exists in the merged tree yet.
+
+Round 4 risk notes:
+- `Value::LeastCount` is a new `Value` variant; every grouped `GreatestCount` arm got a sibling arm
+  (engine, resolve, lowering, text, core); any branch adding a new exhaustive `Value` match will need it.
+- `LandwalkKind::ChosenType` (core and engine enums), `KeywordAction::BushidoValue`,
+  `ChooseLandTypeEffect.basic_only`, `PreventNextTimeDamageEffect.{portion,combat_only}` (core with
+  serde defaults, engine, AST variant) change shared types.
+- `register_prevention_shield` now binds player references in `from_source` for every shield; this
+  only replaces Target/AliasedTarget/IteratedPlayer controller/owner references that resolve.
+- Temporary player protection (composed restriction + prevention) does not detach an opposing Curse
+  already attached (CR 702.16e / 704.5m), matching the existing player-grant composition.
+- The imperative source-sacrifice rebinding changes the subject of every "Sacrifice this <permanent>."
+  sentence from Implicit to You; base13 rejected all such sentences after a target-player sentence.
 
 ## Files touched (main)
 grammar: `grammar/modal_support.rs`, `grammar/structure.rs`, `grammar/conditions.rs`,
@@ -85,19 +111,13 @@ discard_another_card, explicit_ability_choice_lists}.rs` + `p07_support/mod.rs` 
   none are build-verified.
 
 ## Blocked, grouped by missing mechanic
-- **chosen-landwalk-grant** (3): Barbarian Guides — needs a temporary landwalk grant whose land type is chosen at resolution (only the Aura static AttachedChosenLandwalkGrant exists); also snow landwalk; Giant Slug — needs a temporary landwalk grant of a resolution-chosen basic land type, inside a delayed next-upkeep trigger lasting 'until the end of that turn'; Illusionary Presence — needs a temporary landwalk grant of a resolution-chosen land type
-- **same-way-repetition** (3): Balancing Act — 'Each player discards cards the same way' — needs a 'the same way' re-application of the preceding choose-equal-to-fewest/sacrifice-the-rest procedure to a new object domain (hand cards, then creatures); Magus of the Balance — 'Players discard cards and sacrifice creatures the same way' — same-way re-application (see Balancing Act); Restore Balance — 'Players sacrifice creatures and discard cards the same way' — same-way re-application (see Balancing Act)
 - **cast-time-snapshot** (2): Flame Discharge — 'If you controlled a modified creature as you cast this spell' — as-you-cast snapshot (owned by p01); Dragon's Fire — 'If you revealed a Dragon card or chose a Dragon as you cast this spell, ... damage equal to the power of that card or creature instead' — optional reveal/choose cost snapshot (owned by p01)
 - **difference-quantity** (2): Spiteful Repossession — 'deals damage to each opponent who controls more lands than you equal to the difference' — per-participant difference value; Tales of the Ancestors — 'Each player with fewer cards in hand than the player with the most ... draws cards equal to the difference' — per-player difference value
 - **dynamic-count-quantities** (2): Vanish into Memory — 'discard cards equal to that creature's toughness' inside the delayed return: referent (exiled card LKI vs returned permanent) must be pinned by the delayed-trigger linkage; discard equal-to grammar itself now supported; Felothar the Steadfast — ', then <verb> cards equal to its <stat>' after a 'the sacrificed creature's toughness' amount fails the comma-then chain reader (base13: even 'then draw cards equal to its power' fails); discard 'equal to' count itself now supported
-- **dynamic-keyword-amount** (2): Fumiko the Lowblood — 'Fumiko has bushido X, where X is the number of attacking creatures' — no dynamic bushido keyword (KeywordAction::Bushido is u32 only) and the self-'has' grant route does not read where-X keywords; Kodama of the Center Tree — 'has soulshift X, where X is ...' — SoulshiftValue exists and the bare keyword line compiles; the self-'has <keyword> X, where X ...' grant route still falls back to KeywordFallbackText
 - **event-amount-that-much** (2): Imminent Doom — 'deals that much damage' where 'that much' = the cast spell's mana value matched against doom counters; event-derived amount has no compatible trigger value; Magnanimous Magistrate — 'if its mana value was 1 or greater, you may remove that many reprieve counters' — 'that many' = dying creature's mana value
 - **kicked-entry-granted-trigger** (2): Necravolver — 'it enters with a +1/+1 counter on it and with "Whenever this creature deals damage, you gain that much life."' — ETB counters plus a granted quoted triggered ability in a kicker-conditional entry static (the quoted trigger alone compiles); Rakavolver — 'it enters with two +1/+1 counters on it and with "Whenever this creature deals damage, you gain that much life."' — same as Necravolver
-- **lose-all-player-counters** (2): Leeches — 'Leeches deals that much damage to that player' must bind 'that much' to the number of counters removed by the preceding removal (prior-effect count) and 'that player' to the target; base13 renders the analogous text as a new target. Counter removal itself now parses.; Survivor's Med Kit — mode 'Sacrifice this artifact' in an activated 'choose one that hasn't been chosen' modal is rejected ('source sacrifice requires source controller chooser'); the 'loses all rad counters' removal now parses
 - **mass-attach** (2): Ardenn, Intrepid Archaeologist — 'attach any number of Auras and Equipment you control to target permanent or player' — multi-object attach effect with legality per attachment (CR 701.3) not modeled; Heavenly Blademaster — 'attach any number of Auras and Equipment you control to it' — multi-object attach effect not modeled
-- **partial-prevention-shield** (2): Dark Sphere — needs a partial next-time prevention shield (p03 owns prevention; merged tree has finite/divided/chosen-source shields but no 'prevent half that damage, rounded down'); Forcefield — needs a partial next-time prevention shield (p03): 'prevent all but 1 of that damage' from an unblocked creature of your choice
 - **player-or-their-planeswalker** (2): Curse of the Pierced Heart — 'deals 1 damage to that player or a planeswalker that player controls' — recipient choice between a player and one of their planeswalkers; Vial Smasher the Fierce — 'choose an opponent at random ... deals damage ... to that player or a planeswalker that player controls' — random opponent (owned by p01) plus player-or-planeswalker recipient choice
-- **protection-from-player** (2): Eon Frolicker — engine has PlayerProtectionFrom (static, filter-based); missing an until-your-next-turn effect that grants you and your planeswalkers protection from a resolution-bound player (sources that player controls, CR 702.16); Noble Heritage — same player-protection grant as Eon Frolicker, inside a granted quoted 'for each opponent who does' trigger
 - **same-mv-counter** (2): Counterbalance — 'counter that spell if it has the same mana value as the revealed card' — mana-value equality between the triggering spell and the revealed card; Hisoka, Minamo Sensei — 'Counter target spell if it has the same mana value as the discarded card' — mana-value equality with the discarded cost card
 - **same-name-return** (2): Bloodbond March — 'returns all cards with the same name as that spell from their graveyard' — same-name predicate (owned by p09); Rat King, Verminister — 'Return target creature card and all other cards with the same name as that card' — same-name predicate (owned by p09)
 - **stickers** (2): Roxi, Publicist to the Stars — art sticker mechanics (Unfinity stickers) are not modeled; _____ _____ _____ Trespasser — name sticker mechanics (Unfinity stickers) are not modeled
@@ -150,7 +170,7 @@ discard_another_card, explicit_ability_choice_lists}.rs` + `p07_support/mod.rs` 
 - **halve-damage-replacement** (1): Ghosts of the Innocent — 'If a source would deal damage to a permanent or player, it deals half that damage, rounded down, instead' — damage replacement (owned by p06)
 - **hideaway-duplicate** (1): Evercoat Ursine — 'Hideaway 3, hideaway 3' (two instances, CR 702.75) plus 'cards exiled with it, you may play one of them' — duplicate keyword list falls to KeywordFallbackText
 - **intel-counter-return** (1): Flamewar, Brash Veteran // Flamewar, Streetwise Operative — 'Put all exiled cards you own with intel counters on them into your hand' — exile-zone counter selection
-- **landwalk-of-sacrificed-types** (1): Excavator — needs a landwalk grant keyed to the sacrificed cost land's subtypes (one landwalk per basic land type of that land)
+- **landwalk-of-sacrificed-types** (1): Excavator — needs a landwalk grant per land type of the sacrificed cost land; a materialized grant is a single landwalk ability and the payload (Copy LandwalkKind) can't name a cost-object type set
 - **last-counter-draw-game** (1): Divine Intervention — 'When you remove the last intervention counter from this enchantment, the game is a draw.' — last-counter-removed trigger and game-draw effect
 - **linked-life-memory** (1): Soulgorger Orgg — 'you lose all but 1 life' + 'you gain life equal to the life you lost when it entered' — linked memory of the earlier loss
 - **mana-loss-event** (1): Yurlok of Scorch Thrash — 'A player losing unspent mana causes that player to lose that much life' — static mana-burn replacement over mana-empty events
