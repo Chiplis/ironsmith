@@ -27,7 +27,7 @@ pub(super) fn parse_counter_ability_target_lexed<'a>(
     }
 
     let mut controller = None;
-    let mut source_types = Vec::new();
+    let mut source = super::AbilitySourceQualifiers::default();
     let mut targets_relation = None;
     loop {
         opt(connector).parse_next(input)?;
@@ -40,7 +40,7 @@ pub(super) fn parse_counter_ability_target_lexed<'a>(
         let mut source_probe = input.clone();
         if let Ok(parsed) = parse_source_types_tail.parse_next(&mut source_probe) {
             *input = source_probe;
-            source_types = parsed;
+            source = parsed;
             continue;
         }
         // "that targets <object filter>" — the countered object's own target.
@@ -88,8 +88,20 @@ pub(super) fn parse_counter_ability_target_lexed<'a>(
             }
         }
         if *is_ability {
-            for card_type in &source_types {
+            for card_type in &source.card_types {
                 *filter = filter.clone().with_type(*card_type);
+            }
+            if source.colorless {
+                filter.colorless = true;
+            }
+            if source.legendary {
+                *filter = filter.clone().with_supertype(crate::Supertype::Legendary);
+            }
+            if source.another {
+                filter.other = true;
+            }
+            if source.noncommander {
+                filter.noncommander = true;
             }
         }
     }
