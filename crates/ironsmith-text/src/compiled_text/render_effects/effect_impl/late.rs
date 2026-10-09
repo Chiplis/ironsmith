@@ -6789,6 +6789,14 @@
         // Gift trigger instrumentation is runtime-only and should stay hidden.
         return String::new();
     }
+    if effect
+        .downcast_ref::<crate::effects::VariableCasualtyPlaneswalkerCopyEffect>()
+        .is_some()
+    {
+        // Casualty X on a planeswalker spell (CR 702.153a, CR 707.10): the
+        // copy's exceptions are part of the printed keyword line.
+        return "copy this spell. The copy isn't legendary and has starting loyalty X, where X is the sacrificed creature's power".to_string();
+    }
     "Unsupported effect".to_string()
 }
 
