@@ -2,7 +2,7 @@
 
 157 frozen cards; branch `cf8/p10-other`. Nothing built or run (campaign policy). The prebuilt
 probe was used for triage until it disappeared mid-session; later fixes are source-reasoned.
-Ledger (after round 5): 37 `source-proposed`, 120 `blocked`, 1 `semantic-fix-collateral` (Gomazoa), 0 untriaged.
+Ledger (after round 6): 38 `source-proposed`, 119 `blocked`, 1 `semantic-fix-collateral` (Gomazoa), 0 untriaged.
 
 ## Clusters fixed (source-proposed)
 - **delayed-damage-watchers** (Spiritualize, Paladin of Prahv, Glyph of Life, Lyra, The Last Ronin; Niko Aris partial):
@@ -208,3 +208,41 @@ None of these were implemented this round.
   over a multi-object tag changes accordingly (intended).
 - Owners-library reader replaces the Gomazoa-only reader; its "it's blocked by" negative test
   still declines.
+
+## Round 6 (coordinator follow-up; source-only, UNRUN)
+- **Gonti, Night Minister** (6c6e71d40, p10 ledger source-proposed): a 2/3-sentence pair
+  procedure (`pair_procedure/viewer_face_down_play.rs`) builds the existing
+  `PlayerLooksAtTopCardsOfLibrary` (viewer = triggering source's controller, library owner = that
+  opponent) -> `LookAtTopCardsEffect.viewer`; the following face-down exile keeps that viewer's
+  private view through the engine's remembered look viewers (`remember_face_down_exile_viewers`,
+  the viewer-produced private-view path); the play permission (+ any-type mana rider) is held by the
+  same player. No new AST variant.
+- **Item 6 procedures**: Fevered Suspicion + Dream Harvest's second sentence (e42006d38):
+  each-opponent consult followed by free casts over the aggregated stopping cards / a
+  until-end-of-turn free-cast permission over every card exiled this way. Plargg and Nassari
+  (703b7fb80): each-player consult, an opponent's exclusion choice, then up to N free casts among
+  the other exiled nonland cards. NOT built: Invasion of Alara (exile until two matches, "one of
+  those two" cast + hand split), Talent of the Telepath (spell-mastery line replaces the count of a
+  statement on another line).
+- **Item 7 singles**: Peace Talks (ce975c885): appended `RestrictionDurationSurface::ThisTurnAndNextTurn`;
+  the engine extends the restriction's end-of-turn expiry by one turn (CR 611.2a); sentence
+  reading for the leading "This turn and next turn," with the attack ban plus player and permanent
+  untargetability by spells or activated abilities. Haakon (157f77348): graveyard cast permission +
+  `only_if(SourceIsInZone(Graveyard))`, whose zone check now reads the proposed card's own zone
+  (CR 601.3e) instead of a stack-time source lookup. Rock Jockey (d8cf48bc2): "can't cast this if
+  <condition>" (negated cast condition) + land-play ban conditioned on source cast-and-entered this
+  turn. Ward of Bones (4ae9b7a07): per-type `OpponentWithMoreControlledObjectsThan` cast/land
+  restrictions incl. "The same is true for ...". Spy Network (2463e3b95): sentence reading keeps the
+  listed hand/top-card/face-down look whole before comma splitting.
+  NOT built: Mana Maze (most-recent-spell color history), Moonhold (two target-sharing restrictions
+  each gated on a mana-spent predicate), Null Chamber (you and an opponent each name a card),
+  Suffocation (damage-by-red-spell history + "the last such spell's controller"), Angelic Arbiter
+  (player filters "cast a spell this turn" / "attacked with a creature this turn"), Dihada (the
+  frozen error is a loyalty-cost counter quantity, unrelated to the Treasure count; not triaged).
+
+### Round 6 risks
+- `RestrictionDurationSurface::ThisTurnAndNextTurn` changes behaviour (expiry), not just text; the
+  text renderers have no arm for it yet (fall back to their default wording).
+- The Haakon zone check special-cases `Condition::SourceIsInZone` inside cast-time restrictions.
+- New pair shapes (head "its"/"each") claim 2-3 sentence programs; they decline unless every
+  sentence matches exactly.
