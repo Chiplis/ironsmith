@@ -74,7 +74,23 @@ fn parse_single_cardinal_word(word: &str) -> Option<u32> {
     if let Some(value) = parse_numeric_cardinal_word(&word) {
         return Some(value);
     }
-    (0..=100).find(|&value| cardinal_word(value).as_deref() == Some(word.as_str()))
+    cardinal_word_value(&word)
+}
+
+/// Inverse of [`cardinal_word`] for a lowercase word, without building the
+/// spelling of every candidate number.
+fn cardinal_word_value(word: &str) -> Option<u32> {
+    if word == "one hundred" {
+        return Some(100);
+    }
+    let small = |word: &str| (0..=19).find(|&value| small_cardinal_word(value) == Some(word));
+    let tens = |word: &str| (2..=9).find(|&tens| tens_cardinal_word(tens) == Some(word));
+    if let Some((tens_word, ones_word)) = word.split_once('-') {
+        let tens = tens(tens_word)?;
+        let ones = small(ones_word).filter(|ones| (1..=9).contains(ones))?;
+        return Some(tens * 10 + ones);
+    }
+    small(word).or_else(|| tens(word).map(|tens| tens * 10))
 }
 
 /// Parse one cardinal token, accepting hyphenated words and raw numeric forms.
@@ -116,6 +132,17 @@ pub fn parse_cardinal_words(words: &[&str]) -> Option<(u32, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cardinal_word_value_inverts_every_spelling() {
+        for value in 0..=100 {
+            let word = cardinal_word(value).unwrap();
+            assert_eq!(cardinal_word_value(&word), Some(value), "{word}");
+        }
+        for word in ["twenty-", "-one", "twenty-zero", "twenty-ten", "one-twenty", "hundred", ""] {
+            assert_eq!(cardinal_word_value(word), None, "{word}");
+        }
+    }
 
     #[test]
     fn cardinal_word_covers_zero_to_one_hundred() {

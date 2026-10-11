@@ -72,7 +72,7 @@ function blankDraft() {
   return {
     layout: "single",
     hasFuse: false,
-    faces: [blankFace()],
+    faces: [{ ...blankFace(), manaCost: "{0}" }],
   };
 }
 

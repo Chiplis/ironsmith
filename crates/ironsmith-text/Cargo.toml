@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 engine = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
+memchr = "2.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 stacker = "0.1.23"

@@ -13,6 +13,7 @@ use crate::{CardDefinition, CardType, Effect, ManaSymbol, TagKey, Zone};
 
 mod ast_render;
 mod debug_safe;
+mod literal_search;
 mod merge_passes;
 mod normalize_common;
 pub(crate) use normalize_common::describe_condition;

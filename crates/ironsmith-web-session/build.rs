@@ -72,9 +72,15 @@ fn main() {
         .expect("failed to start builtin dungeon compilation")
         .join()
         .expect("builtin dungeon compilation failed");
-    println!("cargo:rerun-if-env-changed=IRONSMITH_EMBEDDED_CARD_CATALOG");
+    // Browser modules receive the catalogue after linking
+    // (scripts/inject-wasm-card-catalog.py), so only native builds embed it.
+    let browser = env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32");
+    if !browser {
+        println!("cargo:rerun-if-env-changed=IRONSMITH_EMBEDDED_CARD_CATALOG");
+    }
 
-    let initializer = match env::var_os("IRONSMITH_EMBEDDED_CARD_CATALOG") {
+    let catalog = if browser { None } else { env::var_os("IRONSMITH_EMBEDDED_CARD_CATALOG") };
+    let initializer = match catalog {
         Some(path) => {
             let requested = PathBuf::from(path);
             let resolved = requested.canonicalize().unwrap_or_else(|error| {

@@ -1,7 +1,7 @@
 //! Native-only bundle construction. The browser dependency uses only the
 //! decoder; the Brotli encoder and filesystem builder are feature-gated.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     Catalog, CatalogError, Chunk, Directory, Location, MAGIC, MAX_CHUNK_BYTES, MAX_DIRECTORY_BYTES,
-    MAX_ROUTES, decompress_exact, error, valid_route,
+    MAX_ROUTES, error, valid_route,
 };
 
 pub const DEFAULT_CHUNK_BYTES: usize = 4 * 1024 * 1024;
@@ -24,14 +24,16 @@ const WINDOW: i32 = 22;
 /// Incremental deterministic builder. Documents are kept verbatim and each
 /// route must be supplied once. Byte-identical aliases share one location;
 /// hashes are only a candidate lookup and are followed by exact byte equality.
+///
+/// Chunks stay raw until [`BundleBuilder::finish`], which compresses them
+/// independently on every core; the bytes do not depend on the thread count.
 pub struct BundleBuilder {
     directory: Directory,
-    payload: Vec<u8>,
+    chunks: Vec<Vec<u8>>,
     pending: Vec<u8>,
     chunk_target: usize,
     quality: i32,
     seen: HashMap<[u8; 32], Vec<Location>>,
-    compare_cache: VecDeque<(usize, Vec<u8>)>,
     raw_route_bytes: usize,
     unique_route_bytes: usize,
 }
@@ -57,7 +59,6 @@ impl BundleBuilder {
         }
         check_quality(quality)?;
         check_document(index_json)?;
-        let packed = compress_with_quality(index_json, quality)?;
         Ok(Self {
             directory: Directory {
                 index: Location {
@@ -65,19 +66,14 @@ impl BundleBuilder {
                     o: 0,
                     n: index_json.len(),
                 },
-                chunks: vec![Chunk {
-                    o: 0,
-                    n: packed.len(),
-                    raw: index_json.len(),
-                }],
+                chunks: Vec::new(),
                 routes: BTreeMap::new(),
             },
-            payload: packed,
+            chunks: vec![index_json.to_vec()],
             pending: Vec::new(),
             chunk_target,
             quality,
             seen: HashMap::new(),
-            compare_cache: VecDeque::new(),
             raw_route_bytes: 0,
             unique_route_bytes: 0,
         })
@@ -105,7 +101,7 @@ impl BundleBuilder {
             self.flush()?;
         }
         let location = Location {
-            c: self.directory.chunks.len(),
+            c: self.chunks.len(),
             o: self.pending.len(),
             n: document.len(),
         };
@@ -129,56 +125,79 @@ impl BundleBuilder {
 
     pub fn finish(mut self) -> Result<Vec<u8>, CatalogError> {
         self.flush()?;
+        let packed = compress_all(&self.chunks, self.quality)?;
+        let mut payload = Vec::with_capacity(packed.iter().map(Vec::len).sum());
+        for (raw, compressed) in self.chunks.iter().zip(&packed) {
+            self.directory.chunks.push(Chunk {
+                o: payload.len(),
+                n: compressed.len(),
+                raw: raw.len(),
+            });
+            payload.extend_from_slice(compressed);
+        }
         let directory =
             serde_json::to_vec(&self.directory).map_err(|err| error(err.to_string()))?;
         if directory.len() > MAX_DIRECTORY_BYTES {
             return Err(error("directory too large"));
         }
         let compressed = compress_with_quality(&directory, self.quality)?;
-        let mut result = Vec::with_capacity(16 + compressed.len() + self.payload.len());
+        let mut result = Vec::with_capacity(16 + compressed.len() + payload.len());
         result.extend_from_slice(MAGIC);
         result.extend_from_slice(&(directory.len() as u32).to_le_bytes());
         result.extend_from_slice(&(compressed.len() as u32).to_le_bytes());
         result.extend_from_slice(&compressed);
-        result.extend_from_slice(&self.payload);
+        result.extend_from_slice(&payload);
         Catalog::from_bytes(&result)?;
         Ok(result)
     }
 
     fn flush(&mut self) -> Result<(), CatalogError> {
-        if self.pending.is_empty() {
-            return Ok(());
+        if !self.pending.is_empty() {
+            self.chunks.push(std::mem::take(&mut self.pending));
         }
-        let compressed = compress_with_quality(&self.pending, self.quality)?;
-        self.directory.chunks.push(Chunk {
-            o: self.payload.len(),
-            n: compressed.len(),
-            raw: self.pending.len(),
-        });
-        self.payload.extend_from_slice(&compressed);
-        self.pending.clear();
         Ok(())
     }
 
-    fn location_bytes(&mut self, location: Location) -> Result<&[u8], CatalogError> {
-        if location.c == self.directory.chunks.len() {
-            return Ok(&self.pending[location.o..location.o + location.n]);
-        }
-        if let Some(position) = self
-            .compare_cache
-            .iter()
-            .position(|(id, _)| *id == location.c)
-        {
-            let entry = self.compare_cache.remove(position).unwrap();
-            self.compare_cache.push_front(entry);
+    fn location_bytes(&self, location: Location) -> Result<&[u8], CatalogError> {
+        let chunk = if location.c == self.chunks.len() {
+            &self.pending
         } else {
-            let chunk = &self.directory.chunks[location.c];
-            let raw = decompress_exact(&self.payload[chunk.o..chunk.o + chunk.n], chunk.raw)?;
-            self.compare_cache.push_front((location.c, raw));
-            self.compare_cache.truncate(4);
-        }
-        Ok(&self.compare_cache[0].1[location.o..location.o + location.n])
+            &self.chunks[location.c]
+        };
+        Ok(&chunk[location.o..location.o + location.n])
     }
+}
+
+/// Compress every chunk at `quality`, spreading the chunks over the available
+/// cores. Each chunk is an independent Brotli stream, so the result matches a
+/// serial pass byte for byte.
+fn compress_all(chunks: &[Vec<u8>], quality: i32) -> Result<Vec<Vec<u8>>, CatalogError> {
+    let workers = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+        .min(chunks.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut results: Vec<Option<Result<Vec<u8>, CatalogError>>> =
+        (0..chunks.len()).map(|_| None).collect();
+    let slots = std::sync::Mutex::new(&mut results);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if index >= chunks.len() {
+                        break;
+                    }
+                    let packed = compress_with_quality(&chunks[index], quality);
+                    slots.lock().unwrap()[index] = Some(packed);
+                }
+            });
+        }
+    });
+    results
+        .into_iter()
+        .map(|slot| slot.expect("every chunk is compressed"))
+        .collect()
 }
 
 fn check_document(bytes: &[u8]) -> Result<(), CatalogError> {

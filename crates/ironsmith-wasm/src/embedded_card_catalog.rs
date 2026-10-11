@@ -10,7 +10,45 @@ use wasm_bindgen::prelude::*;
 
 use crate::WasmGame;
 
+#[cfg(not(target_arch = "wasm32"))]
 include!(concat!(env!("OUT_DIR"), "/embedded_card_catalog_bytes.rs"));
+
+/// Where `scripts/inject-wasm-card-catalog.py` records the catalogue it
+/// appends to the packaged module. Browser builds never compile the catalogue
+/// in, so the Rust build does not wait for the card bake. The placeholders are
+/// nonzero so Binaryen's memory packing keeps the slot contiguous.
+#[cfg(target_arch = "wasm32")]
+#[repr(C)]
+struct InjectedCatalogSlot {
+    magic: [u8; 16],
+    offset: u32,
+    len: u32,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[used]
+static INJECTED_CARD_CATALOG: InjectedCatalogSlot = InjectedCatalogSlot {
+    magic: *b"IRONSMITH-CATLOG",
+    offset: u32::MAX,
+    len: u32::MAX,
+};
+
+#[cfg(target_arch = "wasm32")]
+fn embedded_card_catalog_bytes() -> Option<&'static [u8]> {
+    // SAFETY: a volatile read keeps the optimizer from folding the
+    // placeholders, which are only replaced after linking. An injected slot
+    // names a data segment the module initializes and never frees.
+    let slot = unsafe { std::ptr::read_volatile(&raw const INJECTED_CARD_CATALOG) };
+    if slot.offset == u32::MAX {
+        return None;
+    }
+    Some(unsafe { std::slice::from_raw_parts(slot.offset as usize as *const u8, slot.len as usize) })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn embedded_card_catalog_bytes() -> Option<&'static [u8]> {
+    EMBEDDED_CARD_CATALOG_BYTES
+}
 
 struct EmbeddedCatalog<'a> {
     catalog: Option<Catalog<'a>>,
@@ -48,7 +86,7 @@ thread_local! {
     // Thread-local initialization is lazy. Native callers are isolated safely;
     // browser calls share the bounded reader inside their engine worker.
     static CATALOG: RefCell<Result<EmbeddedCatalog<'static>, String>> =
-        RefCell::new(EmbeddedCatalog::from_bytes(EMBEDDED_CARD_CATALOG_BYTES));
+        RefCell::new(EmbeddedCatalog::from_bytes(embedded_card_catalog_bytes()));
 }
 
 fn read_catalog<T>(

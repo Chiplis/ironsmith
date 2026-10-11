@@ -462,6 +462,7 @@ export default function TableCore({
         {middleUtilityControls ? (
           <div className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, {
+              showBrand: focusedHudDesktop,
               children: zoneActionControls ? (
                 <>
                   <DiagnosticsSheet />

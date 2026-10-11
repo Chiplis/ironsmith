@@ -445,7 +445,9 @@ export default function Topbar({
       <div className="topbar-side-cluster topbar-side-cluster--right">
         {showCenterLane ? (
           <div className="topbar-brand-stack">
-            <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
+            {!middleDocked ? (
+              <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
+            ) : null}
           </div>
         ) : utilityControls}
       </div>

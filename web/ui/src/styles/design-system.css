@@ -4739,17 +4739,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 
   .table-shell[data-focused-hud="true"] .topbar-brand-stack {
-    position: fixed;
-    top: 10px;
-    right: 52px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
-    width: max-content;
-    z-index: 180;
-    pointer-events: auto;
+    display: none;
   }
 
   .table-shell[data-focused-hud="true"] .table-shared-player-header {

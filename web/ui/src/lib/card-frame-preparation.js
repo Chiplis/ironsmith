@@ -9,7 +9,8 @@ const isBasicLand = typeLine => {
   const types = String(typeLine || '').split(/[—–]/)[0];
   return /\bbasic\b/i.test(types) && /\bland\b/i.test(types);
 };
-export const cardFramePreparationKey = (imageUrl, typeLine) => `${imageUrl}|${isBasicLand(typeLine)}`;
+const isSaga = typeLine => /\bsaga\b/i.test(String(typeLine || ''));
+export const cardFramePreparationKey = (imageUrl, typeLine) => `${imageUrl}|${isBasicLand(typeLine)}|${isSaga(typeLine)}`;
 
 export function cachedCardFrame(imageUrl, typeLine = '') {
   return preparations.get(cardFramePreparationKey(imageUrl, typeLine))?.result || null;
@@ -86,6 +87,21 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     const art = decodeImage(imageUrl).then(() => true, () => false);
     const flavor = resolveScryfallFlavorText(imageUrl).catch(() => '');
     const printing = await resolveScryfallPrintingMetadata(imageUrl);
+    // Saga chapter layouts always use our own frame, even when the printing
+    // has a registered layout. Keep the displayed face's art and typography.
+    if (isSaga(typeLine) || isSaga(printing?.type_line) || printing?.layout === 'saga') {
+      const [typography, flavorText, artReady] = await Promise.all([
+        prepareTypography(printing), flavor, art,
+      ]);
+      const result = {
+        key, registration: null, printing, imageUrl,
+        originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl,
+        style: {'--source-frame-status': 'placeholder', '--source-frame-fallback-reason': 'layout-saga'},
+        typography, flavorText, artReady,
+      };
+      entry.result = result;
+      return result;
+    }
     const typographyRequest = prepareTypography(printing);
     const setSymbolRequest = resolveScryfallSetSymbol(printing);
     let preparedTypography = await typographyRequest;

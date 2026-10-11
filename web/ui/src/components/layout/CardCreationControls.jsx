@@ -40,7 +40,7 @@ export default function CardCreationControls({ onAddCardNotice, shortLabels = fa
             className={triggerPill}
             disabled={addLocked}
           >
-            {shortLabels ? ui("Compile") : t("action.compileCard")}
+            {shortLabels ? ui("Build card") : t("action.compileCard")}
           </button>
         )}
       />

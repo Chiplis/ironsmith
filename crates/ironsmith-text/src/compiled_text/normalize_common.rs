@@ -3,6 +3,7 @@ use crate::TaggedOpbjectRelation;
 use crate::filter::StackObjectKind;
 use ironsmith_core::DamagedBySource;
 use ironsmith_core::ValueSurfaceHint;
+use crate::compiled_text::literal_search::LiteralStr;
 
 use std::cell::Cell;
 
@@ -703,17 +704,17 @@ pub(super) fn lowercase_first(text: &str) -> String {
 
 fn replace_this_spell_self_reference(text: String, subject: &str) -> String {
     const CAST_THIS_SPELL: &str = "__ironsmith_cast_this_spell__";
-    let protected = text.replace("cast this spell", CAST_THIS_SPELL);
+    let protected = text.replace_lit("cast this spell", CAST_THIS_SPELL);
     let replaced = protected
-        .replace("This spell", &capitalize_first(subject))
-        .replace("this spell", &lowercase_first(subject));
+        .replace_lit("This spell", &capitalize_first(subject))
+        .replace_lit("this spell", &lowercase_first(subject));
     replaced.replace(CAST_THIS_SPELL, "cast this spell")
 }
 
 fn normalize_granted_triggered_ability_surface(surface: String) -> String {
     let Some((head, tail)) = surface
-        .split_once(": ")
-        .or_else(|| surface.split_once(", "))
+        .split_once_lit(": ")
+        .or_else(|| surface.split_once_lit(", "))
     else {
         return surface;
     };
@@ -761,8 +762,8 @@ fn normalize_temporary_granted_trigger_surface(surface: String, ability: &Abilit
     let uses_one_shot_when = trigger_surface
         .starts_with("Whenever this permanent deals damage to the player who cast ")
         || (trigger_surface == "Whenever this creature attacks"
-            && (lower_surface.contains("must block")
-                || lower_surface.contains("blocks it this turn if able")));
+            && (lower_surface.contains_lit("must block")
+                || lower_surface.contains_lit("blocks it this turn if able")));
     if !uses_one_shot_when {
         return surface;
     }
@@ -1096,7 +1097,7 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
         (false, false) => None,
     };
     if let Some(characteristic) = characteristic
-        && let Some(token_end) = blueprint.find(" token").map(|idx| idx + " token".len())
+        && let Some(token_end) = blueprint.find_lit(" token").map(|idx| idx + " token".len())
     {
         blueprint.insert_str(token_end, &format!(" of {characteristic}"));
     }
@@ -1839,7 +1840,7 @@ fn compact_equipment_token_ability_payload(token: &CardDefinition) -> Option<Str
                     let keyword = rest.trim().to_ascii_lowercase();
                     if keyword.is_empty()
                         || keyword.contains(',')
-                        || keyword.contains(" and ")
+                        || keyword.contains_lit(" and ")
                         || keyword.contains('"')
                     {
                         return None;
@@ -1851,7 +1852,7 @@ fn compact_equipment_token_ability_payload(token: &CardDefinition) -> Option<Str
             }
             AbilityKind::Activated(_) => {
                 let text = describe_inline_ability(ability);
-                if !text.starts_with("Equip ") || text.contains(". ") {
+                if !text.starts_with("Equip ") || text.contains_lit(". ") {
                     return None;
                 }
                 if equip_text
@@ -1934,7 +1935,7 @@ fn compact_separate_sentence_equipment_token_ability_payload(
                     let keyword = rest.trim().to_ascii_lowercase();
                     if keyword.is_empty()
                         || keyword.contains(',')
-                        || keyword.contains(" and ")
+                        || keyword.contains_lit(" and ")
                         || keyword.contains('"')
                     {
                         return None;
@@ -1948,7 +1949,7 @@ fn compact_separate_sentence_equipment_token_ability_payload(
             }
             AbilityKind::Activated(_) => {
                 let text = describe_inline_ability(ability);
-                if !text.starts_with("Equip ") || text.contains(". ") {
+                if !text.starts_with("Equip ") || text.contains_lit(". ") {
                     return None;
                 }
                 let text = lowercase_first(text.trim_end_matches('.'));
@@ -2018,17 +2019,17 @@ pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
 fn normalize_quoted_token_ability_surface(text: &str) -> String {
     let mut normalized = text
         .trim()
-        .replace("{t}", "{T}")
-        .replace("{q}", "{Q}")
-        .replace("{w}", "{W}")
-        .replace("{u}", "{U}")
-        .replace("{b}", "{B}")
-        .replace("{r}", "{R}")
-        .replace("{g}", "{G}")
-        .replace("{c}", "{C}")
-        .replace("{e}", "{E}")
-        .replace("{s}", "{S}")
-        .replace("{x}", "{X}");
+        .replace_lit("{t}", "{T}")
+        .replace_lit("{q}", "{Q}")
+        .replace_lit("{w}", "{W}")
+        .replace_lit("{u}", "{U}")
+        .replace_lit("{b}", "{B}")
+        .replace_lit("{r}", "{R}")
+        .replace_lit("{g}", "{G}")
+        .replace_lit("{c}", "{C}")
+        .replace_lit("{e}", "{E}")
+        .replace_lit("{s}", "{S}")
+        .replace_lit("{x}", "{X}");
     if normalized.is_empty() {
         return normalized;
     }
@@ -2086,8 +2087,8 @@ fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
         normalized = normalized.replace(&format!("this {source_type}"), "this token");
     }
     normalized = normalized
-        .replace("This token creature's", "This token's")
-        .replace("this token creature's", "this token's");
+        .replace_lit("This token creature's", "This token's")
+        .replace_lit("this token creature's", "this token's");
     let had_period = normalized.ends_with('.');
     let bare = normalized.trim_end_matches('.');
     if bare.eq_ignore_ascii_case("attacks each combat if able") {
@@ -2097,9 +2098,9 @@ fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
         );
     }
     normalized
-        .replace("Sacrifice this token, Add ", "Sacrifice this token: Add ")
-        .replace("Sacrifice this token, add ", "Sacrifice this token: Add ")
-        .replace(": add ", ": Add ")
+        .replace_lit("Sacrifice this token, Add ", "Sacrifice this token: Add ")
+        .replace_lit("Sacrifice this token, add ", "Sacrifice this token: Add ")
+        .replace_lit(": add ", ": Add ")
 }
 
 fn normalize_quoted_token_trigger_surface(text: &str) -> String {
@@ -2108,7 +2109,7 @@ fn normalize_quoted_token_trigger_surface(text: &str) -> String {
     }
     let normalize_self_pronoun = |trigger: &str, effect: &str| {
         let effect = lowercase_first(effect);
-        if !trigger.contains("this token") {
+        if !trigger.contains_lit("this token") {
             return effect;
         }
         if let Some(rest) = effect.strip_prefix("that creature ") {
@@ -2124,14 +2125,14 @@ fn normalize_quoted_token_trigger_surface(text: &str) -> String {
     // in the trigger prefix itself is the legacy separator repaired here.
     // Nested quotation marks are single quotes after the outer token ability
     // has been normalized, so guard both quote forms.
-    if let Some((trigger, effect)) = text.split_once(": ")
+    if let Some((trigger, effect)) = text.split_once_lit(": ")
         && !trigger.contains('"')
-        && !trigger.contains(" '")
+        && !trigger.contains_lit(" '")
     {
         return format!("{trigger}, {}", normalize_self_pronoun(trigger, effect));
     }
-    if let Some((trigger, effect)) = text.split_once(", ")
-        && trigger.contains("this token")
+    if let Some((trigger, effect)) = text.split_once_lit(", ")
+        && trigger.contains_lit("this token")
         && (effect.starts_with("that creature ") || effect.starts_with("that creature's "))
     {
         return format!("{trigger}, {}", normalize_self_pronoun(trigger, effect));
@@ -2145,16 +2146,16 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
         && (trimmed.starts_with('{')
-            || trimmed.contains("Sacrifice this token:")
+            || trimmed.contains_lit("Sacrifice this token:")
             || trimmed.starts_with("When ")
             || trimmed.starts_with("Whenever ")
             || trimmed.starts_with("At ")
             || (trimmed.starts_with("This token's power and toughness ")
-                && trimmed.contains(" are each equal to ")))
+                && trimmed.contains_lit(" are each equal to ")))
 }
 
 pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
-    if !line.contains(" token") || !line.contains('"') {
+    if !line.contains_lit(" token") || !line.contains('"') {
         return line.to_string();
     }
 
@@ -2189,7 +2190,7 @@ pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
                 || lower.ends_with("tokens. they have")
                 || lower.ends_with("token with")
                 || lower.ends_with("tokens with")
-                || (lower.contains(" token") && (lower.ends_with(" and") || lower.ends_with(',')));
+                || (lower.contains_lit(" token") && (lower.ends_with(" and") || lower.ends_with(',')));
             if begins_token_quote_list {
                 token_quote_list_active = true;
                 separate_creature_token_quote = lower.ends_with("creature token. it has");
@@ -2213,8 +2214,8 @@ pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String 
         .starts_with("This token saddles mounts and crews vehicles as though its power were ")
     {
         normalized = normalized
-            .replace("saddles mounts", "saddles Mounts")
-            .replace("crews vehicles", "crews Vehicles");
+            .replace_lit("saddles mounts", "saddles Mounts")
+            .replace_lit("crews vehicles", "crews Vehicles");
     }
     if let Some(rest) = normalized.strip_prefix("This creature ") {
         normalized = format!("This token {rest}");
@@ -2388,7 +2389,7 @@ pub(super) fn looks_like_trigger_condition(head: &str) -> bool {
 }
 
 pub(super) fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
-    let (line_prefix, body) = if let Some((prefix, rest)) = line.split_once(": ")
+    let (line_prefix, body) = if let Some((prefix, rest)) = line.split_once_lit(": ")
         && is_render_heading_prefix(prefix)
     {
         (Some(prefix.trim()), rest.trim())
@@ -2396,7 +2397,7 @@ pub(super) fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
         (None, line)
     };
 
-    let (head, tail) = body.split_once(": ")?;
+    let (head, tail) = body.split_once_lit(": ")?;
     if head.contains('"') {
         return None;
     }
@@ -2632,7 +2633,7 @@ pub(super) fn normalize_subject_signature_for_get_gain(subject: &str) -> String 
 pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<String> {
     let trimmed = sentence.trim();
     let lower = trimmed.to_ascii_lowercase();
-    if !lower.contains("sacrifice") || lower.contains("choice") {
+    if !lower.contains_lit("sacrifice") || lower.contains_lit("choice") {
         return None;
     }
 
@@ -2656,7 +2657,7 @@ pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<Strin
 
     let mut body = body.trim().trim_end_matches('.').to_string();
     let body_lower = body.to_ascii_lowercase();
-    if body_lower.contains("of your choice") || body_lower.contains("of their choice") {
+    if body_lower.contains_lit("of your choice") || body_lower.contains_lit("of their choice") {
         return None;
     }
     // "All" is already a complete set, not a choice made by the affected
@@ -2861,7 +2862,7 @@ pub(super) fn normalize_create_named_token_article(line: &str) -> String {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_uppercase())
-        && tail.contains(", a ")
+        && tail.contains_lit(", a ")
     {
         let first_item = tail.split(',').next().unwrap_or(tail).trim();
         if first_item.ends_with(" token") {
@@ -2899,8 +2900,8 @@ pub(super) fn normalize_granted_named_token_leaves_sacrifice_source(line: &str) 
     };
     let before = &line[..start];
     let after = &line[start + marker.len()..];
-    if let Some((_, rest)) = after.split_once(" leaves the battlefield, sacrifice this ")
-        && let Some((subject, rest_after_subject)) = rest.split_once(". to this ")
+    if let Some((_, rest)) = after.split_once_lit(" leaves the battlefield, sacrifice this ")
+        && let Some((subject, rest_after_subject)) = rest.split_once_lit(". to this ")
         && matches!(subject, "permanent" | "creature" | "source")
         && let Some(rest_suffix) = rest_after_subject.strip_prefix(subject)
         && let Some(rest_suffix) = rest_suffix.strip_prefix('.')
@@ -2931,7 +2932,7 @@ pub(super) fn normalize_same_name_search_bundle_clause(line: &str) -> Option<Str
     let rest_after_shuffle =
         strip_prefix_ascii_ci(rest_after_shuffle, "Shuffle its controller's library.")?;
 
-    let normalized_search_clause = search_clause.trim().replace(
+    let normalized_search_clause = search_clause.trim().replace_lit(
         "permanent with the same name as that object cards",
         "cards with the same name as that object",
     );
@@ -2961,7 +2962,7 @@ fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
     let power_text = power_text.trim().trim_end_matches('.');
     let toughness_text = toughness_text.trim().trim_end_matches('.');
     let (toughness_text, remainder) = toughness_text
-        .split_once(". ")
+        .split_once_lit(". ")
         .map_or((toughness_text, None), |(value, rest)| (value, Some(rest)));
     let toughness_text = strip_suffix_ascii_ci(toughness_text, " forever")
         .unwrap_or(toughness_text)
@@ -2988,7 +2989,7 @@ fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
 
 fn normalize_attached_creature_with_base_pt(line: &str) -> Option<String> {
     let trimmed = line.trim();
-    let (first, second) = trimmed.split_once(". ")?;
+    let (first, second) = trimmed.split_once_lit(". ")?;
     let first = first.trim_end_matches('.').trim();
     let second = second.trim_end_matches('.').trim();
 
@@ -3171,7 +3172,7 @@ fn split_ability_loss_transform_subtype_card_type(text: &str) -> Option<(String,
 fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
-    if lower.contains("this land becomes ")
+    if lower.contains_lit("this land becomes ")
         && lower.ends_with(" in addition to its other types until end of turn")
     {
         let suffix = " in addition to its other types until end of turn";
@@ -3179,16 +3180,16 @@ fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
         let prefix = trimmed[..prefix_len].trim();
         return Some(format!("{prefix} until end of turn. It's still a land."));
     }
-    if lower.contains("this land becomes ") && lower.ends_with(" in addition to its other types") {
+    if lower.contains_lit("this land becomes ") && lower.ends_with(" in addition to its other types") {
         let suffix = " in addition to its other types";
         let prefix_len = trimmed.len() - suffix.len();
         let prefix = trimmed[..prefix_len].trim();
         return Some(format!("{prefix}. It's still a land."));
     }
-    if lower.contains("this land becomes ")
-        && lower.contains(" creature")
+    if lower.contains_lit("this land becomes ")
+        && lower.contains_lit(" creature")
         && lower.ends_with(" until end of turn")
-        && !lower.contains("still a land")
+        && !lower.contains_lit("still a land")
     {
         return Some(format!("{trimmed}. It's still a land."));
     }
@@ -3196,7 +3197,7 @@ fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     if lower.ends_with(" creature that's still a land until end of turn") {
         let prefix_len = trimmed.len() - " creature that's still a land until end of turn".len();
         let prefix = trimmed[..prefix_len].trim();
-        if let Some((subject, pt)) = prefix.split_once(" becomes ") {
+        if let Some((subject, pt)) = prefix.split_once_lit(" becomes ") {
             let subject = subject.trim();
             let pt = pt.trim().trim_start_matches("a ");
             if pt.contains('/') {
@@ -3210,7 +3211,7 @@ fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     if lower.ends_with(" blue serpent creature until end of turn") {
         let prefix_len = trimmed.len() - " blue serpent creature until end of turn".len();
         let prefix = trimmed[..prefix_len].trim();
-        if let Some((subject, pt)) = prefix.split_once(" becomes ") {
+        if let Some((subject, pt)) = prefix.split_once_lit(" becomes ") {
             let subject = subject.trim();
             let pt = pt.trim().trim_start_matches("a ");
             if pt.contains('/') {
@@ -3225,35 +3226,35 @@ fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
 }
 
 fn normalize_token_death_trigger_quote_surface(line: &str) -> String {
-    line.replace(
+    line.replace_lit(
         "\"When this token dies: You gain 1 life.\"",
         "\"When this token dies, you gain 1 life.\"",
     )
-    .replace(
+    .replace_lit(
         "\"When this token dies: You gain 1 life\"",
         "\"When this token dies, you gain 1 life\"",
     )
-    .replace(
+    .replace_lit(
         "When this token dies: You gain 1 life",
         "When this token dies, you gain 1 life",
     )
-    .replace(
+    .replace_lit(
         "\"When this token dies: It deals 1 damage to any target.\"",
         "\"When this token dies, it deals 1 damage to any target.\"",
     )
-    .replace(
+    .replace_lit(
         "When this token dies: It deals 1 damage to any target",
         "When this token dies, it deals 1 damage to any target",
     )
-    .replace(
+    .replace_lit(
         "\"When this token dies, this token deals 1 damage to any target.\"",
         "\"When this token dies, it deals 1 damage to any target.\"",
     )
-    .replace(
+    .replace_lit(
         "\"When this token dies, this token deals 1 damage to any target\"",
         "\"When this token dies, it deals 1 damage to any target\"",
     )
-    .replace(
+    .replace_lit(
         "When this token dies, this token deals 1 damage to any target",
         "When this token dies, it deals 1 damage to any target",
     )
@@ -3282,7 +3283,7 @@ pub(super) fn normalize_repeated_dynamic_buff(line: &str) -> Option<String> {
     }
     let value_expr = left.trim();
     let value_expr_lower = value_expr.to_ascii_lowercase();
-    if !value_expr_lower.contains("number of") {
+    if !value_expr_lower.contains_lit("number of") {
         return None;
     }
 
@@ -3317,9 +3318,9 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
     ]
     .into_iter()
     .any(|needle| lower.contains(needle))
-        || lower.contains("tagged '__source_exiled__' cards")
-        || ((lower.contains("you may exile a ") || lower.contains("you may exile an "))
-            && lower.contains(" from among them"));
+        || lower.contains_lit("tagged '__source_exiled__' cards")
+        || ((lower.contains_lit("you may exile a ") || lower.contains_lit("you may exile an "))
+            && lower.contains_lit(" from among them"));
     if !singular_source {
         return None;
     }
@@ -3342,7 +3343,7 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
         let Some((prefix, rest)) = split_once_ascii_ci(line, needle) else {
             continue;
         };
-        if needle.contains("that card until end of turn") {
+        if needle.contains_lit("that card until end of turn") {
             return Some(format!(
                 "{prefix}you may {verb} that card until end of turn"
             ));
@@ -3419,43 +3420,43 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
         normalized = compact;
     }
     normalized = normalized
-        .replace(
+        .replace_lit(
             "Search your library and/or graveyard for a permanent you own named",
             "Search your library and/or graveyard for a card you own named",
         )
-        .replace(
+        .replace_lit(
             "Search your library and/or graveyard for a card you own named",
             "Search your library and/or graveyard for a card named",
         )
-        .replace(
+        .replace_lit(
             "Search your library and/or graveyard for a permanent named",
             "Search your library and/or graveyard for a card named",
         )
-        .replace(
+        .replace_lit(
             "search your library and/or graveyard for a permanent you own named",
             "search your library and/or graveyard for a card you own named",
         )
-        .replace(
+        .replace_lit(
             "search your library and/or graveyard for a card you own named",
             "search your library and/or graveyard for a card named",
         )
-        .replace(
+        .replace_lit(
             "search your library and/or graveyard for a permanent named",
             "search your library and/or graveyard for a card named",
         );
     normalized = normalized
-        .replace("If you completed a dungeon,", "If you completed dungeon,")
-        .replace("if you completed a dungeon,", "if you completed dungeon,");
+        .replace_lit("If you completed a dungeon,", "If you completed dungeon,")
+        .replace_lit("if you completed a dungeon,", "if you completed dungeon,");
     normalized = normalized
-        .replace("you've completed dungeon", "you've completed a dungeon")
-        .replace("you completed dungeon", "you completed a dungeon");
-    normalized = normalized.replace(
+        .replace_lit("you've completed dungeon", "you've completed a dungeon")
+        .replace_lit("you completed dungeon", "you completed a dungeon");
+    normalized = normalized.replace_lit(
         "Whenever this creature deals combat damage to a player, you search their library for a card. That player chooses a card name. Then if the tagged object 'searched' matches creature and not, you may put them onto the battlefield under your control. Target player shuffles.",
         "Whenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.",
     );
     if normalized
         .to_ascii_lowercase()
-        .contains("search your library and/or graveyard")
+        .contains_lit("search your library and/or graveyard")
     {
         normalized = normalized
             // A singular result collected from your own library or
@@ -3463,27 +3464,27 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
             // executable per-result loop back to Oracle's singular
             // searched-card continuation before compacting the full
             // search/reveal/put procedure below.
-            .replace(
+            .replace_lit(
                 "For each card searched for this way, put it into its owner's hand",
                 "Put it into your hand",
             )
-            .replace(
+            .replace_lit(
                 "for each card searched for this way, put it into its owner's hand",
                 "put it into your hand",
             )
-            .replace(
+            .replace_lit(
                 "For each card searched for this way, you put it into its owner's hand",
                 "Put it into your hand",
             )
-            .replace(
+            .replace_lit(
                 "for each card searched for this way, you put it into its owner's hand",
                 "put it into your hand",
             )
-            .replace(
+            .replace_lit(
                 "put it into your hand, then shuffle your library",
                 "put it into your hand. If you search your library this way, shuffle your library",
             )
-            .replace(
+            .replace_lit(
                 "Put it into your hand, then shuffle your library",
                 "Put it into your hand. If you search your library this way, shuffle your library",
             );
@@ -3495,56 +3496,56 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
         normalized = compact;
     }
     let lower = normalized.to_ascii_lowercase();
-    if (lower.contains("search your library and/or graveyard")
-        || lower.contains("search your library, hand")
-        || lower.contains("search your graveyard, hand"))
-        && lower.contains("if you do, shuffle")
+    if (lower.contains_lit("search your library and/or graveyard")
+        || lower.contains_lit("search your library, hand")
+        || lower.contains_lit("search your graveyard, hand"))
+        && lower.contains_lit("if you do, shuffle")
     {
         normalized = normalized
-            .replace(
+            .replace_lit(
                 ". If you do, shuffle your library",
                 ". If you search your library this way, shuffle",
             )
-            .replace(
+            .replace_lit(
                 ". If you do, shuffle",
                 ". If you search your library this way, shuffle",
             )
-            .replace(
+            .replace_lit(
                 ". if you do, shuffle your library",
                 ". if you search your library this way, shuffle",
             )
-            .replace(
+            .replace_lit(
                 ". if you do, shuffle",
                 ". if you search your library this way, shuffle",
             );
     }
     normalized = normalized
-        .replace(
+        .replace_lit(
             "and exile them, then shuffle target player's library",
             "and exile them. Then that player shuffles",
         )
-        .replace(
+        .replace_lit(
             "and exile them, then shuffle its controller's library",
             "and exile them. Then that player shuffles",
         );
     if normalized
         .to_ascii_lowercase()
-        .contains("card named brambleweft behemoth")
+        .contains_lit("card named brambleweft behemoth")
         && normalized
             .to_ascii_lowercase()
-            .contains("card named nissa, genesis mage")
+            .contains_lit("card named nissa, genesis mage")
     {
         normalized = normalized
-            .replace(
+            .replace_lit(
                 "you search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage",
                 "you search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage",
             )
-            .replace(
+            .replace_lit(
                 "You search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage",
                 "You search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage",
             )
-            .replace("reveal it, put it into your hand", "reveal those cards, put them into your hand");
-        normalized = normalized.replace(
+            .replace_lit("reveal it, put it into your hand", "reveal those cards, put them into your hand");
+        normalized = normalized.replace_lit(
             ". If you search your library this way, shuffle",
             ", then shuffle",
         );
@@ -3562,7 +3563,7 @@ fn compact_and_or_named_search_surface(line: &str) -> Option<String> {
     let first_marker = line.find(MARKER)?;
     let search_start = line[..first_marker].rfind("search ")?;
     let zones = &line[search_start + "search ".len()..first_marker];
-    if zones.is_empty() || zones.contains(", search ") {
+    if zones.is_empty() || zones.contains_lit(", search ") {
         return None;
     }
     let repeat = format!(", search {zones}{MARKER}");
@@ -3615,8 +3616,8 @@ fn compact_and_or_named_search_surface(line: &str) -> Option<String> {
         tail.to_string()
     };
     let tail = tail
-        .replace(", then shuffle your library.", ", then shuffle.")
-        .replace(", then shuffle your library", ", then shuffle");
+        .replace_lit(", then shuffle your library.", ", then shuffle.")
+        .replace_lit(", then shuffle your library", ", then shuffle");
     Some(format!(
         "{}search {zones} for {selection}{tail}",
         &line[..search_start]
@@ -3744,16 +3745,16 @@ fn compact_multi_zone_search_to_hand_surface(line: &str) -> Option<String> {
                 )
             })?;
         let mut selection = selection.trim().to_string();
-        if !selection.contains(" card") {
-            if let Some(index) = selection.find(" with ") {
+        if !selection.contains_lit(" card") {
+            if let Some(index) = selection.find_lit(" with ") {
                 selection.insert_str(index, " card");
-            } else if let Some(index) = selection.find(" you own") {
+            } else if let Some(index) = selection.find_lit(" you own") {
                 selection.insert_str(index, " card");
             } else {
                 selection.push_str(" card");
             }
         }
-        let origin = if needle.contains("outside the game") {
+        let origin = if needle.contains_lit("outside the game") {
             "your library, graveyard, and/or outside the game"
         } else {
             "your library and/or graveyard"
@@ -3761,7 +3762,7 @@ fn compact_multi_zone_search_to_hand_surface(line: &str) -> Option<String> {
         return Some(format!(
             "{prefix}search {origin} for {selection}, reveal it, and put it into your hand. If you search your library this way, shuffle."
         )
-        .replace("When this siege enters", "When this Siege enters"));
+        .replace_lit("When this siege enters", "When this Siege enters"));
     }
     None
 }
@@ -3776,7 +3777,7 @@ fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<
         let Some((prefix, rest)) = line.split_once(needle) else {
             continue;
         };
-        let Some((selection, tail)) = rest.split_once(
+        let Some((selection, tail)) = rest.split_once_lit(
             ", for each card searched for this way, put them onto the battlefield, then shuffle your library",
         ) else {
             continue;
@@ -3809,10 +3810,10 @@ fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<
 fn normalize_untap_target_creature_gets_and_gains_split(line: &str) -> Option<String> {
     let rest = line.strip_prefix("untap target creature, it gets ")?;
     let (pt_delta, keyword) =
-        if let Some((pt_delta, tail)) = rest.split_once(" until end of turn, then it gains ") {
+        if let Some((pt_delta, tail)) = rest.split_once_lit(" until end of turn, then it gains ") {
             (pt_delta, tail.strip_suffix(" until end of turn")?)
         } else {
-            let (pt_delta, tail) = rest.split_once(" and gains ")?;
+            let (pt_delta, tail) = rest.split_once_lit(" and gains ")?;
             (pt_delta, tail.strip_suffix(" until end of turn")?)
         };
     if pt_delta.is_empty() || keyword.is_empty() {
@@ -3836,14 +3837,14 @@ fn compact_same_subject_pt_then_gain_surface(line: &str) -> Option<String> {
         let Some((head, rest)) = trimmed.split_once(pt_verb) else {
             continue;
         };
-        let Some((pt_delta, followup)) = rest.split_once(" until end of turn, then ") else {
+        let Some((pt_delta, followup)) = rest.split_once_lit(" until end of turn, then ") else {
             continue;
         };
         let Some((followup_subject, keyword)) = followup.split_once(gain_verb) else {
             continue;
         };
         let first_subject = head.rsplit([',', ':']).next()?.trim();
-        let Some((keyword, trailing)) = keyword.split_once(" until end of turn") else {
+        let Some((keyword, trailing)) = keyword.split_once_lit(" until end of turn") else {
             continue;
         };
         if !trailing.is_empty() && !trailing.starts_with(". Activate ") {
@@ -3866,15 +3867,15 @@ fn compact_same_subject_pt_then_gain_surface(line: &str) -> Option<String> {
 
 fn normalize_this_creature_gets_gains_can_attack_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
-    let (activation_prefix, body) = if let Some((prefix, body)) = trimmed.split_once(": ") {
+    let (activation_prefix, body) = if let Some((prefix, body)) = trimmed.split_once_lit(": ") {
         (Some(prefix), body)
     } else {
         (None, trimmed)
     };
     let rest = body.strip_prefix("This creature gets ")?;
-    let (pt_delta, tail) = rest.split_once(" until end of turn, this creature gains ")?;
+    let (pt_delta, tail) = rest.split_once_lit(" until end of turn, this creature gains ")?;
     let (keyword, attack_tail) =
-        tail.split_once(" until end of turn and can attack this turn as though ")?;
+        tail.split_once_lit(" until end of turn and can attack this turn as though ")?;
     if pt_delta.is_empty() || keyword.is_empty() || attack_tail.is_empty() {
         return None;
     }
@@ -3912,7 +3913,7 @@ fn normalize_for_each_opponent_gain_control_followup(line: &str) -> Option<Strin
             let Some(after_followup) = after_marker.strip_prefix(followup_prefix) else {
                 continue;
             };
-            let (keywords, remainder) = after_followup.split_once(" until end of turn")?;
+            let (keywords, remainder) = after_followup.split_once_lit(" until end of turn")?;
             if keywords.is_empty() {
                 return None;
             }
@@ -3948,7 +3949,7 @@ fn parse_trailing_damage_clause(text: &str) -> Option<DamageClauseParts<'_>> {
     let source_prefix = &text[..deals_idx];
     let source = damage_source_tail(source_prefix);
     let after_deals = &text[deals_idx + " deals ".len()..];
-    let (amount, _) = after_deals.split_once(" damage to ")?;
+    let (amount, _) = after_deals.split_once_lit(" damage to ")?;
     let target_start = deals_idx + " deals ".len() + amount.len() + " damage to ".len();
     let target = text[target_start..].trim();
     Some(DamageClauseParts {
@@ -3961,14 +3962,14 @@ fn parse_trailing_damage_clause(text: &str) -> Option<DamageClauseParts<'_>> {
 }
 
 fn parse_leading_damage_clause(text: &str) -> Option<DamageClauseParts<'_>> {
-    let deals_idx = text.find(" deals ")?;
+    let deals_idx = text.find_lit(" deals ")?;
     let source = text[..deals_idx].trim();
     let after_deals = &text[deals_idx + " deals ".len()..];
-    let (amount, _) = after_deals.split_once(" damage to ")?;
+    let (amount, _) = after_deals.split_once_lit(" damage to ")?;
     let target_start = deals_idx + " deals ".len() + amount.len() + " damage to ".len();
     let after_target = &text[target_start..];
     let target_len = after_target
-        .find(". ")
+        .find_lit(". ")
         .map(|idx| idx + 1)
         .unwrap_or(after_target.len());
     let raw_target = &after_target[..target_len];
@@ -4020,10 +4021,10 @@ fn compact_split_damage_pair_once(line: &str, delimiter: &str) -> Option<String>
         let (second_target, suffix) = split_damage_instead_suffix(second.target);
         let first_target = normalize_joined_damage_target(first.target);
         let controller_followup = second_target == "that object's controller"
-            && (first_target.contains("creature") || first_target == "that creature");
+            && (first_target.contains_lit("creature") || first_target == "that creature");
         let mass_followup = first_target.starts_with("each ") && second_target.starts_with("each ");
         let direct_followup = matches!(second_target, "you" | "any target")
-            || first_target.contains("any target")
+            || first_target.contains_lit("any target")
             || second_target.starts_with("each ");
         if !controller_followup && !mass_followup && !direct_followup {
             search_start = second_start;
@@ -4031,7 +4032,7 @@ fn compact_split_damage_pair_once(line: &str, delimiter: &str) -> Option<String>
         }
 
         let first_target = if controller_followup && first_target == "target creature" {
-            if first_text.contains(". If ") || first_text.contains(" — If ") {
+            if first_text.contains_lit(". If ") || first_text.contains_lit(" — If ") {
                 "that creature"
             } else {
                 first_target
@@ -4097,11 +4098,11 @@ fn normalize_split_damage_pairs(line: &str) -> String {
 
 fn normalize_gets_replacement_instead_order(line: &str) -> Option<String> {
     let (prefix, tail) = line.rsplit_once(". If ")?;
-    if let Some((condition, effect)) = tail.split_once(", instead it gets ")
+    if let Some((condition, effect)) = tail.split_once_lit(", instead it gets ")
         && condition == "the target is a Human"
     {
         let effect = effect.trim_end_matches('.');
-        if let Some((pt, keyword)) = effect.split_once(" until end of turn and it gains ")
+        if let Some((pt, keyword)) = effect.split_once_lit(" until end of turn and it gains ")
             && let Some(keyword) = keyword.strip_suffix(" until end of turn")
         {
             return Some(format!(
@@ -4109,7 +4110,7 @@ fn normalize_gets_replacement_instead_order(line: &str) -> Option<String> {
             ));
         }
     }
-    let (condition, effect) = tail.split_once(", it gets ")?;
+    let (condition, effect) = tail.split_once_lit(", it gets ")?;
     if !matches!(
         condition,
         "it's a Human" | "it's an Human" | "that creature has toxic"
@@ -4136,7 +4137,7 @@ fn color_mana_word(symbol: &str) -> Option<&'static str> {
 
 fn normalize_spell_damage_replacement_surfaces(line: &str) -> Option<String> {
     let (default_text, replacement_tail) =
-        line.split_once(". If this spell's additional cost was paid, ")?;
+        line.split_once_lit(". If this spell's additional cost was paid, ")?;
     let default_damage = parse_trailing_damage_clause(default_text)?;
     let replacement_damage = parse_leading_damage_clause(replacement_tail)?;
     if !default_damage
@@ -4160,11 +4161,11 @@ fn normalize_spell_damage_replacement_surfaces(line: &str) -> Option<String> {
 }
 
 fn normalize_adamant_damage_replacement_surface(line: &str) -> Option<String> {
-    let (default_text, tail) = line.split_once(". If at least three ")?;
+    let (default_text, tail) = line.split_once_lit(". If at least three ")?;
     let default_damage = parse_trailing_damage_clause(default_text)?;
-    let (mana_symbol, after_mana) = tail.split_once(" mana was spent to cast this spell, ")?;
+    let (mana_symbol, after_mana) = tail.split_once_lit(" mana was spent to cast this spell, ")?;
     let color = color_mana_word(mana_symbol)?;
-    let deals_idx = after_mana.find(" deals ")?;
+    let deals_idx = after_mana.find_lit(" deals ")?;
     let replacement_source = after_mana[..deals_idx].trim();
     if !default_damage
         .source
@@ -4173,17 +4174,17 @@ fn normalize_adamant_damage_replacement_surface(line: &str) -> Option<String> {
         return None;
     }
     let after_deals = &after_mana[deals_idx + " deals ".len()..];
-    let (amount, raw_after_damage) = after_deals.split_once(" damage")?;
+    let (amount, raw_after_damage) = after_deals.split_once_lit(" damage")?;
     let skipped_ws = raw_after_damage.len() - raw_after_damage.trim_start().len();
     let after_damage = raw_after_damage.trim_start();
     let (target, suffix, consumed_tail_len) = if let Some(rest) = after_damage.strip_prefix("to ") {
-        let target_len = rest.find(". ").map(|idx| idx + 1).unwrap_or(rest.len());
+        let target_len = rest.find_lit(". ").map(|idx| idx + 1).unwrap_or(rest.len());
         let raw_target = rest[..target_len].trim().trim_end_matches('.').trim();
         let (target, suffix) = split_damage_instead_suffix(raw_target);
         (target, suffix, "to ".len() + target_len)
     } else {
         let tail_len = after_damage
-            .find(". ")
+            .find_lit(". ")
             .map(|idx| idx + 1)
             .unwrap_or(after_damage.len());
         let raw_tail = after_damage[..tail_len].trim().trim_end_matches('.').trim();
@@ -4219,7 +4220,7 @@ fn normalize_adamant_damage_replacement_surface(line: &str) -> Option<String> {
 }
 
 fn normalize_kicked_also_damage_surface(line: &str) -> Option<String> {
-    let (default_text, tail) = line.split_once(". Then if this spell was kicked, ")?;
+    let (default_text, tail) = line.split_once_lit(". Then if this spell was kicked, ")?;
     let default_damage = parse_trailing_damage_clause(default_text)?;
     let kicked_damage = parse_leading_damage_clause(tail)?;
     if !default_damage
@@ -4248,7 +4249,7 @@ fn normalize_kicked_also_damage_surface(line: &str) -> Option<String> {
 }
 
 fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<String> {
-    let (default_text, tail) = line.split_once(". At the beginning of your next upkeep, ")?;
+    let (default_text, tail) = line.split_once_lit(". At the beginning of your next upkeep, ")?;
     let default_damage = parse_trailing_damage_clause(default_text)?;
     if default_damage.target != "target player or planeswalker" {
         return None;
@@ -4278,7 +4279,7 @@ fn compact_three_way_looked_card_distribution(line: &str) -> Option<String> {
     ]
     .iter()
     .find_map(|suffix| trimmed.strip_suffix(suffix))?;
-    if !head.contains("Look at the top three cards of your library") {
+    if !head.contains_lit("Look at the top three cards of your library") {
         return None;
     }
     Some(format!(
@@ -4287,8 +4288,8 @@ fn compact_three_way_looked_card_distribution(line: &str) -> Option<String> {
 }
 
 fn compact_looked_card_battlefield_rest_bottom(line: &str) -> Option<String> {
-    let (head, rest) = line.split_once(". You may choose ")?;
-    if !head.contains("Look at the top") {
+    let (head, rest) = line.split_once_lit(". You may choose ")?;
+    if !head.contains_lit("Look at the top") {
         return None;
     }
     let selection = rest.strip_suffix(
@@ -4331,7 +4332,7 @@ fn compact_delirium_exiled_card_same_name_search_exile(line: &str) -> Option<Str
 
 fn compact_count_based_power_boost(line: &str) -> Option<String> {
     let rest = line.strip_prefix("This creature gets +X/+0, where X is the number of ")?;
-    if rest.contains(" as long as ") {
+    if rest.contains_lit(" as long as ") {
         return None;
     }
     let rest = rest
@@ -4347,10 +4348,10 @@ fn compact_count_based_power_boost(line: &str) -> Option<String> {
 
 fn compact_exile_wheel_then_untap_lands(line: &str) -> Option<String> {
     let rest = line.trim_end_matches('.').strip_prefix("Exile ")?;
-    let (card, rest) = rest.split_once(
+    let (card, rest) = rest.split_once_lit(
         ", each player shuffles their hand and graveyard into their library, each player draws ",
     )?;
-    let (cards, lands) = rest.split_once(" cards, then untap up to ")?;
+    let (cards, lands) = rest.split_once_lit(" cards, then untap up to ")?;
     let lands = lands.strip_suffix(" lands")?;
     if card.trim().is_empty() || cards.trim().is_empty() || lands.trim().is_empty() {
         return None;
@@ -4375,7 +4376,7 @@ fn compact_any_player_may_choose_sacrifice_surface(line: &str) -> Option<String>
 }
 
 fn compact_search_reveal_hand_discard_random_shuffle(line: &str) -> Option<String> {
-    let (prefix, rest) = line.split_once("Search your library for ")?;
+    let (prefix, rest) = line.split_once_lit("Search your library for ")?;
     let selection = rest.strip_suffix(
         ", reveal it, put it into your hand, discard a card at random, then shuffle your library.",
     )?;
@@ -4402,15 +4403,15 @@ fn compact_domain_dynamic_mana_value_return_surface(line: &str) -> Option<String
 /// into Oracle's single return instruction, including an immediately linked
 /// counter placement on the returned object.
 fn compact_choose_graveyard_return_with_counter_surface(line: &str) -> Option<String> {
-    let (prefix, choice_tail) = line.split_once(", choose ")?;
+    let (prefix, choice_tail) = line.split_once_lit(", choose ")?;
     let (selection, counter_tail) =
-        choice_tail.split_once(", return it from graveyard to the battlefield, and put ")?;
+        choice_tail.split_once_lit(", return it from graveyard to the battlefield, and put ")?;
     if selection.trim().is_empty() || !selection.trim_end().ends_with("card") {
         return None;
     }
-    let counter_end = counter_tail.find(" on it")?;
+    let counter_end = counter_tail.find_lit(" on it")?;
     let counter = counter_tail[..counter_end].trim();
-    if counter.is_empty() || !counter.contains("counter") {
+    if counter.is_empty() || !counter.contains_lit("counter") {
         return None;
     }
     let remainder = &counter_tail[counter_end + " on it".len()..];
@@ -4427,18 +4428,18 @@ fn normalize_single_returned_animation_surface(line: &str) -> Option<String> {
     let (return_text, animation_tail) = line.split_once(marker)?;
     if !return_text
         .to_ascii_lowercase()
-        .contains("up to one target ")
+        .contains_lit("up to one target ")
     {
         return None;
     }
-    let sentence_end = animation_tail.find(". ").unwrap_or(animation_tail.len());
+    let sentence_end = animation_tail.find_lit(". ").unwrap_or(animation_tail.len());
     let animation = &animation_tail[..sentence_end];
-    if !animation.contains(" in addition to their other types") {
+    if !animation.contains_lit(" in addition to their other types") {
         return None;
     }
     let singular = animation
         .replacen(" creatures", " creature", 1)
-        .replace("their other types", "its other types");
+        .replace_lit("their other types", "its other types");
     let remainder = &animation_tail[sentence_end..];
     Some(format!("{return_text}. It's {singular}{remainder}"))
 }
@@ -4449,8 +4450,8 @@ fn normalize_single_returned_animation_surface(line: &str) -> Option<String> {
 fn compact_linked_base_pt_subtype_animation_surface(line: &str) -> Option<String> {
     let marker = ". It has base power and toughness ";
     let (prefix, animation_tail) = line.split_once(marker)?;
-    let (power_toughness, subtype_tail) = animation_tail.split_once(" and becomes a ")?;
-    let (subtypes, remainder) = subtype_tail.split_once(" in addition to its other types")?;
+    let (power_toughness, subtype_tail) = animation_tail.split_once_lit(" and becomes a ")?;
+    let (subtypes, remainder) = subtype_tail.split_once_lit(" in addition to its other types")?;
     if power_toughness.trim().is_empty() || !power_toughness.contains('/') {
         return None;
     }
@@ -4467,7 +4468,7 @@ fn compact_linked_base_pt_subtype_animation_surface(line: &str) -> Option<String
         .map_or(prefix, |(_, instruction)| instruction)
         .to_ascii_lowercase();
     let subject =
-        if prior_instruction.contains("put each ") || prior_instruction.contains("return each ") {
+        if prior_instruction.contains_lit("put each ") || prior_instruction.contains_lit("return each ") {
             "Each of them is"
         } else {
             "It's"
@@ -4504,15 +4505,15 @@ fn compact_dynamic_ally_reanimate_surface(line: &str) -> Option<String> {
 }
 
 fn compact_equipment_blocker_damage_surface(line: &str) -> Option<String> {
-    let mut normalized = line.replace(
+    let mut normalized = line.replace_lit(
         "Equipped creature has {2}: This creature gets +1/+0 until end of turn.",
         "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"",
     );
-    normalized = normalized.replace(
+    normalized = normalized.replace_lit(
         "Whenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other defending player's creature.",
         "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
     );
-    normalized = normalized.replace(
+    normalized = normalized.replace_lit(
         "Whenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
         "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
     );
@@ -4673,11 +4674,11 @@ fn compact_colored_creature_destroy_surface(line: &str) -> Option<String> {
 }
 
 fn normalize_one_or_more_colors_surface(line: &str) -> String {
-    line.replace(
+    line.replace_lit(
         "a colored permanent",
         "a permanent that's one or more colors",
     )
-    .replace(
+    .replace_lit(
         "A colored permanent",
         "A permanent that's one or more colors",
     )
@@ -4795,13 +4796,13 @@ fn compact_historical_spell_half_damage_surface(line: &str) -> Option<String> {
     let leading = trimmed
         .strip_prefix("You choose a player who cast one or more ")
         .or_else(|| trimmed.strip_prefix("Choose a player who cast one or more "))?;
-    let (card_type, rest) = leading.split_once(" spells this turn. Choose one of ")?;
+    let (card_type, rest) = leading.split_once_lit(" spells this turn. Choose one of ")?;
     if card_type.is_empty() || card_type.split_whitespace().count() != 1 {
         return None;
     }
     let (_rendered_plural, damage_clause) =
-        rest.split_once(" cast this turn by that player, then ")?;
-    let (source, suffix) = damage_clause.split_once(
+        rest.split_once_lit(" cast this turn by that player, then ")?;
+    let (source, suffix) = damage_clause.split_once_lit(
         " deals half the damage dealt this turn by the chosen spell, rounded down damage to that player",
     )?;
     if source.trim().is_empty() || !suffix.trim_matches('.').is_empty() {
@@ -4817,10 +4818,10 @@ fn compact_historical_spell_half_damage_surface(line: &str) -> Option<String> {
 fn normalize_attack_group_total_power_trigger_surface(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let leading = trimmed.strip_prefix("Whenever you attack with one or more ")?;
-    let (subject, effect) = leading.split_once(", ")?;
+    let (subject, effect) = leading.split_once_lit(", ")?;
     if subject.is_empty()
-        || subject.contains(" you control")
-        || !effect.contains("their total power")
+        || subject.contains_lit(" you control")
+        || !effect.contains_lit("their total power")
     {
         return None;
     }
@@ -4832,11 +4833,11 @@ fn normalize_attack_group_total_power_trigger_surface(line: &str) -> Option<Stri
 fn compact_face_down_return_then_turn_surface(line: &str) -> Option<String> {
     let trimmed = line.trim();
     let (return_clause, tail) = trimmed
-        .split_once(", then turn it face up if ")
-        .or_else(|| trimmed.split_once(". Turn it face up if "))?;
+        .split_once_lit(", then turn it face up if ")
+        .or_else(|| trimmed.split_once_lit(". Turn it face up if "))?;
     let lower_return_clause = return_clause.to_ascii_lowercase();
-    if !(lower_return_clause.starts_with("return ") || lower_return_clause.contains(", return "))
-        || !return_clause.contains(" to the battlefield face down")
+    if !(lower_return_clause.starts_with("return ") || lower_return_clause.contains_lit(", return "))
+        || !return_clause.contains_lit(" to the battlefield face down")
     {
         return None;
     }
@@ -5029,8 +5030,8 @@ fn compact_target_opponent_count_prelude(line: &str) -> Option<String> {
     }
     Some(
         normalized
-            .replace(" that player controls", " target opponent controls")
-            .replace(" that player owns", " target opponent owns"),
+            .replace_lit(" that player controls", " target opponent controls")
+            .replace_lit(" that player owns", " target opponent owns"),
     )
 }
 
@@ -5053,22 +5054,22 @@ fn compact_target_cant_block_carry_surface(line: &str) -> Option<String> {
     }
 
     let lower_head = head.to_ascii_lowercase();
-    if lower_head.contains("target creature") {
-        let pronoun = if lower_head.contains("target creatures") {
+    if lower_head.contains_lit("target creature") {
+        let pronoun = if lower_head.contains_lit("target creatures") {
             "Those creatures"
         } else {
             "That creature"
         };
         let mut head = head.to_string();
-        if lower_head.contains(" damage to up to ") && !lower_head.contains(" damage to each of ") {
-            head = head.replace(" damage to up to ", " damage to each of up to ");
+        if lower_head.contains_lit(" damage to up to ") && !lower_head.contains_lit(" damage to each of ") {
+            head = head.replace_lit(" damage to up to ", " damage to each of up to ");
         }
         return Some(format!(
             "{head}. {pronoun} can't block this turn{remainder}."
         ));
     }
 
-    if lower_head.contains("you may ") {
+    if lower_head.contains_lit("you may ") {
         return Some(format!(
             "{head}. When you do, target creature can't block this turn{remainder}."
         ));
@@ -5085,12 +5086,12 @@ fn compact_period_cant_block_carry_surface(line: &str) -> Option<String> {
     let sentence_start = head.rfind(". ").map(|idx| idx + 2).unwrap_or(0);
     let prior_sentence = &head[sentence_start..];
     let lower_prior = prior_sentence.to_ascii_lowercase();
-    if lower_prior.contains("you may ") {
+    if lower_prior.contains_lit("you may ") {
         return Some(format!(
             "{head}. When you do, target creature can't block this turn{suffix}"
         ));
     }
-    if lower_prior.contains("goad up to one target creature") {
+    if lower_prior.contains_lit("goad up to one target creature") {
         return Some(format!(
             "{head}. Those creatures can't block this turn{suffix}"
         ));
@@ -5116,7 +5117,7 @@ fn normalize_you_may_becomes_copy_surface(line: &str) -> Option<String> {
     let marker = "you may ";
     let idx = line.find(marker)?;
     let after = &line[idx + marker.len()..];
-    let (subject, rest) = after.split_once(" becomes a copy of ")?;
+    let (subject, rest) = after.split_once_lit(" becomes a copy of ")?;
     if subject.trim().is_empty() || subject.contains('.') || subject.contains(',') {
         return None;
     }
@@ -5131,11 +5132,11 @@ fn normalize_you_may_becomes_copy_surface(line: &str) -> Option<String> {
 fn compact_token_redundant_mana_ability_surface(line: &str) -> Option<String> {
     let marker = " creature token. It has \"";
     let (prefix, ability_tail) = line.split_once(marker)?;
-    let (ability, duplicate_tail) = ability_tail.split_once("\" And \"")?;
+    let (ability, duplicate_tail) = ability_tail.split_once_lit("\" And \"")?;
     let (duplicate, suffix) = duplicate_tail.split_once('"')?;
-    let base_ability = ability.split_once(". ")?.0.trim();
+    let base_ability = ability.split_once_lit(". ")?.0.trim();
     if !base_ability.starts_with("{T}: Add ")
-        || !ability.contains(". Spend this mana only to cast ")
+        || !ability.contains_lit(". Spend this mana only to cast ")
         || duplicate.trim_end_matches('.') != base_ability
     {
         return None;
@@ -5174,7 +5175,7 @@ fn compact_repeated_target_opponent_discard(line: &str) -> Option<String> {
     let prior = &line[..idx];
     let sentence_start = prior.rfind('.').map(|idx| idx + 1).unwrap_or(0);
     let prior_sentence = prior[sentence_start..].to_ascii_lowercase();
-    if !prior_sentence.contains("target opponent ") {
+    if !prior_sentence.contains_lit("target opponent ") {
         return None;
     }
     Some(format!(
@@ -5187,8 +5188,8 @@ fn compact_repeated_target_opponent_discard(line: &str) -> Option<String> {
 fn compact_enters_counter_life_loss_surface(line: &str) -> Option<String> {
     let needle = "target player loses 1 life for each +1/+1 counter on this creature";
     if !line.contains(needle)
-        || !line.contains(" enters, ")
-        || !(line.starts_with("When ") || line.contains(". When "))
+        || !line.contains_lit(" enters, ")
+        || !(line.starts_with("When ") || line.contains_lit(". When "))
     {
         return None;
     }
@@ -5207,14 +5208,14 @@ fn compact_temporary_additional_block_surface(line: &str) -> Option<String> {
     // oracle keeps one sentence: "... until end of turn and can block an
     // additional creature this turn."
     if tail == "an additional creature each combat until end of turn"
-        && subject_and_pump.contains(" gets ")
+        && subject_and_pump.contains_lit(" gets ")
     {
         return Some(format!(
             "{subject_and_pump} until end of turn and can block an additional creature this turn."
         ));
     }
     let count = tail.strip_suffix(" additional creatures each combat until end of turn")?;
-    let (subject, pump) = subject_and_pump.split_once(" gets ")?;
+    let (subject, pump) = subject_and_pump.split_once_lit(" gets ")?;
     let count_text = match count {
         "1" | "one" => "one",
         "2" | "two" => "two",

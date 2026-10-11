@@ -17,17 +17,17 @@ impl std::fmt::Display for LexerError {
     }
 }
 
-fn normalize_parser_fragment(slice: &str) -> String {
-    let mut normalized = String::with_capacity(slice.len());
-    for ch in slice.chars() {
-        match ch {
-            '−' => normalized.push('-'),
-            '’' | '‘' => normalized.push('\''),
-            '“' | '”' => normalized.push('"'),
-            _ => normalized.push(ch.to_ascii_lowercase()),
-        }
+fn normalize_parser_char(ch: char) -> char {
+    match ch {
+        '−' => '-',
+        '’' | '‘' => '\'',
+        '“' | '”' => '"',
+        _ => ch.to_ascii_lowercase(),
     }
-    normalized
+}
+
+fn normalize_parser_fragment(slice: &str) -> String {
+    slice.chars().map(normalize_parser_char).collect()
 }
 
 fn parser_text_for_token(kind: TokenKind, slice: &str) -> String {
@@ -431,7 +431,10 @@ impl OwnedLexToken {
         matches!(
             self.kind,
             TokenKind::Word | TokenKind::Number | TokenKind::Tilde
-        ) && self.parser_text == normalize_parser_fragment(expected)
+        ) && self
+            .parser_text
+            .chars()
+            .eq(expected.chars().map(normalize_parser_char))
     }
 
     pub fn is_any_word(&self, expected: &[&str]) -> bool {
@@ -843,9 +846,9 @@ pub struct TokenWordView<'a> {
 
 impl<'a> TokenWordView<'a> {
     pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
-        let mut words = Vec::new();
-        let mut token_start_indices = Vec::new();
-        let mut token_end_indices = Vec::new();
+        let mut words = Vec::with_capacity(tokens.len());
+        let mut token_start_indices = Vec::with_capacity(tokens.len());
+        let mut token_end_indices = Vec::with_capacity(tokens.len());
         let mut token_idx = 0usize;
         while token_idx < tokens.len() {
             let token = &tokens[token_idx];

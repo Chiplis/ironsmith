@@ -545,16 +545,24 @@ pub fn compile_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapsh
 
 pub fn compile_strict_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
     let attempt = parse_card_payload(payload, false);
-    snapshot_from_attempt(payload, &attempt)
+    authoritative_snapshot_from_attempt(payload, &attempt)
 }
 
 pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
     let attempt = parse_card_payload_with_fallback(payload);
+    authoritative_snapshot_from_attempt(payload, &attempt)
+}
+
+// Retry policy must not change the validation applied to a compiled result.
+fn authoritative_snapshot_from_attempt(
+    payload: &CardPayload,
+    attempt: &ParseAttempt,
+) -> CompilationSnapshot {
     let unsupported_mechanics_message = attempt
         .definition
         .as_ref()
         .and_then(generated_definition_unsupported_mechanics_message);
-    let mut snapshot = snapshot_from_attempt(payload, &attempt);
+    let mut snapshot = snapshot_from_attempt(payload, attempt);
     if snapshot.parse_status == ParseStatus::StrictCompiled && snapshot.has_unimplemented {
         mark_authoritative_snapshot_parse_failed(
             &mut snapshot,
@@ -3339,6 +3347,43 @@ CardDefinition {
         assert!(strict.compiled_card_definition.is_none());
         assert!(compile_runtime_definition_from_payload(&payload).is_err());
         assert!(compile_definition_from_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn snapshot_policy_strict_only_retains_authoritative_validation() {
+        let mut payload = lightning_bolt_payload();
+        // Keep valid parser input but supply an oracle requirement missing from
+        // its output, independently of which parser bugs have been fixed.
+        payload.oracle_text = "Target player reveals their hand.".to_string();
+        payload.raw_oracle_text = payload.oracle_text.clone();
+        assert_eq!(
+            compile_snapshot_from_payload(&payload).parse_status,
+            ParseStatus::StrictCompiled
+        );
+
+        let strict = compile_strict_snapshot_from_payload(&payload);
+        let authoritative = compile_authoritative_snapshot_from_payload(&payload);
+        for snapshot in [&strict, &authoritative] {
+            assert_eq!(snapshot.parse_status, ParseStatus::ParseFailed);
+            assert_eq!(
+                snapshot.parse_error.as_deref(),
+                Some("compiled text dropped required semantic marker: reveals-hand")
+            );
+            assert!(snapshot.compiled_text.is_none());
+            assert!(snapshot.compiled_card_definition.is_none());
+            assert_eq!(snapshot.similarity_score, 0.0);
+            assert_eq!(snapshot.content_hash, snapshot.compute_content_hash());
+        }
+        assert_eq!(strict.content_hash, authoritative.content_hash);
+    }
+
+    #[test]
+    fn snapshot_policy_strict_only_preserves_supported_results() {
+        let payload = lightning_bolt_payload();
+        let strict = compile_strict_snapshot_from_payload(&payload);
+        let authoritative = compile_authoritative_snapshot_from_payload(&payload);
+        assert_eq!(strict.parse_status, ParseStatus::StrictCompiled);
+        assert_eq!(strict.content_hash, authoritative.content_hash);
     }
 
     #[test]
