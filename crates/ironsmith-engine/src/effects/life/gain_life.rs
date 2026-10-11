@@ -65,7 +65,7 @@ impl EffectExecutor for GainLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        game.try_update_static_ability_effects(Default::default())
+        game.update_static_ability_effects()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let event = self.replacement_original_event(game, ctx)?.ok_or_else(|| {
             ExecutionError::InternalError("life gain has no nominal event".into())

@@ -5232,7 +5232,7 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             crate::filter::PtReference::Effective => chars.power,
             crate::filter::PtReference::Base => {
                 let (power_delta, _) = object.pt_counter_deltas();
-                object.power().map(|value| value - power_delta)
+                object.power().and_then(|value| i32::try_from(i128::from(value) - power_delta).ok())
             }
         };
         let Some(power) = power else {
@@ -5248,7 +5248,7 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             crate::filter::PtReference::Effective => chars.toughness,
             crate::filter::PtReference::Base => {
                 let (_, toughness_delta) = object.pt_counter_deltas();
-                object.toughness().map(|value| value - toughness_delta)
+                object.toughness().and_then(|value| i32::try_from(i128::from(value) - toughness_delta).ok())
             }
         };
         let Some(toughness) = toughness else {

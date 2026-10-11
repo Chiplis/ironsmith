@@ -1381,6 +1381,7 @@ pub fn parse_negated_object_restriction_clause(
     use restriction_grammar::NegatedObjectTailShape;
     let tail_shape = restriction_grammar::parse_negated_object_tail_words(&remainder_words);
     let restriction = match tail_shape {
+        Some(NegatedObjectTailShape::BecomeSuspected) => Restriction::BecomeSuspected(filter),
         Some(NegatedObjectTailShape::AttackYou) => {
             Restriction::attack_player(filter, PlayerFilter::You)
         }

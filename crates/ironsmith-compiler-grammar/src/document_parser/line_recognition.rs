@@ -82,6 +82,11 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn recognize_triggered_line(
     line: &PreprocessedLine,
 ) -> Result<RecognizedTriggeredLine, CardTextError> {
+    // Keep the authored producer/reference relation intact before generic
+    // trigger splitting can reinterpret its first sentence as a condition.
+    if let Some((_, tail)) = grammar::split_lexed_once_on_comma(&line.info.source_tokens) {
+        crate::effect_sentences::counter_exile_permission::parse(tail)?;
+    }
     if let Some(recognized) = recognize_correlated_triggered_line(line) {
         return Ok(recognized);
     }

@@ -501,7 +501,8 @@ fn a12_compleated_adjusts_combined_loyalty_once_and_respects_prospective_ability
             .new_id;
         assert_eq!(
             g.counter_count(permanent, CounterType::Loyalty),
-            if lose_ability { 8 } else { 6 }
+            // CR 306.5b: ability loss removes intrinsic starting loyalty too.
+            if lose_ability { 3 } else { 6 }
         );
     }
 }

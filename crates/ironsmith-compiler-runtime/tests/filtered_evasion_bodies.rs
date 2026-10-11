@@ -191,7 +191,7 @@ fn five_complete_frozen_bodies_keep_both_compilation_paths_and_semantic_surfaces
                 "Harvesttide Sentry" => vec!["beginning of combat", "different powers", "power 2 or less", "this turn"],
                 "Sungold Sentinel" => vec!["enters or attacks", "exile", "graveyard", "choose a color", "hexproof", "different powers"],
                 "Verdant Outrider" => vec!["power 2 or less", "this turn"],
-                _ => vec!["power-up", "+1/+1 counter", "the tiger god", "legendary", "4/4", "god cat", "more than one creature"],
+                _ => vec!["power-up", "+1/+1 counter", "the tiger god", "legendary", "4/4", "cat god", "more than one creature"],
             } { assert!(text.contains(marker), "{name}: missing {marker}: {text}"); }
         }
     }

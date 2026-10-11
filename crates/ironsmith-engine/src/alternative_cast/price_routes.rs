@@ -669,7 +669,11 @@ mod tests {
                 let player = PlayerId(0);
                 let mut model: crate::static_abilities::CompiledStaticAbility =
                     ironsmith_core::StaticAbility::haste();
-                for _ in 0..140 {
+                // A small host budget reaches the same typed failure without a 140-level graph.
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits {
+                    max_rounds: 2, ..Default::default()
+                });
+                for _ in 0..4 {
                     model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
                         crate::target::ObjectFilter::source(),
                         ironsmith_core::Ability::static_ability(model),

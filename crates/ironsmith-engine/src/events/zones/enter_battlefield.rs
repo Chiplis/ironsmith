@@ -468,12 +468,15 @@ impl EnterBattlefieldEvent {
         let original = game.continuous_query_snapshot()?;
         // Assemble every entry field, including the initial controller, before
         // evaluating the complete world. Initial control is below layer two.
-        let Some(prospective) = self.prospective_game_state(&original) else {
+        let Some(mut prospective) = self.prospective_game_state(&original) else {
             return Ok(None);
         };
         // Completeness does not carry across the zone, copy, control, counter,
-        // ability and prepared-choice modifications.
-        prospective.continuous_query_snapshot().map(Some)
+        // ability and prepared-choice modifications. Refresh this owned world
+        // in place instead of cloning it a third time for every entrant.
+        prospective.update_static_ability_effects()?;
+        prospective.update_cant_effects();
+        Ok(Some(prospective))
     }
 
     /// Get the total count of a specific counter type.

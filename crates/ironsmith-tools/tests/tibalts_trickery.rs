@@ -14,12 +14,10 @@ use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::{CardType, GameState, ObjectId, PlayerId, Subtype, Zone};
 
 fn payload() -> ironsmith_tools::CardPayload {
-    ironsmith_tools::load_card_payloads_by_name(
-        ironsmith_tools::default_cards_path().to_str().unwrap(),
-        "Tibalt's Trickery",
-    )
-    .unwrap()
-    .remove(0)
+    static PAYLOAD: std::sync::OnceLock<ironsmith_tools::CardPayload> = std::sync::OnceLock::new();
+    PAYLOAD.get_or_init(|| ironsmith_tools::load_card_payloads_by_name(
+        ironsmith_tools::default_cards_path().to_str().unwrap(), "Tibalt's Trickery",
+    ).unwrap().remove(0)).clone()
 }
 
 #[test]
@@ -88,7 +86,8 @@ fn names_in(game: &GameState, player: PlayerId, zone: Zone) -> Vec<String> {
 /// another Grizzly Bears, Hill Giant, then Bottom Card. Alice casts Tibalt's
 /// Trickery on the Bears and it resolves. Returns the game.
 fn run(cast_free: bool, seed: u64) -> GameState {
-    let def = ironsmith_tools::compile_definition_from_payload(&payload()).unwrap();
+    static DEFINITION: std::sync::OnceLock<ironsmith::CardDefinition> = std::sync::OnceLock::new();
+    let def = DEFINITION.get_or_init(|| ironsmith_tools::compile_definition_from_payload(&payload()).unwrap());
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);

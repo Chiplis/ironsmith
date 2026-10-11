@@ -775,3 +775,37 @@ fn simultaneous_life_replacement_choices_use_apnap_but_results_keep_input_order(
         vec![B, A]
     );
 }
+
+#[test]
+fn rejected_continuation_does_not_permute_identical_pool_units() {
+    let (mut game, source) = fixture();
+    game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 6);
+    let mut attempts = 0;
+    let result = game.mana_cost_with_payable_continuation(
+        A, Some(source), &ManaCost::from_symbols(vec![ManaSymbol::Generic(5)]), 0,
+        crate::costs::PaymentReason::CastSpell, &crate::player::ManaSpendPolicy::default(),
+        false, false, false, |_, _| { attempts += 1; false },
+    ).unwrap();
+    assert!(result.is_none());
+    assert_eq!(attempts, 1, "indistinguishable mana has only one resulting payment state");
+    assert_eq!(game.player(A).unwrap().mana_pool.colorless, 6);
+}
+
+#[test]
+fn continuation_can_reject_one_color_and_accept_another() {
+    let (mut game, source) = fixture();
+    game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+    game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Blue, 2);
+    let mut attempts = 0;
+    let result = game.mana_cost_with_payable_continuation(
+        A, Some(source), &ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]), 0,
+        crate::costs::PaymentReason::CastSpell, &crate::player::ManaSpendPolicy::default(),
+        false, false, false, |after, _| {
+            attempts += 1;
+            after.player(A).unwrap().mana_pool.blue == 1
+        },
+    ).unwrap();
+    assert!(result.is_some());
+    assert_eq!(attempts, 2);
+    assert_eq!(game.player(A).unwrap().mana_pool.blue, 2);
+}

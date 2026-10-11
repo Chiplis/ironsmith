@@ -2271,6 +2271,7 @@ mod tests {
         game.add_object(target);
         game.add_object(alice_source);
         game.add_object(charlie_source);
+        game.refresh_continuous_state().unwrap();
         game.effect_store
             .cant_effects
             .targeting_as_though_overrides

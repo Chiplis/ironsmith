@@ -1011,30 +1011,26 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
             ));
         }
 
-        for id in self.haste_recipients {
-            if game
-                .object(id)
-                .is_some_and(|object| object.zone == Zone::Battlefield)
-                && !game.is_phased_out(id)
-            {
-                let child = crate::effects::ApplyContinuousEffect::new(
-                    crate::continuous::EffectTarget::Specific(id),
-                    crate::continuous::Modification::AddAbility(StaticAbility::haste()),
-                    crate::effect::Until::Forever,
-                )
-                .execute_child_with_outputs(game, ctx)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let aggregate = EffectOutcome::aggregate_with_primary_result(
-                    outputs.outcome.clone(),
-                    [child.outcome.clone()],
-                );
-                outputs.retain_owned_child(child);
-                outputs = outputs.project_aggregate(aggregate);
+        let haste_recipients: Vec<_> = self.haste_recipients.into_iter().filter(|id|
+            game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)
+                && !game.is_phased_out(*id)).collect();
+        if !haste_recipients.is_empty() {
+            // "Those tokens gain haste" is one instruction over a locked set.
+            // Publish it once rather than rebuilding the entire world per token.
+            let child = crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::AllPermanents,
+                crate::continuous::Modification::AddAbility(StaticAbility::haste()),
+                crate::effect::Until::Forever,
+            ).with_source_type(crate::continuous::EffectSourceType::Resolution {
+                locked_targets: haste_recipients,
+            }).execute_child_with_outputs(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
+            let aggregate = EffectOutcome::aggregate_with_primary_result(
+                outputs.outcome.clone(), [child.outcome.clone()]);
+            outputs.retain_owned_child(child);
+            outputs = outputs.project_aggregate(aggregate);
         }
         Ok(outputs)
     }

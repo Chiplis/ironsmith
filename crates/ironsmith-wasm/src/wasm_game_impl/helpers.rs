@@ -127,7 +127,7 @@ mod exact_permission_adapter_tests {
         let spell = game.create_object_from_card(&spell_card, player, Zone::Exile);
         for _ in 0..2 {
             game.effect_store.grant_registry.grant_play_from_to_card(spell, Zone::Exile, player,
-                PlayFromConstraints::default(),
+                PlayFromConstraints { cast_mana_spend_mode: ManaSpendMode::AnyColor, ..Default::default() },
                 GrantSource::Effect { source_id: source, expires_end_of_turn: u32::MAX });
         }
         let actions = ironsmith::decision::compute_actions_assuming_mana_for_presentation(&game, player, Some(spell)).unwrap();
@@ -1998,27 +1998,27 @@ pub(super) fn validate_object_selection(
     legal_ids: &[u64],
 ) -> Result<(), JsValue> {
     if !allow_partial_completion && selected.len() < min {
-        return Err(JsValue::from_str(&format!(
+        return Err(runtime_execution_error(&format!(
             "must select at least {min} object(s)"
         )));
     }
     if let Some(max) = max
         && selected.len() > max
     {
-        return Err(JsValue::from_str(&format!(
+        return Err(runtime_execution_error(&format!(
             "must select at most {max} object(s)"
         )));
     }
     for (index, object_id) in selected.iter().enumerate() {
         if !legal_ids.contains(object_id) {
-            return Err(JsValue::from_str(&format!(
+            return Err(runtime_execution_error(&format!(
                 "object id {object_id} is not legal"
             )));
         }
         // A repeated id would let a forced reveal of every listed card reach
         // its required count while leaving cards out.
         if selected[..index].contains(object_id) {
-            return Err(JsValue::from_str(&format!(
+            return Err(runtime_execution_error(&format!(
                 "object id {object_id} is selected more than once"
             )));
         }

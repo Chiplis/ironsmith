@@ -1363,6 +1363,33 @@ mod inferred_group_occurrence_gameplay_tests {
 
 #[cfg(test)]
 mod checked_discovery_tests {
+    // Propagation and rollback tests need genuine discovery exhaustion, but do
+    // not need to spend the production allowance on every assertion.
+    fn discovery_test_game(names: Vec<String>, life: i32) -> GameState {
+        let mut game = GameState::new(names, life);
+        game.set_static_effect_discovery_limits(StaticEffectDiscoveryLimits {
+            max_rounds: 16, ..Default::default()
+        });
+        game
+    }
+
+    #[test]
+    fn host_discovery_limits_invalidate_checked_snapshots_and_survive_cloning() {
+        let (mut game, _) = game_with_parent(4);
+        game.refresh_continuous_state().unwrap();
+        game.set_static_effect_discovery_limits(StaticEffectDiscoveryLimits {
+            max_rounds: 1, ..Default::default()
+        });
+        for mut query in [game.clone(), game] {
+            assert!(matches!(query.try_all_continuous_effects(),
+                Err(StaticEffectDiscoveryError::RoundLimit { maximum: 1, .. })));
+            assert!(matches!(query.refresh_continuous_state(),
+                Err(StaticEffectDiscoveryError::RoundLimit { maximum: 1, .. })));
+            query.set_static_effect_discovery_limits(Default::default());
+            query.refresh_continuous_state().unwrap();
+        }
+    }
+
     use super::*;
     use crate::{ability::{Ability, AbilityKind}, card::CardBuilder, ids::{CardId, PlayerId},
         static_abilities::{StaticAbility, StaticAbilityId, StaticAbilityKind},
@@ -1370,7 +1397,7 @@ mod checked_discovery_tests {
     use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
     fn game_with_parent(depth: usize) -> (GameState, ObjectId) {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Finite static recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -1453,7 +1480,7 @@ mod checked_discovery_tests {
 
     #[test]
     fn completed_entry_discovery_failure_rolls_back_the_original_instruction_and_history() {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let next = game.next_object_id_counter();
         let before_provenance = game.provenance_graph().node_count();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
@@ -1471,7 +1498,7 @@ mod checked_discovery_tests {
 
     #[test]
     fn checked_discovery_returns_typed_failure_without_publishing_a_partial_graph() {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Dynamic grant recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -1552,7 +1579,7 @@ mod checked_discovery_tests {
                 let result = if full_refresh { game.refresh_continuous_state() }
                     else { game.update_replacement_effects() };
                 assert!(matches!(result, Err(StaticEffectDiscoveryError::RoundLimit {
-                    maximum: 128, .. })), "{result:?}");
+                    maximum: 16, .. })), "{result:?}");
                 assert_eq!(game.effect_store.replacement_effects.effects().iter()
                     .map(|effect| effect.application_key()).collect::<Vec<_>>(), before_keys);
                 assert_eq!(game.effect_store.continuous_effects.static_ability_effects().iter()
@@ -1573,7 +1600,7 @@ mod checked_discovery_tests {
         use crate::effects::EffectExecutor;
         std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
             for generic in [false, true] {
-                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
                 let alice = game.players[0].id;
                 let card = CardBuilder::new(CardId::new(), "Unresolved discovery recipient")
                     .card_types(vec![CardType::Artifact]).build();
@@ -1594,7 +1621,7 @@ mod checked_discovery_tests {
                     crate::effects::GainLifeEffect::you(1).execute(&mut game, &mut ctx)
                 };
                 assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
-                    StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))),
+                    StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 }))),
                     "{result:?}");
                 assert_eq!(game.player(alice).unwrap().life, 20);
                 assert_eq!(game.effect_store.continuous_effects.revision(), revision);
@@ -1612,7 +1639,7 @@ fn controller_setter_does_not_commit_when_complete_discovery_fails() {
     std::thread::Builder::new()
         .stack_size(128 * 1024 * 1024)
         .spawn(|| {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let bob = game.players[1].id;
             let card = CardBuilder::new(CardId::new(), "Unresolved control recipient")
@@ -1630,8 +1657,8 @@ fn controller_setter_does_not_commit_when_complete_discovery_fails() {
                 matches!(
                     game.try_all_continuous_effects(),
                     Err(StaticEffectDiscoveryError::RoundLimit {
-                        maximum: 128,
-                        generated_effects: 129
+                        maximum: 16,
+                        generated_effects: 17
                     })
                 ),
                 "fixture actually fails complete discovery before the setter"
@@ -1642,7 +1669,7 @@ fn controller_setter_does_not_commit_when_complete_discovery_fails() {
             let error = game.set_current_controller(source, bob)
                 .expect_err("unresolved discovery must return an explicit control failure");
             assert!(matches!(error, StaticEffectDiscoveryError::RoundLimit {
-                maximum: 128, generated_effects: 129
+                maximum: 16, generated_effects: 17
             }), "{error:?}");
             assert_eq!(
                 game.effect_store.continuous_effects.effects().len(),
@@ -1669,7 +1696,7 @@ fn assert_finite_prospective_entry_replacement_is_complete(generic: bool) {
     use crate::effects::EffectExecutor;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(move || {
         for depth in [1, 8, 9, 10, 12] {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let card = CardBuilder::new(CardId::new(), "Prospective nested entry recipient")
                 .card_types(vec![CardType::Land]).build();
@@ -1712,7 +1739,7 @@ fn checked_prospective_entry_query_discovers_deep_grants_and_preserves_live_stat
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for depth in [1, 8, 9, 10, 12] {
             for controlled_by_owner in [true, false] {
-                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
                 let alice = game.players[0].id;
                 let controller = game.players[usize::from(!controlled_by_owner)].id;
                 let card = CardBuilder::new(CardId::new(), "Checked prospective recipient")
@@ -1751,7 +1778,7 @@ fn checked_prospective_entry_query_discovers_deep_grants_and_preserves_live_stat
 #[test]
 fn checked_prospective_entry_query_distinguishes_missing_from_failed_discovery() {
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Nonfinite prospective recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -1762,7 +1789,7 @@ fn checked_prospective_entry_query_distinguishes_missing_from_failed_discovery()
         let revision = game.effect_store.continuous_effects.revision();
         let event = crate::events::EnterBattlefieldEvent::new(source, Zone::Hand);
         assert!(matches!(event.try_prospective_game_state(&game),
-            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })));
         assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
         assert_eq!(game.effect_store.continuous_effects.revision(), revision);
         assert!(game.battlefield.is_empty());
@@ -1776,7 +1803,7 @@ fn direct_and_generic_entry_discovery_failures_preserve_live_zone_and_effects() 
     use crate::effects::EffectExecutor;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for generic in [false, true] {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let card = CardBuilder::new(CardId::new(), "Failed prospective entry")
                 .card_types(vec![CardType::Artifact]).build();
@@ -1796,7 +1823,7 @@ fn direct_and_generic_entry_discovery_failures_preserve_live_zone_and_effects() 
                 instruction.execute(&mut game, &mut ctx)
             };
             assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
-                StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))),
+                StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 }))),
                 "generic={generic}: discovery error must reach caller");
             assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
             assert!(game.battlefield.is_empty());
@@ -1814,7 +1841,7 @@ fn deep_prospective_counter_prohibitions_apply_at_entry_without_suppressing_cont
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for depth in [1, 10, 12] {
             for prohibited in [false, true] {
-                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
                 let alice = game.players[0].id;
                 let card = CardBuilder::new(CardId::new(), "Deep counter recipient")
                     .card_types(vec![CardType::Artifact]).build();
@@ -1849,7 +1876,7 @@ fn raw_entry_matcher_uses_complete_prospective_keyword_grants() {
     use crate::events::ReplacementMatcher;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for depth in [1, 8, 9, 10, 12] {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let card = CardBuilder::new(CardId::new(), "Prospective type recipient")
                 .card_types(vec![CardType::Artifact]).build();
@@ -1883,7 +1910,7 @@ fn fallible_entry_matching_uses_complete_keyword_grants() {
     use crate::events::ReplacementMatcher;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for depth in [1, 8, 9, 10, 12] {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let card = CardBuilder::new(CardId::new(), "Prospective type recipient")
                 .card_types(vec![CardType::Artifact]).build();
@@ -1916,7 +1943,7 @@ fn fallible_entry_matching_uses_complete_keyword_grants() {
 fn fallible_entry_matching_reports_nonfinite_prospective_discovery() {
     use crate::events::ReplacementMatcher;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Nonfinite matcher recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -1929,7 +1956,7 @@ fn fallible_entry_matching_reports_nonfinite_prospective_discovery() {
         let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any();
         let ctx = crate::events::EventContext::for_replacement_effect(alice, source, &game);
         assert!(matches!(matcher.matches_entry_event(&event, &ctx),
-            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })));
         assert_eq!(game.object(source).unwrap().zone, Zone::Hand);
         assert_eq!(game.effect_store.continuous_effects.revision(), revision);
         assert!(game.battlefield.is_empty());
@@ -1942,7 +1969,7 @@ fn processor_and_continuation_restore_one_shot_after_copy_discovery_failure() {
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         for continuation in [false, true] {
-            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             let card = CardBuilder::new(CardId::new(), "Copy failure recipient").card_types(vec![CardType::Artifact]).build();
             let recipient = game.create_object_from_card(&card, alice, Zone::Hand);
@@ -1955,7 +1982,7 @@ fn processor_and_continuation_restore_one_shot_after_copy_discovery_failure() {
             event.try_prospective_game_state(&game).expect("initial entry finite").expect("recipient exists");
             let mut copied = event.clone(); copied.enters_as_copy_of = Some(donor);
             assert!(matches!(copied.try_prospective_game_state(&game),
-                Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })));
+                Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })));
             let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(ObjectFilter::specific(recipient));
             let copy_id = game.effect_store.replacement_effects.add_one_shot_effect(
                 ReplacementEffect::with_matcher(source, alice, matcher.clone(), ReplacementAction::EnterAsCopy {
@@ -1977,7 +2004,7 @@ fn processor_and_continuation_restore_one_shot_after_copy_discovery_failure() {
                 continue_replacement_choice_with_scope(&mut game, pending, copy_id, None, &[], None)
             } else { process_trait_event(&mut game, crate::events::Event::new_with_provenance(event, Default::default())) };
             assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
-                StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))), "continuation={continuation}");
+                StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 }))), "continuation={continuation}");
             assert_eq!(game.effect_store.replacement_effects.one_shot_effects_snapshot(), before);
             assert_eq!(game.effect_store.continuous_effects.revision(), revision);
             assert_eq!(game.object(recipient).unwrap().zone, Zone::Hand);
@@ -1991,7 +2018,7 @@ fn processor_and_continuation_restore_one_shot_after_copy_discovery_failure() {
 fn multi_entry_matching_does_not_import_a_simultaneous_siblings_static_grant() {
     use crate::events::ReplacementMatcher;
     for existing_grantor in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Batch grantor").card_types(vec![CardType::Artifact]).build();
         let grantor = game.create_object_from_card(&card, alice,
@@ -2019,7 +2046,7 @@ fn multi_entry_matching_does_not_import_a_simultaneous_siblings_static_grant() {
 fn multi_entry_matching_reports_failed_member_before_accepting_an_earlier_match() {
     use crate::events::ReplacementMatcher;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Batch recipient").card_types(vec![CardType::Artifact]).build();
         let first = game.create_object_from_card(&card, alice, Zone::Hand);
@@ -2033,7 +2060,7 @@ fn multi_entry_matching_reports_failed_member_before_accepting_an_earlier_match(
         let matcher = crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any();
         let context = crate::events::EventContext::for_controller(alice, &game);
         assert!(matches!(matcher.matches_event(&event, &context),
-            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })),
             "an earlier successful member cannot conceal later discovery failure");
         assert!(game.battlefield.is_empty());
         assert_eq!(game.object(first).unwrap().zone, Zone::Hand);
@@ -2045,7 +2072,7 @@ fn multi_entry_matching_reports_failed_member_before_accepting_an_earlier_match(
 fn merged_component_matching_preserves_card_only_partition_controls() {
     use crate::events::ReplacementMatcher;
     for merged in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Partition host")
             .card_types(vec![CardType::Creature]).build();
@@ -2072,7 +2099,7 @@ fn merged_component_matching_preserves_card_only_partition_controls() {
 fn merged_component_matching_reports_discovery_failure_without_mutation() {
     use crate::events::ReplacementMatcher;
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Unresolved partition world")
             .card_types(vec![CardType::Artifact]).build();
@@ -2080,7 +2107,7 @@ fn merged_component_matching_reports_discovery_failure_without_mutation() {
         game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
             StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
         assert!(matches!(game.try_all_continuous_effects(),
-            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })),
             "the original query actually fails complete discovery");
         let revision = game.effect_store.continuous_effects.revision();
         let event = crate::events::ZoneChangeEvent::with_cause(source, Zone::Battlefield,
@@ -2089,7 +2116,7 @@ fn merged_component_matching_reports_discovery_failure_without_mutation() {
             ObjectFilter::default().nontoken(), Some(Zone::Battlefield), Some(Zone::Graveyard));
         let context = crate::events::EventContext::for_controller(alice, &game);
         assert!(matches!(matcher.matches_merged_card_component_only(&event, &context),
-            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 })),
+            Err(StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 })),
             "failed discovery must not become a successful non-match");
         assert_eq!(game.effect_store.continuous_effects.revision(), revision);
         assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
@@ -2114,7 +2141,7 @@ impl StaticAbilityKind for CounterStoppedRegrantParent {
 fn check_counter_stopped_copy_entry_assembly(temporary: bool) {
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(move || {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Entry assembly recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -2182,7 +2209,7 @@ impl StaticAbilityKind for NewIdentityRegrantParent {
 fn entry_assembly_final_query_failure_restores_physical_state_and_one_shot() {
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let card = CardBuilder::new(CardId::new(), "Final query recipient")
             .card_types(vec![CardType::Artifact]).build();
@@ -2205,7 +2232,7 @@ fn entry_assembly_final_query_failure_restores_physical_state_and_one_shot() {
         let result = game.move_object_with_etb_processing_with_dm(recipient, Zone::Battlefield,
             &mut ctx.decision_maker);
         assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
-            StaticEffectDiscoveryError::RoundLimit { maximum: 128, generated_effects: 129 }))),
+            StaticEffectDiscoveryError::RoundLimit { maximum: 16, generated_effects: 17 }))),
             "complete committed identity must be validated before publication");
         assert_eq!(game.object(recipient).unwrap().zone, Zone::Hand);
         assert_eq!(game.battlefield, vec![source]);
@@ -2220,7 +2247,7 @@ fn entry_assembly_final_query_failure_restores_physical_state_and_one_shot() {
 fn prospective_entry_controller_is_a_base_fact_below_existing_control_effects() {
     use crate::events::ReplacementMatcher;
     for entering_under_owner in [true, false] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let source_card = CardBuilder::new(CardId::new(), "Existing control source")
@@ -2253,7 +2280,7 @@ fn prospective_entry_controller_is_a_base_fact_below_existing_control_effects() 
 
 #[test]
 fn filtered_controller_queries_remain_finite_and_do_not_publish_partial_layer_results() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let source_card = CardBuilder::new(CardId::new(), "Finite control source")
@@ -2279,7 +2306,7 @@ fn filtered_controller_queries_remain_finite_and_do_not_publish_partial_layer_re
 #[test]
 fn filtered_control_duration_excludes_itself_and_latches_after_source_control_loss() {
     for self_controlling in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let card = CardBuilder::new(CardId::new(), "Filtered duration recipient")
@@ -2337,7 +2364,7 @@ impl StaticAbilityKind for ControlEnabledRegrantParent {
 #[test]
 fn controller_setter_rolls_back_when_the_changed_controller_enables_failed_discovery() {
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let card = CardBuilder::new(CardId::new(), "Post-control discovery recipient")
@@ -2356,7 +2383,7 @@ fn controller_setter_rolls_back_when_the_changed_controller_enables_failed_disco
         let error = game.set_current_controller(source, bob)
             .expect_err("control change enables a graph that cannot complete");
         assert!(matches!(error, StaticEffectDiscoveryError::RoundLimit {
-            maximum: 128, generated_effects: 129
+            maximum: 16, generated_effects: 17
         }), "{error:?}");
         assert_eq!(game.current_controller(source), Some(alice));
         assert_eq!(game.effect_store.continuous_effects.effects().len(), resolution_effects);
@@ -2371,7 +2398,7 @@ fn controller_setter_rolls_back_when_the_changed_controller_enables_failed_disco
 
 #[test]
 fn ability_resolution_keeps_captured_controller_after_source_control_changes() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let card = CardBuilder::new(CardId::new(), "Captured ability source")
@@ -2391,7 +2418,7 @@ fn ability_resolution_keeps_captured_controller_after_source_control_changes() {
 
 #[test]
 fn spell_resolution_discovery_error_preserves_stack_and_game_state() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let card = CardBuilder::new(CardId::new(), "Failed spell discovery")
@@ -2424,7 +2451,7 @@ fn spell_resolution_discovery_error_preserves_stack_and_game_state() {
 
 #[test]
 fn resolving_permanent_preserves_caster_beneath_continuing_control_and_color_effects() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let card = CardBuilder::new(CardId::new(), "Continuing spell characteristics")
@@ -2462,7 +2489,7 @@ fn resolving_permanent_preserves_caster_beneath_continuing_control_and_color_eff
 #[test]
 fn stolen_spell_resolves_for_effective_controller_without_changing_caster_fact() {
     for stolen in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let card = CardBuilder::new(CardId::new(), "Controlled spell resolution fixture")
@@ -2498,7 +2525,7 @@ fn stolen_spell_resolves_for_effective_controller_without_changing_caster_fact()
 
 #[test]
 fn spell_stack_controller_is_a_base_fact_below_control_effects() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let card = CardBuilder::new(CardId::new(), "Nonowner-cast permanent spell")
@@ -2524,7 +2551,7 @@ fn spell_stack_controller_is_a_base_fact_below_control_effects() {
 #[test]
 fn physical_entry_controller_is_a_base_fact_below_existing_control_effects() {
     for entering_under_owner in [true, false] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let source_card = CardBuilder::new(CardId::new(), "Physical control source")
@@ -2558,7 +2585,7 @@ fn physical_entry_controller_is_a_base_fact_below_existing_control_effects() {
 fn complete_static_control_discovery_rebinds_you_control_grants_before_entry_matching() {
     use crate::events::ReplacementMatcher;
     for static_control in [false, true] {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
         let artifact = CardBuilder::new(CardId::new(), "Controller-dependent grant source")
@@ -2603,7 +2630,7 @@ fn complete_static_control_discovery_rebinds_you_control_grants_before_entry_mat
 
 #[test]
 fn static_control_dependency_loop_uses_timestamp_order_and_live_source_control() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let aura = CardBuilder::new(CardId::new(), "Circular control source")
@@ -2643,7 +2670,7 @@ fn static_control_dependency_loop_uses_timestamp_order_and_live_source_control()
 
 #[test]
 fn static_control_dependency_chain_reorders_older_source_after_newer_control() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let charlie = game.players[2].id;
@@ -2688,7 +2715,7 @@ fn static_control_dependency_chain_reorders_older_source_after_newer_control() {
 #[test]
 fn missing_static_controller_source_returns_typed_error_before_matching() {
     use crate::events::ReplacementMatcher;
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
     let card = CardBuilder::new(CardId::new(), "Controller source error entrant")
         .card_types(vec![CardType::Creature]).build();
@@ -2712,7 +2739,7 @@ fn missing_static_controller_source_returns_typed_error_before_matching() {
 
 #[test]
 fn controller_bound_grant_prefix_preserves_control_dependency_order() {
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let mut game = discovery_test_game(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
     let alice = game.players[0].id;
     let bob = game.players[1].id;
     let charlie = game.players[2].id;

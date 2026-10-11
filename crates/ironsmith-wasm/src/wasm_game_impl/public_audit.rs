@@ -1630,12 +1630,12 @@ impl WasmGame {
     ) -> Result<PublicAuditCheckpoint, JsValue> {
         for state in std::iter::once(&self.priority_state)
             .chain(self.grand_melee_host_lanes.values().map(|lane| &lane.priority_state)) {
-            validate_exile_face_down_public_sources(state).map_err(|error| JsValue::from_str(&error))?;
+            validate_exile_face_down_public_sources(state).map_err(|error| runtime_execution_error(&error))?;
         }
         let hidden_claim_ledger_digest = self
             .hidden_claim_ledger_rules_state()
             .and_then(|rules| hidden_claim_ledger_digest(&rules))
-            .map_err(|error| JsValue::from_str(&error))?;
+            .map_err(|error| runtime_execution_error(&error))?;
         let (consecutive_priority_passes, priority_players_in_game) =
             self.priority_state.priority_tracker_snapshot();
         let players = self
@@ -1649,7 +1649,7 @@ impl WasmGame {
                 life: player.life,
                 mana_pool: SyncManaPool::from(&player.mana_pool),
                 restricted_mana: sync_restricted_mana(&player.restricted_mana)
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    .map_err(|error| runtime_execution_error(&error))?,
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
                 experience_counters: player.experience_counters,
@@ -1690,7 +1690,7 @@ impl WasmGame {
                     identity: self.public_audit_object_identity(id, object),
                     chosen_subtype: self.game.chosen_subtype(id),
                     numeric_choices: ironsmith::source_numbers::public_proof(&self.game,id,identity_public)
-                        .map_err(|error|JsValue::from_str(&format!("numeric choice proof unavailable: {error:?}")))?,
+                        .map_err(|error|runtime_execution_error(&format!("numeric choice proof unavailable: {error:?}")))?,
                     chosen_subtypes: {
                         let mut types: Vec<_> = self.game.chosen_subtypes(id)
                             .into_iter().flatten().copied().collect();

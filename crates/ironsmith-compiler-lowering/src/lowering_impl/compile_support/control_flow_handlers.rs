@@ -1297,6 +1297,11 @@ pub fn compile_effects_in_iterated_player_context(
         iterated_frame.last_object_tag = Some((crate::tag::CompilerReferenceTag::It.bind()).into());
         iterated_frame.last_it_choice_is_set = false;
         iterated_frame.iterated_object = true;
+        // The outer sequence's token reference is outside this nested body.
+        // Keep its producer explicit while annotating the loop in isolation.
+        if ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(effects) {
+            iterated_frame.force_auto_tag_object_targets = true;
+        }
     } else {
         iterated_frame.iterated_player = true;
         iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
@@ -1320,7 +1325,8 @@ pub fn compile_effects_in_iterated_player_context(
             frame_out.last_object_tag.clone()
         }
     } else {
-        None
+        frame_out.last_object_tag.clone().filter(|tag| tag.as_str().starts_with("created_")
+            && ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(effects))
     };
     ctx.apply_lowering_frame(saved_frame);
     if let Some(tag) = produced_last_tag {

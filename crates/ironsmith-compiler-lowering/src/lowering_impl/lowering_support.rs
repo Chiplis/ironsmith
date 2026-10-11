@@ -1076,7 +1076,11 @@ fn default_trigger_last_object_prelude(
     }
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
-        TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
+        TriggerSpec::ThisBecomesTargetedBySpell(_)
+        | TriggerSpec::ThisBecomesTargetedByStackObject(_)
+        | TriggerSpec::BecomesTargetedByStackObject { .. }
+        | TriggerSpec::BecomesTargetedByAbilitySource { .. }
+        | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. } =>
             Some(EffectPreludeTag::TriggeringSource(tag.clone())),

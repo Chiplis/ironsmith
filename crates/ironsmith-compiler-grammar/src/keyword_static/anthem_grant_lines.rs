@@ -1086,6 +1086,7 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
         }
     }
     match ability {
+        StaticAbilityAst::KeywordAction(action) => from_keyword(action),
         StaticAbilityAst::Static(_) => from_static(ability),
         StaticAbilityAst::GrantKeywordAction { action, .. } => from_keyword(action),
         StaticAbilityAst::GrantStaticAbility { ability, .. } => from_static(ability),
@@ -1192,6 +1193,11 @@ pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     crate::clause_support::validate_protection_static_line(tokens)?;
+    // Player protection has its own owner; it is not an object anthem.
+    if matches!(parse_you_have_protection_from_opponents_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
+
     if self::combat_requirements::owns_combat_requirement_line(tokens) {
         return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }

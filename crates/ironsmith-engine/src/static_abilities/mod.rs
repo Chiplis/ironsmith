@@ -1633,6 +1633,8 @@ impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAb
 
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
+        // Cloned immutable definitions are equal without rendering their nested payload.
+        if Arc::ptr_eq(&self.0, &other.0) { return true; }
         if self.0.id() != other.0.id() {
             return false;
         }

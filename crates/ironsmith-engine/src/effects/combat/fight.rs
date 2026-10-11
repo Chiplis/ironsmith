@@ -1092,6 +1092,7 @@ mod tests {
         std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
             for generic in [false, true] {
                 let mut game = setup_game();
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits { max_rounds: 2, ..Default::default() });
                 let alice = PlayerId::from_index(0);
                 let first = create_creature(&mut game, "Checked first", 3, 50, alice);
                 let second = create_creature(&mut game, "Checked second", 4, 50, alice);

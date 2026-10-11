@@ -1286,6 +1286,7 @@ struct RuntimeCacheState {
         HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
     pending_land_permission_grants: HashMap<ObjectId, Vec<StaticAbility>>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
+    static_effect_discovery_limits: crate::static_ability_processor::StaticEffectDiscoveryLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
     observed_stack: RefCell<Option<crate::incremental::ChangeCursor>>,
@@ -1338,6 +1339,7 @@ impl Clone for RuntimeCacheState {
             pending_grant_use_completions: self.pending_grant_use_completions.clone(),
             pending_land_permission_grants: self.pending_land_permission_grants.clone(),
             token_creation_limits: self.token_creation_limits,
+            static_effect_discovery_limits: self.static_effect_discovery_limits,
             // All speculative/nested work belongs to one host computation.
             token_creation_meter: self.token_creation_meter.clone(),
             observed_players: RefCell::new(self.observed_players.borrow().clone()),
@@ -1394,6 +1396,7 @@ impl RuntimeCacheState {
             pending_grant_use_completions: HashMap::new(),
             pending_land_permission_grants: HashMap::new(),
             token_creation_limits: Default::default(),
+            static_effect_discovery_limits: Default::default(),
             token_creation_meter: None,
             observed_players: RefCell::new(None),
             observed_stack: RefCell::new(None),
@@ -9261,6 +9264,24 @@ impl TurnStore {
 }
 
 impl GameState {
+    /// Configure host bounds for static-effect discovery, including speculative
+    /// queries and execution checkpoints. Exhaustion remains a typed failure;
+    /// changing bounds invalidates snapshots checked with the previous bounds.
+    /// Like token limits, these are host resources, not serialized game rules.
+    pub fn set_static_effect_discovery_limits(
+        &mut self,
+        limits: crate::static_ability_processor::StaticEffectDiscoveryLimits,
+    ) {
+        self.runtime_cache.static_effect_discovery_limits = limits;
+        self.mark_continuous_state_dirty();
+    }
+
+    pub(crate) fn static_effect_discovery_limits(&self)
+        -> crate::static_ability_processor::StaticEffectDiscoveryLimits
+    {
+        self.runtime_cache.static_effect_discovery_limits
+    }
+
     /// Set host computation limits. They are not serialized game rules and an
     /// exhausted operation reports incomplete execution without committing.
     pub fn set_token_creation_limits(

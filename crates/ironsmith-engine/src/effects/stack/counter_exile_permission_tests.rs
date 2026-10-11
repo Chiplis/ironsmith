@@ -406,6 +406,7 @@ impl crate::static_abilities::StaticAbilityKind for NonconvergingCounterCharacte
 fn checked_counter_characteristic_failure_rolls_back_without_original_or_grant() {
     std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
         let (mut game, source, target, alice, bob) = setup(CardType::Creature);
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits { max_rounds: 2, ..Default::default() });
         let host = CardBuilder::new(CardId::new(), "Unbounded characteristic host")
             .card_types(vec![CardType::Artifact]).build();
         let host = game.create_object_from_card(&host, alice, Zone::Battlefield);

@@ -539,13 +539,21 @@ impl WasmGame {
                     // establish a disclosed identity by movement alone.
                     for (index, original) in moved.objects.iter().enumerate() {
                         let destination = moved.result_objects.get(index).copied().unwrap_or(*original);
-                        if game.object(destination).is_some_and(|object|
-                            object.zone.is_public() && !game.is_face_down(destination))
+                        if let Some(object) = game.object(destination)
+                            && object.zone.is_public()
+                            && !game.is_face_down(destination)
                         {
+                            // Completed cost events can name the new incarnation
+                            // in both object lists. The hand identity belongs to
+                            // the pre-move snapshot, joined by its stable identity.
                             if let Some(snapshot) = moved.snapshots.iter()
-                                .chain(moved.snapshot.iter()).find(|snapshot| snapshot.object_id == *original)
+                                .chain(moved.snapshot.iter())
+                                .chain(record.object_snapshot.iter())
+                                .find(|snapshot| snapshot.zone == Zone::Hand
+                                    && (snapshot.object_id == *original
+                                        || snapshot.stable_id == object.stable_id))
                             {
-                                identities.insert((snapshot.owner, *original));
+                                identities.insert((snapshot.owner, snapshot.object_id));
                             }
                         }
                     }

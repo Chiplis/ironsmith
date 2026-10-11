@@ -36,20 +36,13 @@ fn blazing_shoal_casts_with_red_card_mana_value_or_normal_mana() {
                 .mana_pool
                 .add(ManaSymbol::Red, 3);
         }
-        let action = LegalAction::CastSpell {
-            spell_id: shoal,
-            from_zone: Zone::Hand,
-            casting_method: if alternative {
-                CastingMethod::Alternative(0)
-            } else {
-                CastingMethod::Normal
-            },
-        };
-        assert!(
-            compute_legal_actions(&wasm.game, alice)
-                .unwrap()
-                .contains(&action)
-        );
+        let actions = compute_legal_actions(&wasm.game, alice).unwrap();
+        let action = actions.iter().find(|action| matches!(action,
+            LegalAction::CastSpell { spell_id, casting_method, .. }
+                if *spell_id == shoal && if alternative {
+                    matches!(casting_method, CastingMethod::Alternative(_) | CastingMethod::AlternativePrice { .. })
+                } else { matches!(casting_method, CastingMethod::Normal) }
+        )).unwrap_or_else(|| panic!("missing Shoal method alternative={alternative}: {actions:?}")).clone();
         let mut root = ReplayRoot::Response(PriorityResponse::PriorityAction(action));
         let mut checkpoint = wasm.capture_replay_checkpoint();
         let mut answers = Vec::new();

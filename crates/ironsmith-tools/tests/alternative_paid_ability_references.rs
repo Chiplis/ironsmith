@@ -95,7 +95,7 @@ fn announce(game: &mut GameState, action: LegalAction, dm: &mut Choices) {
 }
 fn cast(game: &mut GameState, card: ObjectId, alternative: bool, cost: u32, dm: &mut Choices) -> ObjectId {
     let stable = game.object(card).unwrap().stable_id; let before = game.player(A).unwrap().mana_pool.total();
-    let choice = action(game, card, alternative).expect("required cast must be advertised by native legal actions");
+    let choice = action(game, card, alternative).unwrap_or_else(|| panic!("required cast {:?} alternative={alternative}; actions={:?}", game.object(card).map(|o| &o.name), compute_legal_actions(game, A)));
     announce(game, choice, dm);
     assert_eq!(before - game.player(A).unwrap().mana_pool.total(), cost);
     let spell = game.find_object_by_stable_id(stable).unwrap();
@@ -128,7 +128,7 @@ fn damage(game: &mut GameState) {
     ironsmith::game_loop::try_execute_combat_damage_step(game, &state, false).unwrap();
 }
 fn qualify(game: &mut GameState, subtype: ironsmith::Subtype, commander: bool) -> ObjectId {
-    let source = creature(game, A, subtype, Zone::Battlefield); if commander { game.set_commander(source); }
+    let source = creature(game, A, subtype, Zone::Battlefield); if commander { game.player_mut(A).unwrap().set_commanders(vec![source]); game.set_commander(source); }
     combat(game, source, AttackTarget::Player(B)); damage(game); main(game, A); source
 }
 fn discard(game: &mut GameState, card: ObjectId, dm: &mut Choices) -> ObjectId {
@@ -176,10 +176,11 @@ fn prowl_all_shared_types_real_payment_full_bodies_and_source_departure() {
                         cast(&mut game, card, paid, if paid { 3 } else { normal }, &mut dm);
                         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
                         let source = game.find_object_by_stable_id(stable).unwrap();
+                        stack_triggers(&mut game, &mut dm);
                         if depart { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
                         finish(&mut game, &mut dm);
                         if name == "Earwig Squad" {
-                            assert_eq!(game.exile.len(), if paid { 3 } else { 0 });
+                            assert_eq!(game.exile.len(), if paid { 3 } else { 0 }, "paid={paid} depart={depart}");
                             assert_eq!(game.player(B).unwrap().library.len(), if paid { 3 } else { 6 });
                             assert_eq!(game.player(A).unwrap().library.len(), 6);
                             let shuffles: Vec<_> = game.turn_store.turn_history.event_records.iter()
@@ -324,6 +325,7 @@ fn turncoat_exiles_one_chosen_opposing_creature_with_exclusive_paid_duration() {
                 let mut dm = Choices { target: Some(Target::Object(target)), ..Default::default() };
                 cast(&mut game, card, paid, if paid { 4 } else { 3 }, &mut dm); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
                 let source = game.find_object_by_stable_id(stable).unwrap();
+                stack_triggers(&mut game, &mut dm);
                 if early_departure { game.move_object_by_effect(source, Zone::Hand).unwrap(); }
                 finish(&mut game, &mut dm);
                 assert_eq!(zone(&game, target_stable), if early_departure && !paid { Zone::Battlefield } else { Zone::Exile });
@@ -540,7 +542,13 @@ fn native_temporal_intervening_gate_admission_and_resolution_preserve_incomplete
                 let mut unknown = game.clone();
                 unknown.stack.last_mut().unwrap().optional_costs_paid.cast_payment_turn = None;
                 unknown.object_mut(spell).unwrap().optional_costs_paid.cast_payment_turn = None;
-                assert!(resolve_stack_entry_with(&mut unknown, &mut dm).is_err(), "unknown admission negated={negated}");
+                let mut queue = TriggerQueue::new();
+                let mut state = PriorityLoopState::new(unknown.players_in_game());
+                let result = (0..unknown.players_in_game()).try_for_each(|_| {
+                    apply_priority_response_with_dm(&mut unknown, &mut queue, &mut state,
+                        &PriorityResponse::PriorityAction(LegalAction::PassPriority), &mut dm).map(|_| ())
+                });
+                assert!(result.is_err(), "unknown admission negated={negated}");
                 assert_eq!(unknown.stack.len(), 1); assert_eq!(unknown.object(spell).unwrap().zone, Zone::Stack);
                 assert_eq!(unknown.player(A).unwrap().library.len(), 4);
             }

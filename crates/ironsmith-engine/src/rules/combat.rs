@@ -1403,6 +1403,7 @@ mod tests {
 
         game.add_object(attacker.clone());
         game.add_object(blocker.clone());
+        game.refresh_continuous_state().unwrap();
         game.effect_store
             .cant_effects
             .add_cant_be_blocked(attacker.id);

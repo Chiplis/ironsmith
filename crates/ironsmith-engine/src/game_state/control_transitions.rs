@@ -15,10 +15,10 @@ impl GameState {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         let checkpoint = self.clone();
         let result = (|| {
-            self.try_update_static_ability_effects(Default::default())?;
+            self.update_static_ability_effects()?;
             self.reconcile_continuous_control_changes();
             if !self.continuous_state_is_clean() {
-                self.try_update_static_ability_effects(Default::default())?;
+                self.update_static_ability_effects()?;
                 self.reconcile_continuous_control_changes();
             }
             self.publish_completed_control_transitions();

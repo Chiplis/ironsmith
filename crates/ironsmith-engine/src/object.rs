@@ -2829,7 +2829,7 @@ impl Object {
             self.base_power?.base_value()
         };
         let (power_delta, _) = self.pt_counter_deltas();
-        Some(base + power_delta)
+        i32::try_from(i128::from(base) + power_delta).ok()
     }
 
     /// Returns the current toughness of this creature.
@@ -2842,16 +2842,16 @@ impl Object {
             self.base_toughness?.base_value()
         };
         let (_, toughness_delta) = self.pt_counter_deltas();
-        Some(base + toughness_delta)
+        i32::try_from(i128::from(base) + toughness_delta).ok()
     }
 
-    pub fn pt_counter_deltas(&self) -> (i32, i32) {
-        let mut power = 0i32;
-        let mut toughness = 0i32;
+    pub fn pt_counter_deltas(&self) -> (i128, i128) {
+        let mut power = 0i128;
+        let mut toughness = 0i128;
         for (counter_type, count) in &self.counters {
             if let Some((dp, dt)) = counter_type.pt_delta() {
-                power += dp * (*count as i32);
-                toughness += dt * (*count as i32);
+                power += i128::from(dp) * i128::from(*count);
+                toughness += i128::from(dt) * i128::from(*count);
             }
         }
         (power, toughness)

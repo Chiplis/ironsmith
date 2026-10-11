@@ -4850,7 +4850,7 @@ impl GameState {
         {
             return Ok(self.cached_continuous_effects_snapshot_arc());
         }
-        crate::static_ability_processor::try_get_all_continuous_effects(self, Default::default())
+        crate::static_ability_processor::try_get_all_continuous_effects(self, self.static_effect_discovery_limits())
             .map(Arc::new)
     }
 
@@ -5424,6 +5424,15 @@ impl GameState {
             return Some(controller);
         }
 
+        // Most dirty queries have no control-changing effects. Inspect borrowed
+        // effects before allocating and cloning the complete registered set.
+        if !self.continuous_state_is_clean()
+            && !self.effect_store.continuous_effects.effects().iter().any(|effect|
+                skipped_effect != Some(effect.id) && matches!(effect.modification,
+                    Modification::ChangeController(_) | Modification::ChangeControllerToEffectController))
+        {
+            return Some(object.initial_controller);
+        }
         let effects = self.effects_for_controller_query();
         self.controller_from_known_effects(id, object, &effects, skipped_effect)
     }

@@ -512,6 +512,7 @@ pub fn load_card_payloads_by_names(
         let Some(faces) = card.get("card_faces").and_then(Value::as_array) else {
             return;
         };
+        let mut matching_faces: BTreeMap<String, Vec<CardPayload>> = BTreeMap::new();
         for (idx, face) in faces.iter().enumerate() {
             let Some(face_name) = face
                 .get("name")
@@ -524,9 +525,10 @@ pub fn load_card_payloads_by_names(
                 continue;
             }
             if let Some(payload) = build_card_payload_for_face(card, idx) {
-                out.insert(face_name, vec![payload]);
+                matching_faces.entry(face_name).or_default().push(payload);
             }
         }
+        out.extend(matching_faces);
     })?;
 
     Ok(out)

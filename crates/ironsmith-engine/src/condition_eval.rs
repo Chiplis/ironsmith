@@ -4623,6 +4623,9 @@ fn evaluate_condition_in_context(
         }
         Condition::ThisSpellEscaped => Ok(source_escaped(game, shared.source)),
         Condition::ThisSpellWasForetold => {
+            if ctx.is_cast_time() && game.object(shared.source).is_some_and(|object| object.zone != crate::zone::Zone::Stack) {
+                return Ok(game.is_foretold(shared.source));
+            }
             // Retained evidence, including an unknown value, is authoritative.
             // Never substitute a paid label, live exile flag or new incarnation.
             let paid = if let Some(exec) = ctx.execution() {

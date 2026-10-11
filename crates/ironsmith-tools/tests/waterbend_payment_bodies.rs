@@ -430,10 +430,14 @@ fn crashing_wave_distributes_after_tapping_and_zero_x_still_runs_its_tail() {
             assert_eq!(board.game.counter_count(old_tapped, CounterType::Stun), if x == 0 { 3 } else { 1 });
             assert_eq!(board.game.counter_count(new_tapped, CounterType::Stun), if x == 0 { 0 } else { 2 });
             assert_eq!(board.game.counter_count(own, CounterType::Stun), 0);
-            let offered = board.choices.distributions_seen.last().expect("distribution instruction must execute");
-            assert!(offered.contains(&Target::Object(old_tapped)));
-            assert_eq!(offered.contains(&Target::Object(new_tapped)), x != 0);
-            assert!(!offered.contains(&Target::Object(own)) && !offered.contains(&Target::Object(untouched)));
+            if x == 0 {
+                assert!(board.choices.distributions_seen.is_empty(), "one eligible recipient needs no distribution choice");
+            } else {
+                let offered = board.choices.distributions_seen.last().expect("multiple recipients require a distribution choice");
+                assert!(offered.contains(&Target::Object(old_tapped)));
+                assert!(offered.contains(&Target::Object(new_tapped)));
+                assert!(!offered.contains(&Target::Object(own)) && !offered.contains(&Target::Object(untouched)));
+            }
         }
     }
 }
@@ -480,11 +484,13 @@ fn foggy_swamp_visions_copies_only_actually_exiled_cards_and_sacrifices_at_our_e
                 let expected = if board.game.object(*token).unwrap().name == "Memnite" { 1 } else { 2 };
                 assert_eq!((board.game.calculated_power(*token), board.game.calculated_toughness(*token)), (Some(expected), Some(expected)));
             }
+            board.game.next_turn();
             board.end_step(BOB);
             assert!(tokens.iter().all(|id| board.game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)),
                 "your next end step must not mean an opponent's end step");
+            board.game.next_turn();
             board.end_step(ALICE);
-            assert!(tokens.iter().all(|id| board.game.object(*id).is_none_or(|object| object.zone != Zone::Battlefield)));
+            assert!(tokens.iter().all(|id| board.game.object(*id).is_none_or(|object| object.zone != Zone::Battlefield)), "remaining delayed={:?}", board.game.effect_store.delayed_triggers);
             assert!(resources.iter().all(|id| board.game.object(*id).unwrap().zone == Zone::Battlefield),
                 "deferred sacrifice names only the tokens created by this resolution");
             assert!(board.game.effect_store.delayed_triggers.is_empty());
@@ -601,7 +607,7 @@ fn katara_migration_keeps_nonzero_own_turn_activation_and_entire_temporary_body(
         let stable = board.game.object(spell).unwrap().stable_id;
         board.finish();
         let katara = board.game.find_object_by_stable_id(stable).unwrap();
-        let ally = *board.game.battlefield.iter().find(|id| board.game.object(**id).is_some_and(|object| object.has_subtype(ironsmith::Subtype::Ally))).unwrap();
+        let ally = *board.game.battlefield.iter().find(|id| board.game.object(**id).is_some_and(|object| object.kind == ironsmith::object::ObjectKind::Token && object.has_subtype(ironsmith::Subtype::Ally))).unwrap();
         assert_eq!((board.game.calculated_power(ally), board.game.calculated_toughness(ally)), (Some(1), Some(1)));
         assert!(board.game.object_has_static_ability_id(katara, ironsmith::static_abilities::StaticAbilityId::Vigilance));
         board.pool(ALICE, &[]);

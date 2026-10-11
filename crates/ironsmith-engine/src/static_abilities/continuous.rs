@@ -2055,6 +2055,18 @@ fn describe_attached_subject_static_condition(
     } else {
         "is"
     };
+    if let Some(face_down) = filter.face_down {
+        let mut bare = filter.clone();
+        bare.face_down = None;
+        bare.union_surface = Default::default();
+        if bare == ObjectFilter::default() {
+            let separator = if use_pronoun && !negative { "" } else { " " };
+            return Some(format!(
+                "as long as {subject}{separator}{verb} face {}",
+                if face_down { "down" } else { "up" },
+            ));
+        }
+    }
     // A bare color (or supertype) is an adjective predicate in oracle ("as
     // long as enchanted creature is white"), not a classified noun.
     if let Some(colors) = filter.colors {

@@ -362,9 +362,20 @@ fn source_ability_presence_changed(
         return false;
     };
 
-    let has_before = source_chars_before
-        .static_abilities
-        .contains(originating_static_ability);
+    if !effect_applies_with_chars(b, source_obj, source_chars_before, game) {
+        return false;
+    }
+    // Definitions already in the frame are normally Arc clones. Probe identity
+    // before semantic equality, which may render large nested grant payloads.
+    let has_before = source_chars_before.static_abilities.iter().any(|ability|
+        std::sync::Arc::ptr_eq(&ability.0, &originating_static_ability.0))
+        || source_chars_before.static_abilities.contains(originating_static_ability);
+    // An additive grant cannot remove an ability that is already present.
+    // Avoid cloning/simulating the entire frame for every pair of such grants.
+    if has_before && matches!(b.modification,
+        Modification::AddAbility(_) | Modification::AddAbilityGeneric(_)) {
+        return false;
+    }
 
     let mut source_chars_after = source_chars_before.clone();
     if effect_applies_with_chars(b, source_obj, source_chars_before, game) {

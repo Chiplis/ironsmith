@@ -1362,8 +1362,8 @@ fn format_power_toughness_without_pt_counters(
 ) -> Option<String> {
     let (power_delta, toughness_delta) = obj.pt_counter_deltas();
     format_power_toughness(
-        power.map(|value| value - power_delta),
-        toughness.map(|value| value - toughness_delta),
+        power.and_then(|value| i32::try_from(i128::from(value) - power_delta).ok()),
+        toughness.and_then(|value| i32::try_from(i128::from(value) - toughness_delta).ok()),
     )
 }
 

@@ -2404,7 +2404,12 @@ fn compile_conditional_ast(
     };
     prelude.push(conditional);
 
-    if let Some(reference_tag) = condition_reference_tag {
+    if ctx.iterated_object && if_false.is_empty()
+        && ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(if_true)
+        && true_last_tag.as_ref().is_some_and(|tag| tag.as_str().starts_with("created_"))
+    {
+        ctx.last_object_tag = true_last_tag;
+    } else if let Some(reference_tag) = condition_reference_tag {
         ctx.last_object_tag = Some(reference_tag);
     } else if if_false.is_empty() {
         ctx.last_object_tag = true_last_tag.clone().or(saved_last_tag.clone());

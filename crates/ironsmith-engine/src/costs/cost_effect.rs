@@ -777,6 +777,15 @@ impl CostPayer for CostEffect {
             return result;
         }
         ctx.with_execution_context(|execution| {
+            // Selection legality precedes announcing X. Its owner explicitly
+            // relaxes unbound comparisons; zero would incorrectly hide every
+            // nonzero alternative-cost resource (for example, a pitch card).
+            if ctx.x_value.is_none()
+                && transparent_cost_effect(&self.effect)
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some()
+            {
+                execution.x_value = None;
+            }
             let cost =
                 self.effect.0.as_cost_executable().ok_or_else(|| {
                     CostPaymentError::Other("effect is not cost-executable".into())

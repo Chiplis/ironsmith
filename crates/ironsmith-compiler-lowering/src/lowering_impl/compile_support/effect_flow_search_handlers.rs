@@ -1445,12 +1445,25 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 tag.clone().into()
             };
 
+            let creates_tokens = ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(effects);
+            let collection_tag = creates_tokens
+                .then(|| ctx.take_reserved_object_result_tag("created"))
+                .flatten();
             let (inner_effects, inner_choices) = compile_effects_in_iterated_player_context(
                 effects,
                 ctx,
                 Some(effective_tag.clone()),
             )?;
-            let effect = Effect::for_each_tagged(effective_tag, inner_effects);
+            let mut effect = Effect::for_each_tagged(effective_tag, inner_effects);
+            if creates_tokens
+                && let Some(created) = collection_tag.or_else(|| ctx.last_object_tag.clone()
+                    .filter(|tag| tag.as_str().starts_with("created_")))
+            {
+                // The enclosing annotation names the complete loop result;
+                // nested re-annotation may mint a different per-iteration tag.
+                effect = effect.tag_all(created.clone());
+                ctx.last_object_tag = Some(created);
+            }
             (vec![effect], inner_choices)
         }
         EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {

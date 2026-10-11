@@ -52,12 +52,16 @@ fn trailing_instead_is_not_part_of_the_counter_target_antecedent() {
         .effect
         .downcast_ref::<crate::effects::CounterEffect>()
         .expect("replacement counters the original target");
-    assert_eq!(
-        counter.target.source_reference_surface(),
-        Some(&crate::target::SourceReferenceSurface::ThisPermanentType(
-            "that spell".to_string()
-        ))
-    );
+    let crate::target::ChooseSpec::Target(target) = &counter.target else {
+        panic!("replacement must retain a target");
+    };
+    let crate::target::ChooseSpec::Object(filter) = target.as_ref() else {
+        panic!("replacement must retain the original spell filter");
+    };
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Stack));
+    assert_eq!(filter.stack_kind, Some(crate::filter::StackObjectKind::Spell));
+    assert_eq!(filter.excluded_card_types, vec![CardType::Creature]);
+    assert!(filter.name.is_none(), "instead must not become a named target");
 }
 
 #[test]

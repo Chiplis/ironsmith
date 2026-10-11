@@ -176,15 +176,15 @@ fn keyword_grant_materialization_myriad_copies_the_recipient_for_other_opponents
             let opponent = creature(&mut game, bob, "");
             game.turn.active_player = alice;
             game.turn.phase = ironsmith::game_state::Phase::Combat;
-            game.combat = Some(CombatState {
-                attackers: vec![AttackerInfo {
-                    creature: recipient,
-                    target: AttackTarget::Player(bob),
-                }],
-                ..Default::default()
-            });
+            game.turn.step = Some(ironsmith::game_state::Step::DeclareAttackers);
+            game.remove_summoning_sickness(recipient);
+            let mut combat = CombatState::default();
+            let mut queue = TriggerQueue::new();
+            apply_attacker_declarations(&mut game, &mut combat, &mut queue,
+                &[AttackerDeclaration { creature: recipient, target: AttackTarget::Player(bob) }]).unwrap();
+            game.combat = Some(combat);
             assert!(attack_triggers(&game, opponent, alice).is_empty());
-            let triggers = attack_triggers(&game, recipient, bob);
+            let triggers = queue.take_all();
             assert_eq!(triggers.len(), 1);
             assert_eq!(triggers[0].source, recipient);
             stack_triggers(&mut game, &triggers);

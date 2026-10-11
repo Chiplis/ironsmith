@@ -1603,6 +1603,28 @@ fn advance_delayed_effects_preserving_antecedents(
     Ok(())
 }
 
+/// One token-producing instruction per branch, so the loop's complete
+/// affected result is also its last created-token antecedent. Multiple sibling
+/// producers must keep their collections distinct.
+pub fn effects_only_create_tokens(effects: &[EffectAst]) -> bool {
+    effects.len() == 1 && effects.iter().all(|effect| match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Tokens(
+                TokenActionAst::CreateTokenWithMods { .. }
+                | TokenActionAst::CreateTokenCopy { .. }
+                | TokenActionAst::CreateTokenCopyFromSource { .. },
+            ),
+            ..
+        }) => true,
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) => {
+            effects_only_create_tokens(if_true)
+                && (if_false.is_empty() || effects_only_create_tokens(if_false))
+        }
+        EffectAst::SourceSentence { effects, .. } => effects_only_create_tokens(effects),
+        _ => false,
+    })
+}
+
 fn advance_effects_in_iterated_player_context(
     effects: &[EffectAst],
     id_gen: &mut IdGenContext,
@@ -3346,7 +3368,17 @@ fn advance_reference_frame_for_effect(
             }
             advance_reference_frames(if_true, id_gen, &mut true_frame)?;
             if if_false.is_empty() {
+                // A filtered object loop exports its created collection even
+                // when some iterations produce nothing. The tested input is
+                // not the antecedent of a following "those tokens".
+                let created = (saved.iterated_object && effects_only_create_tokens(if_true))
+                    .then(|| true_frame.last_object_tag.clone())
+                    .flatten()
+                    .filter(|tag| tag.as_str().starts_with("created_"));
                 *frame = saved;
+                if let Some(created) = created {
+                    frame.last_object_tag = Some(created);
+                }
             } else {
                 let mut false_frame = saved.clone();
                 if let Some(player_filter) = predicate_bound_player_filter(predicate) {
@@ -6604,7 +6636,8 @@ fn advance_reference_env_for_effect(
                 // row's "it" still names the classified object, never the
                 // result of an earlier row.
                 let exports_branch_result = auto_tag_object_targets
-                    && !predicate_reads_object_antecedent(predicate, env)
+                    && (!predicate_reads_object_antecedent(predicate, env)
+                        || (env.iterated_object && effects_only_create_tokens(if_true)))
                     && true_sequence.final_env.last_object_tag != env.last_object_tag
                     && matches!(true_sequence.final_env.last_object_tag, RefState::Known(_));
                 return Ok(ReferenceEnv {

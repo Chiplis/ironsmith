@@ -503,7 +503,7 @@ fn assist_retains_the_spells_source_rule_for_the_helpers_actual_payment() {
 }
 
 #[test]
-fn assist_menu_keeps_a_helper_production_discovery_failure_typed_and_pending() {
+fn assist_menu_keeps_a_helper_production_discovery_failure_typed_and_rolls_back() {
     std::thread::Builder::new()
         .stack_size(128 * 1024 * 1024)
         .spawn(|| {
@@ -528,7 +528,11 @@ fn assist_menu_keeps_a_helper_production_discovery_failure_typed_and_pending() {
                     game.create_object_from_definition(&helper, PlayerId(1), Zone::Battlefield);
                 let mut model: ironsmith::static_abilities::CompiledStaticAbility =
                     ironsmith_core::StaticAbility::haste();
-                for _ in 0..140 {
+                // A small host budget reaches the same typed failure without a 140-level graph.
+                game.set_static_effect_discovery_limits(ironsmith::static_ability_processor::StaticEffectDiscoveryLimits {
+                    max_rounds: 2, ..Default::default()
+                });
+                for _ in 0..4 {
                     model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
                         ironsmith::target::ObjectFilter::source(),
                         ironsmith_core::Ability::static_ability(model),
@@ -573,19 +577,9 @@ fn assist_menu_keeps_a_helper_production_discovery_failure_typed_and_pending() {
                     ),
                     "{result:?}"
                 );
-                let pending = state
-                    .pending_cast
-                    .as_ref()
-                    .expect("incomplete query retains the announced spell");
-                assert_eq!(pending.caster, A);
-                assert!(
-                    !pending
-                        .mana_cost_to_pay
-                        .as_ref()
-                        .unwrap()
-                        .spending_restrictions()
-                        .is_empty()
-                );
+                assert!(state.pending_cast.is_none(), "incomplete admission rolls back the action");
+                assert_eq!(game.object(spell).unwrap().zone, Zone::Hand);
+                assert!(game.stack.is_empty());
                 assert!(!game.is_tapped(helper));
                 assert!(payer_sources.iter().all(|id| !game.is_tapped(*id)));
                 assert!(

@@ -3167,6 +3167,7 @@ mod land_enumeration_failure_tests {
             (Zone::Exile, true),
         ] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits { max_rounds: 2, ..Default::default() });
             let player = PlayerId::from_index(0);
             game.turn.active_player = player;
             game.turn.priority_player = Some(player);
@@ -3236,6 +3237,7 @@ mod land_enumeration_failure_tests {
             Zone::OutsideGame,
         ] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits { max_rounds: 2, ..Default::default() });
             let player = PlayerId::from_index(0);
             game.turn.active_player = player;
             game.turn.priority_player = Some(player);

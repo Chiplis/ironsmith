@@ -68,7 +68,8 @@ fn replaces_only_black_or_red_objects_going_to_either_graveyard_from_any_zone() 
                 let moved = move_to_zone(&mut game, victim, owner, Zone::Graveyard);
                 assert_eq!(
                     game.object(moved).unwrap().zone,
-                    expected,
+                    // CR 400.11c: outside-game cards are not affected by this ability.
+                    if origin == Zone::OutsideGame { Zone::Graveyard } else { expected },
                     "origin={origin:?}, owner={owner:?}, color={color:?}"
                 );
                 move_to_zone(&mut game, source, alice, Zone::Exile);

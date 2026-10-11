@@ -419,15 +419,8 @@ impl StaticAbilityKind for Hexproof {
         true
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
-        let mut tracker = CantEffectTracker::default();
-        Restriction::be_targeted_from(
-            ObjectFilter::specific(source),
-            ObjectFilter::default().controlled_by(crate::target::PlayerFilter::Opponent),
-        )
-        .apply(game, &mut tracker, _controller, Some(source), None);
-        game.effect_store.cant_effects.merge(tracker);
-    }
+    // Targeting checks this keyword separately from independent rule prohibitions.
+    // Folding it into the cant tracker would defeat as-though permissions.
 }
 
 /// Shroud - Can't be the target of spells or abilities.
@@ -455,17 +448,8 @@ impl StaticAbilityKind for Shroud {
         true
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
-        let mut tracker = CantEffectTracker::default();
-        Restriction::be_targeted(ObjectFilter::specific(source)).apply(
-            game,
-            &mut tracker,
-            _controller,
-            Some(source),
-            None,
-        );
-        game.effect_store.cant_effects.merge(tracker);
-    }
+    // Targeting checks this keyword separately from independent rule prohibitions.
+    // Folding it into the cant tracker would defeat as-though permissions.
 }
 
 // === Timing keywords ===

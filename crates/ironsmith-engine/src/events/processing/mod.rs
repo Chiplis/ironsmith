@@ -7143,7 +7143,7 @@ pub(crate) fn process_trait_event_with_execution_context(
     let operation_checkpoint = game.clone();
     let operation_result = (|| -> Result<TraitEventResult, crate::effects::ExecutionError> {
         let checkpoint = game.clone();
-        game.try_update_static_ability_effects(Default::default())
+        game.update_static_ability_effects()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         game.update_replacement_effects()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -7704,8 +7704,12 @@ fn prepared_object_etb_replacement_effects(
     else {
         return Ok(None);
     };
+    // This disposable world is queried for one entrant. Warming the entire
+    // battlefield cache here repeats a full batch for every token in a group.
+    let effects = prospective.try_all_continuous_effects_arc()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let chars = prospective
-        .calculated_characteristics(etb.object)
+        .calculated_characteristics_with_effects(etb.object, &effects)
         .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
     // CR 614.12 also includes already-existing ability grants. They need
     // the prospective battlefield view even when no as-enters program ran.

@@ -6070,21 +6070,27 @@ mod tests {
         // new payable pool, and ranking all permutations wastes enormous memory.
         // This remains an exhaustive oracle for this declared fixture domain,
         // rather than a node/depth cutoff in the production planner.
-        fn independent_sources_can_pay(
-            game: &GameState,
+        fn independent_source_states(
+            game: GameState,
             request: &ManaPaymentRequest,
             sources: &[ObjectId],
             index: usize,
-        ) -> bool {
-            if can_pay_request(game, request) {
-                return true;
+            seen: &mut std::collections::HashSet<(usize, [u32; 6], i32)>,
+            states: &mut Vec<GameState>,
+        ) {
+            // Every source in this fixture has the same snow status, no input
+            // mana cost, and no triggers. Once the source prefix is consumed,
+            // only pool colors and life can distinguish its continuations.
+            let player = game.player(request.payer).unwrap();
+            let pool = &player.mana_pool;
+            if !seen.insert((index, [pool.white, pool.blue, pool.black, pool.red,
+                pool.green, pool.colorless], player.life)) {
+                return;
             }
             let Some(&source) = sources.get(index) else {
-                return false;
+                states.push(game);
+                return;
             };
-            if independent_sources_can_pay(game, request, sources, index + 1) {
-                return true;
-            }
             let abilities = game.object(source).unwrap().abilities_vec();
             for (ability_index, ability) in abilities.iter().enumerate() {
                 let AbilityKind::Activated(activated) = &ability.kind else {
@@ -6110,14 +6116,12 @@ mod tests {
                         .all(|cost| cost.requires_tap() || cost.life_amount().is_some())
                 );
                 if let Some((_, staged, _)) =
-                    prepare_activation(game, request, preview_choice(source, ability_index))
+                    prepare_activation(&game, request, preview_choice(source, ability_index))
                 {
-                    if independent_sources_can_pay(&staged, request, sources, index + 1) {
-                        return true;
-                    }
+                    independent_source_states(staged, request, sources, index + 1, seen, states);
                 }
             }
-            false
+            independent_source_states(game, request, sources, index + 1, seen, states);
         }
         let colors = [M::White, M::Blue, M::Black, M::Red, M::Green];
         let outputs_for = |kind: usize| -> Vec<Vec<ManaSymbol>> {
@@ -6148,36 +6152,44 @@ mod tests {
                 for snow in [false, true] {
                     for extra_cost in [Some(false), Some(true), None] {
                         for pool_green in [0u32, 1] {
+                            let (mut game, alice) = game();
+                            for index in 0..lands {
+                                mana_land(
+                                    &mut game,
+                                    alice,
+                                    &format!("Land {index}"),
+                                    &outputs_for(kind),
+                                    snow,
+                                    extra_cost,
+                                );
+                            }
+                            if pool_green > 0 {
+                                game.player_mut(alice)
+                                    .unwrap()
+                                    .mana_pool
+                                    .add(M::Green, pool_green);
+                            }
+                            game.refresh_continuous_state();
+                            let source = game.new_object_id();
+                            let mut reachable = Vec::new();
+                            // These activations do not depend on the bill being
+                            // paid. Execute their exhaustive state space once,
+                            // then ask the native pool payer about each cost.
+                            independent_source_states(
+                                game.clone(),
+                                &request(&game, alice, source, ManaCost::new()),
+                                &game.battlefield,
+                                0,
+                                &mut std::collections::HashSet::new(),
+                                &mut reachable,
+                            );
                             for (cost_index, cost) in costs.iter().enumerate() {
-                                let (mut game, alice) = game();
-                                for index in 0..lands {
-                                    mana_land(
-                                        &mut game,
-                                        alice,
-                                        &format!("Land {index}"),
-                                        &outputs_for(kind),
-                                        snow,
-                                        extra_cost,
-                                    );
-                                }
-                                if pool_green > 0 {
-                                    game.player_mut(alice)
-                                        .unwrap()
-                                        .mana_pool
-                                        .add(M::Green, pool_green);
-                                }
-                                game.refresh_continuous_state();
-                                let source = game.new_object_id();
                                 let request = request(&game, alice, source, cost.clone());
 
                                 let veto = affordability_rules_out_payment(&game, &request);
                                 checked += 1;
-                                let searched = independent_sources_can_pay(
-                                    &game,
-                                    &request,
-                                    &game.battlefield,
-                                    0,
-                                );
+                                let searched = reachable.iter()
+                                    .any(|state| can_pay_request(state, &request));
                                 payable += usize::from(searched);
                                 // Retain independent comparison against the
                                 // complete planner on the smaller board matrix.
@@ -7878,7 +7890,11 @@ mod producer_characteristic_failure_tests {
             ));
         let mut model: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::haste();
-        for _ in 0..140 {
+        // A small host budget reaches the same typed failure without a 140-level graph.
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits {
+                    max_rounds: 2, ..Default::default()
+                });
+                for _ in 0..4 {
             model = ironsmith_core::StaticAbility::grant_object_ability_for_filter(
                 crate::target::ObjectFilter::source(),
                 ironsmith_core::Ability::static_ability(model),

@@ -2154,6 +2154,7 @@ mod original_result_quantity_tests {
             for dispatched in [false, true] {
                 let a = PlayerId::from_index(0);
                 let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+                game.set_static_effect_discovery_limits(crate::static_ability_processor::StaticEffectDiscoveryLimits { max_rounds: 2, ..Default::default() });
                 let source = game.create_object_from_card(&CardBuilder::new(crate::CardId::new(), "Incomplete sacrifice source")
                     .card_types(vec![crate::CardType::Creature]).power_toughness(PowerToughness::fixed(1, 3)).build(), a, Zone::Battlefield);
                 game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(

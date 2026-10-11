@@ -18,6 +18,13 @@ use ironsmith_tools::{
 use std::collections::BTreeMap;
 
 fn main() {
+    // RUST_MIN_STACK does not change the process main thread's stack.
+    std::thread::Builder::new().name("parser-audit".into())
+        .stack_size(64 * 1024 * 1024).spawn(run).expect("start parser audit")
+        .join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+}
+
+fn run() {
     let mut every = 20usize;
     let mut registries_only = false;
     let mut cards_path = default_cards_path().display().to_string();

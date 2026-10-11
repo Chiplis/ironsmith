@@ -170,6 +170,7 @@ fn rule_source_kind_distinguishes_prospective_spell_and_cast_trigger() {
 fn rule_prohibitions_do_not_become_hexproof_or_lose_source_free_ability_context() {
     let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
     let (mut game, source, target) = fixture(StaticAbility::flying(), alice);
+    game.refresh_continuous_state().unwrap();
     game.effect_store.cant_effects.cant_be_targeted_from.push(ObjectCantBeTargetedFrom {
         object: target, source_filter: ObjectFilter::ability().controlled_by(PlayerFilter::Opponent), controller: bob,
     });

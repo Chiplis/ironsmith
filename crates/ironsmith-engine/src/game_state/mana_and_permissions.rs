@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PayableManaUnit {
     symbol: crate::mana::ManaSymbol,
     source: Option<ObjectId>,
@@ -41,7 +41,7 @@ impl GameState {
     pub fn update_static_ability_effects(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
-        self.try_update_static_ability_effects(Default::default())
+        self.try_update_static_ability_effects(self.static_effect_discovery_limits())
     }
 
     /// Establish a complete static snapshot before a fallible operation.
@@ -2422,8 +2422,12 @@ impl GameState {
                     .enumerate()
                     .filter(|(_, unit)| unit.symbol != ManaSymbol::Colorless),
             );
+            // Swapping indistinguishable pool units cannot change payment or
+            // its continuation. Keep provenance/restriction indices distinct:
+            // those can change receipts and subsequent legal actions.
+            let mut tried_units = Vec::new();
             for (unit_index, unit) in unit_indices {
-                if used[unit_index]
+                if used[unit_index] || tried_units.contains(&unit)
                     || !self.mana_unit_can_pay(
                         payer,
                         payment_source,
@@ -2434,6 +2438,7 @@ impl GameState {
                 {
                     continue;
                 }
+                tried_units.push(unit);
                 used[unit_index] = true;
                 selected.push(ManaPipCommit::ManaUnit {
                     index: unit_index,
