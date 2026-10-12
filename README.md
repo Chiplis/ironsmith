@@ -13,7 +13,7 @@ is involved at any point.
 - **Cards come from their text, not from hand-written scripts.** A compiler
   written in Rust reads each card's Oracle wording the way a player would:
   lexing, then grammar, then resolving what "it" and "that creature" refer to,
-  and finally producing a runtime card definition. More than 28,000 cards
+  and finally producing a runtime card definition. More than 31,000 cards
   compile today. The same compiler runs in the browser, so you can write a
   custom card in plain rules English and play it immediately.
 - **The rules engine is deterministic.** It covers the stack, priority, combat,
