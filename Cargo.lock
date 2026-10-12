@@ -1573,6 +1573,7 @@ dependencies = [
  "ironsmith-core",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
+ "memchr",
  "stacker",
 ]
 
