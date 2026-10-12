@@ -24,6 +24,16 @@ test('token tiles retain an arched silhouette and readable name bar on desktop a
       const strip = await tower.locator('.arena-land-mana-strip').boundingBox();
       const art = await tower.locator('.arena-permanent-art').boundingBox();
       assert.ok(art.y + art.height <= strip.y + 1);
+      const landSaga = page.locator('.arena-permanent').filter({has:page.locator('.arena-permanent-name[title="Urza\'s Saga"]')});
+      assert.equal(await landSaga.getAttribute('data-kind'), 'land');
+      const saga = page.locator('.arena-permanent[data-kind="saga"]');
+      const regular = page.locator('.arena-permanent[data-kind="artifact"]');
+      const sagaBox = await saga.boundingBox(), regularBox = await regular.boundingBox();
+      assert.equal(sagaBox.width, regularBox.width, 'Sagas use the regular tile width');
+      assert.equal(sagaBox.height, regularBox.height, 'Sagas use the regular tile height');
+      const landSagaBox = await landSaga.boundingBox(), landBox = await tower.boundingBox();
+      assert.equal(landSagaBox.width, landBox.width);
+      assert.equal(landSagaBox.height, landBox.height);
       const token = page.locator('.arena-permanent[data-token]');
       const ordinary = page.locator('.arena-permanent[data-kind="creature"]:not([data-token])');
       await token.waitFor();

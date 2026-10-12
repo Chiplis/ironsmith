@@ -12,12 +12,14 @@ import {GameProvider,useGame} from '/src/context/GameContext.jsx';
 import {I18nProvider} from '/src/i18n/I18nContext.jsx';
 import PhaseTrack from '/src/components/board/PhaseTrack.jsx';
 import PriorityHoldButton from '/src/components/decisions/PriorityHoldButton.jsx';
+import PriorityHoldControl from '/src/components/decisions/PriorityHoldControl.jsx';
 import '/src/index.css';
 const h=React.createElement;
 function Probe() {
   const c=useGame(); window.context=c;
   return h('div',{className:'table-shell','data-focused-hud':'true',style:{width:600,padding:30}},
     h('div',{className:'topbar-phase-shell'},h(PhaseTrack)),
+    h(PriorityHoldControl),
     c.postActionPriorityWindow ? h(PriorityHoldButton,{className:'h-12 w-32 text-[14px]'}) :
       h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'pass_priority'}})},'Resolve'),
     h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'cast_spell',spell_id:7,casting_method:{kind:'normal'}}})},'Cast'),
@@ -82,8 +84,16 @@ test('real provider drains the Hold button, retains priority on click, and honor
       await page.evaluate(state => window.publish(state), state);
       await page.waitForFunction(id => window.context.state?.snapshot_id === id, state.snapshot_id);
     };
+    await load(priority(0));
+    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false);
+    await page.getByRole('button', { name: 'Cast', exact: true }).click();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.getByRole('button', { name: 'Hold Priority', exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'default off requires manual Resolve');
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
+    await page.waitForFunction(() => window.submissions.length === 2);
     await load(priority(1));
-    await page.evaluate(() => window.context.setAutoResolveEnabled(true));
+    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
     await page.getByRole('button', { name: 'Cast', exact: true }).click();
     const hold = page.getByRole('button', { name: 'Hold Priority', exact: true });
     await hold.waitFor();
@@ -107,11 +117,30 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await page.waitForFunction(() => window.submissions.length === 2);
 
     await load(priority(10));
+    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), true, 'enabled preference survives reload');
     await page.getByRole('button', { name: 'Activate', exact: true }).click();
     await hold.waitFor();
     await page.waitForFunction(() => window.submissions.length === 2, null, { timeout: 4000 });
     const elapsed = await page.evaluate(() => window.submissions[1].time - window.submissions[0].time);
     assert.ok(elapsed >= 1900 && elapsed < 3500, `automatic pass follows the two-second window: ${elapsed}`);
+
+    await load(priority(15));
+    await page.getByRole('button', { name: 'Cast', exact: true }).click();
+    await hold.waitFor();
+    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
+    await page.getByRole('button', { name: 'Resolve', exact: true }).waitFor();
+    await page.waitForTimeout(2200);
+    assert.equal(await hold.count(), 0);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'disabling cancels the active deadline');
+    await load(priority(16));
+    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false, 'disabled preference survives reload');
+    await page.getByRole('button', { name: 'Activate', exact: true }).click();
+    await page.waitForTimeout(2200);
+    assert.equal(await hold.count(), 0);
+    assert.equal(await page.evaluate(() => window.submissions.length), 1);
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
+    await page.waitForFunction(() => window.submissions.length === 2);
+    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
 
     await load(priority(20));
     const upkeep = page.getByRole('button', { name: /^Upkeep:/ });
@@ -166,6 +195,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await firstStrike.locator('..').getAttribute('data-phase-active'), 'false');
     // Stack additions always stop by default, regardless of their controller.
     for (const controller of [0, 1]) {
+      await page.evaluate(() => window.context.setAutoResolveEnabled(false));
       await load(priority(40 + controller, { stack_size: 1, stack_objects: [{ id: 70, controller }] }));
       await page.waitForTimeout(150);
       assert.equal(await page.evaluate(() => window.submissions.length), 0);

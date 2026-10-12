@@ -206,3 +206,15 @@ fn vote_counted_consult_survives_preprocessing() {
         lines[0]
     );
 }
+
+#[test]
+fn descriptor_comma_does_not_truncate_consult_stop_filter() {
+    let parsed = parse_consult_traversal_shape(&lex(
+        "Reveal cards from the top of your library until you reveal a nonlegendary, nonland card with mana value 3 or less, put that card into your hand",
+    )).unwrap();
+    let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&parsed.stop.filter, false).unwrap();
+    assert!(filter.excluded_supertypes.contains(&crate::types::Supertype::Legendary));
+    assert!(filter.excluded_card_types.contains(&crate::types::CardType::Land));
+    assert_eq!(filter.mana_value, Some(crate::filter::Comparison::LessThanOrEqual(3)));
+    assert_eq!(parsed.trailing_effect.first().and_then(OwnedLexToken::as_word), Some("put"));
+}

@@ -1617,7 +1617,7 @@ fn resolve_stack_entry_full_inner(
             entry.controller,
             triggering_event,
             execution_source,
-            None,
+            entry.trigger_identity,
             Some(&entry.optional_costs_paid),
         )
         .map_err(GameLoopError::ExecutionFailed)?

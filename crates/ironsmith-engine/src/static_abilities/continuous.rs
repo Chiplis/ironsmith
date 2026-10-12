@@ -2830,7 +2830,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } => {
+            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } | crate::target::PlayerFilter::OwnsMatchingObject { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::OpponentOf(_)

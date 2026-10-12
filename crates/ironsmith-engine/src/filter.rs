@@ -2987,7 +2987,7 @@ impl PlayerFilterExt for PlayerFilter {
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
-            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => false,
+            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => false,
             PlayerFilter::OpponentOf(_)
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. } => false,
@@ -3257,6 +3257,16 @@ pub(crate) fn player_filter_matches_game(
                         candidate_count > reference_count
                     }
                 })
+        }
+        PlayerFilter::OwnsMatchingObject { filter } => {
+            if ctx.players_in_range.as_ref().is_some_and(|players| !players.contains(&player)) {
+                return false;
+            }
+            let mut object_ctx = ctx.clone();
+            object_ctx.iterated_player = Some(player);
+            game.zone_ids(filter.zone.unwrap_or(crate::Zone::Battlefield))
+                .filter_map(|id| game.object(id))
+                .any(|object| object.owner == player && filter.matches(object, &object_ctx, game))
         }
         PlayerFilter::ControlsFewestTied {
             filter: object_filter,
@@ -4505,7 +4515,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "target creature one of their opponents controls": the
@@ -4684,7 +4694,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -6506,5 +6516,32 @@ mod player_to_left_of_tests {
             assert_eq!(matching, expected.into_iter().collect::<Vec<_>>());
             assert!(!matching.contains(&iterated));
         }
+    }
+}
+
+#[cfg(test)]
+mod owned_zone_participant_tests {
+    use super::*;
+    #[test]
+    fn personal_zone_existence_uses_owners_and_complete_object_filter() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into(), "Cara".into()], 20);
+        let alice = crate::PlayerId(0);
+        let bob = crate::PlayerId(1);
+        let cara = crate::PlayerId(2);
+        let card = crate::card::CardBuilder::new(crate::CardId::new(), "Graveyard instant")
+            .card_types(vec![crate::CardType::Instant]).build();
+        for _ in 0..2 { game.create_object_from_card(&card, bob, crate::Zone::Graveyard); }
+        game.create_object_from_card(&card, cara, crate::Zone::Hand);
+        let filter = PlayerFilter::OwnsMatchingObject {
+            filter: Box::new(ObjectFilter::default().with_type(crate::CardType::Instant).in_zone(crate::Zone::Graveyard)),
+        };
+        let selected = |game: &crate::GameState| {
+            let ctx = game.filter_context_for(alice, None);
+            game.players.iter().filter(|player| player_filter_matches_game(&filter, player.id, game, &ctx))
+                .map(|player| player.id).collect::<Vec<_>>()
+        };
+        assert_eq!(selected(&game), vec![bob]);
+        game.create_object_from_card(&card, cara, crate::Zone::Graveyard);
+        assert_eq!(selected(&game), vec![bob, cara]);
     }
 }

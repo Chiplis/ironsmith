@@ -7132,6 +7132,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::ThisAbilityManaProductionCountThisTurn => "the number of times you have added mana with this ability this turn".to_string(),
         Value::ThisAbilityResolvedThisTurnCount => {
             "the number of times this ability has resolved this turn".to_string()
         }

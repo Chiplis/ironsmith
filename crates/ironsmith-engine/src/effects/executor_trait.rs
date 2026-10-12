@@ -334,6 +334,12 @@ impl PartialEq for CompletedActionPrefix {
 impl Eq for CompletedActionPrefix {}
 
 impl CompletedActionPrefix {
+    /// Read each completed producer once, without also counting its routing
+    /// projections or replaying its events.
+    pub(crate) fn instruction_outcomes(&self) -> impl Iterator<Item = &EffectOutcome> {
+        self.published.iter().map(PublishedEffectOutputs::instruction_outcome)
+    }
+
     /// Move completed producer handles across phases of the same action.
     /// Existing aliases keep one identity; no aggregate history is replayed.
     pub(crate) fn absorb(&mut self, previous: &mut Self) {

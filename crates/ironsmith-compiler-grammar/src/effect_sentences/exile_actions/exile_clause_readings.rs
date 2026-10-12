@@ -435,30 +435,32 @@ fn read_exile_all_but_bottom_of_library(
     else {
         return Ok(None);
     };
-    use crate::cards::builders::{
-        LibraryActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    };
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        subject,
-        action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. }),
-    }) = &mut effect
-    else {
-        return Ok(None);
-    };
-    let crate::effect::Value::Fixed(kept) = count.unhinted().clone() else {
-        return Ok(None);
-    };
-    let library_owner = match subject.player {
-        PlayerAst::That => crate::target::PlayerFilter::IteratedPlayer,
-        PlayerAst::You | PlayerAst::Implicit => crate::target::PlayerFilter::You,
-        PlayerAst::Target => crate::target::PlayerFilter::target_player(),
-        PlayerAst::TargetOpponent => crate::target::PlayerFilter::target_opponent(),
-        _ => return Ok(None),
-    };
-    *count = crate::effect::Value::Add(
-        Box::new(crate::effect::Value::CardsInLibrary(library_owner)),
-        Box::new(crate::effect::Value::Fixed(-kept)),
-    );
+    fn retain_bottom_cards(effect: &mut EffectAst) -> bool {
+        use crate::cards::builders::{ForEachEffectAst, LibraryActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst};
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }
+            | ForEachEffectAst::ForEachOpponent { effects }) = effect
+        {
+            return !effects.is_empty() && effects.iter_mut().all(retain_bottom_cards);
+        }
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. }),
+        }) = effect else { return false; };
+        let crate::effect::Value::Fixed(kept) = count.unhinted().clone() else { return false; };
+        let owner = match subject.player {
+            PlayerAst::That => crate::target::PlayerFilter::IteratedPlayer,
+            PlayerAst::You | PlayerAst::Implicit => crate::target::PlayerFilter::You,
+            PlayerAst::Target => crate::target::PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => crate::target::PlayerFilter::target_opponent(),
+            _ => return false,
+        };
+        *count = crate::effect::Value::Add(
+            Box::new(crate::effect::Value::CardsInLibrary(owner)),
+            Box::new(crate::effect::Value::Fixed(-kept)),
+        );
+        true
+    }
+    if !retain_bottom_cards(&mut effect) { return Ok(None); }
     Ok(Some(effect))
 }
 

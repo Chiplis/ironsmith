@@ -299,6 +299,7 @@ pub(super) fn select_mode_program(
     effect: &ChooseModeEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<Option<SelectedModeProgram>, ExecutionError> {
     // A resolving counter-kind choice has no decision to make when its shared
     // recipient was omitted. Casting-time modes still follow the normal path.
@@ -377,8 +378,22 @@ pub(super) fn select_mode_program(
     // (CR 602.2b, 603.3c) were checked and recorded then; they stay chosen
     // even though that choice now counts as "previously chosen".
     let modes_were_announced = effect.chooser.is_none() && ctx.chosen_modes.is_some();
+    let mut payable_modes = vec![true; effect.modes.len()];
+    if matches!(purpose, crate::effects::EffectExecutionPurpose::Payment) {
+        let reason = ctx.mana.payment_reason.unwrap_or(crate::costs::PaymentReason::Effect);
+        for (index, mode) in effect.modes.iter().enumerate() {
+            let program = effect.common_prefix_effects.iter().chain(&mode.effects)
+                .cloned().collect::<Vec<_>>();
+            payable_modes[index] = match crate::costs::check_effect_cost_program(&program, game, ctx, reason) {
+                Ok(()) => true,
+                Err(crate::effects::CostValidationError::ExecutionFailed(error)) => return Err(error),
+                Err(_) => false,
+            };
+        }
+    }
     let is_mode_available = |mode_idx: usize| {
         mode_idx < effect.modes.len()
+            && payable_modes[mode_idx]
             && !source_ability_index.is_some_and(|ability_index| {
                 game.ability_mode_was_chosen(
                     ctx.source,
@@ -537,7 +552,7 @@ fn execute_chosen_modes_with_outputs(
     ctx: &mut ExecutionContext,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    let Some(program) = select_mode_program(effect, game, ctx)? else {
+    let Some(program) = select_mode_program(effect, game, ctx, purpose)? else {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(0),
         ));

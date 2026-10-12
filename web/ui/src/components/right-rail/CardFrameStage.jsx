@@ -5,7 +5,7 @@ import './card-frame-stage.css';
 // frames. Live DOM/layout and game actions are still recomputed for each view.
 const renderedFrames = new WeakSet();
 
-export default function CardFrameStage({ preparation, assets = preparation, showLoadingFrame = false, onReadyChange, children, style, ...props }) {
+export default function CardFrameStage({ preparation, assets = preparation, showLoadingFrame = false, showLiveFrame = false, onReadyChange, children, style, ...props }) {
   const ref = useRef(null);
   const [finished, setFinished] = useState(null);
   const [presentation, setPresentation] = useState(() => ({ assets, reuse: Boolean(assets && renderedFrames.has(assets)) }));
@@ -18,15 +18,16 @@ export default function CardFrameStage({ preparation, assets = preparation, show
   // never shown on its own. Once the placeholder has been up, the stage stays
   // visible while the prepared frame settles: hiding it would leave nothing.
   const loadingFrameVisible = showLoadingFrame;
-  const [placeholderShown, setPlaceholderShown] = useState(loadingFrameVisible);
-  if (loadingFrameVisible && !placeholderShown) setPlaceholderShown(true);
-  const frameVisible = ready || loadingFrameVisible || placeholderShown;
+  const [placeholderShown, setPlaceholderShown] = useState(loadingFrameVisible || showLiveFrame);
+  if ((loadingFrameVisible || showLiveFrame) && !placeholderShown) setPlaceholderShown(true);
+  const frameVisible = ready || showLiveFrame || loadingFrameVisible || placeholderShown;
 
   useLayoutEffect(() => {
     if (!preparation) return undefined;
     let active = true;
     let frame = 0;
-    Promise.allSettled([...ref.current.querySelectorAll('img')].map(image => image.decode())).then(() => {
+    const images = preparation.defaultFrame ? [] : [...ref.current.querySelectorAll('img')];
+    Promise.allSettled(images.map(image => image.decode())).then(() => {
       if (!active) return;
       // The hidden frame still participates in layout. Let rules fitting and
       // its ResizeObserver finish with the final fonts, textures, and flavor.

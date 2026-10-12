@@ -1,7 +1,7 @@
 //! "Each opponent may discard a card or sacrifice a permanent of their choice.
 //! Zoyowa deals 3 damage to each opponent who didn't." (Zoyowa Lava-Tongue):
 //! the per-opponent optional choice and damage to the opponents who declined.
-//! Source-authored, deliberately unrun.
+//! Optional payment modes must require an available resource.
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 
 #[test]
@@ -29,8 +29,8 @@ fn zoyowa_damages_each_opponent_who_declined() {
     for definition in [direct, decoded] {
         assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
         let debug = format!("{:?}", definition.abilities);
-        assert!(debug.contains("VillainousChoiceEffect"), "{debug}");
-        assert!(debug.contains("MayEffect"), "{debug}");
+        assert!(debug.contains("ChooseModeEffect"), "{debug}");
+        assert!(debug.contains("MayEffect") && debug.contains("pay_as_cost: true"), "{debug}");
         assert!(debug.contains("DidNotHappen"), "{debug}");
         assert!(debug.contains("DealDamageEffect"), "{debug}");
         assert!(debug.contains("Descend") || debug.contains("descend"), "{debug}");

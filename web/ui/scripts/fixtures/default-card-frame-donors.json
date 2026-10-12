@@ -1,0 +1,1228 @@
+[
+  {
+    "key": "C",
+    "printing": {
+      "id": "6a1858f5-16b8-4a58-8f31-b60f926fdbf8",
+      "name": "Thaumaturge's Familiar",
+      "layout": "normal",
+      "set": "j22",
+      "collector_number": "802",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Artifact Creature \u2014 Bird",
+      "oracle_text": "Flying\nWhen this creature enters, scry 1.",
+      "mana_cost": "{3}",
+      "power": "1",
+      "toughness": "3",
+      "colors": [],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.jpg?1783918796",
+        "normal": "https://cards.scryfall.io/normal/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.jpg?1783918796",
+        "large": "https://cards.scryfall.io/large/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.jpg?1783918796",
+        "png": "https://cards.scryfall.io/png/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.png?1783918796",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.jpg?1783918796",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.jpg?1783918796",
+        "thumb": "https://cards.scryfall.io/thumb/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.webp?1783918796",
+        "grid": "https://cards.scryfall.io/grid/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.webp?1783918796",
+        "display": "https://cards.scryfall.io/display/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.webp?1783918796",
+        "art": "https://cards.scryfall.io/art/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.webp?1783918796",
+        "crop": "https://cards.scryfall.io/crop/front/6/a/6a1858f5-16b8-4a58-8f31-b60f926fdbf8.webp?1783918796"
+      },
+      "scryfall_uri": "https://scryfall.com/card/j22/802/thaumaturges-familiar?utm_source=api"
+    }
+  },
+  {
+    "key": "W",
+    "printing": {
+      "id": "d8b1b493-2dec-4816-a427-4813a00ca3e9",
+      "name": "Blade of the Sixth Pride",
+      "layout": "normal",
+      "set": "tsr",
+      "collector_number": "9",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Cat Rebel",
+      "oracle_text": "",
+      "flavor_text": "\"My pride may be gone, but our hunt is not over.\"",
+      "mana_cost": "{1}{W}",
+      "power": "3",
+      "toughness": "1",
+      "colors": [
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.jpg?1783927883",
+        "normal": "https://cards.scryfall.io/normal/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.jpg?1783927883",
+        "large": "https://cards.scryfall.io/large/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.jpg?1783927883",
+        "png": "https://cards.scryfall.io/png/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.png?1783927883",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.jpg?1783927883",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.jpg?1783927883",
+        "thumb": "https://cards.scryfall.io/thumb/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.webp?1783927883",
+        "grid": "https://cards.scryfall.io/grid/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.webp?1783927883",
+        "display": "https://cards.scryfall.io/display/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.webp?1783927883",
+        "art": "https://cards.scryfall.io/art/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.webp?1783927883",
+        "crop": "https://cards.scryfall.io/crop/front/d/8/d8b1b493-2dec-4816-a427-4813a00ca3e9.webp?1783927883"
+      },
+      "scryfall_uri": "https://scryfall.com/card/tsr/9/blade-of-the-sixth-pride?utm_source=api"
+    }
+  },
+  {
+    "key": "U",
+    "printing": {
+      "id": "fcc87fdf-6473-4b91-a8b9-2986e57dc071",
+      "name": "Armored Whirl Turtle",
+      "layout": "normal",
+      "set": "gs1",
+      "collector_number": "7",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Turtle",
+      "oracle_text": "",
+      "flavor_text": "Not all enormous beasts are quick to anger.",
+      "mana_cost": "{2}{U}",
+      "power": "0",
+      "toughness": "5",
+      "colors": [
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.jpg?1783934633",
+        "normal": "https://cards.scryfall.io/normal/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.jpg?1783934633",
+        "large": "https://cards.scryfall.io/large/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.jpg?1783934633",
+        "png": "https://cards.scryfall.io/png/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.png?1783934633",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.jpg?1783934633",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.jpg?1783934633",
+        "thumb": "https://cards.scryfall.io/thumb/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.webp?1783934633",
+        "grid": "https://cards.scryfall.io/grid/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.webp?1783934633",
+        "display": "https://cards.scryfall.io/display/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.webp?1783934633",
+        "art": "https://cards.scryfall.io/art/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.webp?1783934633",
+        "crop": "https://cards.scryfall.io/crop/front/f/c/fcc87fdf-6473-4b91-a8b9-2986e57dc071.webp?1783934633"
+      },
+      "scryfall_uri": "https://scryfall.com/card/gs1/7/armored-whirl-turtle?utm_source=api"
+    }
+  },
+  {
+    "key": "B",
+    "printing": {
+      "id": "45a4010d-6a27-4ab5-aff6-e658b39f44b1",
+      "name": "Carrion Screecher",
+      "layout": "normal",
+      "set": "gn2",
+      "collector_number": "27",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Zombie Bird",
+      "oracle_text": "Flying",
+      "flavor_text": "The banished have come home to roost.",
+      "mana_cost": "{3}{B}",
+      "power": "3",
+      "toughness": "1",
+      "colors": [
+        "B"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.jpg?1783931658",
+        "normal": "https://cards.scryfall.io/normal/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.jpg?1783931658",
+        "large": "https://cards.scryfall.io/large/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.jpg?1783931658",
+        "png": "https://cards.scryfall.io/png/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.png?1783931658",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.jpg?1783931658",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.jpg?1783931658",
+        "thumb": "https://cards.scryfall.io/thumb/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.webp?1783931658",
+        "grid": "https://cards.scryfall.io/grid/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.webp?1783931658",
+        "display": "https://cards.scryfall.io/display/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.webp?1783931658",
+        "art": "https://cards.scryfall.io/art/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.webp?1783931658",
+        "crop": "https://cards.scryfall.io/crop/front/4/5/45a4010d-6a27-4ab5-aff6-e658b39f44b1.webp?1783931658"
+      },
+      "scryfall_uri": "https://scryfall.com/card/gn2/27/carrion-screecher?utm_source=api"
+    }
+  },
+  {
+    "key": "R",
+    "printing": {
+      "id": "f47fc407-5b7d-4c9d-90b4-3eb234f9f18b",
+      "name": "Warship Scout",
+      "layout": "normal",
+      "set": "tle",
+      "collector_number": "285",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Human Scout",
+      "oracle_text": "",
+      "flavor_text": "\"For the glory of the Fire Nation!\"",
+      "mana_cost": "{R}",
+      "power": "2",
+      "toughness": "1",
+      "colors": [
+        "R"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.jpg?1783904762",
+        "normal": "https://cards.scryfall.io/normal/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.jpg?1783904762",
+        "large": "https://cards.scryfall.io/large/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.jpg?1783904762",
+        "png": "https://cards.scryfall.io/png/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.png?1783904762",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.jpg?1783904762",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.jpg?1783904762",
+        "thumb": "https://cards.scryfall.io/thumb/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.webp?1783904762",
+        "grid": "https://cards.scryfall.io/grid/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.webp?1783904762",
+        "display": "https://cards.scryfall.io/display/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.webp?1783904762",
+        "art": "https://cards.scryfall.io/art/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.webp?1783904762",
+        "crop": "https://cards.scryfall.io/crop/front/f/4/f47fc407-5b7d-4c9d-90b4-3eb234f9f18b.webp?1783904762"
+      },
+      "scryfall_uri": "https://scryfall.com/card/tle/285/warship-scout?utm_source=api"
+    }
+  },
+  {
+    "key": "G",
+    "printing": {
+      "id": "d228ad88-669a-435f-a2fd-6188261988ea",
+      "name": "Arborback Stomper",
+      "layout": "normal",
+      "set": "kld",
+      "collector_number": "142\u2020",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Beast",
+      "oracle_text": "Trample\nWhen this creature enters, you gain 5 life.",
+      "mana_cost": "{3}{G}{G}",
+      "power": "5",
+      "toughness": "4",
+      "colors": [
+        "G"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.jpg?1783937182",
+        "normal": "https://cards.scryfall.io/normal/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.jpg?1783937182",
+        "large": "https://cards.scryfall.io/large/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.jpg?1783937182",
+        "png": "https://cards.scryfall.io/png/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.png?1783937182",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.jpg?1783937182",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.jpg?1783937182",
+        "thumb": "https://cards.scryfall.io/thumb/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.webp?1783937182",
+        "grid": "https://cards.scryfall.io/grid/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.webp?1783937182",
+        "display": "https://cards.scryfall.io/display/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.webp?1783937182",
+        "art": "https://cards.scryfall.io/art/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.webp?1783937182",
+        "crop": "https://cards.scryfall.io/crop/front/d/2/d228ad88-669a-435f-a2fd-6188261988ea.webp?1783937182"
+      },
+      "scryfall_uri": "https://scryfall.com/card/kld/142%E2%80%A0/arborback-stomper?utm_source=api"
+    }
+  },
+  {
+    "key": "WU",
+    "printing": {
+      "id": "913b3a2a-e3fd-4095-ab2a-5e356ea179df",
+      "name": "Senate Guildmage",
+      "layout": "normal",
+      "set": "rna",
+      "collector_number": "204",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Human Wizard",
+      "oracle_text": "{W}, {T}: You gain 2 life.\n{U}, {T}: Draw a card, then discard a card.",
+      "mana_cost": "{W}{U}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.jpg?1783933637",
+        "normal": "https://cards.scryfall.io/normal/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.jpg?1783933637",
+        "large": "https://cards.scryfall.io/large/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.jpg?1783933637",
+        "png": "https://cards.scryfall.io/png/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.png?1783933637",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.jpg?1783933637",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.jpg?1783933637",
+        "thumb": "https://cards.scryfall.io/thumb/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.webp?1783933637",
+        "grid": "https://cards.scryfall.io/grid/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.webp?1783933637",
+        "display": "https://cards.scryfall.io/display/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.webp?1783933637",
+        "art": "https://cards.scryfall.io/art/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.webp?1783933637",
+        "crop": "https://cards.scryfall.io/crop/front/9/1/913b3a2a-e3fd-4095-ab2a-5e356ea179df.webp?1783933637"
+      },
+      "scryfall_uri": "https://scryfall.com/card/rna/204/senate-guildmage?utm_source=api"
+    }
+  },
+  {
+    "key": "WB",
+    "printing": {
+      "id": "5eb5c82b-71aa-4c94-bda0-3e5abe10ea67",
+      "name": "Orzhov Guildmage",
+      "layout": "normal",
+      "set": "clu",
+      "collector_number": "201",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Human Wizard",
+      "oracle_text": "{2}{W}: Target player gains 1 life.\n{2}{B}: Each player loses 1 life.",
+      "mana_cost": "{W/B}{W/B}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "B",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.jpg?1783912519",
+        "normal": "https://cards.scryfall.io/normal/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.jpg?1783912519",
+        "large": "https://cards.scryfall.io/large/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.jpg?1783912519",
+        "png": "https://cards.scryfall.io/png/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.png?1783912519",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.jpg?1783912519",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.jpg?1783912519",
+        "thumb": "https://cards.scryfall.io/thumb/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.webp?1783912519",
+        "grid": "https://cards.scryfall.io/grid/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.webp?1783912519",
+        "display": "https://cards.scryfall.io/display/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.webp?1783912519",
+        "art": "https://cards.scryfall.io/art/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.webp?1783912519",
+        "crop": "https://cards.scryfall.io/crop/front/5/e/5eb5c82b-71aa-4c94-bda0-3e5abe10ea67.webp?1783912519"
+      },
+      "scryfall_uri": "https://scryfall.com/card/clu/201/orzhov-guildmage?utm_source=api"
+    }
+  },
+  {
+    "key": "WR",
+    "printing": {
+      "id": "167ed739-2953-47af-841f-bc1a092b3aa6",
+      "name": "Sky Terror",
+      "layout": "normal",
+      "set": "xln",
+      "collector_number": "229",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Dinosaur",
+      "oracle_text": "Flying, menace",
+      "flavor_text": "\"Wherever the Threefold Sun shines, great wings may go.\"\n\u2014Emperor Apatzec Intli III",
+      "mana_cost": "{R}{W}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "R",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.jpg?1783935709",
+        "normal": "https://cards.scryfall.io/normal/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.jpg?1783935709",
+        "large": "https://cards.scryfall.io/large/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.jpg?1783935709",
+        "png": "https://cards.scryfall.io/png/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.png?1783935709",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.jpg?1783935709",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.jpg?1783935709",
+        "thumb": "https://cards.scryfall.io/thumb/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.webp?1783935709",
+        "grid": "https://cards.scryfall.io/grid/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.webp?1783935709",
+        "display": "https://cards.scryfall.io/display/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.webp?1783935709",
+        "art": "https://cards.scryfall.io/art/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.webp?1783935709",
+        "crop": "https://cards.scryfall.io/crop/front/1/6/167ed739-2953-47af-841f-bc1a092b3aa6.webp?1783935709"
+      },
+      "scryfall_uri": "https://scryfall.com/card/xln/229/sky-terror?utm_source=api"
+    }
+  },
+  {
+    "key": "WG",
+    "printing": {
+      "id": "eca620db-7870-43fb-ba77-eda7f0bc33f0",
+      "name": "Watchwolf",
+      "layout": "normal",
+      "set": "gk1",
+      "collector_number": "122",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Wolf",
+      "oracle_text": "",
+      "flavor_text": "Only in Ravnica do the wolves watch the flock.",
+      "mana_cost": "{G}{W}",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "G",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.jpg?1783934009",
+        "normal": "https://cards.scryfall.io/normal/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.jpg?1783934009",
+        "large": "https://cards.scryfall.io/large/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.jpg?1783934009",
+        "png": "https://cards.scryfall.io/png/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.png?1783934009",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.jpg?1783934009",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.jpg?1783934009",
+        "thumb": "https://cards.scryfall.io/thumb/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.webp?1783934009",
+        "grid": "https://cards.scryfall.io/grid/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.webp?1783934009",
+        "display": "https://cards.scryfall.io/display/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.webp?1783934009",
+        "art": "https://cards.scryfall.io/art/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.webp?1783934009",
+        "crop": "https://cards.scryfall.io/crop/front/e/c/eca620db-7870-43fb-ba77-eda7f0bc33f0.webp?1783934009"
+      },
+      "scryfall_uri": "https://scryfall.com/card/gk1/122/watchwolf?utm_source=api"
+    }
+  },
+  {
+    "key": "UB",
+    "printing": {
+      "id": "2c87088f-6613-413b-aef9-0ef08c6b637f",
+      "name": "Urborg Drake",
+      "layout": "normal",
+      "set": "bbd",
+      "collector_number": "231",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Drake",
+      "oracle_text": "Flying\nThis creature attacks each combat if able.",
+      "flavor_text": "Relentless as the sea, remorseless as death.",
+      "mana_cost": "{1}{U}{B}",
+      "power": "2",
+      "toughness": "3",
+      "colors": [
+        "B",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.jpg?1783934791",
+        "normal": "https://cards.scryfall.io/normal/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.jpg?1783934791",
+        "large": "https://cards.scryfall.io/large/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.jpg?1783934791",
+        "png": "https://cards.scryfall.io/png/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.png?1783934791",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.jpg?1783934791",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.jpg?1783934791",
+        "thumb": "https://cards.scryfall.io/thumb/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.webp?1783934791",
+        "grid": "https://cards.scryfall.io/grid/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.webp?1783934791",
+        "display": "https://cards.scryfall.io/display/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.webp?1783934791",
+        "art": "https://cards.scryfall.io/art/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.webp?1783934791",
+        "crop": "https://cards.scryfall.io/crop/front/2/c/2c87088f-6613-413b-aef9-0ef08c6b637f.webp?1783934791"
+      },
+      "scryfall_uri": "https://scryfall.com/card/bbd/231/urborg-drake?utm_source=api"
+    }
+  },
+  {
+    "key": "UR",
+    "printing": {
+      "id": "a38329f1-af6e-47b8-86e4-f2a39e1edbf8",
+      "name": "Oggyar Battle-Seer",
+      "layout": "normal",
+      "set": "stx",
+      "collector_number": "209",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Ogre Shaman",
+      "oracle_text": "Haste\n{T}: Scry 1.",
+      "flavor_text": "\"May Ganathog bless us with bloody visions of glory restored!\"",
+      "mana_cost": "{3}{U}{R}",
+      "power": "3",
+      "toughness": "4",
+      "colors": [
+        "R",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.jpg?1783927304",
+        "normal": "https://cards.scryfall.io/normal/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.jpg?1783927304",
+        "large": "https://cards.scryfall.io/large/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.jpg?1783927304",
+        "png": "https://cards.scryfall.io/png/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.png?1783927304",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.jpg?1783927304",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.jpg?1783927304",
+        "thumb": "https://cards.scryfall.io/thumb/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.webp?1783927304",
+        "grid": "https://cards.scryfall.io/grid/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.webp?1783927304",
+        "display": "https://cards.scryfall.io/display/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.webp?1783927304",
+        "art": "https://cards.scryfall.io/art/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.webp?1783927304",
+        "crop": "https://cards.scryfall.io/crop/front/a/3/a38329f1-af6e-47b8-86e4-f2a39e1edbf8.webp?1783927304"
+      },
+      "scryfall_uri": "https://scryfall.com/card/stx/209/oggyar-battle-seer?utm_source=api"
+    }
+  },
+  {
+    "key": "UG",
+    "printing": {
+      "id": "dac35181-baae-4c50-b397-a10b234833e5",
+      "name": "Weaver of Currents",
+      "layout": "normal",
+      "set": "akh",
+      "collector_number": "209",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Snake Druid",
+      "oracle_text": "{T}: Add {C}{C}.",
+      "flavor_text": "\"Your waters sustain the living and carry the dead. Mighty Luxa, let your power flow through me!\"",
+      "mana_cost": "{1}{G}{U}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "G",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.jpg?1783936459",
+        "normal": "https://cards.scryfall.io/normal/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.jpg?1783936459",
+        "large": "https://cards.scryfall.io/large/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.jpg?1783936459",
+        "png": "https://cards.scryfall.io/png/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.png?1783936459",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.jpg?1783936459",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.jpg?1783936459",
+        "thumb": "https://cards.scryfall.io/thumb/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.webp?1783936459",
+        "grid": "https://cards.scryfall.io/grid/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.webp?1783936459",
+        "display": "https://cards.scryfall.io/display/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.webp?1783936459",
+        "art": "https://cards.scryfall.io/art/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.webp?1783936459",
+        "crop": "https://cards.scryfall.io/crop/front/d/a/dac35181-baae-4c50-b397-a10b234833e5.webp?1783936459"
+      },
+      "scryfall_uri": "https://scryfall.com/card/akh/209/weaver-of-currents?utm_source=api"
+    }
+  },
+  {
+    "key": "BR",
+    "printing": {
+      "id": "7f82ff29-2b2c-4e4f-a6ac-e307e2921da0",
+      "name": "Spike Jester",
+      "layout": "normal",
+      "set": "mm3",
+      "collector_number": "188",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Goblin Warrior",
+      "oracle_text": "Haste",
+      "flavor_text": "For the Rakdos, \"suicidal charge\" and \"good showmanship\" are one and the same.",
+      "mana_cost": "{B}{R}",
+      "power": "3",
+      "toughness": "1",
+      "colors": [
+        "B",
+        "R"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.jpg?1783936608",
+        "normal": "https://cards.scryfall.io/normal/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.jpg?1783936608",
+        "large": "https://cards.scryfall.io/large/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.jpg?1783936608",
+        "png": "https://cards.scryfall.io/png/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.png?1783936608",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.jpg?1783936608",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.jpg?1783936608",
+        "thumb": "https://cards.scryfall.io/thumb/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.webp?1783936608",
+        "grid": "https://cards.scryfall.io/grid/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.webp?1783936608",
+        "display": "https://cards.scryfall.io/display/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.webp?1783936608",
+        "art": "https://cards.scryfall.io/art/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.webp?1783936608",
+        "crop": "https://cards.scryfall.io/crop/front/7/f/7f82ff29-2b2c-4e4f-a6ac-e307e2921da0.webp?1783936608"
+      },
+      "scryfall_uri": "https://scryfall.com/card/mm3/188/spike-jester?utm_source=api"
+    }
+  },
+  {
+    "key": "BG",
+    "printing": {
+      "id": "e77e14e1-326a-45a2-9522-96c61ddb970b",
+      "name": "Pitiless Gorgon",
+      "layout": "normal",
+      "set": "clu",
+      "collector_number": "203",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Gorgon",
+      "oracle_text": "Deathtouch",
+      "flavor_text": "\"The reign of the Swarm begins. Let us rise now and dress ourselves in vengeance.\"",
+      "mana_cost": "{1}{B/G}{B/G}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "B",
+        "G"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.jpg?1783912517",
+        "normal": "https://cards.scryfall.io/normal/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.jpg?1783912517",
+        "large": "https://cards.scryfall.io/large/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.jpg?1783912517",
+        "png": "https://cards.scryfall.io/png/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.png?1783912517",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.jpg?1783912517",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.jpg?1783912517",
+        "thumb": "https://cards.scryfall.io/thumb/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.webp?1783912517",
+        "grid": "https://cards.scryfall.io/grid/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.webp?1783912517",
+        "display": "https://cards.scryfall.io/display/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.webp?1783912517",
+        "art": "https://cards.scryfall.io/art/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.webp?1783912517",
+        "crop": "https://cards.scryfall.io/crop/front/e/7/e77e14e1-326a-45a2-9522-96c61ddb970b.webp?1783912517"
+      },
+      "scryfall_uri": "https://scryfall.com/card/clu/203/pitiless-gorgon?utm_source=api"
+    }
+  },
+  {
+    "key": "RG",
+    "printing": {
+      "id": "8ab1454e-3c69-4450-bd4c-934af2ff2bcb",
+      "name": "Khenra Charioteer",
+      "layout": "normal",
+      "set": "akh",
+      "collector_number": "201",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Jackal Warrior",
+      "oracle_text": "Trample\nOther creatures you control have trample.",
+      "flavor_text": "\"We do not swerve.\"\n\u2014Tah-crop charioteer motto",
+      "mana_cost": "{1}{R}{G}",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "G",
+        "R"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.jpg?1783936463",
+        "normal": "https://cards.scryfall.io/normal/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.jpg?1783936463",
+        "large": "https://cards.scryfall.io/large/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.jpg?1783936463",
+        "png": "https://cards.scryfall.io/png/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.png?1783936463",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.jpg?1783936463",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.jpg?1783936463",
+        "thumb": "https://cards.scryfall.io/thumb/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.webp?1783936463",
+        "grid": "https://cards.scryfall.io/grid/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.webp?1783936463",
+        "display": "https://cards.scryfall.io/display/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.webp?1783936463",
+        "art": "https://cards.scryfall.io/art/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.webp?1783936463",
+        "crop": "https://cards.scryfall.io/crop/front/8/a/8ab1454e-3c69-4450-bd4c-934af2ff2bcb.webp?1783936463"
+      },
+      "scryfall_uri": "https://scryfall.com/card/akh/201/khenra-charioteer?utm_source=api"
+    }
+  },
+  {
+    "key": "WUB",
+    "printing": {
+      "id": "55aef108-6aaf-465d-b3f6-5ac1499f44a3",
+      "name": "Tower Gargoyle",
+      "layout": "normal",
+      "set": "2x2",
+      "collector_number": "288",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Artifact Creature \u2014 Gargoyle",
+      "oracle_text": "Flying",
+      "flavor_text": "\"Esper, like any work of art, can be truly appreciated only from a distance.\"\n\u2014Tezzeret",
+      "mana_cost": "{1}{W}{U}{B}",
+      "power": "4",
+      "toughness": "4",
+      "colors": [
+        "B",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.jpg?1783921800",
+        "normal": "https://cards.scryfall.io/normal/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.jpg?1783921800",
+        "large": "https://cards.scryfall.io/large/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.jpg?1783921800",
+        "png": "https://cards.scryfall.io/png/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.png?1783921800",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.jpg?1783921800",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.jpg?1783921800",
+        "thumb": "https://cards.scryfall.io/thumb/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.webp?1783921800",
+        "grid": "https://cards.scryfall.io/grid/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.webp?1783921800",
+        "display": "https://cards.scryfall.io/display/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.webp?1783921800",
+        "art": "https://cards.scryfall.io/art/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.webp?1783921800",
+        "crop": "https://cards.scryfall.io/crop/front/5/5/55aef108-6aaf-465d-b3f6-5ac1499f44a3.webp?1783921800"
+      },
+      "scryfall_uri": "https://scryfall.com/card/2x2/288/tower-gargoyle?utm_source=api"
+    }
+  },
+  {
+    "key": "WUR",
+    "printing": {
+      "id": "fca25454-6b18-4d37-a069-7d53f5ebdb14",
+      "name": "Sage of the Inward Eye",
+      "layout": "normal",
+      "set": "pktk",
+      "collector_number": "195s",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Djinn Wizard",
+      "oracle_text": "Flying\nWhenever you cast a noncreature spell, creatures you control gain lifelink until end of turn.",
+      "flavor_text": "\"No one petal claims beauty for the lotus.\"",
+      "mana_cost": "{2}{U}{R}{W}",
+      "power": "3",
+      "toughness": "4",
+      "colors": [
+        "R",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.jpg?1783939026",
+        "normal": "https://cards.scryfall.io/normal/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.jpg?1783939026",
+        "large": "https://cards.scryfall.io/large/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.jpg?1783939026",
+        "png": "https://cards.scryfall.io/png/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.png?1783939026",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.jpg?1783939026",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.jpg?1783939026",
+        "thumb": "https://cards.scryfall.io/thumb/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.webp?1783939026",
+        "grid": "https://cards.scryfall.io/grid/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.webp?1783939026",
+        "display": "https://cards.scryfall.io/display/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.webp?1783939026",
+        "art": "https://cards.scryfall.io/art/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.webp?1783939026",
+        "crop": "https://cards.scryfall.io/crop/front/f/c/fca25454-6b18-4d37-a069-7d53f5ebdb14.webp?1783939026"
+      },
+      "scryfall_uri": "https://scryfall.com/card/pktk/195s/sage-of-the-inward-eye?utm_source=api"
+    }
+  },
+  {
+    "key": "WUG",
+    "printing": {
+      "id": "37fd303a-0a51-4931-9735-704ce8179a98",
+      "name": "Stoic Angel",
+      "layout": "normal",
+      "set": "mm3",
+      "collector_number": "190",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Angel",
+      "oracle_text": "Flying, vigilance\nPlayers can't untap more than one creature during their untap steps.",
+      "flavor_text": "Even the most battle-hardened soldiers pause in her presence for a moment of introspection.",
+      "mana_cost": "{1}{G}{W}{U}",
+      "power": "3",
+      "toughness": "4",
+      "colors": [
+        "G",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.jpg?1783936607",
+        "normal": "https://cards.scryfall.io/normal/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.jpg?1783936607",
+        "large": "https://cards.scryfall.io/large/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.jpg?1783936607",
+        "png": "https://cards.scryfall.io/png/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.png?1783936607",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.jpg?1783936607",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.jpg?1783936607",
+        "thumb": "https://cards.scryfall.io/thumb/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.webp?1783936607",
+        "grid": "https://cards.scryfall.io/grid/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.webp?1783936607",
+        "display": "https://cards.scryfall.io/display/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.webp?1783936607",
+        "art": "https://cards.scryfall.io/art/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.webp?1783936607",
+        "crop": "https://cards.scryfall.io/crop/front/3/7/37fd303a-0a51-4931-9735-704ce8179a98.webp?1783936607"
+      },
+      "scryfall_uri": "https://scryfall.com/card/mm3/190/stoic-angel?utm_source=api"
+    }
+  },
+  {
+    "key": "WBR",
+    "printing": {
+      "id": "1a920210-42e1-4d27-a9ea-5d91674eb8fd",
+      "name": "Butcher of the Horde",
+      "layout": "normal",
+      "set": "pktk",
+      "collector_number": "168s",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Demon",
+      "oracle_text": "Flying\nSacrifice another creature: This creature gains your choice of vigilance, lifelink, or haste until end of turn.",
+      "mana_cost": "{1}{R}{W}{B}",
+      "power": "5",
+      "toughness": "4",
+      "colors": [
+        "B",
+        "R",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.jpg?1783939029",
+        "normal": "https://cards.scryfall.io/normal/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.jpg?1783939029",
+        "large": "https://cards.scryfall.io/large/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.jpg?1783939029",
+        "png": "https://cards.scryfall.io/png/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.png?1783939029",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.jpg?1783939029",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.jpg?1783939029",
+        "thumb": "https://cards.scryfall.io/thumb/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.webp?1783939029",
+        "grid": "https://cards.scryfall.io/grid/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.webp?1783939029",
+        "display": "https://cards.scryfall.io/display/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.webp?1783939029",
+        "art": "https://cards.scryfall.io/art/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.webp?1783939029",
+        "crop": "https://cards.scryfall.io/crop/front/1/a/1a920210-42e1-4d27-a9ea-5d91674eb8fd.webp?1783939029"
+      },
+      "scryfall_uri": "https://scryfall.com/card/pktk/168s/butcher-of-the-horde?utm_source=api"
+    }
+  },
+  {
+    "key": "WBG",
+    "printing": {
+      "id": "c7e9d681-dfc5-4213-b384-79932eeabcc4",
+      "name": "Ivorytusk Fortress",
+      "layout": "normal",
+      "set": "pktk",
+      "collector_number": "179s",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Elephant",
+      "oracle_text": "Untap each creature you control with a +1/+1 counter on it during each other player's untap step.",
+      "flavor_text": "Abzan soldiers march to war confident that their Houses march with them.",
+      "mana_cost": "{2}{W}{B}{G}",
+      "power": "5",
+      "toughness": "7",
+      "colors": [
+        "B",
+        "G",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.jpg?1783939028",
+        "normal": "https://cards.scryfall.io/normal/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.jpg?1783939028",
+        "large": "https://cards.scryfall.io/large/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.jpg?1783939028",
+        "png": "https://cards.scryfall.io/png/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.png?1783939028",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.jpg?1783939028",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.jpg?1783939028",
+        "thumb": "https://cards.scryfall.io/thumb/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.webp?1783939028",
+        "grid": "https://cards.scryfall.io/grid/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.webp?1783939028",
+        "display": "https://cards.scryfall.io/display/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.webp?1783939028",
+        "art": "https://cards.scryfall.io/art/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.webp?1783939028",
+        "crop": "https://cards.scryfall.io/crop/front/c/7/c7e9d681-dfc5-4213-b384-79932eeabcc4.webp?1783939028"
+      },
+      "scryfall_uri": "https://scryfall.com/card/pktk/179s/ivorytusk-fortress?utm_source=api"
+    }
+  },
+  {
+    "key": "WRG",
+    "printing": {
+      "id": "63c0e48e-e0a4-4a45-8d82-2ab56fee7246",
+      "name": "Gloryscale Viashino",
+      "layout": "normal",
+      "set": "2x2",
+      "collector_number": "219",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Lizard Soldier",
+      "oracle_text": "Whenever you cast a multicolored spell, this creature gets +3/+3 until end of turn.",
+      "flavor_text": "\"This is a new world and a new war. We need warriors who know chaos and how to combat it.\"\n\u2014Lisha of the Azure",
+      "mana_cost": "{1}{R}{G}{W}",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "G",
+        "R",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.jpg?1783921832",
+        "normal": "https://cards.scryfall.io/normal/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.jpg?1783921832",
+        "large": "https://cards.scryfall.io/large/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.jpg?1783921832",
+        "png": "https://cards.scryfall.io/png/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.png?1783921832",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.jpg?1783921832",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.jpg?1783921832",
+        "thumb": "https://cards.scryfall.io/thumb/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.webp?1783921832",
+        "grid": "https://cards.scryfall.io/grid/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.webp?1783921832",
+        "display": "https://cards.scryfall.io/display/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.webp?1783921832",
+        "art": "https://cards.scryfall.io/art/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.webp?1783921832",
+        "crop": "https://cards.scryfall.io/crop/front/6/3/63c0e48e-e0a4-4a45-8d82-2ab56fee7246.webp?1783921832"
+      },
+      "scryfall_uri": "https://scryfall.com/card/2x2/219/gloryscale-viashino?utm_source=api"
+    }
+  },
+  {
+    "key": "UBR",
+    "printing": {
+      "id": "dbf97c08-e074-4353-b9fa-c79793622585",
+      "name": "Sewn-Eye Drake",
+      "layout": "normal",
+      "set": "arb",
+      "collector_number": "135",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Zombie Drake",
+      "oracle_text": "Flying, haste",
+      "flavor_text": "\"Too wary to charge, too prudent to serve. Not anymore.\"\n\u2014Sedris, the Traitor King",
+      "mana_cost": "{2}{U/R}{B}",
+      "power": "3",
+      "toughness": "1",
+      "colors": [
+        "B",
+        "R",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.jpg?1783942412",
+        "normal": "https://cards.scryfall.io/normal/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.jpg?1783942412",
+        "large": "https://cards.scryfall.io/large/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.jpg?1783942412",
+        "png": "https://cards.scryfall.io/png/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.png?1783942412",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.jpg?1783942412",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.jpg?1783942412",
+        "thumb": "https://cards.scryfall.io/thumb/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.webp?1783942412",
+        "grid": "https://cards.scryfall.io/grid/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.webp?1783942412",
+        "display": "https://cards.scryfall.io/display/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.webp?1783942412",
+        "art": "https://cards.scryfall.io/art/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.webp?1783942412",
+        "crop": "https://cards.scryfall.io/crop/front/d/b/dbf97c08-e074-4353-b9fa-c79793622585.webp?1783942412"
+      },
+      "scryfall_uri": "https://scryfall.com/card/arb/135/sewn-eye-drake?utm_source=api"
+    }
+  },
+  {
+    "key": "UBG",
+    "printing": {
+      "id": "6ebba7a8-de3e-42ce-b8be-96281c2c175d",
+      "name": "Rakshasa Vizier",
+      "layout": "normal",
+      "set": "pktk",
+      "collector_number": "193s",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Demon",
+      "oracle_text": "Whenever one or more cards are put into exile from your graveyard, put that many +1/+1 counters on this creature.",
+      "flavor_text": "Rakshasa offer deals that sound advantageous to those who forget who they are dealing with.",
+      "mana_cost": "{2}{B}{G}{U}",
+      "power": "4",
+      "toughness": "4",
+      "colors": [
+        "B",
+        "G",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.jpg?1783939026",
+        "normal": "https://cards.scryfall.io/normal/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.jpg?1783939026",
+        "large": "https://cards.scryfall.io/large/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.jpg?1783939026",
+        "png": "https://cards.scryfall.io/png/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.png?1783939026",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.jpg?1783939026",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.jpg?1783939026",
+        "thumb": "https://cards.scryfall.io/thumb/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.webp?1783939026",
+        "grid": "https://cards.scryfall.io/grid/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.webp?1783939026",
+        "display": "https://cards.scryfall.io/display/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.webp?1783939026",
+        "art": "https://cards.scryfall.io/art/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.webp?1783939026",
+        "crop": "https://cards.scryfall.io/crop/front/6/e/6ebba7a8-de3e-42ce-b8be-96281c2c175d.webp?1783939026"
+      },
+      "scryfall_uri": "https://scryfall.com/card/pktk/193s/rakshasa-vizier?utm_source=api"
+    }
+  },
+  {
+    "key": "URG",
+    "printing": {
+      "id": "3cdb383f-bc04-46d1-aa3a-7459d57f1fec",
+      "name": "Temur Tawnyback",
+      "layout": "normal",
+      "set": "tdm",
+      "collector_number": "229",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Beast",
+      "oracle_text": "When this creature enters, draw a card, then discard a card.",
+      "flavor_text": "\"He just kind of followed me home one day. I mean, could you say no to this face?\"\n\u2014Karasi, Mistrise provisioner",
+      "mana_cost": "{2/G}{2/U}{2/R}",
+      "power": "4",
+      "toughness": "3",
+      "colors": [
+        "G",
+        "R",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.jpg?1783907294",
+        "normal": "https://cards.scryfall.io/normal/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.jpg?1783907294",
+        "large": "https://cards.scryfall.io/large/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.jpg?1783907294",
+        "png": "https://cards.scryfall.io/png/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.png?1783907294",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.jpg?1783907294",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.jpg?1783907294",
+        "thumb": "https://cards.scryfall.io/thumb/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.webp?1783907294",
+        "grid": "https://cards.scryfall.io/grid/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.webp?1783907294",
+        "display": "https://cards.scryfall.io/display/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.webp?1783907294",
+        "art": "https://cards.scryfall.io/art/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.webp?1783907294",
+        "crop": "https://cards.scryfall.io/crop/front/3/c/3cdb383f-bc04-46d1-aa3a-7459d57f1fec.webp?1783907294"
+      },
+      "scryfall_uri": "https://scryfall.com/card/tdm/229/temur-tawnyback?utm_source=api"
+    }
+  },
+  {
+    "key": "BRG",
+    "printing": {
+      "id": "21d4fd58-2052-4f97-b634-f89e2139d980",
+      "name": "Madrush Cyclops",
+      "layout": "normal",
+      "set": "arb",
+      "collector_number": "119",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Cyclops Warrior",
+      "oracle_text": "Creatures you control have haste.",
+      "flavor_text": "Death comes in the blink of an eye.",
+      "mana_cost": "{1}{B}{R}{G}",
+      "power": "3",
+      "toughness": "4",
+      "colors": [
+        "B",
+        "G",
+        "R"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.jpg?1783942416",
+        "normal": "https://cards.scryfall.io/normal/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.jpg?1783942416",
+        "large": "https://cards.scryfall.io/large/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.jpg?1783942416",
+        "png": "https://cards.scryfall.io/png/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.png?1783942416",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.jpg?1783942416",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.jpg?1783942416",
+        "thumb": "https://cards.scryfall.io/thumb/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.webp?1783942416",
+        "grid": "https://cards.scryfall.io/grid/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.webp?1783942416",
+        "display": "https://cards.scryfall.io/display/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.webp?1783942416",
+        "art": "https://cards.scryfall.io/art/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.webp?1783942416",
+        "crop": "https://cards.scryfall.io/crop/front/2/1/21d4fd58-2052-4f97-b634-f89e2139d980.webp?1783942416"
+      },
+      "scryfall_uri": "https://scryfall.com/card/arb/119/madrush-cyclops?utm_source=api"
+    }
+  },
+  {
+    "key": "WUBR",
+    "printing": {
+      "id": "1a52e7c4-c363-414b-a255-6abeb70fe69a",
+      "name": "Yore-Tiller Nephilim",
+      "layout": "normal",
+      "set": "plst",
+      "collector_number": "GPT-140",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Nephilim",
+      "oracle_text": "Whenever this creature attacks, return target creature card from your graveyard to the battlefield tapped and attacking.",
+      "flavor_text": "When it awoke, the worms of the earth hissed in a chorus of beckoning.",
+      "mana_cost": "{W}{U}{B}{R}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "B",
+        "R",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.jpg?1783928098",
+        "normal": "https://cards.scryfall.io/normal/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.jpg?1783928098",
+        "large": "https://cards.scryfall.io/large/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.jpg?1783928098",
+        "png": "https://cards.scryfall.io/png/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.png?1783928098",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.jpg?1783928098",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.jpg?1783928098",
+        "thumb": "https://cards.scryfall.io/thumb/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.webp?1783928098",
+        "grid": "https://cards.scryfall.io/grid/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.webp?1783928098",
+        "display": "https://cards.scryfall.io/display/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.webp?1783928098",
+        "art": "https://cards.scryfall.io/art/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.webp?1783928098",
+        "crop": "https://cards.scryfall.io/crop/front/1/a/1a52e7c4-c363-414b-a255-6abeb70fe69a.webp?1783928098"
+      },
+      "scryfall_uri": "https://scryfall.com/card/plst/GPT-140/yore-tiller-nephilim?utm_source=api"
+    }
+  },
+  {
+    "key": "WUBG",
+    "printing": {
+      "id": "185899c3-9b2e-48a0-99fa-f5c85a002295",
+      "name": "Witch-Maw Nephilim",
+      "layout": "normal",
+      "set": "plst",
+      "collector_number": "GPT-138",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Nephilim",
+      "oracle_text": "Whenever you cast a spell, you may put two +1/+1 counters on this creature.\nWhenever this creature attacks, it gains trample until end of turn if its power is 10 or greater.",
+      "flavor_text": "When it awoke, it shattered the hillsides to make way for its passage.",
+      "mana_cost": "{G}{W}{U}{B}",
+      "power": "1",
+      "toughness": "1",
+      "colors": [
+        "B",
+        "G",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.jpg?1783925030",
+        "normal": "https://cards.scryfall.io/normal/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.jpg?1783925030",
+        "large": "https://cards.scryfall.io/large/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.jpg?1783925030",
+        "png": "https://cards.scryfall.io/png/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.png?1783925030",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.jpg?1783925030",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.jpg?1783925030",
+        "thumb": "https://cards.scryfall.io/thumb/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.webp?1783925030",
+        "grid": "https://cards.scryfall.io/grid/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.webp?1783925030",
+        "display": "https://cards.scryfall.io/display/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.webp?1783925030",
+        "art": "https://cards.scryfall.io/art/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.webp?1783925030",
+        "crop": "https://cards.scryfall.io/crop/front/1/8/185899c3-9b2e-48a0-99fa-f5c85a002295.webp?1783925030"
+      },
+      "scryfall_uri": "https://scryfall.com/card/plst/GPT-138/witch-maw-nephilim?utm_source=api"
+    }
+  },
+  {
+    "key": "WURG",
+    "printing": {
+      "id": "371fbf16-a964-44fe-9eea-5fc33a7b1d73",
+      "name": "Ink-Treader Nephilim",
+      "layout": "normal",
+      "set": "plst",
+      "collector_number": "GPT-117",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Nephilim",
+      "oracle_text": "Whenever a player casts an instant or sorcery spell, if that spell targets only this creature, copy the spell for each other creature that spell could target. Each copy targets a different one of those creatures.",
+      "flavor_text": "When it awoke, the mirrors of the world reflected only darkness.",
+      "mana_cost": "{R}{G}{W}{U}",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "G",
+        "R",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.jpg?1787680803",
+        "normal": "https://cards.scryfall.io/normal/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.jpg?1787680803",
+        "large": "https://cards.scryfall.io/large/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.jpg?1787680803",
+        "png": "https://cards.scryfall.io/png/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.png?1787680803",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.jpg?1787680803",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.jpg?1787680803",
+        "thumb": "https://cards.scryfall.io/thumb/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.webp?1787680803",
+        "grid": "https://cards.scryfall.io/grid/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.webp?1787680803",
+        "display": "https://cards.scryfall.io/display/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.webp?1787680803",
+        "art": "https://cards.scryfall.io/art/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.webp?1787680803",
+        "crop": "https://cards.scryfall.io/crop/front/3/7/371fbf16-a964-44fe-9eea-5fc33a7b1d73.webp?1787680803"
+      },
+      "scryfall_uri": "https://scryfall.com/card/plst/GPT-117/ink-treader-nephilim?utm_source=api"
+    }
+  },
+  {
+    "key": "WBRG",
+    "printing": {
+      "id": "eabffca8-7810-4e8e-b3fe-7f8a14dcbf14",
+      "name": "Dune-Brood Nephilim",
+      "layout": "normal",
+      "set": "plst",
+      "collector_number": "GPT-110",
+      "lang": "en",
+      "frame": "2003",
+      "type_line": "Creature \u2014 Nephilim",
+      "oracle_text": "Whenever this creature deals combat damage to a player, create a 1/1 colorless Sand creature token for each land you control.",
+      "flavor_text": "When it awoke, it spawned nameless thousands to herald its arrival.",
+      "mana_cost": "{B}{R}{G}{W}",
+      "power": "3",
+      "toughness": "3",
+      "colors": [
+        "B",
+        "G",
+        "R",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.jpg?1783929682",
+        "normal": "https://cards.scryfall.io/normal/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.jpg?1783929682",
+        "large": "https://cards.scryfall.io/large/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.jpg?1783929682",
+        "png": "https://cards.scryfall.io/png/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.png?1783929682",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.jpg?1783929682",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.jpg?1783929682",
+        "thumb": "https://cards.scryfall.io/thumb/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.webp?1783929682",
+        "grid": "https://cards.scryfall.io/grid/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.webp?1783929682",
+        "display": "https://cards.scryfall.io/display/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.webp?1783929682",
+        "art": "https://cards.scryfall.io/art/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.webp?1783929682",
+        "crop": "https://cards.scryfall.io/crop/front/e/a/eabffca8-7810-4e8e-b3fe-7f8a14dcbf14.webp?1783929682"
+      },
+      "scryfall_uri": "https://scryfall.com/card/plst/GPT-110/dune-brood-nephilim?utm_source=api"
+    }
+  },
+  {
+    "key": "UBRG",
+    "printing": {
+      "id": "a4f00d2b-d616-455a-bf9b-5bd82b690121",
+      "name": "Glint-Eye Nephilim",
+      "layout": "normal",
+      "set": "dmc",
+      "collector_number": "152",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Nephilim",
+      "oracle_text": "Whenever this creature deals combat damage to a player, draw that many cards.\n{1}, Discard a card: This creature gets +1/+1 until end of turn.",
+      "flavor_text": "When it awoke, it shook the plane with the thunder of its craving.",
+      "mana_cost": "{U}{B}{R}{G}",
+      "power": "2",
+      "toughness": "2",
+      "colors": [
+        "B",
+        "G",
+        "R",
+        "U"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.jpg?1783921412",
+        "normal": "https://cards.scryfall.io/normal/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.jpg?1783921412",
+        "large": "https://cards.scryfall.io/large/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.jpg?1783921412",
+        "png": "https://cards.scryfall.io/png/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.png?1783921412",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.jpg?1783921412",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.jpg?1783921412",
+        "thumb": "https://cards.scryfall.io/thumb/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.webp?1783921412",
+        "grid": "https://cards.scryfall.io/grid/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.webp?1783921412",
+        "display": "https://cards.scryfall.io/display/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.webp?1783921412",
+        "art": "https://cards.scryfall.io/art/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.webp?1783921412",
+        "crop": "https://cards.scryfall.io/crop/front/a/4/a4f00d2b-d616-455a-bf9b-5bd82b690121.webp?1783921412"
+      },
+      "scryfall_uri": "https://scryfall.com/card/dmc/152/glint-eye-nephilim?utm_source=api"
+    }
+  },
+  {
+    "key": "WUBRG",
+    "printing": {
+      "id": "5899161e-415e-4afe-bb39-510d0f21533f",
+      "name": "Fusion Elemental",
+      "layout": "normal",
+      "set": "j25",
+      "collector_number": "745",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Elemental",
+      "oracle_text": "",
+      "flavor_text": "As the shards merged into the Maelstrom, their mana energies fused into new monstrosities.",
+      "mana_cost": "{W}{U}{B}{R}{G}",
+      "power": "8",
+      "toughness": "8",
+      "colors": [
+        "B",
+        "G",
+        "R",
+        "U",
+        "W"
+      ],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.jpg?1783908608",
+        "normal": "https://cards.scryfall.io/normal/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.jpg?1783908608",
+        "large": "https://cards.scryfall.io/large/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.jpg?1783908608",
+        "png": "https://cards.scryfall.io/png/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.png?1783908608",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.jpg?1783908608",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.jpg?1783908608",
+        "thumb": "https://cards.scryfall.io/thumb/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.webp?1783908608",
+        "grid": "https://cards.scryfall.io/grid/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.webp?1783908608",
+        "display": "https://cards.scryfall.io/display/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.webp?1783908608",
+        "art": "https://cards.scryfall.io/art/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.webp?1783908608",
+        "crop": "https://cards.scryfall.io/crop/front/5/8/5899161e-415e-4afe-bb39-510d0f21533f.webp?1783908608"
+      },
+      "scryfall_uri": "https://scryfall.com/card/j25/745/fusion-elemental?utm_source=api"
+    }
+  },
+  {
+    "key": "colorless",
+    "printing": {
+      "id": "00b3c10a-799f-4922-bb0a-44981b13203b",
+      "name": "Endless One",
+      "layout": "normal",
+      "set": "cmm",
+      "collector_number": "804",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Creature \u2014 Eldrazi",
+      "oracle_text": "This creature enters with X +1/+1 counters on it.",
+      "flavor_text": "It embodies all possible meanings of the word \"infinite.\"",
+      "mana_cost": "{X}",
+      "power": "0",
+      "toughness": "0",
+      "colors": [],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.jpg?1783915458",
+        "normal": "https://cards.scryfall.io/normal/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.jpg?1783915458",
+        "large": "https://cards.scryfall.io/large/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.jpg?1783915458",
+        "png": "https://cards.scryfall.io/png/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.png?1783915458",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.jpg?1783915458",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.jpg?1783915458",
+        "thumb": "https://cards.scryfall.io/thumb/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.webp?1783915458",
+        "grid": "https://cards.scryfall.io/grid/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.webp?1783915458",
+        "display": "https://cards.scryfall.io/display/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.webp?1783915458",
+        "art": "https://cards.scryfall.io/art/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.webp?1783915458",
+        "crop": "https://cards.scryfall.io/crop/front/0/0/00b3c10a-799f-4922-bb0a-44981b13203b.webp?1783915458"
+      },
+      "scryfall_uri": "https://scryfall.com/card/cmm/804/endless-one?utm_source=api"
+    }
+  },
+  {
+    "key": "land",
+    "printing": {
+      "id": "c0318a48-30e4-4ef7-be3d-5e561c5ce428",
+      "name": "Evolving Wilds",
+      "layout": "normal",
+      "set": "msc",
+      "collector_number": "240",
+      "lang": "en",
+      "frame": "2015",
+      "type_line": "Land",
+      "oracle_text": "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "flavor_text": "\"The mechanisms of evolution do their work upon the Savage Land, as they do everywhere. I only hasten the process.\"\n\u2014High Evolutionary, Herbert Wyndham",
+      "mana_cost": "",
+      "colors": [],
+      "image_uris": {
+        "small": "https://cards.scryfall.io/small/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.jpg?1783903203",
+        "normal": "https://cards.scryfall.io/normal/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.jpg?1783903203",
+        "large": "https://cards.scryfall.io/large/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.jpg?1783903203",
+        "png": "https://cards.scryfall.io/png/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.png?1783903203",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.jpg?1783903203",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.jpg?1783903203",
+        "thumb": "https://cards.scryfall.io/thumb/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.webp?1783903203",
+        "grid": "https://cards.scryfall.io/grid/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.webp?1783903203",
+        "display": "https://cards.scryfall.io/display/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.webp?1783903203",
+        "art": "https://cards.scryfall.io/art/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.webp?1783903203",
+        "crop": "https://cards.scryfall.io/crop/front/c/0/c0318a48-30e4-4ef7-be3d-5e561c5ce428.webp?1783903203"
+      },
+      "scryfall_uri": "https://scryfall.com/card/msc/240/evolving-wilds?utm_source=api"
+    }
+  }
+]

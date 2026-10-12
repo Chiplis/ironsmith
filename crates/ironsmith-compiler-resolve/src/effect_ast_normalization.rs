@@ -750,33 +750,25 @@ fn transport_tap_quantity_reflexive_into_player_loop(effects: &mut Vec<EffectAst
     }
 }
 
-/// A result follow-up to reflexive damage resolves in that triggered body,
-/// where its damage receipt exists, rather than in the parent instruction.
-fn transport_reflexive_damage_followups(effects: &mut Vec<EffectAst>) {
+/// A result-dependent sentence after a reflexive trigger belongs to that
+/// trigger's body. Its antecedent is the action performed when the trigger
+/// resolves, not the action which originally caused the trigger.
+fn transport_reflexive_result_followups(effects: &mut Vec<EffectAst>) {
     let mut index = 0;
     while index + 1 < effects.len() {
-        let follows_damage = matches!(
+        let follows_result = matches!(
             sentence_tail(&effects[index + 1]),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: crate::cards::builders::IfResultPredicate::ExcessDamageDealt,
                 ..
             })
         );
-        let has_reflexive_damage = match sentence_tail(&effects[index]) {
+        let has_reflexive_body = match sentence_tail(&effects[index]) {
             EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects: body, .. }) => {
-                body.iter().any(|effect| {
-                    matches!(
-                        sentence_tail(effect),
-                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                            action: SubjectVerbActionAst::Damage(_),
-                            ..
-                        })
-                    )
-                })
+                !body.is_empty()
             }
             _ => false,
         };
-        if follows_damage && has_reflexive_damage {
+        if follows_result && has_reflexive_body {
             let follower = effects.remove(index + 1);
             if let EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 effects: body, ..
@@ -843,7 +835,7 @@ fn correlate_result_gated_choice_search_followups(effects: &mut Vec<EffectAst>) 
 }
 
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
-    transport_reflexive_damage_followups(effects);
+    transport_reflexive_result_followups(effects);
     transport_tap_quantity_reflexive_into_player_loop(effects);
     bind_tapped_this_way_to_tap_all(effects);
     declare_predicate_introduced_player_targets(effects);
@@ -4244,5 +4236,33 @@ mod result_gated_same_name_search_tests {
     #[test]
     fn unrelated_following_search_keeps_its_independent_sentence() {
         assert_eq!(normalize_effects_ast(&program(false)).len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod reflexive_result_scope_tests {
+    use super::*;
+    use crate::cards::builders::IfResultPredicate;
+
+    #[test]
+    fn result_followup_resolves_inside_reflexive_but_unconditional_sentence_stays_outside() {
+        let action = EffectAst::subject_verb_tap(TargetAst::Source(None));
+        let mut effects = vec![
+            EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![action.clone()],
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![action.clone()],
+            }),
+            action,
+        ];
+        transport_reflexive_result_followups(&mut effects);
+        assert_eq!(effects.len(), 2);
+        let EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects: body, .. }) = &effects[0] else { panic!("reflexive trigger missing") };
+        assert_eq!(body.len(), 2);
+        assert!(matches!(body[1], EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })));
+        assert!(matches!(effects[1], EffectAst::SubjectVerb(_)));
     }
 }

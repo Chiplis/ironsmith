@@ -3009,7 +3009,7 @@ fn extract_for_players_target_requirements(
         .players
         .iter()
         .filter(|player| player.is_in_game())
-        .filter(|player| for_players.filter.matches_player(player.id, &filter_ctx))
+        .filter(|player| crate::filter::player_filter_matches_game(&for_players.filter, player.id, game, &filter_ctx))
         .map(|player| player.id)
         .collect::<Vec<_>>();
 
@@ -3327,6 +3327,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             as_you_activate: *as_you_activate,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
+        PlayerFilter::OwnsMatchingObject { filter } => PlayerFilter::OwnsMatchingObject {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
         PlayerFilter::ControlsFewestTied { filter } => PlayerFilter::ControlsFewestTied {
@@ -4336,7 +4339,7 @@ pub fn player_matches_filter_with_combat(
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } => {
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }

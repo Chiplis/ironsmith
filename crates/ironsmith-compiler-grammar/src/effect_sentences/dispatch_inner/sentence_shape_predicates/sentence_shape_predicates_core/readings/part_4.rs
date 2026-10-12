@@ -213,6 +213,9 @@ pub(super) fn read_for_each_object_filter_effect(
     let tokens = input.tokens;
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
+        if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_graveyard_effect(
+            shape.filter_tokens, shape.effect_tokens,
+        )? { return Ok(Some(vec![effect])); }
         // Announced object targets belong to the target iterator, including
         // their fixed or dynamic count. A set filter would lose both. A
         // targeted player only scopes the iterated set ("for each creature

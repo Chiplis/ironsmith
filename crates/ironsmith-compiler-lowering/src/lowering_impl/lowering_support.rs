@@ -5745,6 +5745,10 @@ pub(crate) fn lower_compiler_static_ability_core(
             exile_with_counters,
             follow_up_effects,
         } => {
+            let mut follow_up_effects = follow_up_effects;
+            crate::effect_ast_normalization::normalize_effects_ast_in_place(
+                &mut follow_up_effects,
+            );
             let mut ctx = crate::model::facts::EffectLoweringContext::new();
             ctx.last_effect_id = Some(crate::effect::EffectId::REPLACED_EVENT);
             ctx.last_object_tag = Some(ironsmith_core::tag::ZONE_REPLACEMENT_OBJECT_TAG.into());

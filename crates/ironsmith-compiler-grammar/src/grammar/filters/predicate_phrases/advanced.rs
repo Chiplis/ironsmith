@@ -1125,7 +1125,7 @@ pub(super) fn parse_attacking_you_count_predicate(
 }
 
 /// "you haven't added mana with this ability this turn" (Carpet of Flowers):
-/// the ability has not resolved yet this turn.
+/// count actual nonempty mana productions, not attempted resolutions.
 pub(super) fn parse_havent_added_mana_with_this_ability_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
@@ -1147,7 +1147,7 @@ pub(super) fn parse_havent_added_mana_with_this_ability_predicate(
         ]
     );
     matched.then(|| PredicateAst::ValueComparison {
-        left: Value::ThisAbilityResolvedThisTurnCount,
+        left: Value::ThisAbilityManaProductionCountThisTurn,
         operator: ValueComparisonOperator::Equal,
         right: Value::Fixed(0),
     })

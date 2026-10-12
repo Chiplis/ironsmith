@@ -220,6 +220,7 @@ const SHAPES: &[Shape] = &[
     permanent_put_into_graveyard_this_turn,
     controlled_source_continuously,
     exact_hand_sizes,
+    counters_among_objects,
     permanent_types_among_graveyard,
     graveyard_size_threshold,
     mana_values_among_your_graveyard,
@@ -297,6 +298,31 @@ fn at_least(left: Value, count: u32) -> PredicateAst {
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(count as i32),
     }
+}
+
+/// A counter threshold "among" a set counts counters across that entire set,
+/// rather than requiring each permanent to carry the threshold individually.
+fn counters_among_objects(words: &[&str]) -> Option<PredicateAst> {
+    let ["there", "are", tail @ ..] = words else { return None; };
+    let (count, used) = crate::grammar::leaf::parse_leaf_number_prefix_words(tail)?.into_fixed()?;
+    let ["or", comparison, counted @ ..] = &tail[used..] else { return None; };
+    let operator = match *comparison {
+        "more" => crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        "less" | "fewer" => crate::effect::ValueComparisonOperator::LessThanOrEqual,
+        _ => return None,
+    };
+    let among = counted.iter().position(|word| *word == "among")?;
+    if !matches!(counted.get(among.checked_sub(1)?), Some(&"counter" | &"counters")) {
+        return None;
+    }
+    let counter = crate::grammar::filters::parse_counter_type_words(&counted[..among])?;
+    let filter = filter_from_words(&counted[among + 1..])?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::CountersOn(Box::new(crate::target::ChooseSpec::All(filter)), Some(counter))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong),
+        operator,
+        right: Value::Fixed(count as i32),
+    })
 }
 
 fn history_at_least(query: ironsmith_core::TurnHistoryCount, count: u32) -> PredicateAst {

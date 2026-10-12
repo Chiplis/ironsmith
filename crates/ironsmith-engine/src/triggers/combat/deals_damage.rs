@@ -162,12 +162,24 @@ impl TriggerMatcher for DealsDamageTrigger {
         Some(vec![EventKind::Damage])
     }
 
+    fn event_value_amount(&self, event: &TriggerEvent, _ctx: &TriggerContext) -> Option<i32> {
+        // Retain each occurrence's amount so simultaneous source groups can
+        // sum "that much" instead of reading only their first receipt.
+        event.downcast::<DamageEvent>().and_then(|damage| i32::try_from(damage.amount).ok())
+    }
+
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
         let damage = event.downcast::<DamageEvent>()?;
         match (
             self.filter.union_is_one_or_more(),
             self.damaged_player_one_or_more,
         ) {
+            // An unconstrained recipient is not a separate trigger subject:
+            // one source dealing damage simultaneously is one occurrence,
+            // even when that damage has several recipients (CR 603.2c).
+            (false, false) if self.damaged_player.is_none() => {
+                Some(SimultaneousTriggerKey::DamageSource(damage.source))
+            }
             (false, false) => None,
             (false, true) => Some(SimultaneousTriggerKey::DamageSource(damage.source)),
             (true, false) if self.damaged_player.is_some() => {

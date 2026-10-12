@@ -154,15 +154,13 @@ impl DiscardEffect {
         relax_mana_x: bool,
     ) -> Result<Vec<crate::ids::ObjectId>, crate::effects::CostValidationError> {
         use crate::effects::CostValidationError;
-        let player = match self.player {
-            PlayerFilter::You => ctx.controller,
-            PlayerFilter::Specific(player) => player,
-            _ => {
-                return Err(CostValidationError::Other(
-                    "discard cost needs an explicit payer".into(),
-                ));
-            }
-        };
+        let player = crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)
+            .map_err(CostValidationError::ExecutionFailed)?;
+        if player != ctx.controller {
+            return Err(CostValidationError::Other(
+                "discard cost must be paid by its payment player".into(),
+            ));
+        }
         let hand = &game
             .player(player)
             .ok_or_else(|| CostValidationError::Other("discard payer is absent".into()))?

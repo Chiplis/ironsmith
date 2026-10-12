@@ -70,6 +70,7 @@ mod repeat_process_prompt;
 mod player_option_choice;
 mod secret_choice;
 mod sequence;
+mod coordinated_damage;
 mod simultaneous;
 pub(crate) use prepared_iteration::{
     scope_prepared_iteration, with_iteration_tags, with_object_iteration,

@@ -55,3 +55,21 @@ web/relay/.wrangler/
 
 # Generated bilingual frame comparison galleries (pinned fixtures live in tests).
 /web/ui/test-results/bilingual-*/
+
+# Representative frame-history audit: metadata manifest is reproducible; scans are cached externally.
+!/web/ui/tests/frame-history-corpus.json
+/web/ui/test-results/frame-history*/
+
+!web/ui/tests/frame-history-manual-fields.json
+
+# Bundled default card frames and their pinned source catalog.
+!web/ui/src/lib/default-card-frames.generated.json
+!web/ui/src/lib/nonstandard-card-layouts.generated.json
+!web/ui/scripts/fixtures/default-card-frame-donors.json
+
+# Reviewed CustomMagic runtime pool and reproducible source audit.
+!web/ui/public/custommagic/pool.json
+
+!web/ui/src/lib/custom-card-assets.generated.json
+!web/ui/public/custommagic/images/
+!web/ui/public/custommagic/images/*.webp

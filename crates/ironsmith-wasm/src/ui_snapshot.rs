@@ -1307,6 +1307,13 @@ fn freeze_snapshot_subtree(value: &JsValue) {
 }
 
 fn battlefield_lane_for_card_types(card_types: &[CardType]) -> BattlefieldLane {
+    // Presentation only: land Sagas belong with the other resource permanents.
+    if card_types.contains(&CardType::Land)
+        && card_types.contains(&CardType::Enchantment)
+        && !card_types.contains(&CardType::Creature)
+    {
+        return BattlefieldLane::Lands;
+    }
     if card_types.contains(&CardType::Enchantment) {
         return BattlefieldLane::Enchantments;
     }
@@ -3579,6 +3586,18 @@ mod tests {
     use ironsmith::types::{CardType, Subtype};
     use ironsmith::zone::Zone;
     use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
+
+    #[test]
+    fn land_sagas_use_the_land_presentation_lane() {
+        assert_eq!(
+            battlefield_lane_for_card_types(&[CardType::Enchantment, CardType::Land]),
+            BattlefieldLane::Lands
+        );
+        assert_eq!(
+            battlefield_lane_for_card_types(&[CardType::Enchantment]),
+            BattlefieldLane::Enchantments
+        );
+    }
 
     fn test_bears_card() -> Card {
         CardBuilder::new(CardId::from_raw(90_001), "Grizzly Bears")

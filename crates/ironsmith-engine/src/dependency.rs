@@ -1044,7 +1044,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
             | PlayerFilter::ControlsMost { .. }
-            | PlayerFilter::ControlsFewestTied { .. }
+            | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. }
             | PlayerFilter::OpponentOf(_)
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. }
@@ -1701,7 +1701,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
         | Value::CommanderColorIdentityColors(_)
-        | Value::ThisAbilityResolvedThisTurnCount
+        | Value::ThisAbilityResolvedThisTurnCount | Value::ThisAbilityManaProductionCountThisTurn
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
         | Value::SourceDevouredCreatureCount
@@ -2362,7 +2362,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
-        | Value::ThisAbilityResolvedThisTurnCount
+        | Value::ThisAbilityResolvedThisTurnCount | Value::ThisAbilityManaProductionCountThisTurn
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
         | Value::SourceDevouredCreatureCount

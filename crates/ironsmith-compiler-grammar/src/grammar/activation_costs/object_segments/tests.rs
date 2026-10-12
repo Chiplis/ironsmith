@@ -329,3 +329,24 @@ fn latest_draw_discard_cost_keeps_exact_player_and_history_predicate() {
         .is_err()
     );
 }
+
+#[test]
+fn tap_state_costs_preserve_unbounded_counts_and_aggregate_power() {
+    for verb in ["tap", "untap"] {
+        let state = if verb == "tap" { "untapped" } else { "tapped" };
+        let tokens = lex_line(&format!("{verb} any number of other {state} creatures you control with total power 10 or greater"), 0).unwrap();
+        let parsed = if verb == "tap" { parse_tap_chosen_segment_tokens(&tokens) } else { parse_untap_chosen_segment_tokens(&tokens) }.unwrap();
+        let (count, filter) = match parsed {
+            ActivationCostSegmentCst::TapChosen { count, filter }
+            | ActivationCostSegmentCst::UntapChosen { count, filter } => (count, filter),
+            other => panic!("unexpected cost: {other:?}"),
+        };
+        assert_eq!(count.min, 0);
+        assert_eq!(count.max, None);
+        assert!(filter.other);
+        assert_eq!(filter.power, None);
+        let aggregate = filter.target_set_aggregate_constraint.unwrap();
+        assert_eq!(aggregate.metric, crate::effect::ChoiceAggregateMetric::Power);
+        assert_eq!(aggregate.minimum, Some(crate::effect::Value::Fixed(10)));
+    }
+}

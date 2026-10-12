@@ -1,3 +1,4 @@
+import { customCardAssets } from "@/lib/custom-card-assets";
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { arenaPermanentKind } from '@/lib/mobile-arena';
 import './battlefield-appearance.css';
@@ -26,6 +27,7 @@ import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import MiniatureCardFrame from "./MiniatureCardFrame";
 import { cardNeedsFrame } from '@/lib/card-frame-scope';
+import { defaultCardFrameKey } from '@/lib/default-card-frames';
 import {
   aggregateCounterEntries,
   BattlefieldCounterBadge,
@@ -703,13 +705,16 @@ export default function GameCard({
   const artUrl = sourceImageUrl || resolvedArtUrl;
   // Share the hover inspector's preparation from the moment a visible card
   // has an image, including while it is still in hand.
-  const preparedFrame = usePreparedCardFrame(cardArtCropUrl(artUrl), card.type_line, Boolean(artUrl) && cardNeedsFrame(state, card.id));
+  const hasDefaultFrame = defaultCardFrameKey({ cards: [card], manaCost: card.mana_cost, typeLine: card.type_line }) != null;
+  usePreparedCardFrame(cardArtCropUrl(artUrl), card.type_line, Boolean(artUrl) && cardNeedsFrame(state, card.id) && !hasDefaultFrame
+    && !(isCompiledCardName(name) && customCardAssets(name)));
   // A card compiled in the forge may carry an existing card's name, and both
   // the hand and the portrait battlefield show that printing's scan whole.
   // Its printed text is the template's, not this card's, so the live frame is
   // drawn over it instead -- with no art to borrow, the frame draws itself,
   // which is also why a compiled card does not wait for a prepared frame.
   const compiledCustomCard = isCompiledCardName(name);
+  const hasCustomPrint = compiledCustomCard && Boolean(customCardAssets(name));
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
@@ -1476,7 +1481,7 @@ export default function GameCard({
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       <div className="game-card-surface">
-        {((usePortraitBattlefield && (preparedFrame || compiledCustomCard)) || (variant === "hand" && compiledCustomCard) || showHandLoadingFrame) && (
+        {(usePortraitBattlefield || (variant === "hand" && compiledCustomCard && !hasCustomPrint) || (showHandLoadingFrame && !hasCustomPrint)) && (
           <MiniatureCardFrame card={card} imageUrl={artUrl} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (

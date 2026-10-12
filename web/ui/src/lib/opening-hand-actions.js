@@ -37,3 +37,14 @@ export function findPregameActions(actions = []) {
     || action?.action_ref?.kind === "use_pregame_action"
   );
 }
+
+export function canShowPhasePass(state) {
+  const decision = state?.decision;
+  const actions = decision?.actions || [];
+  const pregameKinds = ["keep_opening_hand", "take_mulligan", "use_pregame_action", "continue_pregame", "begin_game"];
+  return decision?.kind === "priority"
+    && !state?.game_over
+    && Number(state?.stack_size || 0) === 0
+    && !isOpeningHandDecision(actions)
+    && !actions.some(action => pregameKinds.includes(action.kind) || pregameKinds.includes(action.action_ref?.kind));
+}

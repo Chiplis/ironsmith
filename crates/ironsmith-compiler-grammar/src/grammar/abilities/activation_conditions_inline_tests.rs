@@ -187,3 +187,30 @@ fn trailing_lifetime_activation_limit_keeps_the_source_color_gate() {
             .is_none()
     );
 }
+
+#[test]
+fn activation_source_pronoun_retains_counter_gate() {
+    for (kind, counter) in [("time", crate::CounterType::Time), ("charge", crate::CounterType::Charge)] {
+        let parsed = parse_activation_condition_lexed(&lex(&format!(
+            "Activate only if it has no {kind} counters on it."
+        )));
+        let Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))) = parsed else {
+            panic!("source counter gate missing: {parsed:?}");
+        };
+        assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Typed(counter)));
+    }
+}
+
+#[test]
+fn activation_counter_threshold_sums_a_filtered_set() {
+    for text in [
+        "Activate only if there are twenty-five or more loyalty counters among Jaces you control.",
+        "Activate only if there are ten or more charge counters among artifacts you control.",
+    ] {
+        let parsed = parse_activation_condition_lexed(&lex(text));
+        let Some(PredicateAst::ValueComparison { left, operator, right }) = parsed else { panic!("missing aggregate counter gate: {parsed:?}"); };
+        assert!(matches!(left.unhinted(), crate::effect::Value::CountersOn(spec, Some(_)) if matches!(spec.base(), crate::target::ChooseSpec::All(_))));
+        assert_eq!(operator, crate::effect::ValueComparisonOperator::GreaterThanOrEqual);
+        assert!(matches!(right, crate::effect::Value::Fixed(25 | 10)));
+    }
+}

@@ -22,6 +22,7 @@ const WORKER_METHODS = [
   "cardLoadDiagnostics",
   "cardsMeetingThreshold",
   "createCustomCard",
+  "replaceHandWithCustomCards",
   "createRuntimeSavepoint",
   "captureExactBuildSnapshot",
   "restoreExactBuildSnapshot",

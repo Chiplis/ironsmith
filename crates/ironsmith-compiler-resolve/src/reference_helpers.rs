@@ -340,7 +340,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }
-        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } => {
             append_object_filter_target_player_choices(filter, choices);
         }
         PlayerFilter::Excluding { base, excluded } => {

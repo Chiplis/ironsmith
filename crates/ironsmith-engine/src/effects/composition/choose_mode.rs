@@ -21,7 +21,7 @@ impl EffectExecutor for ChooseModeEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
         Ok(
-            super::choose_mode_runtime::select_mode_program(self, game, ctx)?.map(|program| {
+            super::choose_mode_runtime::select_mode_program(self, game, ctx, crate::effects::EffectExecutionPurpose::Action)?.map(|program| {
                 super::choose_mode_runtime::selected_mode_cursor(self, program, ctx)
             }),
         )

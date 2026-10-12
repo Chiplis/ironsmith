@@ -7,6 +7,7 @@ import '../src/index.css';
 import '../src/components/cards/battlefield-appearance.css';
 import '../src/components/board/forge/forge-board.css';
 const samples = [
+  {name:"Urza's Saga",type_line:'Enchantment Land — Saga',card_types:['enchantment','land'],produced_mana:['C']},
   {name:'Command Tower',type_line:'Land',produced_mana:['W','U','B','R','G']},
   {name:'Wastes',type_line:'Basic Land',produced_mana:['C']},
   {name:'Misty Rainforest',type_line:'Land',produced_mana:[]},

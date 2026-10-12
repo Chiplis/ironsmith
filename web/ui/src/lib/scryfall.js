@@ -1,3 +1,4 @@
+import { customCardAssets, customCardImageUrl } from "./custom-card-assets.js";
 import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
 import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from './card-asset-cache.js';
@@ -63,6 +64,7 @@ const imagePreloadCache = new Map();
 let scryfallApiQueue = Promise.resolve();
 let nextScryfallApiRequestAt = 0;
 let scryfallApiBackoffUntil = 0;
+const missingScryfallApiUrls = new Set();
 
 const SCRYFALL_API_MIN_INTERVAL_MS = 140;
 const SCRYFALL_API_DEFAULT_BACKOFF_MS = 60_000;
@@ -549,7 +551,12 @@ function wait(ms) {
 }
 
 function fetchScryfallApiJson(url) {
+  const missingResponse = () => new Response(null, { status: 404 });
+  if (missingScryfallApiUrls.has(url)) return Promise.resolve(missingResponse());
   const run = async () => {
+    // Check again after queued requests: an earlier caller may have just
+    // established that this exact resource does not exist.
+    if (missingScryfallApiUrls.has(url)) return missingResponse();
     const now = Date.now();
     if (now < scryfallApiBackoffUntil) {
       throw new Error("Scryfall API temporarily backed off after rate limiting");
@@ -567,6 +574,7 @@ function fetchScryfallApiJson(url) {
     if (response.status === 429) {
       scryfallApiBackoffUntil = Date.now() + parseRetryAfterMs(response);
     }
+    if (response.status === 404) missingScryfallApiUrls.add(url);
     return response;
   };
 
@@ -577,6 +585,11 @@ function fetchScryfallApiJson(url) {
 
 async function fetchScryfallCardJson(cardName, printPreference = null) {
   const query = String(cardName || "").trim();
+  const localCustom = isCompiledCardName(query) ? customCardAssets(query) : null;
+  if (localCustom) return {name: query, type_line: localCustom.typeLine, flavor_text: localCustom.flavorText,
+    mana_cost: localCustom.manaCost, color_indicator: localCustom.colorIndicator,
+    power: localCustom.power, toughness: localCustom.toughness, loyalty: localCustom.loyalty, defense: localCustom.defense,
+    image_uris: {normal: customCardImageUrl(query), art_crop: customCardImageUrl(query, "art_crop")}};
   const preference = normalizePrintPreference(printPreference);
   const key = cardJsonCacheKey(query, preference);
   if (!query || isHiddenCardName(query)) return null;
@@ -712,6 +725,8 @@ export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const localCustomUrl = isCompiledCardName(query) ? customCardImageUrl(query, version) : "";
+  if (localCustomUrl) return localCustomUrl;
   const customUrl = customCardArtUrl(query);
   if (customUrl) return customUrl;
   const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version, preferredCardPrint(query)));
@@ -723,6 +738,8 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
+  const localCustomUrl = isCompiledCardName(query) ? customCardImageUrl(query, version) : "";
+  if (localCustomUrl) return localCustomUrl;
   const customUrl = customCardArtUrl(query);
   if (customUrl) return customUrl;
 
@@ -925,6 +942,7 @@ function localizedCardPayload(card, locale) {
 
 const localizedImageRequests = new Map();
 export async function resolveScryfallLocalizedImageUrl(cardName, locale, version = "normal") {
+  if (isCompiledCardName(cardName) && customCardAssets(cardName)) return customCardImageUrl(cardName, version);
   const targetLang = String(locale || "").trim().toLowerCase();
   if (!targetLang || targetLang === "en" || isHiddenCardName(cardName)) return "";
   const key = `${targetLang}:${cardJsonCacheKey(cardName)}`;

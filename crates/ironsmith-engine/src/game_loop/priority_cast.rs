@@ -4317,7 +4317,7 @@ pub(super) fn continue_spell_next_cost_or_finalize(
                 game,
                 pending.caster,
                 spell,
-                &pending.effect_outcomes,
+                &pending.completed_outputs,
             )
         });
         if reduction > 0

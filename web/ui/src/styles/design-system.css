@@ -7694,10 +7694,18 @@ html[data-hand-pointer-suspended="true"] * {
   box-shadow: 0 0 0 2px #91ceff;
 }
 
-/* An automatic resolution frame must not intercept target or choice input. */
+/* Keep automatic previews transparent to board input outside their text. */
 .floating-card-preview[data-automatic-stack-preview="true"],
 .floating-card-preview[data-automatic-stack-preview="true"] * {
   pointer-events: none !important;
+}
+
+/* Rules remain scrollable while an automatic stack preview is displayed. */
+.floating-card-preview[data-automatic-stack-preview="true"]
+  :is(.interactive-card-frame__rules, .inspector-oracle-scroll) {
+  pointer-events: auto !important;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 @media (min-width: 1024px) {
@@ -7763,4 +7771,55 @@ html[data-hand-pointer-suspended="true"] * {
 /* Look is on the left edge: target enlargement must grow into the board. */
 .my-zone-board-shell .player-look-pile .zone-pile-slot:has(> .zone-pile[data-has-targets="true"]:not([aria-expanded="true"])) {
   transform-origin: left bottom;
+}
+
+/* Action groups stay inside the hand reserve and gain rows upward. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not([data-mana-payment="true"]) {
+    min-width: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel:not(:has(.action-strip-decision-stack)) {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .action-strip-layout {
+    flex-wrap: wrap;
+    min-width: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .battlefield-human-decision-panel .action-strip-layout--pregame-choice {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-layout--pregame-choice > .action-strip-command-region--pregame {
+    order: -1;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-layout
+    :is(.action-strip-command-region, .action-strip-main-region, .decision-main-button, .action-strip-main-text-stack) {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-layout--pregame-choice
+    :is(.action-strip-command-region, .action-strip-main-region) {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-layout--pregame-choice
+    .action-strip-main-title-text {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
 }

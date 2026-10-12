@@ -652,9 +652,8 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, 1, None);
     let discard =
         EffectAst::subject_verb_discard(PlayerAst::That, Value::Fixed(1), false, false, None, None);
-    let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
-        player: PlayerFilter::IteratedPlayer,
-        player_surface: None,
+    let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+        chooser: PlayerFilter::IteratedPlayer,
         modes: vec![
             ChooseOneModeAst {
                 description: if nonland {

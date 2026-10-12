@@ -3184,7 +3184,7 @@ pub(super) fn player_target_choice_matches_filter(
     )
 }
 
-fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
+pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
     match value {
         Value::DamageHistory(query) => {
             for spec in query.reference_specs() {

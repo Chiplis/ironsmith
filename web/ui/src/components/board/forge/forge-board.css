@@ -9,6 +9,19 @@
   contain: strict;
 }
 .forge-board canvas { display: block; width: 100%; height: 100%; }
+.forge-field-lights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.forge-field-wash {
+  position: absolute;
+  background: radial-gradient(ellipse at 50% var(--field-origin),
+    color-mix(in srgb, var(--field-color) 23%, transparent),
+    color-mix(in srgb, var(--field-color) 10%, transparent) 52%, transparent 85%);
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+}
 /* These surfaces previously painted an opaque board over the scenery. Keep
    menus, card faces, HUD panels, and all existing interaction layers intact. */
 [data-workspace-shell][data-forge-board="true"] .table-shell,

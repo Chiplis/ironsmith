@@ -920,6 +920,10 @@ fn parse_for_each_object_effect_chain_shape(
         return Ok(None);
     };
 
+    if let Some(effect) = super::for_each_helpers::parse_for_each_graveyard_effect(
+        shape.filter_tokens, shape.effect_tokens,
+    )? { return Ok(Some(vec![effect])); }
+
     let mut count_words = vec!["for", "each"];
     count_words.extend(crate::lexer::token_word_refs(shape.filter_tokens));
     let effect_words = crate::lexer::token_word_refs(shape.effect_tokens);
@@ -1968,6 +1972,13 @@ fn parse_effect_chain_inner_lexed_unstacked(
             continue;
         }
         if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(&segment) {
+            if let Some(effect) = super::for_each_helpers::parse_for_each_graveyard_effect(
+                shape.filter_tokens, shape.effect_tokens,
+            )? {
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+                previous_segment = Some(segment);
+                continue;
+            }
             let filter =
                 super::for_each_helpers::parse_for_each_object_filter(shape.filter_tokens)?;
             let nested_effects = parse_effect_chain_lexed(shape.effect_tokens)?;

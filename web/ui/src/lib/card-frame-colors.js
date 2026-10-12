@@ -11,6 +11,7 @@ import { frameCanvas, frameCanvasUrl } from './card-frame-canvas.js';
 const cache = new Map();
 
 export function fullCardImageUrl(artUrl) {
+  if (/\/custommagic\/images\/[^/]+-art\.webp(?:\?|$)/.test(artUrl || "")) return artUrl.replace(/-art\.webp(?=\?|$)/, "-full.webp");
   return /^https:\/\/cards\.scryfall\.io\/art_crop\//.test(artUrl || '')
     ? artUrl.replace('/art_crop/', '/normal/') : '';
 }

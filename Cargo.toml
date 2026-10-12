@@ -128,6 +128,68 @@ opt-level = 0
 [profile.wasm-release.package.ironsmith-artifact-effect-decoder]
 opt-level = 0
 
+# The artifact baker (`./rebuild-wasm.sh` card bake). At opt-level 2 and 3 a
+# non-incremental build runs rustc's MIR inliner, whose metadata pass alone
+# costs the engine minutes of single-threaded frontend time. opt-level 1 skips
+# it: the cold baker build drops from ~8 to ~5 minutes while the bake itself
+# slows by about a minute, which is a net win on every fresh rebuild. The bake
+# never executes engine code (only its types), so the engine is not optimized
+# at all. (Generic serde code is instantiated in the crates that call it, so
+# those keep opt-level 1 even where their own code is cold.)
+[profile.artifact-bake]
+inherits = "release"
+
+[profile.artifact-bake.package.ironsmith-engine]
+opt-level = 0
+
+[profile.artifact-bake.package.ironsmith-compiler-grammar]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-text]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-lowering]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-semantic]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-resolve]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-core]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-artifact-effect-decoder]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-runtime-catalog]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiled-artifact]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-grammar-common]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-syntax]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-source]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-ast]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-compiler-api]
+opt-level = 1
+
+[profile.artifact-bake.package.ironsmith-artifact-baker]
+opt-level = 1
+
 # Shipped browser build (`./rebuild-wasm.sh --release`). Download size wins over
 # compile time here: whole-program LTO in one codegen unit lets LLVM drop and
 # merge code across every crate before Binaryen's -Oz pass. The wasm-release
@@ -141,3 +203,11 @@ codegen-units = 1
 # `inherits` carries release's package overrides; undo the one in the wasm graph.
 [profile.wasm-dist.package.ironsmith-card-source]
 opt-level = "z"
+
+# The engine crate is the head of the release build's critical path (engine,
+# then the single-threaded fat-LTO links). In one codegen unit its pre-LTO
+# optimization alone took ~270 s on one core; four units bring that to ~95 s
+# for about 2% (~0.8 MB) more optimized code in each of the engine and
+# compiler modules. Sixteen units saved another ~30 s but cost 5%.
+[profile.wasm-dist.package.ironsmith-engine]
+codegen-units = 4

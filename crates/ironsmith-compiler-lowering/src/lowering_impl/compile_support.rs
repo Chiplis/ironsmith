@@ -1269,7 +1269,19 @@ pub fn resolve_player_scoped_value(
         track_last_player_filter,
     )?;
     let value = subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx)?;
-    Ok((value, subject.into_player_filter(), subject.into_choices()))
+    let mut choices = subject.into_choices();
+    // A player named only in an amount is still an announced target. Mana
+    // production and other player-scoped values use the same declaration walk.
+    let mut value_choices = Vec::new();
+    effect_dispatch::collect_value_player_target_choices(&value, &mut value_choices);
+    for choice in value_choices {
+        let reuses_prior = ctx.last_player_filter.as_ref().is_some_and(|filter|
+            effect_dispatch::player_target_choice_matches_filter(&choice, filter));
+        if !reuses_prior {
+            push_choice(&mut choices, choice);
+        }
+    }
+    Ok((value, subject.into_player_filter(), choices))
 }
 
 fn choose_followup_player_filter(

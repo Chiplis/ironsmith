@@ -164,6 +164,47 @@ pub fn parse_for_each_object_filter(
     Ok(filter)
 }
 
+/// A personal zone is a participant scope, not an object in that zone.
+/// Preserve its existence qualifier independently of the targeted action.
+pub(crate) fn parse_for_each_graveyard_effect(
+    filter_tokens: &[OwnedLexToken],
+    body: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::cards::builders::ForEachEffectAst;
+    let words = crate::lexer::token_word_refs(filter_tokens);
+    if words.first() != Some(&"graveyard") {
+        return Ok(None);
+    }
+    let positions = filter_tokens.iter().enumerate()
+        .filter_map(|(index, token)| token.as_word().map(|_| index))
+        .collect::<Vec<_>>();
+    let filter = if words.as_slice() == ["graveyard"] {
+        PlayerFilter::Any
+    } else if words.get(1) == Some(&"with") && words.ends_with(&["in", "it"]) {
+        let start = *positions.get(2).ok_or_else(|| CardTextError::ParseError(
+            "graveyard qualifier is missing its object filter".into()))?;
+        let end = positions[positions.len() - 2];
+        let mut objects = parse_object_filter(&filter_tokens[start..end], false)?;
+        objects.zone = Some(crate::zone::Zone::Graveyard);
+        PlayerFilter::OwnsMatchingObject { filter: Box::new(objects) }
+    } else {
+        return Err(CardTextError::ParseError(
+            "unsupported quantified graveyard qualifier".into()));
+    };
+    // Make the personal-zone anaphor explicit for the normal target parser.
+    let mut bound_body = Vec::with_capacity(body.len() + 1);
+    for (index, token) in body.iter().enumerate() {
+        bound_body.push(token.clone());
+        if token.is_word("that") && body.get(index + 1).is_some_and(|next| next.is_word("graveyard")) {
+            bound_body.push(OwnedLexToken::synthetic_word("players"));
+        }
+    }
+    let effects = super::chain_carry::parse_effect_chain_lexed(&bound_body)?;
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        filter, effects, sequential: false,
+    })))
+}
+
 pub fn parse_for_each_targeted_object_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {

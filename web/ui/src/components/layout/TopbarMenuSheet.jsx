@@ -2,6 +2,7 @@ import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import { useSuppressCardPreview } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { Activity, ExternalLink, Github, Menu, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 import AddCardSheet from "./AddCardSheet";
+import CustomCardsButton from "./CustomCardsButton";
 import SurrenderButton from "./SurrenderButton";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
@@ -75,6 +77,7 @@ export default function TopbarMenuSheet({
 }) {
   const ui = useUiText();
   const [open, setOpen] = useState(false);
+  useSuppressCardPreview(open);
   const { nonDesktopViewport } = useViewportLayout();
   const {
     state,
@@ -244,6 +247,7 @@ export default function TopbarMenuSheet({
                         </Button>
                       )}
                     />
+                    <CustomCardsButton className="stone-pill justify-start px-3 py-2 text-sm disabled:opacity-45" />
                     <CreateCardForgeSheet
                       disabled={addLocked}
                       players={players}
@@ -346,6 +350,7 @@ export default function TopbarMenuSheet({
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
                     checked={autoResolveEnabled}
+                    title={ui("Show a timed Hold Priority button after casting or activating. Turn off to resolve manually.")}
                     onCheckedChange={(value) => setAutoResolveEnabled(Boolean(value))}
                   />
                   {t("action.autoPass")}

@@ -14,7 +14,7 @@
   .arena-permanent[data-kind="battle"] .arena-permanent-stat { left: 50%; right: auto; transform: translateX(-50%); background: #1c232b; color: white; border-radius: 0; clip-path: polygon(15% 0, 85% 0, 100% 55%, 50% 100%, 0 55%); padding: 1px 6px 5px; }
   .arena-permanent[data-kind="battle"] { top: 15%; bottom: 15%; }
   .arena-permanent[data-token][data-kind="creature"] { border-radius: 45% 45% 4px 4px; }
-  .arena-permanent[data-kind="saga"] { left: 20%; right: 20%; border-color: #b3a88c; }
+  .arena-permanent[data-kind="saga"] { border-color: #b3a88c; }
   .arena-saga-chapters { position: absolute; left: 0; bottom: 1px; font: 8px/1.25 Georgia,serif; color: #eee1be; background: #211e19c9; }
   .arena-permanent[data-kind="enchantment"] { border-top-width: 4px; }
   .arena-permanent[data-kind="artifact"] { border-color: #a0a5a5; }
@@ -106,7 +106,7 @@
   background: transparent;
 }
 .game-card.battlefield-artwork-card:has(.arena-permanent[data-kind="saga"]) {
-  --arena-face-inset: 2px 20%;
+  --arena-face-inset: 2px;
   --arena-face-radius: 4px;
 }
 .game-card.battlefield-artwork-card:has(.arena-permanent[data-kind="planeswalker"]) {

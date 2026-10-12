@@ -416,3 +416,26 @@ test("retro printing remains available when no standard alternative exists", asy
     assert.equal(await resolveScryfallImageUrl(name), "only-retro");
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test("404 API resources are not downloaded again on later card lookups", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = new Map();
+  const name = "Missing Resource Regression Card";
+  globalThis.fetch = async url => {
+    if (String(url).startsWith("https://api.scryfall.com/")) {
+      requests.set(String(url), (requests.get(String(url)) || 0) + 1);
+    }
+    return new Response(null, { status: 404 });
+  };
+  try {
+    await assert.rejects(resolveScryfallImageUrl(name));
+    const firstCount = requests.size;
+    assert.ok(firstCount > 0);
+    await Promise.all([
+      assert.rejects(resolveScryfallImageUrl(name)),
+      assert.rejects(resolveScryfallImageUrl(name, "art_crop")),
+    ]);
+    assert.equal(requests.size, firstCount);
+    assert.ok([...requests.values()].every(count => count === 1));
+  } finally { globalThis.fetch = originalFetch; }
+});

@@ -2673,6 +2673,35 @@ impl GameState {
         &self.combat_transients.combat_damage_object_batch_hits
     }
 
+    fn ability_mana_production_counter_key(
+        source: ObjectId, player: PlayerId, ability_index: Option<usize>,
+        trigger_identity: Option<TriggerIdentity>,
+    ) -> Option<String> {
+        let identity = if let Some(index) = ability_index {
+            format!("activated:{index}")
+        } else if let Some(identity) = trigger_identity {
+            format!("triggered:{}", identity.0)
+        } else { return None; };
+        Some(format!("ability_mana_production:{}:{}:{identity}", source.0, player.0))
+    }
+
+    pub(crate) fn record_ability_mana_production(
+        &mut self, source: ObjectId, player: PlayerId, ability_index: Option<usize>,
+        trigger_identity: Option<TriggerIdentity>,
+    ) {
+        if let Some(key) = Self::ability_mana_production_counter_key(source, player, ability_index, trigger_identity) {
+            self.increment_named_turn_counter(key);
+        }
+    }
+
+    pub(crate) fn ability_mana_production_count_this_turn(
+        &self, source: ObjectId, player: PlayerId, ability_index: Option<usize>,
+        trigger_identity: Option<TriggerIdentity>,
+    ) -> u32 {
+        Self::ability_mana_production_counter_key(source, player, ability_index, trigger_identity)
+            .map_or(0, |key| self.named_turn_counter(&key))
+    }
+
     /// Increment an arbitrary named turn counter.
     pub fn increment_named_turn_counter(&mut self, name: impl Into<String>) {
         self.turn_store

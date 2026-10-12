@@ -885,7 +885,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 | PlayerFilter::HasMoreLifeThanYou { .. }
                 | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
                 | PlayerFilter::ControlsMost { .. }
-                | PlayerFilter::ControlsFewestTied { .. }
+                | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. }
                 | PlayerFilter::OpponentOf(_)
                 | PlayerFilter::PlayerToLeftOf(_)
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),

@@ -412,6 +412,10 @@ pub fn parse_tap_chosen_segment_tokens(
         return Err(unsupported(filter_tokens, "tap chosen random selection"));
     }
     let mut filter = tap_state_cost_filter(filter_tokens, shape.other)?;
+    filter.target_set_aggregate_constraint =
+        crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+            filter_tokens, &mut filter,
+        ).map(Box::new);
     if filter.tapped {
         return Err(unsupported(filter_tokens, "tap chosen contradictory state"));
     }
@@ -432,6 +436,10 @@ pub fn parse_untap_chosen_segment_tokens(
     let shape = primitives::parse_all(tokens, parse_untap_chosen_shape_lexed, "untap-chosen-cost")
         .map_err(|_| unsupported(tokens, "untap chosen"))?;
     let mut filter = tap_state_cost_filter(shape.filter_tokens, shape.other)?;
+    filter.target_set_aggregate_constraint =
+        crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
+            shape.filter_tokens, &mut filter,
+        ).map(Box::new);
     filter.tapped = true;
     Ok(ActivationCostSegmentCst::UntapChosen {
         count: shape.count,

@@ -11,7 +11,7 @@ const cast = { type: 'priority_action', action_ref: { kind: 'cast_spell' } };
 const onStack = (id = 10) => state({ stack_size: 1, stack_objects: [{ id, controller: 0 }] });
 function castWindow() {
   let clock = 100;
-  const stops = createPriorityStops({ now: () => clock });
+  const stops = createPriorityStops({ postActionEnabled: true, now: () => clock });
   stops.beforeCommand(cast, state());
   stops.observe(state({ decision: { kind: 'mana_payment', player: 0 } }));
   assert.equal(stops.getSnapshot().window, null);
@@ -22,7 +22,7 @@ function castWindow() {
 }
 
 test('tracker cycles off / once / recurring / off', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   for (const expected of ['once', 'always', undefined]) {
     stops.cycleStop('phase:Upkeep', state());
     assert.equal(stops.getSnapshot().stops['phase:Upkeep'], expected);
@@ -30,7 +30,7 @@ test('tracker cycles off / once / recurring / off', () => {
 });
 
 test('one-time stops wait for local priority and consume only on explicit action', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.cycleStop('phase:Upkeep', state({ step: 'draw' }));
   assert.equal(stops.stopReason(state({ decision: { kind: 'priority', player: 1 } })), null);
   assert.match(stops.stopReason(state()), /Upkeep/);
@@ -42,7 +42,7 @@ test('one-time stops wait for local priority and consume only on explicit action
 });
 
 test('recurring stops do not retrigger in the same step, but return next turn', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.cycleStop('phase:Upkeep', state());
   stops.cycleStop('phase:Upkeep', state());
   stops.beforeCommand(pass, state());
@@ -51,7 +51,7 @@ test('recurring stops do not retrigger in the same step, but return next turn', 
 });
 
 test('combat step stops remain independent of a broad combat stop and rearm for extra combat', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   const combat = step => state({ phase: 'combat phase', step });
   stops.cycleStop('phase:Combat', combat('begin combat'));
   stops.cycleStop('phase:Combat', combat('begin combat'));
@@ -97,7 +97,7 @@ test('foreign priority or a changed stack cancels stale timers', () => {
 });
 
 test('mana activations never create a post-action timer', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.beforeCommand({ type: 'priority_action', action_ref: { kind: 'activate_mana_ability' } }, state());
   stops.observe(state());
   assert.equal(stops.getSnapshot().window, null);
@@ -105,14 +105,14 @@ test('mana activations never create a post-action timer', () => {
 });
 
 test('ordinary activated abilities use the same window as spells', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.beforeCommand({ type: 'priority_action', action_ref: { kind: 'activate_ability' } }, state());
   stops.observe(onStack());
   assert.ok(stops.getSnapshot().window);
 });
 
 test('echoes of the pre-command snapshot cannot clear an announcing action', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.beforeCommand(cast, state());
   stops.observe(state({ __priority_revision: 6 }));
   assert.match(stops.stopReason(state()), /window/);
@@ -121,7 +121,7 @@ test('echoes of the pre-command snapshot cannot clear an announcing action', () 
 });
 
 test('cancelling a cast clears its pending window without consuming future step stops', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.cycleStop('phase:Draw', state());
   stops.beforeCommand(cast, state());
   stops.cancelAction();
@@ -139,7 +139,7 @@ test('a stop set during the post-cast window prevents its automatic pass', () =>
 });
 
 test('failed submissions restore a one-time stop instead of silently consuming it', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   stops.cycleStop('phase:Upkeep', state());
   const checkpoint = stops.beforeCommand(pass, state());
   assert.equal(stops.getSnapshot().stops['phase:Upkeep'], undefined);
@@ -149,7 +149,7 @@ test('failed submissions restore a one-time stop instead of silently consuming i
 
 
 test('first-strike and regular damage have distinct recurring stops', () => {
-  const stops = createPriorityStops();
+  const stops = createPriorityStops({ postActionEnabled: true });
   const damage = state({ phase: 'combat phase', step: 'combat damage', combat_damage_step: 'first_strike' });
   for (const key of ['FirstStrikeDamage', 'CombatDamage']) {
     stops.cycleStop(`step:${key}`, state());
@@ -172,4 +172,24 @@ test('resuming phase passing releases a manual hold but preserves phase stops', 
   stops.resume(onStack());
   assert.equal(stops.stopReason(onStack()), 'stop at Upkeep');
   assert.equal(stops.getSnapshot().stops['phase:Upkeep'], 'once');
+});
+
+test('post-action windows default off and disabling cancels pending and active windows', () => {
+  const stops = createPriorityStops();
+  stops.beforeCommand(cast, state());
+  stops.observe(onStack());
+  assert.equal(stops.getSnapshot().window, null);
+  stops.setPostActionEnabled(true);
+  stops.beforeCommand(cast, state());
+  stops.setPostActionEnabled(false);
+  stops.observe(onStack());
+  assert.equal(stops.getSnapshot().window, null);
+  stops.setPostActionEnabled(true);
+  stops.beforeCommand(cast, state());
+  stops.observe(onStack());
+  const id = stops.getSnapshot().window.id;
+  stops.armWindow(id);
+  stops.setPostActionEnabled(false);
+  assert.equal(stops.getSnapshot().window, null);
+  assert.equal(stops.expire(id, onStack()), false);
 });

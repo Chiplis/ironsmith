@@ -142,29 +142,27 @@ impl<'a, 'event> ConditionContext<'a, 'event> {
         }
     }
 
-    /// Resolution retains the execution controller as "you" and binds the
-    /// selected player as the iteration. Earlier phases rebase "you" onto
-    /// the selected player; external checks additionally expose event facts.
+    /// Quantifying over players does not change who "you" refers to.
+    /// Keep the ability controller as the perspective in every phase and
+    /// expose the candidate through the separate iteration binding.
     pub fn player_filter_context(
         &self,
         game: &GameState,
         player: &PlayerFilter,
         candidate: PlayerId,
     ) -> FilterContext {
-        match self.mode {
-            ContextMode::Resolution(ctx) => {
-                let mut filter_ctx = ctx.filter_context(game);
-                filter_ctx.iterated_player = Some(candidate);
-                filter_ctx
-            }
+        let mut filter_ctx = match self.mode {
+            ContextMode::Resolution(ctx) => ctx.filter_context(game),
             _ => condition_filter_context(
                 game,
-                candidate,
+                self.controller,
                 self.source,
                 player,
                 self.shared().triggering_event,
             ),
-        }
+        };
+        filter_ctx.iterated_player = Some(candidate);
+        filter_ctx
     }
 
     /// Named ownership checks historically use no trigger snapshot outside

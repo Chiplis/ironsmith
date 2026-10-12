@@ -224,13 +224,13 @@ export function useHover() {
 
 // Multiple board rows may overlap briefly while a hover popover changes anchors.
 // Count mounted suppressors so closing one cannot reveal an inspector under another.
-export function useSuppressCardPreview() {
+export function useSuppressCardPreview(enabled = true) {
   const setSuppressors = useContext(CardPreviewSuppressionActionsContext);
   useLayoutEffect(() => {
-    if (!setSuppressors) return undefined;
+    if (!enabled || !setSuppressors) return undefined;
     setSuppressors(count => count + 1);
     return () => setSuppressors(count => Math.max(0, count - 1));
-  }, [setSuppressors]);
+  }, [enabled, setSuppressors]);
 }
 
 export function useCardPreviewSuppressed() {

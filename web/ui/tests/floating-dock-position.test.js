@@ -65,3 +65,14 @@ test("keeps the right-edge anchor when the piles are above the dock", () => {
 
   assert.deepEqual(position, { left: 942, top: 600 });
 });
+
+test("moves above the hand when zone piles push the dock into its lane", () => {
+  const handBounds = { left: 330, right: 870, top: 590, bottom: 800 };
+  const position = anchorFloatingDock({
+    viewportWidth: 1200, viewportHeight: 800, dockWidth: 280, dockHeight: 150,
+    bottomLimit: 784, handBounds,
+    protectedZones: [{ left: 1100, right: 1190, top: 500, bottom: 790 }],
+  });
+  assert.ok(position.top + 150 <= handBounds.top - 12);
+  assert.ok(position.left + 280 <= 1100 - 12);
+});

@@ -198,9 +198,15 @@ fn sacrifice_cost_precheck(
         return Some(Err(CostPaymentError::NoValidSacrificeTarget));
     }
 
-    if player != &crate::target::PlayerFilter::You {
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let execution = ctx.execution_bindings().execution_context(&mut decision_maker);
+    let resolved_player = match crate::effects::helpers::resolve_player_filter(game, player, &execution) {
+        Ok(player) => player,
+        Err(error) => return Some(Err(CostPaymentError::ExecutionFailed(error))),
+    };
+    if resolved_player != ctx.payer {
         return Some(Err(CostPaymentError::Other(
-            "sacrifice costs support only 'you'".to_string(),
+            "sacrifice cost must be paid by its payment player".to_string(),
         )));
     }
 
@@ -242,9 +248,7 @@ fn sacrifice_cost_precheck(
 
     let lands_only = ctx.reason.is_cast_or_ability_payment()
         && game.player_cant_sacrifice_nonland_to_cast_or_activate(ctx.payer);
-    let filter_ctx = crate::filter::FilterContext::new(ctx.payer)
-        .with_source(ctx.source)
-        .with_tagged_objects(&ctx.tagged_objects);
+    let filter_ctx = execution.filter_context(game);
     let available = game
         .battlefield
         .iter()
@@ -1246,6 +1250,41 @@ mod tests {
         assert!(cost.can_pay(&game, &ctx).is_err());
         assert!(cost.pay(&mut game, &mut ctx).is_err());
         assert_eq!(game.player(alice).unwrap().hand, vec![card]);
+    }
+
+    #[test]
+    fn bound_payment_player_can_pay_only_their_own_discard_or_sacrifice() {
+        for discard in [false, true] {
+            for correct_payer in [false, true] {
+                let mut game = create_test_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let card = CardBuilder::new(CardId::new(), "Bound payment witness")
+                    .card_types(vec![CardType::Creature]).build();
+                let zone = if discard { Zone::Hand } else { Zone::Battlefield };
+                let resource = game.create_object_from_card(&card, bob, zone);
+                let source = game.new_object_id();
+                let mut ctx = ExecutionContext::new_default(source, alice);
+                ctx.iteration.iterated_player = Some(bob);
+                let effect = if discard {
+                    let mut effect = crate::effects::DiscardEffect::you(1);
+                    effect.player = PlayerFilter::IteratedPlayer;
+                    Effect::new(effect)
+                } else {
+                    Effect::new(SacrificeEffect::player(
+                        crate::target::ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+                        1, PlayerFilter::IteratedPlayer,
+                    ))
+                };
+                let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::try_effect(effect).unwrap());
+                let result = crate::special_actions::pay_total_cost_with_choice_in_context(
+                    &mut game, if correct_payer { bob } else { alice }, source, &cost,
+                    crate::costs::PaymentReason::Effect, &mut ctx,
+                );
+                assert_eq!(result.is_ok(), correct_payer, "discard={discard}, payer_matches={correct_payer}: {result:?}");
+                assert_eq!(game.object(resource).is_some_and(|object| object.zone == zone), !correct_payer);
+            }
+        }
     }
 
     #[test]

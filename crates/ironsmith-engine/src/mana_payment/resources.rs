@@ -10,6 +10,8 @@ use crate::mana::ManaSymbol;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ManaCreditContext {
+    pub ability_index: Option<usize>,
+    pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
     pub restrictions: Vec<ManaUsageRestriction>,
     pub chosen_creature_type: Option<crate::types::Subtype>,
     pub retention: Option<ironsmith_core::ManaRetentionDuration>,
@@ -18,14 +20,18 @@ pub(crate) struct ManaCreditContext {
 impl ManaCreditContext {
     pub fn from_execution(ctx: &ExecutionContext) -> Self {
         Self {
+            ability_index: ctx.ability_index,
+            trigger_identity: ctx.trigger_identity,
             restrictions: ctx.mana.mana_usage_restrictions.clone(),
             chosen_creature_type: ctx.mana.mana_source_chosen_creature_type,
             retention: ctx.mana.retention,
         }
     }
 
-    pub fn from_activation(game: &GameState, source: ObjectId, ability: &ActivatedAbility) -> Self {
+    pub fn from_activation(game: &GameState, source: ObjectId, ability: &ActivatedAbility, ability_index: usize) -> Self {
         Self {
+            ability_index: Some(ability_index),
+            trigger_identity: None,
             restrictions: ability.mana_usage_restrictions.clone(),
             chosen_creature_type: game.chosen_creature_type(source),
             retention: None,
@@ -127,6 +133,10 @@ impl ManaCredit {
                 .ok_or(crate::effects::ExecutionError::PlayerNotFound(
                     self.event.player,
                 ))?;
+                if !self.event.mana.is_empty() {
+                    game.record_ability_mana_production(self.event.source, self.event.player,
+                        self.context.ability_index, self.context.trigger_identity);
+                }
                 // A representable count may still exceed P/T after its source's base
                 // stats and other layer-7 modifiers. Validate without publishing a
                 // partially recalculated board or an impossible completed production.
@@ -184,6 +194,35 @@ mod tests {
     use crate::mana::ManaCost;
     use crate::types::{CardType, Supertype};
     use crate::{CardBuilder, Zone};
+
+    #[test]
+    fn mana_use_history_tracks_committed_nonempty_production_by_ability_and_player() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId(0);
+        let bob = crate::PlayerId(1);
+        let card = crate::card::CardBuilder::new(crate::CardId::new(), "Mana history source")
+            .card_types(vec![crate::CardType::Enchantment]).build();
+        let source = game.create_object_from_card(&card, alice, crate::Zone::Battlefield);
+        let identity = crate::triggers::TriggerIdentity(7);
+        let mut credit = ManaCredit {
+            event: ManaAddedEvent::new(source, alice, alice, vec![]),
+            context: ManaCreditContext { trigger_identity: Some(identity), ..Default::default() },
+        };
+        credit.commit(&mut game).unwrap();
+        assert_eq!(game.ability_mana_production_count_this_turn(source, alice, None, Some(identity)), 0);
+        credit.event.mana = vec![ManaSymbol::Green, ManaSymbol::Green];
+        credit.commit(&mut game).unwrap();
+        assert_eq!(game.ability_mana_production_count_this_turn(source, alice, None, Some(identity)), 1);
+        assert_eq!(game.ability_mana_production_count_this_turn(source, bob, None, Some(identity)), 0);
+        assert_eq!(game.ability_mana_production_count_this_turn(source, alice, None, Some(crate::triggers::TriggerIdentity(8))), 0);
+        assert_eq!(game.ability_mana_production_count_this_turn(source, alice, Some(7), None), 0);
+        credit.event.player = bob;
+        credit.commit(&mut game).unwrap();
+        assert_eq!(game.ability_mana_production_count_this_turn(source, bob, None, Some(identity)), 1);
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert_eq!(game.ability_mana_production_count_this_turn(source, alice, None, Some(identity)), 0);
+        assert_eq!(game.ability_mana_production_count_this_turn(source, bob, None, Some(identity)), 0);
+    }
 
     #[test]
     fn credit_preserves_recipient_retention_and_production_time_snow() {

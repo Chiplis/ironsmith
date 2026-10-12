@@ -972,6 +972,16 @@ pub(crate) fn resolve_wide(
                     .sum::<i64>(),
             ))
         }
+        Value::ThisAbilityManaProductionCountThisTurn => {
+            let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            if ctx.ability_index.is_none() && ctx.trigger_identity.is_none() {
+                return Err(ExecutionError::UnresolvableValue(
+                    "this ability mana history requires an ability context".into()));
+            }
+            Ok(i64::from(game.ability_mana_production_count_this_turn(
+                ctx.source, ctx.controller, ctx.ability_index, ctx.trigger_identity,
+            )))
+        }
         Value::ThisAbilityResolvedThisTurnCount => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {

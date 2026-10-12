@@ -1708,13 +1708,22 @@ where
         let combined_cost = (!combined.is_empty()).then_some(combined);
         let hypothetical_view = DerivedGameView::new(hypothetical);
         let effective_cost = combined_cost.as_ref().map(|cost| {
-            calculate_effective_mana_cost_with_view_for_casting_method(
+            let effective = calculate_effective_mana_cost_with_view_for_casting_method(
                 hypothetical,
                 player,
                 &proposal,
                 cost,
                 casting_method,
                 &hypothetical_view,
+            );
+            // Target/restriction preflight also checks affordability. It must
+            // account for the sacrifices offered by this announced optional
+            // cost subset, before a full-price rejection hides the spell.
+            let reduction = max_cost_payment_sacrifice_reduction_for_selection(
+                hypothetical, player, &proposal, true,
+            );
+            apply_minimum_spell_total_mana_with_view(
+                &hypothetical_view, &effective.reduce_generic(reduction),
             )
         });
         let max_x = effective_cost
@@ -6982,11 +6991,24 @@ pub(crate) fn max_cost_payment_sacrifice_reduction(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> u32 {
+    max_cost_payment_sacrifice_reduction_for_selection(game, player, spell, false)
+}
+
+fn max_cost_payment_sacrifice_reduction_for_selection(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    only_selected_optional_costs: bool,
+) -> u32 {
     if !spell_has_cost_payment_sacrifice_reduction(spell) {
         return 0;
     }
     let mut choices = Vec::new();
-    for cost in spell.additional_non_mana_costs() {
+    let mut costs = spell.additional_non_mana_costs();
+    costs.extend(spell.optional_costs.iter().enumerate()
+        .filter(|(index, _)| !only_selected_optional_costs || spell.optional_costs_paid.was_paid(*index))
+        .flat_map(|(_, optional)| optional.cost.non_mana_costs().cloned()));
+    for cost in costs {
         if let Some(effect) = cost.effect_ref() {
             collect_cost_choices(effect, &mut choices);
         }
@@ -7074,8 +7096,23 @@ pub(crate) fn cost_payment_sacrifice_reduction(
     game: &GameState,
     player: PlayerId,
     spell: &crate::object::Object,
-    outcomes: &std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    completed: &crate::effects::CompletedActionPrefix,
 ) -> u32 {
+    // Cost actions need not have compiler-assigned effect IDs. Read the actual
+    // completed payment producers; named bindings can omit them or alias them.
+    // Selection receipts alone are not evidence of a completed sacrifice.
+    let outcomes: std::collections::HashMap<_, _> = completed
+        .instruction_outcomes()
+        .filter(|outcome| {
+            crate::effects::outcome_recording::action_objects(
+                outcome.instruction_result(),
+                ironsmith_core::PriorEffectAction::Sacrificed,
+                None,
+            ).is_some()
+        })
+        .enumerate()
+        .map(|(index, outcome)| (crate::effect::EffectId(index as u32), outcome.clone()))
+        .collect();
     let mut effect_ids = outcomes.keys().copied().collect::<Vec<_>>();
     effect_ids.sort_by_key(|id| id.0);
     let mut dm = SelectFirstDecisionMaker;

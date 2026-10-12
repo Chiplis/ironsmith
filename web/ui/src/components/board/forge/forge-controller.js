@@ -9,6 +9,38 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
   let dirty = true, reset = true, locked = false, frame = 0, lastMeasure = -Infinity, lastDraw = -Infinity;
   let disposed = false, contextLost = false, flightActive = false, lastSignal = initialSignal;
   const observed = new Set();
+  const fields = document.createElement('div');
+  fields.className = 'forge-field-lights';
+  host.append(fields);
+  let fieldConfiguration = '';
+  function updateFields() {
+    const seats = layout.seats || [];
+    const colors = new Map((signal.players || []).map(player => [String(player.id), player.color]));
+    const ownSeat = seats.find(seat => seat.owner === String(signal.perspective))
+      || seats.reduce((lowest, seat) => !lowest || seat.rect.bottom > lowest.rect.bottom ? seat : lowest, null);
+    const opponents = seats.filter(seat => seat !== ownSeat);
+    const boundary = ownSeat && opponents.length
+      ? (ownSeat.rect.top + Math.max(...opponents.map(seat => seat.rect.bottom))) / 2 : null;
+    const configuration = JSON.stringify([seats, [...colors], boundary, layout.width, layout.height]);
+    if (configuration === fieldConfiguration) return;
+    fieldConfiguration = configuration;
+    fields.replaceChildren();
+    for (const seat of seats) {
+      if (!colors.has(seat.owner)) continue;
+      const wash = document.createElement('div');
+      wash.className = 'forge-field-wash';
+      const bottom = seat === ownSeat;
+      const top = bottom ? boundary ?? seat.rect.top : seat.rect.top;
+      const end = bottom ? layout.height : boundary ?? seat.rect.bottom;
+      Object.assign(wash.style, {
+        left: `${seat.rect.left}px`, top: `${top}px`,
+        width: `${seat.rect.right - seat.rect.left}px`, height: `${Math.max(0, end - top)}px`,
+      });
+      wash.style.setProperty('--field-color', colors.get(seat.owner));
+      wash.style.setProperty('--field-origin', bottom ? '75%' : '25%');
+      fields.append(wash);
+    }
+  }
   const resize = new ResizeObserver(() => { dirty = true; wake(); });
   const mutations = new MutationObserver(records => {
     if (records.some(record => !host.contains(record.target))) { dirty = true; wake(); }
@@ -51,6 +83,7 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
         next.set(key, { ...zone, rect });
       }
       displayed = next;
+      updateFields();
       // Ornaments retreat immediately when any card, hand, or control needs
       // their space. They never participate in DOM layout or pointer capture.
       scene?.layout(layout, displayed);
@@ -101,7 +134,7 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
       root.removeEventListener('scroll', onScroll, true); root.removeEventListener('click', onClick);
       host.removeEventListener('forgeassetsready', onScroll);
       window.removeEventListener('resize', onScroll); host.removeEventListener('webglcontextlost', onContextLost, true);
-      host.removeEventListener('webglcontextrestored', onContextRestored, true); scene?.dispose();
+      host.removeEventListener('webglcontextrestored', onContextRestored, true); scene?.dispose(); fields.remove();
     },
   };
 }

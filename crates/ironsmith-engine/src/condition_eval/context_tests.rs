@@ -113,8 +113,8 @@ fn player_control_filters_preserve_you_and_iteration_bindings() {
         player: PlayerFilter::Specific(bob),
         filter: ObjectFilter::creature().you_control(),
     };
-    // Earlier phases interpret "you" from the selected player's perspective.
-    assert!(evaluate_condition_cast_time(
+    // A candidate controlled by Bob is not also a creature "you control".
+    assert!(!evaluate_condition_cast_time(
         &game, &condition, alice, source
     ));
     let external = ExternalEvaluationContext {
@@ -122,8 +122,8 @@ fn player_control_filters_preserve_you_and_iteration_bindings() {
         source,
         ..Default::default()
     };
-    assert!(evaluate_condition_external(&game, &condition, &external));
-    // Resolution retains the effect controller and separately binds the iteration.
+    assert!(!evaluate_condition_external(&game, &condition, &external));
+    // Resolution and announcement must agree about the controller perspective.
     assert!(
         !evaluate_condition_resolution(
             &game,
@@ -380,5 +380,26 @@ fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
         assert!(evaluate_condition_cast_time(
             &game, condition, alice, source
         ));
+    }
+}
+
+#[test]
+fn quantified_opponent_count_keeps_controller_perspective_in_every_phase() {
+    let (mut game, alice, bob, source, _) = fixture();
+    let condition = Condition::PlayerHasAtLeast {
+        player: PlayerFilter::Opponent,
+        filter: ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+        count: 2,
+    };
+    let external = ExternalEvaluationContext { controller: alice, source, ..Default::default() };
+    let exec = ExecutionContext::new_default(source, alice);
+    let extra = CardBuilder::new(CardId::new(), "Count witness")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2)).build();
+    for expected in [false, true] {
+        assert_eq!(evaluate_condition_cast_time(&game, &condition, alice, source), expected);
+        assert_eq!(evaluate_condition_external(&game, &condition, &external), expected);
+        assert_eq!(evaluate_condition_resolution(&game, &condition, &exec).unwrap(), expected);
+        game.create_object_from_card(&extra, bob, Zone::Battlefield);
     }
 }

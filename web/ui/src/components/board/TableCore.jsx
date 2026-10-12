@@ -28,10 +28,11 @@ import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
 import { anchorFloatingDock, anchorManaPaymentDock, DECISION_DOCK_BOTTOM_INSET, dockMaxWidth } from "@/lib/floating-dock-position";
 import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
+import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
-// The dock stays anchored bottom-right and sized against the local
-// Graveyard/Exile column only. Look, zone menus and card highlights animate
-// on hover; measuring them made the dock move under the pointer and flicker.
+// Reserve room for the hand and local Graveyard/Exile column. Measure the
+// hand row rather than animated card highlights to keep hover feedback from
+// moving the dock under the pointer.
 const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > .zone-pile-slot';
 
 function visibleRect(element) {
@@ -284,6 +285,8 @@ export default function TableCore({
         ? Math.max(minimumDecisionRoom, Math.floor(bottomLimit - pilesBottom - 14))
         : Math.round(window.innerHeight * 0.6);
       const maxWidth = Math.round(dockMaxWidth(window.innerWidth));
+      const hand = document.querySelector(".hand-zone-row");
+      observe(hand);
       const position = anchorFloatingDock({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
@@ -291,6 +294,7 @@ export default function TableCore({
         dockHeight,
         bottomLimit,
         protectedZones,
+        handBounds: visibleRect(hand),
       });
       if (!position) return;
       const next = { ...position, maxWidth, maxHeight };
@@ -349,7 +353,7 @@ export default function TableCore({
     && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
     <div className="battlefield-human-quick-controls decision-quick-controls">
-      {isActivePlayer && decision?.kind !== "mana_payment" && <button
+      {isActivePlayer && canShowPhasePass(state) && <button
         type="button"
         className="decision-phase-pass"
         aria-pressed={Boolean(phasePassing)}
@@ -365,7 +369,7 @@ export default function TableCore({
         aria-pressed={Boolean(autoResolveEnabled)}
         aria-label={ui("Auto-pass")}
         data-tooltip={ui("Auto-pass")}
-        title={ui("Automatically resolve whenever you have priority and the stack is not empty.")}
+        title={ui("Show a timed Hold Priority button after casting or activating. Turn off to resolve manually.")}
         onClick={() => setAutoResolveEnabled((enabled) => !enabled)}
       >
         <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">

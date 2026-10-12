@@ -336,7 +336,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::OpponentOf(_)
@@ -446,7 +446,7 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
             filter.description()
         }
         PlayerFilter::OpponentOf(base) => {

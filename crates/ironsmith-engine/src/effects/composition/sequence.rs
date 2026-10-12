@@ -410,6 +410,19 @@ impl SequenceEffect {
 }
 
 impl EffectExecutor for SequenceEffect {
+    fn supports_damage_action_cohort(&self) -> bool {
+        super::coordinated_damage::is_shared_clause(self)
+    }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.supports_damage_action_cohort()
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        super::coordinated_damage::prepare(self, game, ctx)
+    }
     fn supports_replacement_draw_continuation(&self) -> bool {
         self.effects
             .iter()
@@ -435,9 +448,16 @@ impl EffectExecutor for SequenceEffect {
     }
     fn select_prepared_action_program(
         &self,
-        _game: &mut GameState,
+        game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if self.supports_damage_action_cohort() {
+            let proposal = self.prepare_simultaneous_player_action(game, ctx)?;
+            return Ok(Some(super::action_program::prepared_damage_program_cursor(
+                Effect::new(self.clone()),
+                proposal,
+            )));
+        }
         Ok(Some(sequence_cursor(self, ctx)))
     }
 
@@ -516,12 +536,18 @@ fn execute_sequence_with_outputs(
         ctx,
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
-            super::action_program::execute_action_program_with_outputs(
-                sequence_cursor(sequence, ctx),
-                game,
-                ctx,
-                purpose,
-            )
+            let cursor = if matches!(purpose, crate::effects::EffectExecutionPurpose::Action)
+                && sequence.supports_damage_action_cohort()
+            {
+                let proposal = sequence.prepare_simultaneous_player_action(game, ctx)?;
+                super::action_program::prepared_damage_program_cursor(
+                    Effect::new(sequence.clone()),
+                    proposal,
+                )
+            } else {
+                sequence_cursor(sequence, ctx)
+            };
+            super::action_program::execute_action_program_with_outputs(cursor, game, ctx, purpose)
         },
     )
 }
@@ -557,37 +583,90 @@ pub(super) fn sequence_cursor(
     sequence: &SequenceEffect,
     ctx: &ExecutionContext,
 ) -> Box<dyn crate::effects::ActionProgramCursor> {
-    let mut outputs =
-        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
-    outputs.projections_complete = true;
-    Box::new(SequenceCursor {
-        effects: sequence.effects.clone(),
-        coordinated: sequence.surface.is_coordinated(),
-        next: 0,
-        // Presentation-only one-child sequences inherit their caller's scope.
-        child_assignments: (sequence.effects.len() > 1 && !ctx.target_assignments.is_empty())
-            .then(|| ctx.target_assignments.clone()),
-        chosen_modes: ctx.chosen_modes.clone(),
-        consumed_modal_selection: false,
-        coordinated_target_state: crate::game_loop::CoordinatedTargetState::default(),
-        declared_targets: Vec::new(),
-        assignment_cursor: 0,
-        active_scope: None,
-        outputs,
-        outcomes: Vec::new(),
-        events: Vec::new(),
-        facts: Vec::new(),
-        unit_ends: super::action_units::partition_action_units(
-            &sequence.effects,
-            |_| None,
-            |_, _| true,
-        )
-        .into_iter()
-        .filter_map(|unit| unit.last().copied())
-        .collect(),
-    })
+    Box::new(SequenceCursor::new(sequence, ctx))
 }
+
+pub(super) fn coordinated_child_scopes(
+    sequence: &SequenceEffect,
+    ctx: &ExecutionContext,
+) -> Vec<crate::effects::ProgramActionScope> {
+    let mut cursor = SequenceCursor::new(sequence, ctx);
+    sequence
+        .effects
+        .iter()
+        .map(|effect| {
+            cursor.bind_targets(effect, ctx);
+            crate::effects::ProgramActionScope {
+                targets: cursor.active_scope.clone(),
+                ..Default::default()
+            }
+        })
+        .collect()
+}
+
 impl SequenceCursor {
+    fn new(sequence: &SequenceEffect, ctx: &ExecutionContext) -> Self {
+        let mut outputs =
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+        outputs.projections_complete = true;
+        Self {
+            effects: sequence.effects.clone(),
+            coordinated: sequence.surface.is_coordinated(),
+            next: 0,
+            // Presentation-only one-child sequences inherit their caller's scope.
+            child_assignments: (sequence.effects.len() > 1 && !ctx.target_assignments.is_empty())
+                .then(|| ctx.target_assignments.clone()),
+            chosen_modes: ctx.chosen_modes.clone(),
+            consumed_modal_selection: false,
+            coordinated_target_state: crate::game_loop::CoordinatedTargetState::default(),
+            declared_targets: Vec::new(),
+            assignment_cursor: 0,
+            active_scope: None,
+            outputs,
+            outcomes: Vec::new(),
+            events: Vec::new(),
+            facts: Vec::new(),
+            unit_ends: super::action_units::partition_action_units(
+                &sequence.effects,
+                |_| None,
+                |_, _| true,
+            )
+            .into_iter()
+            .filter_map(|unit| unit.last().copied())
+            .collect(),
+        }
+    }
+    fn bind_targets(&mut self, effect: &Effect, ctx: &ExecutionContext) {
+        if let Some(assignments) = self.child_assignments.as_ref() {
+            let selected = if self.coordinated {
+                let count = crate::game_loop::count_target_selection_slots_for_coordinated_child(
+                    effect,
+                    self.chosen_modes.as_deref(),
+                    &mut self.consumed_modal_selection,
+                    &mut self.coordinated_target_state,
+                );
+                let end = self.assignment_cursor.saturating_add(count).min(assignments.len());
+                let selected = assignments[self.assignment_cursor..end].to_vec();
+                self.assignment_cursor = end;
+                selected
+            } else {
+                // Use the same declaration history as announcement. A later
+                // composite may reuse multiple earlier targets, even after a
+                // preceding child narrowed its own execution scope.
+                crate::game_loop::active_target_assignments_for_effect(
+                    effect,
+                    self.chosen_modes.as_deref(),
+                    &mut self.consumed_modal_selection,
+                    &mut self.declared_targets,
+                    assignments,
+                    &mut self.assignment_cursor,
+                )
+            };
+            if !selected.is_empty() {
+                self.active_scope = Some(rebase_target_scope(&ctx.targets, &selected));
+            }
+        }
+    }
     fn completed(mut self, pending: bool) -> crate::effects::CompletedEffectOutputs {
         let Some(_) = self.outcomes.last() else {
             return crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
@@ -622,46 +701,18 @@ impl crate::effects::ActionProgramCursor for SequenceCursor {
         if ctx.resolution_stopped() {
             return Ok(None);
         }
-        let Some(effect) = self.effects.get(self.next) else {
+        let Some(effect) = self.effects.get(self.next).cloned() else {
             return Ok(None);
         };
         if self.next > 0 {
             crate::effects::match_triggers_at_instruction_boundary(
                 game,
                 ctx,
-                Some(effect),
+                Some(&effect),
                 self.events.iter(),
             )?;
         }
-        if let Some(assignments) = self.child_assignments.as_ref() {
-            let selected = if self.coordinated {
-                let count = crate::game_loop::count_target_selection_slots_for_coordinated_child(
-                    effect,
-                    self.chosen_modes.as_deref(),
-                    &mut self.consumed_modal_selection,
-                    &mut self.coordinated_target_state,
-                );
-                let end = self.assignment_cursor.saturating_add(count).min(assignments.len());
-                let selected = assignments[self.assignment_cursor..end].to_vec();
-                self.assignment_cursor = end;
-                selected
-            } else {
-                // Use the same declaration history as announcement. A later
-                // composite may reuse multiple earlier targets, even after a
-                // preceding child narrowed its own execution scope.
-                crate::game_loop::active_target_assignments_for_effect(
-                    effect,
-                    self.chosen_modes.as_deref(),
-                    &mut self.consumed_modal_selection,
-                    &mut self.declared_targets,
-                    assignments,
-                    &mut self.assignment_cursor,
-                )
-            };
-            if !selected.is_empty() {
-                self.active_scope = Some(rebase_target_scope(&ctx.targets, &selected));
-            }
-        }
+        self.bind_targets(&effect, ctx);
         let index = self.next;
         self.next += 1;
         Ok(Some(crate::effects::ProgramAction {
@@ -671,12 +722,12 @@ impl crate::effects::ActionProgramCursor for SequenceCursor {
             scope: crate::effects::ProgramActionScope {
                 targets: self.active_scope.clone(),
                 public_search_reveal_tag: Some(super::choose_objects_runtime::revealed_search_tag(
-                    effect,
+                    &effect,
                     self.effects.get(index + 1),
                 )),
                 pending_entry_attachment: Some(
                     crate::effects::permanents::entry_attachment_for_move(
-                        effect,
+                        &effect,
                         self.effects.get(index + 1),
                     ),
                 ),

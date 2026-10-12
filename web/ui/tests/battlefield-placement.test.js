@@ -87,3 +87,14 @@ test("drop slots follow the padded content box with a stack rail and scrollbar",
   assert.equal(battlefieldGridSlotAtPoint({...layout, x: 512, y: 110}), null, "top padding cannot receive cards");
   assert.deepEqual(battlefieldGridSlotAtPoint({...layout, alignStart: true, x: 420, y: 169}), {row: 1, column: 1});
 });
+
+test("land Sagas use the land lane and land drop preview", () => {
+  for (const card of [
+    { name: "Urza's Saga", type_line: "Enchantment Land — Saga" },
+    { card_types: ["enchantment", "land"] },
+  ]) {
+    assert.equal(battlefieldLaneForCard(card), "lands");
+    assert.deepEqual(battlefieldPlacementForDrag({card, actions: [{kind: "play_land"}]}),
+      {lane: "lands", kind: "play_land"});
+  }
+});

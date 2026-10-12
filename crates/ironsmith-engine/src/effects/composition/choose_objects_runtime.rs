@@ -218,7 +218,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
             player, filter, ..
         } => player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter),
         crate::effect::Value::CommanderCastCount(player) => player.mentions_iterated_player(),
-        crate::effect::Value::ThisAbilityResolvedThisTurnCount => false,
+        crate::effect::Value::ThisAbilityResolvedThisTurnCount | crate::effect::Value::ThisAbilityManaProductionCountThisTurn => false,
         _ => false,
     }
 }

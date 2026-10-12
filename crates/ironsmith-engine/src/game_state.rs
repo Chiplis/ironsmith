@@ -6101,7 +6101,7 @@ impl GameState {
             | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
             | crate::effect::Value::CommanderCastCount(_)
             | crate::effect::Value::CommanderColorIdentityColors(_)
-            | crate::effect::Value::ThisAbilityResolvedThisTurnCount
+            | crate::effect::Value::ThisAbilityResolvedThisTurnCount | crate::effect::Value::ThisAbilityManaProductionCountThisTurn
             | crate::effect::Value::SourceRegeneratedThisTurnCount
             | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,
             crate::effect::Value::CountPlayers(player)

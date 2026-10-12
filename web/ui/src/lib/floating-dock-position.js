@@ -43,9 +43,8 @@ function clamp(value, min, max) {
 /**
  * Anchor the floating action dock to the bottom-right corner, just above the
  * hand, so it is always in the same predictable place. It never wanders
- * around the board: the only thing it steps aside for is a protected zone
- * (Graveyard/Exile), and then it slides left of that column while staying
- * anchored to the bottom.
+ * around the board: it steps left of protected zones (Graveyard/Exile), then
+ * moves upward if that placement would intersect the hand.
  */
 export function anchorFloatingDock({
   viewportWidth,
@@ -54,10 +53,11 @@ export function anchorFloatingDock({
   dockHeight,
   bottomLimit = viewportHeight - DOCK_EDGE_PADDING,
   protectedZones = [],
+  handBounds = null,
 }) {
   if (![viewportWidth, viewportHeight, dockWidth, dockHeight].every(Number.isFinite)) return null;
   const maxTop = Math.max(DOCK_MIN_TOP, viewportHeight - dockHeight - DOCK_EDGE_PADDING);
-  const top = clamp(bottomLimit - dockHeight, DOCK_MIN_TOP, maxTop);
+  let top = clamp(bottomLimit - dockHeight, DOCK_MIN_TOP, maxTop);
   let left = viewportWidth - dockWidth - DOCK_RIGHT_INSET;
 
   for (const zone of protectedZones) {
@@ -72,5 +72,19 @@ export function anchorFloatingDock({
   }
 
   const maxLeft = Math.max(DOCK_EDGE_PADDING, viewportWidth - dockWidth - DOCK_EDGE_PADDING);
-  return { left: Math.round(clamp(left, DOCK_EDGE_PADDING, maxLeft)), top };
+  left = Math.round(clamp(left, DOCK_EDGE_PADDING, maxLeft));
+  // A pile can push the dock into the hand's reserved lane. Grow/move upward
+  // there instead of letting the hand cover the decision controls.
+  const obstacles = [handBounds, ...protectedZones].filter(Boolean);
+  for (let pass = 0; handBounds && pass < obstacles.length; pass += 1) {
+    for (const obstacle of obstacles) {
+      if (left < obstacle.right + ZONE_CLEARANCE
+        && left + dockWidth > obstacle.left - ZONE_CLEARANCE
+        && top < obstacle.bottom + ZONE_CLEARANCE
+        && top + dockHeight > obstacle.top - ZONE_CLEARANCE) {
+        top = Math.max(DOCK_MIN_TOP, obstacle.top - ZONE_CLEARANCE - dockHeight);
+      }
+    }
+  }
+  return { left, top };
 }

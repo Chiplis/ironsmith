@@ -217,7 +217,7 @@ impl<'a> ManaSourceAnalysis<'a> {
                 512,
                 self.replacements.as_ref()?,
                 &super::replacement_program::ReplacementResources::default(),
-                ManaCreditContext::from_activation(self.game, choice.source, activated),
+                ManaCreditContext::from_activation(self.game, choice.source, activated, choice.ability_index),
             )? {
                 if branch.witnesses.iter().any(|witness| {
                     witness.original.player != controller && !witness.decisions.is_empty()
@@ -322,7 +322,7 @@ impl<'a> ManaSourceAnalysis<'a> {
         .with_activation_cost_has_tap(true);
         snapshot.tapped = true;
         let credit_context =
-            ManaCreditContext::from_activation(self.game, choice.source, activated);
+            ManaCreditContext::from_activation(self.game, choice.source, activated, choice.ability_index);
         let initial = production_events
             .into_iter()
             .map(|symbols| {

@@ -335,10 +335,14 @@ fn read_activate_only_if_predicate(input: &ActivationCondition<'_>) -> Option<Pr
 /// The predicate as an activation gate, if it can be one.
 fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
     match predicate {
+        // In an activation restriction, "it" refers to the ability's source,
+        // not an object chosen later when the ability resolves.
+        PredicateAst::ItMatches(filter) => Some(PredicateAst::Source(
+            crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
+        )),
         PredicateAst::Triggering(_)
         | PredicateAst::ItIsLandCard
         | PredicateAst::ItIsSoulbondPaired
-        | PredicateAst::ItMatches(_)
         | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_)
         | PredicateAst::TaggedMatches(..)

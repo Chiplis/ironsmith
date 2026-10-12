@@ -60,8 +60,13 @@ export function createForgeScene(host) {
       light.color.set(spec.color);
       light.position.copy(projection.point(spec.x, spec.y)); light.position.z = spec.z;
       light.target.position.copy(projection.point(spec.targetX, spec.targetY, spec.targetZ));
-      light.intensity = spec.intensity; light.distance = spec.distance; light.angle = spec.angle;
-      light.shadow.camera.near = 1; light.shadow.camera.far = spec.distance;
+      // Normalize at the tabletop in world space: the far edge is stretched by
+      // perspective and receives light at a shallower angle than the near edge.
+      const distance = light.position.distanceTo(light.target.position);
+      const incidence = (spec.z - spec.targetZ) / distance;
+      light.intensity = distance * distance * 1.3 / Math.max(.25, incidence);
+      light.distance = distance * 2.6; light.angle = spec.angle;
+      light.shadow.camera.near = 1; light.shadow.camera.far = light.distance;
       light.shadow.camera.updateProjectionMatrix();
     }
     renderer.shadowMap.needsUpdate = true;

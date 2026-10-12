@@ -315,7 +315,7 @@ impl Auditor {
             "DamagedPlayer" if scope.damaged_player != Binding::Present => self.gap(path, "damage_recipient_dataflow", "DamagedPlayer may come from the triggering event, tagged players, or a prior damage outcome"),
             "ChosenPlayer" | "ChosenNumber" | "TaggedCount" | "LastNotedLifeTotal" | "Defending" | "Attacking" | "TargetPlayerOrControllerOfTarget" => self.gap(path, "persistent_or_choice_context", format!("{name} requires game-state, target, choice, or combat-context validation")),
             "ManaSpentToCastTriggeringObject" | "CasterManaSpentToCastTriggeringObject" => self.require(path, name, scope.cast_event),
-            "ThisAbilityResolvedThisTurnCount" => self.require(path, name, scope.ability),
+            "ThisAbilityResolvedThisTurnCount" | "ThisAbilityManaProductionCountThisTurn" => self.require(path, name, scope.ability),
             name if is_pending_value(name) => self.finding(path, "error", "unresolved_compiler_value", format!("Compiler-only {name} reached the executable definition")),
             _ => {}
         }

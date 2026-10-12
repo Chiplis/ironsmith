@@ -4,6 +4,7 @@ use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DamageActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StackActionAst;
 use crate::cards::builders::VoteEffectAst;
@@ -659,6 +660,22 @@ fn try_compile_for_each_object_as_damage_source(
 /// lowering can wrap their results in tags or effect IDs. Ordinary optional
 /// actions retain their established result semantics.
 fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
+    // An optional disjunction of payments is payable only when at least one
+    // complete mode can be paid. The modal cost executor owns that check and
+    // excludes impossible modes from the decision.
+    if let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })] = effects
+        && !modes.is_empty()
+        && modes.iter().all(|mode| compound_optional_payment_actions(&mode.effects).is_some())
+    {
+        return Some(effects.to_vec());
+    }
+    if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ZoneMoves(
+            ZoneMoveActionAst::Sacrifice { .. } | ZoneMoveActionAst::Discard { .. }
+        ), ..
+    })] = effects {
+        return Some(effects.to_vec());
+    }
     // Coordination retains the authored "and" boundary. Expose only that
     // conjunctive payment's semantic members to component lowering; a runtime
     // Sequence would execute them as ordinary independent instructions.
@@ -676,6 +693,15 @@ fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<Effect
     }
     if let [EffectAst::Sequence { effects }] = effects {
         return compound_optional_payment_actions(effects);
+    }
+    // Paying mana is a cost even without a second conjunct. An accepted
+    // optional offer must not count as paid when no mana is available.
+    if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::PayMana { .. }),
+        ..
+    })] = effects
+    {
+        return Some(effects.to_vec());
     }
     // An optional exact counter payment can only be accepted when the
     // complete amount is available. Otherwise the choice receipt alone

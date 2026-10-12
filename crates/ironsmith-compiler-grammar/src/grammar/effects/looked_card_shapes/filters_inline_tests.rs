@@ -69,3 +69,13 @@ fn parses_typed_special_looked_card_filters() {
             && constraint.relation == TaggedOpbjectRelation::SharesCardType
     }));
 }
+
+#[test]
+fn negative_qualifiers_with_a_numeric_comparison_are_conjunctive() {
+    let tokens = crate::lexer::lex_line("a nonlegendary, nonland card with mana value 3 or less", 0).unwrap();
+    let filter = parse_looked_card_reveal_filter_shape(&tokens).unwrap();
+    assert!(filter.any_of.is_empty(), "qualifiers became alternatives: {filter:?}");
+    assert!(filter.excluded_supertypes.contains(&crate::types::Supertype::Legendary));
+    assert!(filter.excluded_card_types.contains(&CardType::Land));
+    assert_eq!(filter.mana_value, Some(crate::filter::Comparison::LessThanOrEqual(3)));
+}

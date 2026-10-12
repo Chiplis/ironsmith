@@ -60,7 +60,7 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
             **player = rewrite_player_filter_words(player, change)?;
             **filter = rewrite_filter_words(filter, change)?;
         }
-        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } => {
             **filter = rewrite_filter_words(filter, change)?;
         }
         PlayerFilter::Excluding { base, excluded } => {
@@ -352,7 +352,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         Value::Fixed(_) | Value::X | Value::XTimes(_) | Value::AnnouncedTargetTotal(_)
         | Value::CreaturesDiedThisTurn | Value::PlayersBeingAttacked | Value::SourcePower
         | Value::SourceToughness | Value::NameStickerCharacterCountOnSource { .. }
-        | Value::ThisAbilityResolvedThisTurnCount | Value::SourceRegeneratedThisTurnCount
+        | Value::ThisAbilityResolvedThisTurnCount | Value::ThisAbilityManaProductionCountThisTurn | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount | Value::SourceDevouredCreatureCount
         | Value::DamageDealtThisTurnByTaggedSpellCast(_) | Value::ManaSpentToCastThisSpell
         | Value::ManaSymbolSpentToCastThisSpell { .. } | Value::ManaSpentToCastTriggeringObject

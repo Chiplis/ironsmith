@@ -383,6 +383,12 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
 }
 
 fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    // Commas between qualifiers and the comparison in "3 or less" do not
+    // introduce alternatives. The generic segment splitter also splits on
+    // commas, so require a real disjunction before using it.
+    if !tokens.iter().enumerate().any(|(index, _)| is_disjunction_token(tokens, index)) {
+        return None;
+    }
     let segments = primitives::split_lexed_slices_on_or(tokens);
     if segments.len() < 2 {
         return None;

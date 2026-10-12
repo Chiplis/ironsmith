@@ -1666,6 +1666,9 @@ pub enum PlayerFilter {
     /// turn" (Angelic Arbiter): players by this turn's history. Appended to
     /// preserve existing serialized variant ordinals.
     TurnHistory(PlayerTurnHistoryFilter),
+    /// A player who owns at least one object matching the complete filter.
+    /// Used for quantified personal zones without iterating individual cards.
+    OwnsMatchingObject { filter: Box<ObjectFilter> },
 }
 
 /// A player's action this turn, for [`PlayerFilter::TurnHistory`].
@@ -1825,7 +1828,7 @@ impl PlayerFilter {
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
             }
-            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
+            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } | Self::OwnsMatchingObject { filter } => {
                 filter.mentions_player_filter(needle)
             }
             Self::OpponentOf(base) | Self::PlayerToLeftOf(base) | Self::MaxSpeed { base, .. } => {
@@ -1985,6 +1988,7 @@ impl PlayerFilter {
                 "the player who controls the most {}",
                 pluralize_count_terminal_word(&filter.description())
             ),
+            Self::OwnsMatchingObject { filter } => format!("a player who owns {}", filter.description()),
             Self::ControlsFewestTied { filter } => format!(
                 "a player who controls the fewest {}",
                 pluralize_count_terminal_word(&filter.description())
@@ -4598,7 +4602,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::OpponentOf(_)
@@ -4816,7 +4820,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -7612,7 +7616,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
             format!("{}'s", filter.description())
         }
         PlayerFilter::OpponentOf(_) | PlayerFilter::PlayerToLeftOf(_) => {
@@ -7740,6 +7744,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "the player who controls the most {}",
             pluralize_count_terminal_word(&filter.description())
         ),
+        PlayerFilter::OwnsMatchingObject { filter } => format!("player who owns {}", filter.description()),
         PlayerFilter::ControlsFewestTied { filter } => format!(
             "player who controls the fewest {}",
             pluralize_count_terminal_word(&filter.description())
@@ -8350,6 +8355,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "the chosen number".to_string()
             }
             Value::LastNotedLifeTotal => "last noted life total".to_string(),
+            Value::ThisAbilityManaProductionCountThisTurn => {
+                "the number of times you have added mana with this ability this turn".to_string()
+            }
             Value::ThisAbilityResolvedThisTurnCount => {
                 "the number of times this ability has resolved this turn".to_string()
             }

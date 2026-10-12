@@ -1248,7 +1248,7 @@ where
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
                     "That player may".to_string()
                 }
                 PlayerFilter::OpponentOf(_)

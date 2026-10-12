@@ -42,6 +42,8 @@ fn parse_tap_state_chosen_shape_lexed<'a>(
     primitives::kw(if untap { "untap" } else { "tap" }).parse_next(input)?;
     let count = if opt(primitives::kw("x")).parse_next(input)?.is_some() {
         ChoiceCount::dynamic_x()
+    } else if let Some(count) = opt(leaf::parse_leaf_choice_count_prefix_lexed).parse_next(input)? {
+        count
     } else {
         ChoiceCount::exactly(parse_optional_object_count(input) as usize)
     };

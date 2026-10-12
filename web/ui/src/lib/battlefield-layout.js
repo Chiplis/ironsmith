@@ -25,6 +25,8 @@ function normalizedCardTypes(card) {
 /** Mirrors the engine's BattlefieldLane precedence for a card not on the battlefield yet. */
 export function battlefieldLaneForCard(card) {
   const types = normalizedCardTypes(card);
+  // Resource permanents stay with lands even when they are also enchantments.
+  if (types.has("land") && types.has("enchantment") && !types.has("creature")) return "lands";
   if (types.has("enchantment")) return "enchantments";
   if (types.has("creature")) return "creatures";
   if (types.has("artifact")) return "artifacts";

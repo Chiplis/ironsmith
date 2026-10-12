@@ -60,6 +60,11 @@ import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
 const AUDIT_REPLAY_GATE_WAIT_ATTEMPTS = 8;
 const UI_FONT_STORAGE_KEY = "ironsmith.uiFont";
+const AUTO_RESOLVE_STORAGE_KEY = "ironsmith.autoResolveEnabled";
+function readAutoResolveEnabled() {
+  try { return window.localStorage.getItem(AUTO_RESOLVE_STORAGE_KEY) === "true"; }
+  catch { return false; }
+}
 const PLAYER_ACCENTS_STORAGE_KEY = "ironsmith.playerAccentOverrides";
 
 const emptyAuditReplayState = {
@@ -830,10 +835,20 @@ export function GameProvider({ children }) {
   const { state, setState, stateRef, subscribeState, isSnapshotRendered } = useGameSnapshot();
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
-  const [autoResolveEnabled, setAutoResolveEnabled] = useState(false);
+  const [autoResolveEnabled, setAutoResolveEnabledRaw] = useState(readAutoResolveEnabled);
+  const autoResolveEnabledRef = useRef(autoResolveEnabled);
   const [phasePassing, setPhasePassing] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
-  const [priorityStops] = useState(createPriorityStops);
+  const [priorityStops] = useState(() => createPriorityStops({ postActionEnabled: autoResolveEnabled }));
+  const setAutoResolveEnabled = useCallback(value => {
+    const enabled = Boolean(typeof value === "function" ? value(autoResolveEnabledRef.current) : value);
+    autoResolveEnabledRef.current = enabled;
+    // Cancel a running/pending hold window synchronously so its deadline cannot
+    // submit a pass between the toggle click and the next React effect cleanup.
+    priorityStops.setPostActionEnabled(enabled);
+    setAutoResolveEnabledRaw(enabled);
+    try { window.localStorage.setItem(AUTO_RESOLVE_STORAGE_KEY, String(enabled)); } catch { /* Storage may be unavailable. */ }
+  }, [priorityStops]);
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
   const cyclePriorityStop = useCallback(key => priorityStops.cycleStop(key, stateRef.current), [priorityStops, stateRef]);
   const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
@@ -2311,7 +2326,7 @@ export function GameProvider({ children }) {
   // normal local pass, and revalidate authoritative state after any input/sync.
   useEffect(() => {
     const window = priorityStopsState.window;
-    if (!window) return;
+    if (!window || !autoResolveEnabled) return;
     // Start the two seconds once the authoritative priority snapshot is drawn.
     if (window.startedAt === null) {
       if (state === stateRef.current && isSnapshotRendered() && priorityStops.windowFor(state)) priorityStops.armWindow(window.id);
@@ -2324,6 +2339,7 @@ export function GameProvider({ children }) {
     let timer;
     const passWhenReady = () => {
       const current = stateRef.current;
+      if (!autoResolveEnabledRef.current) return;
       priorityStops.observe(current);
       if (priorityStops.getSnapshot().window?.id !== window.id) return;
       const remaining = window.startedAt + window.duration - performance.now();
@@ -2347,7 +2363,7 @@ export function GameProvider({ children }) {
     };
     timer = setTimeout(passWhenReady, Math.max(0, Math.ceil(window.startedAt + window.duration - performance.now())));
     return () => clearTimeout(timer);
-  }, [priorityStops, priorityStopsState.window, autoPassEnabled, holdRule, dispatch,
+  }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, dispatch,
     isSnapshotRendered, multiplayer.submittingAction, stateRef, state]);
 
   // "Resolve all": keep passing the local player's priority while the stack
@@ -2462,6 +2478,7 @@ export function GameProvider({ children }) {
     // the current snapshot to paint. Otherwise dispatch drops it and the
     // same-state guard prevents the stack from draining any further.
     const timer = setTimeout(() => {
+      if (!run && !autoResolveEnabledRef.current) return;
       if (stateRef.current !== state) {
         setResolveAllTick((tick) => tick + 1);
         return;
@@ -3130,7 +3147,7 @@ export function GameProvider({ children }) {
       holdRule,
       setHoldRule,
       priorityStops: priorityStopsState.stops,
-      postActionPriorityWindow: priorityStops.windowFor(state) ? priorityStopsState.window : null,
+      postActionPriorityWindow: autoResolveEnabled && priorityStops.windowFor(state) ? priorityStopsState.window : null,
       cyclePriorityStop,
       holdPostActionPriority,
       fixedStartingBoard,

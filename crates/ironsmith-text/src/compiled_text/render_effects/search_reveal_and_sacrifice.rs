@@ -5426,7 +5426,7 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let subject = if matches!(for_players.filter, PlayerFilter::ControlsMost { .. }) {
         leader_subject = capitalize_first(&for_players.filter.description());
         leader_subject.as_str()
-    } else if matches!(for_players.filter, PlayerFilter::ControlsFewestTied { .. }) {
+    } else if matches!(for_players.filter, PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. }) {
         leader_subject = format!(
             "Each {}",
             strip_leading_article(&for_players.filter.description())

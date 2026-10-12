@@ -1,3 +1,6 @@
+import { customCardAssets } from "@/lib/custom-card-assets";
+import { cardDisplayTypeLine } from "@/lib/card-display-type-line";
+import { customCardFlavorText } from "@/lib/custom-card-flavor";
 import useUiText from "@/i18n/useUiText";
 import { groupManaAbilities } from "@/lib/group-mana-abilities";
 import RegisteredCardFrame from './RegisteredCardFrame';
@@ -14,6 +17,7 @@ import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
+import { defaultCardFrame, fallbackCardFrameColors } from "@/lib/default-card-frames";
 import { fullCardImageUrl } from '@/lib/card-frame-colors';
 import { cardFrameTone } from '@/lib/card-frame-tone';
 import "@/styles/card-frame-colors.css";
@@ -337,6 +341,8 @@ function parseBattleHealth(details, oracleText) {
       if (Number.isFinite(amount)) return amount;
     }
   }
+
+  if (details?.defense != null && Number.isFinite(Number(details.defense))) return Number(details.defense);
 
   const defenseMatch = String(oracleText || "").match(/\bDefense:\s*(\d+)\b/i);
   if (defenseMatch) {
@@ -829,7 +835,10 @@ export default function HoverArtOverlay({
     || hoveredStackObject?.effect_text
     || null;
   const manaCost = details?.mana_cost || cardSnapshot?.mana_cost || previewManaCost || hoveredStackObject?.mana_cost || null;
-  const typeLine = String(details?.type_line || cardSnapshot?.type_line || previewTypeLine || hoveredStackObject?.type_line || "").trim() || null;
+  const localCustom = isCompiledCardName(objectName) ? customCardAssets(objectName) : null;
+  const typeLine = cardDisplayTypeLine(details, localCustom?.typeLine, localCustom?.engineTypeLine)
+    || cardDisplayTypeLine(cardSnapshot, localCustom?.typeLine, localCustom?.engineTypeLine)
+    || previewTypeLine || cardDisplayTypeLine(hoveredStackObject) || null;
   const isBattle = String(typeLine || "").toLowerCase().includes("battle");
   const statsText = useMemo(() => {
     if (details?.power != null && details?.toughness != null) {
@@ -868,7 +877,8 @@ export default function HoverArtOverlay({
   );
 
   const typeLineDisplay = String(
-    details?.type_line_display
+    (localCustom ? typeLine : null)
+    || details?.type_line_display
     || previewTypeLine
     || hoveredStackObject?.type_line
     || typeLine
@@ -912,7 +922,11 @@ export default function HoverArtOverlay({
   const artObjectName = stableLinkedObjectName || objectName;
   const image = useScryfallImage(sourceImageUrl ? "" : artObjectName, "art_crop");
   const imageUrl = sourceImageUrl ? cardArtCropUrl(sourceImageUrl) : image.url;
-  const generatedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready && enableFramePreparation);
+  const stockFallback = useMemo(() => isCardFrameMode ? defaultCardFrame({
+    cards: [details, cardSnapshot, previewCard, hoveredStackObject], manaCost, typeLine,
+  }) || (localCustom ? defaultCardFrame({manaCost, typeLine: typeLine?.split(" — ")[0]}) : null)
+    : null, [isCardFrameMode, details, cardSnapshot, previewCard, hoveredStackObject, manaCost, typeLine, localCustom]);
+  const generatedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready && enableFramePreparation && !localCustom);
   const originalFrame = useMemo(() => ({imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl}), [imageUrl]);
   // A custom card can have no printing to look up at all. Waiting on a
   // preparation that will never arrive leaves the stage hidden and inert, so
@@ -925,10 +939,18 @@ export default function HoverArtOverlay({
   // until then the placeholder frame stands in for it, never a blank stage.
   const detailsPending = Boolean(!isMiniatureFrame && game && detailsObjectIdKey && !details
     && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey);
-  const showLoadingFrame = isCardFrameMode && enableFramePreparation
+  // Stock frames are immediate fallbacks, not a reason to skip preparation.
+  // Keep them on failures (including unmasked/placeholder results), and only
+  // upgrade once the prepared printing and the live details are usable.
+  const generatedFrameUsable = generatedFrame?.artReady !== false && Boolean(
+    generatedFrame?.registration || (generatedFrame?.style?.['--source-frame-status'] === 'masked'
+      && generatedFrame.style['--source-frame-image'])
+  );
+  const stockFrame = !detailsPending && generatedFrameUsable ? null : stockFallback;
+  const showLoadingFrame = isCardFrameMode && enableFramePreparation && !stockFrame
     && !artUnavailable && (!generatedFrame || detailsPending) && Boolean(artObjectName);
-  const preparedFrame = showLoadingFrame ? (imageUrl ? LOADING_CARD_FRAME_WITH_ART : LOADING_CARD_FRAME)
-    : enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame;
+  const preparedFrame = stockFrame || (showLoadingFrame ? (imageUrl ? LOADING_CARD_FRAME_WITH_ART : LOADING_CARD_FRAME)
+    : enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame);
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const typography = preparedFrame?.typography || defaultTypography;
   const inspectorMeasureFont = typography.rules;
@@ -957,7 +979,7 @@ export default function HoverArtOverlay({
     setFailedImageUrl(null);
   }
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
-  const defaultFlavorText = useScryfallFlavorText(isCardFrameMode || imageErrored ? "" : imageUrl);
+  const defaultFlavorText = useScryfallFlavorText((isCardFrameMode && !stockFrame) || imageErrored ? "" : imageUrl);
   const localizedFlavorText = useScryfallFlavorText(locale === "en" ? "" : sourceImageUrl || imageUrl, locale);
   // Mask preparation retains the source-language flavor. Only the visible
   // layer switches language; never mix English flavor into Spanish rules.
@@ -965,8 +987,8 @@ export default function HoverArtOverlay({
   // printing is only a template for its frame: none of its printed wording --
   // rules, flavor -- belongs to this card.
   const compiledCustomCard = isCompiledCardName(objectName);
-  const flavorText = locale !== "en" ? localizedFlavorText
-    : isCardFrameMode ? (compiledCustomCard ? "" : preparedFrame?.flavorText || "") : defaultFlavorText;
+  const flavorText = customCardFlavorText(objectName) || (locale !== "en" ? localizedFlavorText
+    : isCardFrameMode ? (compiledCustomCard ? "" : stockFrame ? defaultFlavorText : preparedFrame?.flavorText || "") : defaultFlavorText);
   const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -2400,10 +2422,13 @@ export default function HoverArtOverlay({
     // A card-shaped image the sampler cannot read is a whole printing: the art
     // box shows its conventional art region rather than the entire card.
     const artSource = customArt && cardFrameColors?.["--source-frame-fallback-reason"] === "unsampled-art" ? "printing" : undefined;
-    const frameTone = cardFrameTone({
+    const frameToneInput = {
       cards: [details, cardSnapshot, previewCard, hoveredStackObject],
       printing: preparedFrame?.printing, manaCost: displayManaCost, typeLine: displayTypeLine,
-    });
+    };
+    const frameTone = cardFrameTone(stockFrame || customFrame
+      ? { ...frameToneInput, cards: [{ colors: fallbackCardFrameColors(frameToneInput) }] }
+      : frameToneInput);
     // Measured scan geometry only means anything while that scan is shown.
     const frameGeometry = hasSourceMask ? cardFrameColors : null;
     const columnMana = frameGeometry?.["--printed-mana-placement"] === "column"
@@ -2413,6 +2438,7 @@ export default function HoverArtOverlay({
       <CardFrameStage
         assets={preparedFrame}
         showLoadingFrame={showLoadingFrame}
+        showLiveFrame={Boolean(stockFrame)}
         preparation={showLoadingFrame || detailsPending ? null : preparedFrame}
         onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
@@ -2420,6 +2446,7 @@ export default function HoverArtOverlay({
         data-card-frame-colors={frameTone.colors.join("") || undefined}
         data-printing-ready={typography.printingReady || undefined}
         data-source-frame={hasSourceMask ? "true" : undefined}
+        data-default-frame={stockFrame?.defaultFrame}
         data-box-sizing={frameGeometry?.["--printed-box-sizing"] || undefined}
         data-frame-geometry={frameGeometry && Object.keys(frameGeometry).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={hasSourceMask ? "sampled" : undefined}

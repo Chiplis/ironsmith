@@ -14,7 +14,7 @@ const priorityKey = state => [state?.turn_number, state?.active_player, state?.p
 
 // Local preferences gate normal passes; they never change engine priority or
 // submit another player's commands. All automation paths share this controller.
-export function createPriorityStops({ now = () => performance.now() } = {}) {
+export function createPriorityStops({ now = () => performance.now(), postActionEnabled = false } = {}) {
   const listeners = new Set();
   let stops = {};
   let window = null;
@@ -76,6 +76,13 @@ export function createPriorityStops({ now = () => performance.now() } = {}) {
     if (changed) publish();
   };
   return {
+    setPostActionEnabled(enabled) {
+      postActionEnabled = Boolean(enabled);
+      if (!postActionEnabled) {
+        pending = null;
+        if (window) { window = null; publish(); }
+      }
+    },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getSnapshot: () => snapshot,
     observe,
@@ -107,7 +114,7 @@ export function createPriorityStops({ now = () => performance.now() } = {}) {
         heldKey = null;
         if (window) { window = null; publish(); }
       }
-      if (kind === 'cast_spell' || kind === 'activate_ability') {
+      if (postActionEnabled && (kind === 'cast_spell' || kind === 'activate_ability')) {
         pending = { key: priorityKey(state), player: state.perspective, ids: new Set((state.stack_objects || []).map(entry => String(entry.id))) };
       }
       if (command?.type === 'cancel_decision') pending = null;

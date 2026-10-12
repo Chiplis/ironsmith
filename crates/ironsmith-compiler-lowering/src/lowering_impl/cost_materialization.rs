@@ -554,12 +554,17 @@ fn lower_materialization_costs(
                     "tap_cost_{tap_tag_id}"
                 ));
                 tap_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
+                let aggregate_constraint = filter.target_set_aggregate_constraint.take();
+                let mut choice = crate::effects::ChooseObjectsEffect::new(
                     filter,
                     *count,
                     PlayerFilter::You,
                     tag.clone(),
-                )));
+                );
+                if let Some(constraint) = aggregate_constraint {
+                    choice = choice.with_aggregate_constraint(*constraint);
+                }
+                costs.push(Cost::validated_effect(Effect::new(choice)));
                 costs.push(Cost::validated_effect(Effect::tap(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
@@ -570,9 +575,14 @@ fn lower_materialization_costs(
                 filter.tapped = true;
                 let tag = ironsmith_compiler_semantic::tag::CompilerCostObjectTag::Untap.key(untap_tag_id);
                 untap_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
+                let aggregate_constraint = filter.target_set_aggregate_constraint.take();
+                let mut choice = crate::effects::ChooseObjectsEffect::new(
                     filter, *count, PlayerFilter::You, tag.clone(),
-                )));
+                );
+                if let Some(constraint) = aggregate_constraint {
+                    choice = choice.with_aggregate_constraint(*constraint);
+                }
+                costs.push(Cost::validated_effect(Effect::new(choice)));
                 costs.push(Cost::validated_effect(Effect::untap(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
