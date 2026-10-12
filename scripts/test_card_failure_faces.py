@@ -58,6 +58,32 @@ class InventoryTests(unittest.TestCase):
         self.assertIsNone(shared["selected_payloads"][0]["route_id"])
         self.assertEqual(self.inventory["routes"][1]["lookup_disposition"], "name_shadowed")
 
+    def test_restricted_and_pioneer_canonical_names_still_shadow_later_faces(self):
+        for legalities in ({"vintage": "restricted"}, {"pioneer": "legal"}):
+            source = fixture_cards()
+            source[0]["legalities"] = legalities
+            with self.subTest(legalities=legalities):
+                inventory = faces.make_inventory(source, "source")
+                shared = next(q for q in inventory["queries"] if q["name"] == "Shared")
+                self.assertEqual(shared["selected_payloads"][0]["source_index"], 0)
+                self.assertIsNone(shared["selected_payloads"][0]["route_id"])
+                self.assertEqual(inventory["routes"][1]["lookup_disposition"], "name_shadowed")
+
+    def test_ineligible_canonical_card_does_not_hide_explicit_face_route(self):
+        source = fixture_cards()
+        source[0]["legalities"] = {"vintage": "banned"}
+        source[1]["legalities"] = {"vintage": "banned"}
+        inventory = faces.make_inventory(source, "source")
+        shared = next(q for q in inventory["queries"] if q["name"] == "Shared")
+        self.assertEqual(shared["selected_payloads"][0]["route_id"], "source:1/face:1")
+        self.assertEqual(inventory["routes"][1]["lookup_disposition"], "exact_face")
+
+    def test_canonical_legality_matches_registry_unknown_metadata_boundary(self):
+        for value in (None, {}, [], "not an object", False):
+            with self.subTest(value=value):
+                self.assertTrue(faces.is_legal({"legalities": value}))
+        self.assertFalse(faces.is_legal({"legalities": {"vintage": ["restricted"]}}))
+
     def test_reversible_same_name_second_face_remains_omitted(self):
         self.assertEqual(self.inventory["routes"][2]["lookup_disposition"], "exact_face")
         self.assertEqual(self.inventory["routes"][3]["lookup_disposition"], "name_shadowed")

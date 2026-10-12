@@ -36,6 +36,134 @@ def snapshot(*rows):
 
 
 class CorpusTests(unittest.TestCase):
+    def load_cards(self, cards):
+        return self.load_raw_cards(json.dumps(cards))
+
+    def load_raw_cards(self, raw):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cards.json"
+            path.write_text(raw, encoding="utf-8")
+            return campaign.load_corpus(path)
+
+    def test_all_six_formats_accept_legal_or_restricted(self):
+        formats = ("commander", "standard", "modern", "pioneer", "legacy", "vintage")
+        cards = [{"name": f"{fmt} {status}", "legalities": {fmt: status}}
+                 for fmt in formats for status in ("legal", "restricted")]
+        result = self.load_cards(cards)
+        self.assertEqual(campaign.FORMATS, formats)
+        self.assertEqual([c["card_name"] for c in result["cards"]],
+                         sorted(card["name"] for card in cards))
+        self.assertEqual(result["exclusions"], {})
+
+    def test_unaccepted_statuses_and_formats_remain_excluded(self):
+        legalities = [
+            {"pioneer": "banned"}, {"vintage": "not_legal"},
+            {"vintage": "Restricted"}, {"commander": True},
+            {"modern": ["legal"]}, {"legacy": {"status": "legal"}},
+            {"pauper": "legal"}, {"alchemy": "legal"},
+        ]
+        result = self.load_cards([{"name": "Control", "legalities": {"legacy": "legal"}}]
+                                 + [{"name": f"Excluded {i}", "legalities": value}
+                                    for i, value in enumerate(legalities)])
+        self.assertEqual([c["card_name"] for c in result["cards"]], ["Control"])
+        self.assertEqual(result["exclusions"], {"outside_supported_formats": len(legalities)})
+
+    def test_registry_boundary_accepts_unspecified_legality_and_ignores_games(self):
+        # The downloader intentionally has a stricter boundary than the Rust
+        # custom-source registry loader. Its paper filter must not leak here.
+        cards = [{"name": "Absent"}] + [
+            {"name": f"Unspecified {i}", "legalities": value}
+            for i, value in enumerate((None, {}, [], ["banned"], "banned", False, 1))
+        ] + [{"name": "Nonpaper games", "games": ["arena"], "digital": False,
+              "legalities": {"pioneer": "legal"}}]
+        self.assertEqual(self.load_cards(cards)["canonical_card_count"], len(cards))
+
+    def test_registry_digital_exclusion_requires_boolean_true(self):
+        cards = [{"name": f"Digital {i}", "digital": value,
+                  "legalities": {"vintage": "restricted"}}
+                 for i, value in enumerate((True, False, 1, "true", None))]
+        result = self.load_cards(cards)
+        self.assertEqual([c["card_name"] for c in result["cards"]],
+                         [f"Digital {i}" for i in range(1, 5)])
+        self.assertEqual(result["exclusions"], {"digital": 1})
+
+    def test_dedup_keeps_first_eligible_normalized_name_not_oracle_id(self):
+        cards = [
+            {"name": "A // B", "digital": True},
+            {"name": "A // B", "legalities": {"vintage": "banned"}},
+            {"name": " A / B ", "oracle_id": "shared", "legalities": {"vintage": "restricted"}},
+            {"name": "A // B", "oracle_id": "later", "legalities": {"pioneer": "legal"}},
+            {"name": "Other", "oracle_id": "shared", "legalities": {"legacy": "legal"}},
+        ]
+        result = self.load_cards(cards)
+        self.assertEqual([c["card_name"] for c in result["cards"]], ["A // B", "Other"])
+        self.assertEqual(result["cards"][0]["source_card_sha256"], campaign.json_digest(cards[2]))
+        self.assertEqual(result["cards"][0]["oracle_id"], "shared")
+        self.assertEqual(result["exclusions"],
+                         {"digital": 1, "outside_supported_formats": 1, "duplicate_name": 1})
+
+    def test_name_fallback_only_uses_missing_or_null_root_and_first_face(self):
+        cases = [
+            ({"card_faces": [{"name": " Face / Back "}]}, "Face // Back"),
+            ({"name": None, "card_faces": [{"name": "Fallback"}]}, "Fallback"),
+            ({"name": " Root ", "card_faces": [{"name": "Ignored"}]}, "Root"),
+            ({"name": "", "card_faces": [{"name": "Ignored"}]}, ""),
+            ({"name": "  ", "card_faces": [{"name": "Ignored"}]}, ""),
+            ({"card_faces": [{}, {"name": "Ignored"}]}, ""),
+            ({"card_faces": [None, {"name": "Ignored"}]}, ""),
+            ({"card_faces": {"name": "Ignored"}}, ""),
+            ({"name": "Valid", "card_faces": [None]}, "Valid"),
+        ]
+        for card, expected in cases:
+            with self.subTest(card=card):
+                self.assertEqual(campaign.canonical_card_name(card), expected)
+
+    def test_non_string_names_stringify_instead_of_using_face_fallback(self):
+        cases = [(False, "false"), (0, "0"), (42, "42"), ([], "[]"),
+                 ({}, "{}"), (["É", None, True], '["É",null,true]'),
+                 ({"z": False, "a": 7}, '{"a":7,"z":false}')]
+        for value, expected in cases:
+            with self.subTest(value=value):
+                card = {"name": value, "card_faces": [{"name": "Ignored"}]}
+                result = self.load_cards([card])
+                self.assertEqual(result["cards"][0]["card_name"], expected)
+                self.assertEqual(campaign.canonical_card_name({"card_faces": [{"name": value}]}),
+                                 expected)
+
+    def test_uncertain_json_number_names_fail_closed_before_sharding(self):
+        for value in (1.0, 1e-7, 2**64, -(2**63) - 1, [1.5], {"nested": 0.01}):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "non-string name"):
+                self.load_cards([{"name": value}])
+
+    def test_raw_negative_zero_names_fail_closed_before_deduplication(self):
+        # Hand-written JSON is required: json.dumps(-0) would erase the token
+        # whose interpretation differs between Python and serde_json.
+        cases = [
+            '[{"name":-0}]',
+            '[{"name":-0},{"name":0}]',
+            '[{"name":0},{"name":-0}]',
+            '[{"name":[-0]}]',
+            '[{"name":{"nested":[0,{"value":-0}]}}]',
+            '[{"card_faces":[{"name":-0}]}]',
+            '[{"name":null,"card_faces":[{"name":{"nested":-0}}]}]',
+        ]
+        for raw in cases:
+            with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, "non-string name"):
+                self.load_raw_cards(raw)
+
+    def test_raw_positive_zero_and_non_name_negative_zero_remain_admitted(self):
+        raw = '[{"name":0},{"name":"Literal -0","metadata":-0,"card_faces":[{"name":-0}]}]'
+        result = self.load_raw_cards(raw)
+        self.assertEqual([card["card_name"] for card in result["cards"]], ["0", "Literal -0"])
+        self.assertEqual(result["exclusions"], {})
+
+    def test_malformed_face_metadata_does_not_change_valid_root_membership(self):
+        result = self.load_cards([{"name": "Root", "card_faces": [None, {"name": "Face"}]},
+                                  {"name": "No array", "card_faces": "not an array"}])
+        self.assertEqual(result["canonical_card_count"], 2)
+        self.assertEqual(result["source_face_count"], 3)
+        self.assertEqual(result["cards"][1]["face_names"], [None, "Face"])
+
     def test_membership_matches_canonical_loader_rules(self):
         cards = [
             {"name": " A / B ", "card_faces": [{"name": "A"}, {"name": "B"}]},

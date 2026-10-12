@@ -1,0 +1,48 @@
+# Independent source review: complete sync scope
+
+Review date: 2026-10-12 UTC.
+
+Final reviewed commit: `2c84c1ab76149203b49bc9e2dbdf1c71befd9322`.
+Initial repair: `548a55e7b6be45489f018bf8e908d3119bf096c8`.
+Full reviewed stack base: `ace151344c47ffea83f416ca06bc0a596cc12530`.
+Worktree: `sync-scope`.
+
+## Decision
+
+**GO for source-reviewed draft publication of the full stack at `2c84c1ab76149203b49bc9e2dbdf1c71befd9322`. No unresolved blocking findings.** The paper-format/status policy and cache migration are sound by static inspection. The initial review identified one negative-zero name-decoding defect; the follow-up correction resolves it at both affected source-decoding boundaries. Tests remain authored and source-reviewed, not executed. This is not merge/test/runtime certification.
+
+This does not block the separately reviewed frozen baseline: its source names are strings, and its external harness and frozen inputs are unchanged by this patch. No recovery count or execution result is established by this review.
+
+## Finding identified and resolved
+
+**Resolved P2 in initial repair `548a55e7b`: raw JSON integer-token `-0` bypassed the numeric-name fail-closed check.** Line references in the following historical finding refer to that initial commit.
+
+- `scripts/card_failure_campaign.py:84-97,109-110` checks decoded Python values. Default `json.load` converts raw `-0` to integer `0`; the check therefore accepts it and produces canonical name `"0"`.
+- Rust loads the original JSON and stringifies non-null non-string names (`crates/ironsmith-tools/src/tooling.rs:2588-2595,2979-2995`; equivalent card-source path at `crates/ironsmith-card-source/src/lib.rs:145-151,315-329`). The installed `serde_json` 1.0.149 parser explicitly converts a negative-zero token to a floating-point number: `/workspace/shared/ironsmith-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.149/src/de.rs:509-524`. Rust therefore uses the distinct name `"-0.0"`.
+- Static counterexample: raw JSON `[{"name":-0},{"name":0},{"name":"Control"}]`. Python inventories `"0"` and `"Control"`, deduplicating the second record. With at least two shards, `card_failure_campaign.py:384-393` requests only those names. Native `sync_card_status_db.rs:116-123,154-184` filters to the requested names and only checks that requested names exist. The later Python coverage comparison can pass while Rust's `"-0.0"` canonical entry was never measured.
+- The same decoding gap exists in `card_failure_tag_clusters.py:182` and affects root, first-face, and nested numeric names. A literal-token regression is needed: existing number tests (`test_card_failure_campaign.py:130-133`) first serialize Python objects, which cannot preserve an integer-token `-0` distinction.
+- Preserve this token distinction at source decoding, then reject the uncertain numeric name before inventory/sharding (or implement a proven equivalent). Apply the boundary consistently to canonical campaign and pinned-tag loading. Add raw-JSON root, first-face, nested-container and `-0`/`0` collision cases. No change to frozen baseline inputs is needed.
+
+### Correction verification
+
+`2c84c1ab7` introduces `source_json_integer` (`card_failure_campaign.py:70-75`) and supplies it as `parse_int` to both source decoders (`card_failure_campaign.py:118`; `card_failure_tag_clusters.py:182`). A raw integer token `-0` is therefore preserved as floating `-0.0` and rejected by the existing recursive effective-name check (`card_failure_campaign.py:92-104`) before canonical deduplication. Other integer tokens retain the prior integer conversion. Positive zero remains a valid name, and negative zero outside the effective canonical name does not incorrectly reject an otherwise eligible card.
+
+The correction's tests use hand-authored raw JSON, covering a lone root `-0`, `-0`/`0` in both orders, nested lists/objects, missing/null root fallback, and archive/restored tag inputs (`test_card_failure_campaign.py:138-158`; `test_card_failure_tag_clusters.py:99-109,391-412`). The tag fixture intentionally constructs the old decoder's name manifest but replaces archive and dataset hashes/bytes with the exact raw input; thus a lone `-0` cannot be rejected merely because the test's pin is corrupt. New loader rejection occurs at the expected `non-string name` guard. Control fixtures preserve positive-zero membership. These cases are internally consistent by source inspection, without execution.
+
+## Reviewed and sound portions
+
+1. **Six formats and two statuses.** `stream_scryfall_blocks.py:7-15,170-182` matches the exact Commander/Standard/Modern/Pioneer/Legacy/Vintage and `legal`/`restricted` matrix in both Rust loaders (`tooling.rs:33-40,2739-2753`; `ironsmith-card-source/src/lib.rs:14-21,273-284`). Unsupported formats, wrong-case and non-string statuses do not become affirmative matches.
+2. **Admission boundaries stay separate.** Downloader `should_keep_card` retains affirmative legality plus the unchanged `is_non_paper_print` filter (`download_scryfall_cards.py:143-144`; `stream_scryfall_blocks.py:159-167`). Registry inventory opts into missing/empty/non-object legalities, excludes only boolean `digital: true`, ignores `games`, rejects missing names before legality, and preserves first eligible normalized name rather than Oracle-ID deduplication (`card_failure_campaign.py:109-146`). These match the default Rust registry path; explicit-include exceptions are not enabled.
+3. **Name and face handling.** Missing/null root names fall back only to the first face; empty root names and non-null JSON values do not fall back. Non-array faces and non-object first faces no longer crash canonical metadata extraction. JSON boolean/container formatting and sorted object keys match the inspected default serde map configuration for the covered non-floating values. Floating/out-of-range names intentionally fail rather than silently disappear. The corrected negative-zero source decoding closes the identified numeric-name exception.
+4. **Cache migration.** `download_scryfall_cards.py:91-111,123-135` requires policy version 2 in addition to existing type/date/content identity and writes the marker additively. Absent/old/unknown policy markers and non-object sidecars cannot retain the old five-format/legal-only cache. Existing content hashing and output-selection/prioritization code are otherwise unchanged.
+5. **Tag report integrity.** `card_failure_tag_clusters.py:167-211` still checks archive/raw bytes and hashes, rejects any source exclusion or duplicate canonical name, and checks pinned counts/name digests. The repair correctly admits restricted/Pioneer records rather than filtering them out. Digest algorithms and normal Scryfall source-card digest conventions are unchanged. For unusual custom records containing raw negative-zero numeric tokens outside the name, the new decoder preserves that value as `-0.0`, which can intentionally alter a reserialized per-card digest relative to the old lossy Python decoding; campaign and tag paths agree. Raw dataset/archive byte hashing remains unchanged.
+6. **Face consumer boundary.** Only its canonical collision legality helper changes (`card_failure_faces.py:70-72`). Explicit face lookup still bypasses canonical legality as the Rust lookup does. The architecture note accurately discloses the pre-existing same-name multi-face grouping mismatch; this supplemental simulator must not be presented as current exact duplicate-face coverage.
+7. **Broader stream consumers.** `generate_baked_registry.py:16-22`, `audit_runtime_semantics.py:24`, and embedded imports in `audit_oracle_clusters.rs:1202` / `audit_unimplemented_partition.rs:132` do not use the changed legality predicate. Block construction, non-playable filters, Oracle marker logic, and Rust/compiler semantics are unchanged. `rebuild-wasm.sh:178-184` includes the stream source in its fingerprint, so an expected source-fingerprint cache invalidation may occur even though block semantics are unchanged.
+8. **Authored tests and claims.** Full source review found no fixture-count/order mistakes in the six-format/status matrix, downloader dedup/English/first-print selection, metadata migration, canonical first-face/name tests, face collisions, or pinned tag tests. Existing hash checks remain intact. The document correctly calls these tests authored/source-reviewed only and discloses the campaign script's new sibling import dependency. It does not claim recovered cards or successful compilation.
+
+## Verification limits
+
+- Read the full initial ten-file diff and all five files of the follow-up correction, together covering the full stack from `ace151344c47ffea83f416ca06bc0a596cc12530` through `2c84c1ab76149203b49bc9e2dbdf1c71befd9322`, plus the architecture note, relevant current Rust loaders and native name-filtering path, consumer imports, and installed dependency/JSON decoder source. No worktree code was modified.
+- `git diff --check` passed on both the initial range and final full stack range. Worktree was clean at review start and after correction review.
+- **No builds, tests, repository Python imports, syntax execution, compilation, probes, generators, or corpus runs were performed.** Regression tests are unexecuted. Source approval is not a runtime or gameplay correctness result.
+- Malformed-face tolerance at inventory extraction does not establish general malformed-input support for the separate face simulator or downstream tag enrichment; those still have their existing stricter structures. Existing Python/Rust string-normalization edge differences are outside this policy-only change and must not be inflated into universal JSON-loader parity claims.
