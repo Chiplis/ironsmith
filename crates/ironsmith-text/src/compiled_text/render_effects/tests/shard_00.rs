@@ -1175,7 +1175,7 @@ pub(super) fn power_damage_to_tagged_controllers_keeps_spell_source_surface() {
 }
 
 #[test]
-pub(super) fn describe_effect_list_compacts_choose_two_one_other_counter_sequence() {
+pub(super) fn describe_effect_list_does_not_rescue_unrelated_counter_target() {
     let tag = TagKey::from("targeted_0");
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
         .with_count(ChoiceCount::exactly(2));
@@ -1200,7 +1200,8 @@ pub(super) fn describe_effect_list_compacts_choose_two_one_other_counter_sequenc
     let effects = vec![target_effect, exile_one, counters];
     let expected = "Choose two target creatures. Exile one of those creatures and put two +1/+1 counters on the other";
 
-    assert_eq!(describe_effect_list(&effects), expected);
+    assert_ne!(describe_effect_list(&effects), expected);
+    assert!(describe_effect_list(&effects).contains("any other target"));
 }
 
 #[test]

@@ -50,13 +50,6 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
 
 pub(super) fn normalize_debug_safe_legacy_surface(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
-    if lower
-        == "each opponent chooses a creature card, then put it onto the battlefield under your control."
-        || lower
-            == "each opponent chooses a creature card, then put it onto the battlefield under your control"
-    {
-        return "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control.".to_string();
-    }
     if lower.starts_with("exile all nonland cards in target player's graveyard or nonbasic cards in target player's graveyard")
         && lower.contains("with the same name as that object card")
     {
@@ -72,12 +65,6 @@ pub(super) fn normalize_debug_safe_legacy_surface(line: &str) -> String {
     }
     if lower.contains("that permanent's mana value") {
         return line.replace("that permanent's mana value", "that card's mana value");
-    }
-    if lower.contains("if it's a permanent, exile it") {
-        return line.replace(
-            "if it's a permanent, exile it",
-            "if it would leave the battlefield, exile it instead",
-        );
     }
     line.to_string()
 }

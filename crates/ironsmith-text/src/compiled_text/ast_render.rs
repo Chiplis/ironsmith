@@ -6,7 +6,6 @@ use super::render_effects::{
     describe_choose_name_target_mills_conditional_draw,
     describe_choose_sacrifice_then_reflexive_trigger_refs, describe_choose_selection,
     describe_choose_then_mount_vehicle_become, describe_choose_then_sacrifice,
-    describe_choose_two_move_one_put_counters_on_other,
     describe_conditional_spell_uncounterability,
     describe_copy_count_replacement_with_shared_plural_retarget, describe_damage_target,
     describe_damaged_player_gain_control_then_rewards, describe_declined_may_mill_then_damage,
@@ -12874,50 +12873,6 @@ mod typed_controller_damage_source_line_tests {
     }
 }
 
-/// Preserve the shared target set across the authored sentence boundary in
-/// "Choose two ... . Exile one ... and put counters on the other." The
-/// target-set tag and `AnyOtherTarget` are the executable proof that the two
-/// consumers refer to complementary members of the original pair.
-fn describe_cross_segment_choose_two_move_one_put_counters_window(
-    segments: &[crate::resolution::ResolutionSegment],
-    start: usize,
-) -> Option<(String, usize)> {
-    let [target_segment, action_segment] = segments.get(start..start + 2)? else {
-        return None;
-    };
-    if target_segment.starts_new_source_line
-        || !action_segment.starts_new_source_line
-        || !target_segment.self_replacements.is_empty()
-        || !action_segment.self_replacements.is_empty()
-    {
-        return None;
-    }
-    let [target_effect] = target_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let [action_effect] = action_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let sequence = action_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
-    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
-        || sequence.result_label.is_some()
-    {
-        return None;
-    }
-    let [move_effect, put_effect] = sequence.effects.as_slice() else {
-        return None;
-    };
-    let effects = [
-        target_effect.clone(),
-        move_effect.clone(),
-        put_effect.clone(),
-    ];
-    Some((
-        describe_choose_two_move_one_put_counters_on_other(&effects)?,
-        2,
-    ))
-}
-
 #[cfg(test)]
 mod choose_two_move_one_put_counters_source_line_tests {
     use super::*;
@@ -12955,8 +12910,8 @@ mod choose_two_move_one_put_counters_source_line_tests {
     }
 
     #[test]
-    fn source_line_preservation_keeps_the_complementary_target_pair() {
-        assert_eq!(
+    fn source_line_preservation_does_not_invent_a_complement() {
+        assert_ne!(
             describe_resolution_program_preserving_source_lines(&program("targeted_0")),
             "Choose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other"
         );
@@ -28632,12 +28587,6 @@ fn describe_resolution_program_preserving_source_lines(
     }
     if let Some((rendered, consumed)) =
         describe_cross_segment_typed_controller_damage_window(&program.segments, 0)
-        && consumed == program.segments.len()
-    {
-        return rendered;
-    }
-    if let Some((rendered, consumed)) =
-        describe_cross_segment_choose_two_move_one_put_counters_window(&program.segments, 0)
         && consumed == program.segments.len()
     {
         return rendered;

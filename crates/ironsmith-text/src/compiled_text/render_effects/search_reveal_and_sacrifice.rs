@@ -1634,22 +1634,17 @@ pub(super) fn value_is_power_of_tag(value: &Value, tag: &crate::TagKey) -> bool 
     )
 }
 
-pub(super) fn described_counter_put_on_the_other(
-    put: &crate::effects::PutCountersEffect,
-) -> Option<String> {
-    if put.target != ChooseSpec::AnyOtherTarget || put.target_count.is_some() || put.distributed {
-        return None;
-    }
-    Some(format!(
-        "put {} on the other",
-        describe_put_counter_phrase(&put.amount, put.counter_type)
-    ))
-}
-
 pub(in crate::compiled_text) fn describe_choose_two_move_one_put_counters_on_other(
     effects: &[Effect],
 ) -> Option<String> {
-    let [target_effect, move_effect, put_effect] = effects else {
+    let [
+        target_effect,
+        choice_effect,
+        complement_effect,
+        move_effect,
+        put_effect,
+    ] = effects
+    else {
         return None;
     };
     let tagged = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -1668,34 +1663,79 @@ pub(in crate::compiled_text) fn describe_choose_two_move_one_put_counters_on_oth
     let ChooseSpec::Object(target_filter) = target_inner.as_ref() else {
         return None;
     };
-    if target_filter.target_set_different_controllers
+    if target_only.chooser.is_some()
+        || target_filter.zone != Some(Zone::Battlefield)
+        || target_filter.target_set_different_controllers
         || target_filter.target_set_aggregate_constraint.is_some()
     {
         return None;
     }
 
-    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if move_to_zone.zone != Zone::Exile
-        || !choose_spec_is_tagged_object(&move_to_zone.target, &tagged.tag)
-    {
-        return None;
-    }
-    if let ChooseSpec::WithCount(_, move_count) = &move_to_zone.target
-        && !move_count.is_single()
+    let choice = choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let complement =
+        complement_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if choice.filter != ObjectFilter::tagged(tagged.tag.clone()).in_zone(Zone::Battlefield)
+        || choice.count != ChoiceCount::exactly(1)
+        || choice.chooser != PlayerFilter::You
+        || choice.count_value.is_some()
+        || choice.aggregate_constraint.is_some()
+        || choose_primary_zone(choice) != Some(Zone::Battlefield)
+        || !choice.additional_zones.is_empty()
+        || choice.is_search
+        || choice.reveal
+        || choice.top_only
+        || choice.bottom_only
+        || choice.replace_tagged_objects
+        || choice.remember_as_chosen_object
+        || complement.filter
+            != ObjectFilter::tagged(tagged.tag.clone()).not_tagged(choice.tag.clone())
+        || complement.zone != Some(Zone::Battlefield)
+        || !complement.additional_zones.is_empty()
+        || !complement.source_tags.is_empty()
+        || choice.tag == complement.tag
+        || tagged.tag == choice.tag
+        || tagged.tag == complement.tag
     {
         return None;
     }
 
-    let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
-    let put_text = described_counter_put_on_the_other(put)?;
-    let plural_noun = simple_filter_plural_noun(target_filter)?;
-    let controller_qualifier = if target_filter.target_set_same_controller {
-        " controlled by the same player"
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Exile
+        || move_to_zone.target != ChooseSpec::Tagged(choice.tag.clone())
+        || move_to_zone.enters_face_down
+        || !move_to_zone.tagged_destinations.is_empty()
+        || move_to_zone.transfer_exiled_with_source_links
+    {
+        return None;
+    }
+    let put = unwrap_basic_tag_wrappers(put_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.target != ChooseSpec::Tagged(complement.tag.clone())
+        || put.target_count.is_some()
+        || put.distributed
+        || put.maximum_total.is_some()
+        || put.completion_action.is_some()
+    {
+        return None;
+    }
+    let put_text = format!(
+        "put {} on the other",
+        describe_put_counter_phrase(&put.amount, put.counter_type)
+    );
+    let declared_pair = describe_choose_spec(&target_only.target);
+    let referent = if target_filter.card_types.len() == 1 {
+        format!(
+            "those {}",
+            target_filter.card_types[0]
+                .plural_name()
+                .to_ascii_lowercase()
+        )
     } else {
-        ""
+        "them".to_string()
     };
     Some(format!(
-        "Choose two target {plural_noun}{controller_qualifier}. Exile one of those {plural_noun} and {put_text}"
+        "Choose {declared_pair}. Exile one of {referent} and {put_text}"
     ))
 }
 

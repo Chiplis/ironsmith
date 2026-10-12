@@ -448,33 +448,6 @@ fn compact_shared_conditional_pump_and_ability_lines(lines: Vec<String>) -> Vec<
             idx += 2;
             continue;
         }
-        if lines[idx].trim_end_matches('.')
-            == "Enchanted creature has \"{T}: This creature deals 1 damage to target creature\" and \"{T}: This creature deals 2 damage to target creature.\""
-        {
-            compacted.push(
-                "Enchanted creature has \"{T}: This creature deals 1 damage to target creature.\""
-                    .to_string(),
-            );
-            compacted.push(
-                "As long as the permanent this source is attached to is a Wizard, this source has \"{T}: This creature deals 2 damage to target creature.\""
-                    .to_string(),
-            );
-            idx += 1;
-            continue;
-        }
-        if lines[idx].trim_end_matches('.')
-            == "When this creature enters, it deals 2 damage to each creature and each player"
-            && idx + 1 < lines.len()
-            && lines[idx + 1].trim().trim_end_matches('.') == "Evoke {2}{G}{G}"
-        {
-            compacted.push(
-                "When this creature enters, it deals 2 damage to each creature with flying and each player."
-                    .to_string(),
-            );
-            compacted.push(lines[idx + 1].clone());
-            idx += 2;
-            continue;
-        }
         compacted.push(lines[idx].clone());
         idx += 1;
     }
@@ -1008,11 +981,6 @@ fn normalize_scored_compiled_line(line: String) -> String {
         return format!(
             "{source} deals 2 damage to each opponent and each creature they control. If this spell was cast from exile, it deals 5 damage to each opponent and each creature they control instead{rest}"
         );
-    }
-    if lower.trim_end_matches('.')
-        == "return target permanent spell to its owner's hand, jeskai revelation deals 4 damage to any target, create two 1/1 white monk creature tokens with prowess, draw two cards, then gain 4 life"
-    {
-        return "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life.".to_string();
     }
     if lower.trim_end_matches('.')
         == "sacrifice this enchantment: creatures your opponents control get -1/-1 and gain attacks each combat if able until end of turn"
@@ -1835,12 +1803,6 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         line = line.replace("that permanent's mana value", "that card's mana value");
     }
-    line = replace_ascii_case_insensitive_once(
-        line,
-        "if it's a permanent, exile it",
-        "If it would leave the battlefield, exile it instead",
-        "if it would leave the battlefield, exile it instead",
-    );
     line = capitalize_sentence_boundaries(&line);
     let finalized = if line.contains('\n') {
         line.split('\n')
@@ -3331,7 +3293,7 @@ mod tests {
                 "Evoke {2}{G}{G}.".to_string(),
             ]),
             vec![
-                "When this creature enters, it deals 2 damage to each creature with flying and each player."
+                "When this creature enters, it deals 2 damage to each creature and each player."
                     .to_string(),
                 "Evoke {2}{G}{G}.".to_string(),
             ]
@@ -3345,7 +3307,7 @@ mod tests {
                 "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
                     .to_string()
             ),
-            "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life."
+            "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
         );
         assert_eq!(
             normalize_scored_compiled_line(
@@ -4636,3 +4598,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod rescue_regressions;

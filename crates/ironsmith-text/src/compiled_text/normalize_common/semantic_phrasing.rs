@@ -255,41 +255,6 @@ fn compact_target_player_coordinated_actions(line: &str) -> Option<String> {
 }
 
 fn restore_residual_regression_surfaces(line: &str) -> Option<String> {
-    let trimmed = line.trim().trim_end_matches('.');
-
-    if trimmed
-        == "Target player chooses three cards and puts those cards on top of their library in any order"
-    {
-        return Some(
-            "Target player chooses three cards from their hand and puts them on top of their library in any order."
-                .to_string(),
-        );
-    }
-
-    if [
-        "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy that creature. If you lose the flip, destroy the creature your opponent chose",
-        "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose",
-    ]
-    .contains(&trimmed)
-    {
-        return Some(
-            "{T}: You choose target creature an opponent controls, and that opponent chooses target creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose."
-                .to_string(),
-        );
-    }
-
-    if [
-        "Choose two target creatures controlled by the same player. Exile the creature you chose and put two +1/+1 counters on any other target",
-        "Choose two target creatures controlled by the same player. Exile that creature and put two +1/+1 counters on any other target",
-    ]
-    .contains(&trimmed)
-    {
-        return Some(
-            "Choose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other."
-                .to_string(),
-        );
-    }
-
     let mut restored = line.to_string();
     restored = restored.replace_lit(
         "Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, you may put up to two creature cards from among them into your hand instead of one",
@@ -1316,14 +1281,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "choose a new target for the copy",
         );
     }
-    if normalized.starts_with("Whenever another Cat you control attacks,") {
-        normalized = normalized
-            .replace_lit(
-                "If you do, it gains trample. This creature gets +X/+X",
-                "If you do, it gains trample and gets +X/+X",
-            )
-            .replace_lit("where X is this creature's power", "where X is its power");
-    }
     if normalized
         == "Reveal cards from the top of your library until you reveal a nonland permanent card. You may put it onto the battlefield. Then put those cards on the bottom of your library in a random order."
     {
@@ -1979,10 +1936,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         )
         .replace_lit(" deals X to you, where X is ", " deals X damage to you, where X is ");
     normalized = normalized
-        .replace_lit(
-            "You can't have life total changed until your next turn, you gain shroud until your next turn, and prevent all damage that would be dealt to you until your next turn",
-            "Until your next turn, your life total can't change and you gain protection from everything",
-        )
         .replace_lit(
             "Look at the top four cards of your library. Reveal them. You may put a creature card from among them into your hand. Put the rest into your graveyard",
             "Reveal the top four cards of your library. Put a creature card from among them into your hand. Put the rest into your graveyard",
@@ -2872,11 +2825,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             | "gain control of target creature until end of turn, untap it, it gets +x/+0 and gains haste until end of turn"
     ) {
         return "Gain control of target creature until end of turn. Untap that creature. It gets +X/+0 and gains haste until end of turn.".to_string();
-    }
-    if lower_compact_trimmed
-        == "return target permanent spell to its owner's hand, jeskai revelation deals 4 damage to any target, create two 1/1 white monk creature tokens with prowess, draw two cards, then gain 4 life"
-    {
-        return "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life.".to_string();
     }
     if lower_compact_trimmed
         == "when this siege enters, search your library and/or graveyard for a non-human creature with mana value x or less you own, for each card searched for this way, put them onto the battlefield, then shuffle your library"
@@ -5755,23 +5703,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Return target artifact, creature, enchantment, or planeswalker to its owner's hand".to_string();
     }
-    if let Some((prefix, _)) = normalized.split_once_lit(
-        ", if you cast it, you can't be targeted until your next turn. Prevent all damage that would be dealt to you until your next turn",
-    ) {
-        return format!(
-            "{prefix}, if you cast it, you gain protection from everything until your next turn"
-        );
-    }
-    if let Some((prefix, rest)) = normalized.split_once_lit(": ") {
-        let rest_lower = rest.to_ascii_lowercase();
-        if rest_lower
-            == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn"
-            || rest_lower
-                == "you can't be targeted until your next turn. prevent all damage that would be dealt to you until your next turn."
-        {
-            return format!("{prefix}: You gain protection from everything until your next turn.");
-        }
-    }
     if let Some(rest) = normalized.strip_prefix("this creature gets ")
         && let Some((pt, tail)) = rest.split_once_lit(" for each Equipment attached to this creature")
     {
@@ -5786,11 +5717,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "whenever this creature or whenever another ally you control enters, creatures you control get +1/+1 until end of turn"
     {
         return "Whenever this creature or another Ally you control enters, creatures you control get +1/+1 until end of turn".to_string();
-    }
-    if lower
-        == "whenever this creature or least two other creatures attack, this creature gets +2/+2 until end of turn"
-    {
-        return "Whenever this creature and at least two other creatures attack, this creature gets +2/+2 until end of turn".to_string();
     }
     if let Some(rest) = normalized.strip_prefix("Whenever This creature or Whenever another ") {
         return format!("Whenever this creature or another {rest}");

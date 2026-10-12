@@ -1593,27 +1593,26 @@
             let (zone_phrase, zone_keyword) = choose_primary_zone(choose)
                 .map(zone_location)
                 .unwrap_or(("in an unspecified zone", ""));
-            // For graveyard chooses, check the actual selection text —
-            // describe_choose_selection may have stripped the zone that
-            // filter_text still mentions, and oracle spells it out. Hand and
-            // library chooses keep the filter-based check: their downstream
-            // reveal-compaction gates ("You choose ... from it") key on the
-            // suffix-free surface.
-            let includes_zone_already = if choose_primary_zone(choose) == Some(Zone::Graveyard) {
-                let choice_lower = choice_text.to_ascii_lowercase();
-                zone_keyword.is_empty()
-                    || choice_lower.contains(zone_keyword)
-                    || choice_lower.contains("from it")
-                    || choice_lower.contains("from among")
-                    || choice_lower.contains("of them")
-                    || choice_lower.contains("in it")
-            } else {
-                zone_keyword.is_empty() || filter_lower.contains(zone_keyword)
-            };
+            // Selection rendering may remove zone/owner scaffolding. Inspect
+            // the emitted selection, not the unrendered filter description.
+            let choice_lower = choice_text.to_ascii_lowercase();
+            let includes_zone_already = zone_keyword.is_empty()
+                || choice_lower.contains(zone_keyword)
+                || choice_lower.contains("from it")
+                || choice_lower.contains("from among")
+                || choice_lower.contains("revealed this way")
+                || choice_lower.contains("of them")
+                || choice_lower.contains("in it");
             if includes_zone_already {
                 String::new()
             } else {
-                format!(" {zone_phrase}")
+                let location = match choose_primary_zone(choose) {
+                    Some(Zone::Hand) => describe_choose_zone_origin(choose, "hand"),
+                    Some(Zone::Graveyard) => describe_choose_zone_location(choose, "graveyard"),
+                    Some(Zone::Library) => describe_choose_zone_origin(choose, "library"),
+                    _ => zone_phrase.to_string(),
+                };
+                format!(" {location}")
             }
         };
         return capitalize_first(&format!(

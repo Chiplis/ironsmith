@@ -49,6 +49,8 @@ mod keyword_replacement;
 mod discard_replacement;
 #[path = "pair_procedure/targeted_random_partition.rs"]
 mod targeted_random_partition;
+#[path = "pair_procedure/targeted_partition.rs"]
+mod targeted_partition;
 #[path = "pair_procedure/named_random_reveal.rs"]
 mod named_random_reveal;
 #[path = "pair_procedure/counter_total_limit.rs"]
@@ -311,6 +313,13 @@ const PAIR_SHAPES: &[Shape] = &[
         consumed: 2,
         read: |sentences, index| statements(sentences, index,
             named_random_reveal::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("declared-pair-exile-chosen-counter-complement"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index,
+            targeted_partition::read(sentences, index)),
     },
     Shape {
         id: RuleId::new("declared-graveyard-random-return-complement"),

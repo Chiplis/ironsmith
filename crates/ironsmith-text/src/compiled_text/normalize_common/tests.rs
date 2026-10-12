@@ -60,7 +60,7 @@ fn semantic_phrasing_runs_cross_sentence_regression_repairs() {
         normalize_common_semantic_phrasing(
             "Target player chooses three cards and puts those cards on top of their library in any order."
         ),
-        "Target player chooses three cards from their hand and puts them on top of their library in any order."
+        "Target player chooses three cards and puts those cards on top of their library in any order."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
@@ -72,13 +72,13 @@ fn semantic_phrasing_runs_cross_sentence_regression_repairs() {
         normalize_common_semantic_phrasing(
             "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy that creature. If you lose the flip, destroy the creature your opponent chose."
         ),
-        "{T}: You choose target creature an opponent controls, and that opponent chooses target creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose."
+        "{T}: Choose target creature an opponent controls and creature. Flip a coin. If you win the flip, destroy that creature. If you lose the flip, destroy the creature your opponent chose."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
             "Choose two target creatures controlled by the same player. Exile the creature you chose and put two +1/+1 counters on any other target."
         ),
-        "Choose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other."
+        "Choose two target creatures controlled by the same player. Exile the creature you chose and put two +1/+1 counters on any other target."
     );
 }
 
@@ -3316,7 +3316,7 @@ fn normalize_bottom_batch_look_choose_and_hand_choice_surfaces() {
         normalize_common_semantic_phrasing(
             "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
         ),
-        "Return target spell or permanent to its owner's hand. Jeskai Revelation deals 4 damage to any target. Create two 1/1 white Monk creature tokens with prowess. Draw two cards. You gain 4 life."
+        "Return target permanent spell to its owner's hand, Jeskai Revelation deals 4 damage to any target, create two 1/1 white Monk creature tokens with prowess, draw two cards, then gain 4 life."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
