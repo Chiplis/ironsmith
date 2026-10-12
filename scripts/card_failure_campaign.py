@@ -24,8 +24,13 @@ import sqlite3
 import subprocess
 import sys
 
+from stream_scryfall_blocks import (
+    SUPPORTED_PAPER_FORMATS,
+    is_legal_in_supported_paper_format,
+)
+
 SCHEMA_VERSION = 1
-FORMATS = ("commander", "standard", "modern", "legacy", "vintage")
+FORMATS = SUPPORTED_PAPER_FORMATS
 STATUSES = {"strict_compiled", "compiled_with_allow_unsupported", "parse_failed"}
 FIELDS = (
     "card_name", "parse_status", "parse_error", "oracle_text", "raw_oracle_text",
@@ -57,12 +62,60 @@ def normalize_name(value: str) -> str:
     return value.replace(" / ", " // ", 1) if " // " not in value else value
 
 
+def source_card_faces(card: dict) -> list:
+    faces = card.get("card_faces")
+    return faces if isinstance(faces, list) else []
+
+
+def source_json_integer(token: str) -> int | float:
+    # serde_json parses the integer-looking token -0 as floating -0.0. Python
+    # normally loses its sign in int(-0), which could collapse two Rust names
+    # before sharding. Preserve it so canonical_card_name fails closed, just
+    # as for other floating-point names, including nested and fallback values.
+    return -0.0 if token == "-0" else int(token)
+
+
+def canonical_card_name(card: dict) -> str:
+    # Rust pick_field falls back only for absent/null values, not blank strings
+    # or other JSON types. Only the first face participates in this fallback.
+    value = card.get("name")
+    if value is None:
+        faces = source_card_faces(card)
+        face = faces[0] if faces and isinstance(faces[0], dict) else {}
+        value = face.get("name")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        # Match Value::to_string for JSON booleans, bounded integers and
+        # containers. Do not silently shard a malformed numerical name using
+        # Python's different floating-point JSON rendering.
+        def check_number(item):
+            if isinstance(item, float) or (
+                isinstance(item, int) and not -(2**63) <= item < 2**64
+            ):
+                raise ValueError("cannot inventory a non-string name with a floating-point or out-of-range number")
+            if isinstance(item, list):
+                for child in item:
+                    check_number(child)
+            elif isinstance(item, dict):
+                for child in item.values():
+                    check_number(child)
+
+        check_number(value)
+        value = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return normalize_name(value)
+
+
+def registry_card_is_legal(card: dict) -> bool:
+    return is_legal_in_supported_paper_format(card, allow_missing_legalities=True)
+
+
 def load_corpus(path: Path) -> dict:
     # Mirrors tooling.rs load_registry_cards_from_values and
     # build_registry_card_record_with_explicit_includes for membership only.
     # Fail closed if the Rust tool and this inventory ever disagree.
     with path.open(encoding="utf-8") as stream:
-        cards = json.load(stream)
+        cards = json.load(stream, parse_int=source_json_integer)
     if not isinstance(cards, list) or any(not isinstance(card, dict) for card in cards):
         raise ValueError("cards must be the Scryfall JSON array accepted by the Rust loader")
     selected = {}
@@ -70,24 +123,17 @@ def load_corpus(path: Path) -> dict:
     source_faces = 0
     oracle_ids = Counter(card.get("oracle_id") for card in cards if card.get("oracle_id"))
     for card in cards:
-        faces = card.get("card_faces") or []
+        faces = source_card_faces(card)
         source_faces += len(faces) if faces else 1
         if card.get("digital") is True:
             exclusions["digital"] += 1
             continue
-        legalities = card.get("legalities")
-        if isinstance(legalities, dict) and legalities and not any(
-            legalities.get(fmt) == "legal" for fmt in FORMATS
-        ):
-            exclusions["outside_supported_formats"] += 1
-            continue
-        face = faces[0] if faces else {}
-        raw_name = card.get("name")
-        if raw_name is None:
-            raw_name = face.get("name")
-        name = normalize_name(raw_name) if isinstance(raw_name, str) else ""
+        name = canonical_card_name(card)
         if not name:
             exclusions["missing_name"] += 1
+            continue
+        if not registry_card_is_legal(card):
+            exclusions["outside_supported_formats"] += 1
             continue
         if name in selected:
             exclusions["duplicate_name"] += 1
@@ -97,7 +143,7 @@ def load_corpus(path: Path) -> dict:
             "oracle_id": card.get("oracle_id"),
             "source_card_sha256": json_digest(card),
             "layout": card.get("layout"),
-            "face_names": [face.get("name") for face in faces],
+            "face_names": [face.get("name") if isinstance(face, dict) else None for face in faces],
         }
     if not selected:
         raise ValueError("corpus contains no canonical cards")

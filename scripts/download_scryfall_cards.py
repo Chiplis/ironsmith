@@ -24,6 +24,9 @@ from stream_scryfall_blocks import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "cards.json"
 DEFAULT_METADATA_SUFFIX = ".scryfall-bulk-data.json"
+# Version 1 was the implicit five-format, legal-only filter. Invalidate those
+# sidecars even when the upstream bulk snapshot has not changed.
+FILTER_POLICY_VERSION = 2
 BULK_DATA_URL = "https://api.scryfall.com/bulk-data/default-cards"
 USER_AGENT = "ironsmith/1.0 (https://github.com/chiplis/ironsmith)"
 ACCEPT = "application/json;q=0.9,*/*;q=0.8"
@@ -92,6 +95,8 @@ def local_metadata_matches(remote_metadata: dict, metadata_path: Path, cards_pat
         local_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
+    if not isinstance(local_metadata, dict):
+        return False
 
     remote_type = str(remote_metadata.get("type") or "").strip()
     remote_updated_at = str(remote_metadata.get("updated_at") or "").strip()
@@ -102,6 +107,7 @@ def local_metadata_matches(remote_metadata: dict, metadata_path: Path, cards_pat
         and bool(local_cards_sha256)
         and local_metadata.get("type") == remote_type
         and local_metadata.get("updated_at") == remote_updated_at
+        and local_metadata.get("filter_policy_version") == FILTER_POLICY_VERSION
         and local_cards_sha256 == file_sha256(cards_path)
     )
 
@@ -117,6 +123,7 @@ def write_download_metadata(
     destination.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schemaVersion": 1,
+        "filter_policy_version": FILTER_POLICY_VERSION,
         "id": metadata.get("id"),
         "type": metadata.get("type"),
         "name": metadata.get("name"),
@@ -236,7 +243,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download Scryfall Default Cards and keep only paper cards that are "
-            f"legal in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}."
+            f"legal or restricted in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}."
         )
     )
     parser.add_argument(

@@ -18,8 +18,13 @@ import re
 import subprocess
 import sys
 
+from stream_scryfall_blocks import (
+    SUPPORTED_PAPER_FORMATS,
+    is_legal_in_supported_paper_format,
+)
+
 LINKED_LAYOUTS = {"transform", "split", "flip"}
-FORMATS = ("commander", "standard", "modern", "pioneer", "legacy", "vintage")
+FORMATS = SUPPORTED_PAPER_FORMATS
 
 
 def digest(data):
@@ -64,8 +69,7 @@ def postprocess(text):
 
 
 def is_legal(card):
-    legalities = card.get("legalities") or {}
-    return not legalities or any(legalities.get(f) == "legal" for f in FORMATS)
+    return is_legal_in_supported_paper_format(card, allow_missing_legalities=True)
 
 
 def route_id(index, face):

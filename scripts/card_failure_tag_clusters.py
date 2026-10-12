@@ -179,29 +179,24 @@ def load_pinned_cards(directory: Path, cards_path: Path | None = None) -> dict:
         raise ValueError("dataset SHA-256 differs from frozen campaign")
     if len(raw) != manifest["dataset_bytes"]:
         raise ValueError("dataset byte count differs from frozen campaign")
-    cards = json.loads(raw)
+    cards = json.loads(raw, parse_int=campaign.source_json_integer)
     if not isinstance(cards, list) or not cards:
         raise ValueError("pinned corpus must be a nonempty array")
     indexed = {}
     # The campaign pin is already the complete canonical corpus. Refuse any
     # unexpected exclusion/deduplication rather than filtering troublesome rows.
     for position, card in enumerate(cards):
-        faces = card.get("card_faces") or []
-        raw_name = card.get("name")
-        if raw_name is None:
-            raw_name = faces[0].get("name") if faces else None
-        name = campaign.normalize_name(raw_name) if isinstance(raw_name, str) else ""
-        legalities = card.get("legalities")
+        faces = campaign.source_card_faces(card)
+        name = campaign.canonical_card_name(card)
         if (not name or name in indexed or card.get("digital") is True
-                or (isinstance(legalities, dict) and legalities and not any(
-                    legalities.get(fmt) == "legal" for fmt in campaign.FORMATS))):
+                or not campaign.registry_card_is_legal(card)):
             raise ValueError("pinned corpus requires exclusion or duplicate-name filtering")
         indexed[name] = {
             "card_name": name, "source_row_index": position,
             "source_card_sha256": campaign.json_digest(card),
             "layout": card.get("layout"), "top_level_oracle_id": card.get("oracle_id"),
-            "face_names": [face.get("name") for face in faces],
-            "face_oracle_ids": [face.get("oracle_id") for face in faces],
+            "face_names": [face.get("name") if isinstance(face, dict) else None for face in faces],
+            "face_oracle_ids": [face.get("oracle_id") if isinstance(face, dict) else None for face in faces],
             "card": card,
         }
     expected = {
@@ -209,7 +204,7 @@ def load_pinned_cards(directory: Path, cards_path: Path | None = None) -> dict:
         "canonical_names_sha256": campaign.json_digest(sorted(indexed)),
         "unique_nonnull_oracle_id_count": len({card["oracle_id"] for card in cards if card.get("oracle_id")}),
         "entries_without_oracle_id_count": sum(not card.get("oracle_id") for card in cards),
-        "source_face_count": sum(len(card.get("card_faces") or []) or 1 for card in cards),
+        "source_face_count": sum(len(campaign.source_card_faces(card)) or 1 for card in cards),
     }
     if any(manifest.get(key) != value for key, value in expected.items()):
         raise ValueError("corpus membership/counts differ from frozen manifest")

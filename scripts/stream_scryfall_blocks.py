@@ -8,9 +8,11 @@ SUPPORTED_PAPER_FORMATS = (
     "commander",
     "standard",
     "modern",
+    "pioneer",
     "legacy",
     "vintage",
 )
+SUPPORTED_PAPER_LEGALITIES = ("legal", "restricted")
 
 
 def open_text_stream(path):
@@ -165,9 +167,19 @@ def is_non_paper_print(card):
     return bool(card.get("digital"))
 
 
-def is_legal_in_supported_paper_format(card, formats=SUPPORTED_PAPER_FORMATS):
-    legalities = card.get("legalities") or {}
-    return any(legalities.get(fmt) == "legal" for fmt in formats)
+def is_legal_in_supported_paper_format(
+    card, formats=SUPPORTED_PAPER_FORMATS, *, allow_missing_legalities=False
+):
+    """Check the shared format/status policy, without checking print medium.
+
+    Downloading requires affirmative legality. The Rust registry loaders also
+    admit missing, empty, or non-object legalities for custom source records;
+    only inventory callers should opt into that boundary.
+    """
+    legalities = card.get("legalities")
+    if not isinstance(legalities, dict) or not legalities:
+        return allow_missing_legalities
+    return any(legalities.get(fmt) in SUPPORTED_PAPER_LEGALITIES for fmt in formats)
 
 
 def is_non_playable(card, type_line, oracle_text):

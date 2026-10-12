@@ -72,7 +72,7 @@ def fixture(directory, source=None, raw_tags=None):
     raw = json.dumps(source).encode()
     archive = gzip.compress(raw, mtime=0)
     (directory / "cards.json.gz").write_bytes(archive)
-    names = [campaign.normalize_name(card.get("name") or card["card_faces"][0]["name"]) for card in source]
+    names = [campaign.canonical_card_name(card) for card in source]
     manifest = {"schema_version": 1, "archive": "cards.json.gz", "archive_bytes": len(archive),
                 "archive_sha256": hashlib.sha256(archive).hexdigest(), "dataset_bytes": len(raw),
                 "dataset_sha256": hashlib.sha256(raw).hexdigest(), "source_entry_count": len(source),
@@ -94,6 +94,19 @@ def fixture(directory, source=None, raw_tags=None):
                                "sha256": hashlib.sha256(category_raw).hexdigest()}]}
     write_json(directory / "oracle-tags.metadata.json", metadata)
     return metadata
+
+
+def raw_corpus_fixture(directory, raw):
+    # Build a pin using Python's ordinary decoder, then restore exact source
+    # bytes. An unguarded loader would accept this pin for a lone -0 name.
+    fixture(directory, source=json.loads(raw))
+    archive = gzip.compress(raw, mtime=0)
+    (directory / "cards.json.gz").write_bytes(archive)
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(archive_bytes=len(archive), archive_sha256=hashlib.sha256(archive).hexdigest(),
+                    dataset_bytes=len(raw), dataset_sha256=hashlib.sha256(raw).hexdigest())
+    write_json(manifest_path, manifest)
 
 
 class TagGraphTests(unittest.TestCase):
@@ -359,6 +372,44 @@ class IntegrityTests(unittest.TestCase):
             fixture(self.path, source=source)
             with self.subTest(source=source), self.assertRaisesRegex(ValueError, "filtering"):
                 clusters.load_pinned_cards(self.path)
+
+    def test_restricted_and_pioneer_pinned_cards_are_not_exclusions(self):
+        source = [{"name": "Restricted", "legalities": {"vintage": "restricted"}},
+                  {"name": "Pioneer", "legalities": {"pioneer": "legal"}}]
+        fixture(self.path, source=source)
+        self.assertEqual(sorted(clusters.load_pinned_cards(self.path)["cards"]),
+                         ["Pioneer", "Restricted"])
+
+    def test_pinned_names_use_registry_null_fallback_and_json_stringification(self):
+        source = [{"name": None, "card_faces": [{"name": " Face / Back "}]},
+                  {"name": False, "card_faces": [{"name": "Ignored"}]}]
+        fixture(self.path, source=source)
+        result = clusters.load_pinned_cards(self.path)
+        self.assertEqual(sorted(result["cards"]), ["Face // Back", "false"])
+        self.assertEqual(result["cards"]["false"]["face_names"], ["Ignored"])
+
+    def test_raw_negative_zero_pinned_names_fail_closed_in_both_input_routes(self):
+        cases = [
+            b'[{"name":-0}]',
+            b'[{"name":-0},{"name":0}]',
+            b'[{"name":0},{"name":-0}]',
+            b'[{"name":[-0]}]',
+            b'[{"name":{"nested":[0,{"value":-0}]}}]',
+            b'[{"card_faces":[{"name":-0}]}]',
+            b'[{"name":null,"card_faces":[{"name":{"nested":-0}}]}]',
+        ]
+        for raw in cases:
+            raw_corpus_fixture(self.path, raw)
+            restored = self.path / "restored.json"
+            restored.write_bytes(raw)
+            for cards_path in (None, restored):
+                with self.subTest(raw=raw, cards_path=cards_path):
+                    with self.assertRaisesRegex(ValueError, "non-string name"):
+                        clusters.load_pinned_cards(self.path, cards_path)
+
+    def test_raw_positive_zero_pinned_name_remains_admitted(self):
+        raw_corpus_fixture(self.path, b'[{"name":0},{"name":"Literal -0","metadata":-0}]')
+        self.assertEqual(sorted(clusters.load_pinned_cards(self.path)["cards"]), ["0", "Literal -0"])
 
     def test_no_output_on_invalid_evidence(self):
         corpus = clusters.load_pinned_cards(self.path)
