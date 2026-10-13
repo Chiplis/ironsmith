@@ -2310,6 +2310,9 @@
             };
             exceptions.push(format!("the copy is {colors}"));
         }
+        if let Some(loyalty) = &copy.set_base_loyalty {
+            exceptions.push(format!("the copy has starting loyalty {}", describe_value(loyalty)));
+        }
         if copy.set_base_power_toughness.is_some()
             || !copy.added_card_types.is_empty()
             || !copy.added_subtypes.is_empty()

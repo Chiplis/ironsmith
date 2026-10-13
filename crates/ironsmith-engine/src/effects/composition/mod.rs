@@ -216,6 +216,14 @@ pub(crate) use keyword_action::{
 };
 
 mod keyword_programs;
+mod keyword_completion_program;
+mod outcome_branch_program;
+mod scoped_outcome_program;
+mod scoped_program;
+pub(crate) use scoped_program::{ScopedProgram, ExactTaggedObjects};
+pub(crate) use scoped_outcome_program::ScopedOutcomeProgram;
+pub(crate) use outcome_branch_program::{OutcomeBranchProgram, OutcomeBranchTest};
+pub(crate) use keyword_completion_program::KeywordCompletionProgram;
 
 pub(crate) use simultaneous::{
     complete_authored_original_subtree_with_outputs, complete_committed_original_with_outputs,
@@ -235,3 +243,9 @@ mod prepared_port_regressions;
 
 mod held_original;
 pub(crate) use held_original::defer_authored_original_additions_with_outputs;
+
+mod ensure_chosen_object;
+pub(crate) use ensure_chosen_object::{ensure_chosen_object, aggregate_children};
+
+mod resolved_player_actions;
+pub(crate) use resolved_player_actions::{ResolvedLifeLoss, ResolvedPlayerCounterRemoval};

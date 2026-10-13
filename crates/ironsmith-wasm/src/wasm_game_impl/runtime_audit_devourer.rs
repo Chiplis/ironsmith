@@ -250,7 +250,7 @@ fn runtime_audit_devourer_pregame() {
             continue;
         }
         let (a, d) = ironsmith_registry_test::compile_builder_to_artifact(
-            ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(
+            ironsmith_compiler::CardDefinitionBuilder::new(
                 CardId::new(),
                 p["parse_name"].as_str().unwrap_or(n),
             ),

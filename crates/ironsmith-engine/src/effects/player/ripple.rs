@@ -2,7 +2,7 @@
 //! exact uncast remainder. Pending input or typed execution failure restores
 //! the whole instruction, including queued cast triggers and library order.
 use super::runtime_helpers::{
-    complete_native_cast_with_outputs, effect_driven_cast_options_for_card,
+    complete_effect_driven_cast_with_outputs, effect_driven_cast_options_for_card,
 };
 use crate::decisions::context::{BooleanContext, SelectOptionsContext, SelectableOption};
 use crate::effect::{Effect, EffectOutcome};
@@ -18,6 +18,12 @@ use crate::zone::Zone;
 pub use ironsmith_core::RippleEffect;
 
 impl EffectExecutor for RippleEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        super::runtime_helpers::visit_library_cast_program(visitor, PlayerFilter::You, LibraryConsultMode::Reveal,
+            ObjectFilter::nonland(), crate::effects::ConsultTopOfLibraryStopRule::MatchCount(self.amount.into()),
+            "__ripple_revealed", "__ripple_cast", false, ironsmith_core::LibraryBottomOrder::ChooserChooses);
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -32,6 +38,7 @@ impl EffectExecutor for RippleEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        ctx.with_object_tags(["__ripple_revealed", "__ripple_cast"].map(TagKey::from), |ctx| {
         crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
@@ -177,29 +184,10 @@ impl EffectExecutor for RippleEffect {
                         .object(option.object_id)
                         .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
                         .ok_or(ExecutionError::ObjectNotFound(option.object_id))?;
-                    let result =
-                        match crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
-                            game,
-                            option.object_id,
-                            option.from_zone,
-                            ctx.controller,
-                            &option.casting_method,
-                            true,
-                            None,
-                            ctx.provenance,
-                            &mut ctx.decision_maker,
-                        ) {
-                            Ok(result) => result,
-                            Err(crate::game_loop::GameLoopError::ActionCancelled(_)) => None,
-                            // In particular, an ExecutionFailed(Impossible) raised by
-                            // a real payment/replacement program is NOT an unavailable
-                            // cast. Preserve that failure instead of suppressing it.
-                            Err(error) => {
-                                return Err(super::runtime_helpers::effect_driven_cast_error(
-                                    error,
-                                ));
-                            }
-                        };
+                    let result = super::runtime_helpers::cast_effect_driven_spell_with_payment_policy(
+                        game, ctx, ctx.controller, option,
+                        super::runtime_helpers::EffectDrivenCastPayment::WithoutPayingManaCost, true,
+                    )?;
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::count(0),
@@ -217,12 +205,11 @@ impl EffectExecutor for RippleEffect {
                             ctx.provenance,
                             crate::events::EventKind::SpellCast,
                         );
-                        let mut outputs = complete_native_cast_with_outputs(
+                        let mut outputs = complete_effect_driven_cast_with_outputs(
                             EffectOutcome::with_objects(vec![new_id]),
                             game,
                             cast,
                             ctx.controller,
-                            option.from_zone,
                             provenance,
                         )?;
                         // Later cast costs can remove a watcher or alter the spell.
@@ -263,5 +250,7 @@ impl EffectExecutor for RippleEffect {
                 Ok(outputs)
             },
         )
+
+        })
     }
 }

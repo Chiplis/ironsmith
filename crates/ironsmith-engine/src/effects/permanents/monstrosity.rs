@@ -4,6 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::object::CounterType;
 pub use ironsmith_core::MonstrosityEffect;
 
@@ -39,78 +40,24 @@ impl EffectExecutor for MonstrosityEffect {
             .map(CompletedEffectOutputs::into_outcome)
     }
 
+    fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        Some(crate::effect::Effect::new(
+            super::designation::DesignationProgram {
+                designation: super::designation::PermanentDesignation::Monstrous,
+                amount: self.n.clone(),
+                missing_source_is_invalid: true,
+            },
+        ))
+    }
+
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let result = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let source = ctx.source;
-                if game.object(source).is_none() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::target_invalid(),
-                    ));
-                }
-                if !game
-                    .object(source)
-                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                    || game.is_phased_out(source)
-                    || super::designation::PermanentDesignation::Monstrous.is_present(game, source)
-                {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let amount = crate::effects::helpers::resolve_nonnegative_u32(game, &self.n, ctx)?;
-                let event = crate::events::Event::put_counters(
-                    source,
-                    CounterType::PlusOnePlusOne,
-                    amount,
-                    ctx.cause.clone(),
-                )
-                .with_provenance(ctx.provenance);
-                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
-                    game, ctx, event,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let designation = super::designation::apply_designation(
-                    game,
-                    ctx,
-                    source,
-                    super::designation::PermanentDesignation::Monstrous,
-                    amount,
-                )?;
-                let outcome = EffectOutcome::aggregate_with_primary_result(
-                    designation.summary_projection(),
-                    [placement.outcome.clone(), designation.clone()],
-                );
-                let mut outputs = placement;
-                outputs
-                    .retain_batch_children([CompletedEffectOutputs::aggregate_only(designation)]);
-                Ok(outputs.project_aggregate(outcome))
-            },
-        );
-        // Preserve this adapter's existing neutral result for a suspended child,
-        // including a child that failed after opening its decision. The shared
-        // transaction owns rollback; an ordinary failure still propagates.
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        result
+        self.canonical_program()
+            .expect("designation program")
+            .0
+            .execute_child_with_outputs(game, ctx)
     }
 }

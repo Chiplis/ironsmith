@@ -4,10 +4,8 @@ use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
-use crate::effects::helpers::{normalize_object_selection, resolve_value};
+use crate::effects::helpers::resolve_value;
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
@@ -48,10 +46,14 @@ fn loyalty_ability(amount: u32, effect: Effect) -> Ability {
 }
 
 fn jace_token_definition() -> CardDefinition {
+    jace_token_blueprint(CardId::new())
+}
+
+fn jace_token_blueprint(card_id: CardId) -> CardDefinition {
     // The final mechanic specifies blue, nonlegendary, and zero printed loyalty.
     // Counters are added by the action after token entry, not as entry counters.
     // CR 111.4 supplies the subtype-based name when no name is specified.
-    CardDefinitionBuilder::new(CardId::new(), "Jace Token")
+    CardDefinitionBuilder::new(card_id, "Jace Token")
         .token()
         .card_types(vec![CardType::Planeswalker])
         .subtypes(vec![Subtype::Jace])
@@ -63,6 +65,13 @@ fn jace_token_definition() -> CardDefinition {
 }
 
 impl EffectExecutor for EmpowerJaceEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&Effect::new(CreateTokenEffect::you(jace_token_blueprint(CardId::from_raw(0)), 1)));
+        visitor(&Effect::new(PutCountersEffect::new(CounterType::Loyalty, self.amount.clone(),
+            ChooseSpec::Object(crate::target::ObjectFilter::default().with_type(CardType::Planeswalker)
+                .with_subtype(Subtype::Jace).token().you_control()))));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -88,65 +97,22 @@ impl EffectExecutor for EmpowerJaceEffect {
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
                 let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-                let mut outcomes = Vec::new();
-                let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::resolved(),
-                );
-                let mut candidates = jace_token_candidates(game, ctx.controller);
-                if candidates.is_empty() {
-                    let child = CreateTokenEffect::you(jace_token_definition(), 1)
-                        .execute_child_with_outputs(game, ctx)?;
-                    outcomes.push(child.outcome.clone());
-                    outputs.retain_owned_child(child);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    candidates = jace_token_candidates(game, ctx.controller);
+                let (chosen, children) = crate::effects::composition::ensure_chosen_object(
+                    game, ctx, "Choose a Jace planeswalker token you control to empower",
+                    jace_token_candidates,
+                    |game, ctx| CreateTokenEffect::you(jace_token_definition(), 1)
+                        .execute_child_with_outputs(game, ctx),
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
                 }
-                let action = KeywordActionEvent::new(
-                    KeywordActionKind::EmpowerJace,
-                    ctx.controller,
-                    ctx.source,
-                    amount,
-                );
-                if candidates.is_empty() {
-                    // Token creation may have been prevented or replaced. There is
-                    // still an empower action, but no eligible permanent to modify.
+                let mut outcomes = children.iter().map(|child| child.outcome.clone()).collect::<Vec<_>>();
+                let mut outputs = crate::effects::composition::aggregate_children(children);
+                let action = KeywordActionEvent::new(KeywordActionKind::EmpowerJace,
+                    ctx.controller, ctx.source, amount);
+                let Some(chosen) = chosen else {
                     return crate::effects::composition::complete_keyword_action_with_outputs(
-                        game,
-                        ctx,
-                        outputs.project_aggregate(EffectOutcome::aggregate(outcomes)),
-                        action,
-                    );
-                }
-                let chosen = if candidates.len() == 1 {
-                    candidates[0]
-                } else {
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose a Jace planeswalker token you control to empower",
-                        candidates.clone(),
-                        1,
-                        Some(1),
-                    );
-                    let selected = make_decision(
-                        game,
-                        ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    normalize_object_selection(selected, &candidates, 1)
-                        .first()
-                        .copied()
-                        .ok_or(ExecutionError::InvalidTarget)?
+                        game, ctx, outputs, action);
                 };
                 let child = PutCountersEffect::new(
                     CounterType::Loyalty,

@@ -341,6 +341,15 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
     target_only!(DestroyEffect, spec);
     target_only!(DestroyNoRegenerationEffect, spec);
     target_only!(ExileEffect, spec);
+    visit!(CopySpellEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.copier = rewrite_player_filter_words(&model.copier, change)?;
+        model.set_base_loyalty = model.set_base_loyalty.as_ref()
+            .map(|value| rewrite_value_words(value, change)).transpose()?;
+        if let Some(colors) = &mut model.set_colors { change.replace_color_words(colors); }
+        change.replace_subtype_words(&mut model.added_subtypes);
+    });
     target_only!(CounterEffect, target);
     target_only!(AttachToEffect, target);
     visit!(AttachObjectsEffect, model, {
@@ -600,6 +609,15 @@ mod tests {
     fn black() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLACK), ..ObjectFilter::default() } }
     fn blue() -> ObjectFilter { ObjectFilter { colors: Some(ColorSet::BLUE), ..ObjectFilter::default() } }
     fn word_effect() -> Effect { Effect::new(DrawCardsEffect::you(Value::Count(black()))) }
+
+    #[test]
+    fn dynamic_copy_loyalty_keeps_typed_word_provenance() {
+        let effect = Effect::new(CopySpellEffect::single(ChooseSpec::Source)
+            .with_set_base_loyalty(Value::Count(black())));
+        let rewritten = effect.with_text_change(change()).unwrap();
+        assert_eq!(rewritten.downcast_ref::<CopySpellEffect>().unwrap().set_base_loyalty,
+            Some(Value::Count(blue())));
+    }
 
     #[test]
     fn self_replacement_conditions_and_flattened_program_keep_their_declared_owner() {

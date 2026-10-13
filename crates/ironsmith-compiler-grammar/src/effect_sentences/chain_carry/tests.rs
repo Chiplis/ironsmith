@@ -4984,3 +4984,44 @@ fn explicit_player_followup_is_not_inside_preceding_may() {
         "shared-subject actions belong to one optional instruction: {effects:#?}"
     );
 }
+
+#[test]
+fn destroy_then_exile_keeps_order_target_zone_and_object_reference() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Destroy Exile Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature, then exile it.")
+        .expect("destroy/exile chain should compile");
+    let program = definition.spell_effect.as_ref().expect("spell effects");
+    let [effect] = program.flattened_default_effects() else {
+        panic!("expected one authored sequence: {program:#?}");
+    };
+    let sequence = effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("comma-then sequence");
+    assert_eq!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen);
+    let [destroy, exile] = sequence.effects.as_slice() else {
+        panic!("expected exactly destroy followed by exile: {sequence:#?}");
+    };
+    let destroyed = destroy.as_tagged().expect("capture the destroyed object");
+    let destroy = destroyed
+        .effect
+        .downcast_ref::<crate::effects::DestroyEffect>()
+        .expect("first action destroys");
+    assert!(destroy.spec.is_target(), "destroy must target: {destroy:#?}");
+    let crate::target::ChooseSpec::Object(filter) = destroy.spec.base() else {
+        panic!("expected creature target: {destroy:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Battlefield));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    let exile = exile
+        .as_tagged()
+        .map_or(exile, |tagged| tagged.effect.as_ref());
+    let exile = exile
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .expect("second action exiles");
+    assert_eq!(exile.spec.base(), &crate::target::ChooseSpec::Tagged(destroyed.tag.clone()));
+    assert!(
+        !exile.spec.is_target(),
+        "exile reuses the object, not a new target"
+    );
+}

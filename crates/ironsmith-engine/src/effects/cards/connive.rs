@@ -112,7 +112,58 @@ fn connive_tagged_object_ids(ctx: &ExecutionContext, spec: &ChooseSpec) -> Optio
     }
 }
 
+/// One connive instruction's body uses an exact, locally scoped discard
+/// receipt. Values are read from the original discard, excluding replacement
+/// additions and cards merely selected for a prevented discard.
+fn connive_body(target: ChooseSpec, player: PlayerFilter, count: Value) -> crate::effect::Effect {
+    use crate::effect::{Effect, EffectId};
+    use ironsmith_core::{
+        EffectMetric, EffectMetricSource, PriorEffectAction, PriorEffectMetricQuery,
+    };
+    const DISCARD_RESULT: EffectId = EffectId(0xFFFF_FD00);
+    let mut nonland = crate::target::ObjectFilter::default();
+    nonland.excluded_card_types.push(CardType::Land);
+    let mut query =
+        PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+            .with_filter(nonland);
+    query.action = Some(PriorEffectAction::Discarded);
+    query.player = Some(player.clone());
+    let quantity = Value::PriorEffectMetric {
+        effect_id: DISCARD_RESULT,
+        query,
+    };
+    let counters = Effect::conditional_only(
+        crate::effect::Condition::ValueComparison {
+            left: quantity.clone(),
+            operator: ironsmith_core::ValueComparisonOperator::GreaterThan,
+            right: 0.into(),
+        },
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            quantity,
+            target,
+        ))],
+    );
+    Effect::new(crate::effects::SequenceEffect::new(vec![
+        Effect::new(DrawCardsEffect::new(count.clone(), player.clone())),
+        Effect::new(crate::effects::composition::ScopedOutcomeProgram {
+            id: DISCARD_RESULT,
+            preserve_producer_result: false,
+            producer: Effect::new(crate::effects::DiscardEffect::new(count, player, false)),
+            continuation: vec![counters],
+        }),
+    ]))
+}
+
 impl EffectExecutor for ConniveEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&connive_body(
+            self.target.clone(),
+            PlayerFilter::You,
+            self.count.clone(),
+        ));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -274,64 +325,17 @@ impl EffectExecutor for ConniveEffect {
                                     let mut connived_objects = Vec::new();
                                     let mut children = Vec::new();
 
-                                    let draw = DrawCardsEffect::new(
-                                        count as i32,
+                                    let mut body_outputs = connive_body(
+                                        ChooseSpec::SpecificObject(target_id),
                                         PlayerFilter::Specific(controller),
+                                        count.into(),
                                     )
+                                    .0
                                     .execute_child_with_outputs(game, ctx)?;
                                     if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(draw);
+                                        return Ok(body_outputs);
                                     }
-                                    let discard = crate::effects::DiscardEffect::new(
-                                        count as i32,
-                                        PlayerFilter::Specific(controller),
-                                        false,
-                                    )
-                                    .execute_child_with_outputs(game, ctx)?;
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(discard);
-                                    }
-                                    let discarded_nonlands = discard
-                                        .outcome
-                                        .instruction_result()
-                                        .action_objects(
-                                            crate::effect::PriorEffectAction::Discarded,
-                                            Some(controller),
-                                        )
-                                        .into_iter()
-                                        .filter(|snapshot| {
-                                            !snapshot.card_types.contains(&CardType::Land)
-                                        })
-                                        .count();
-                                    let counters = if discarded_nonlands > 0 {
-                                        crate::effects::PutCountersEffect::new(
-                                            crate::object::CounterType::PlusOnePlusOne,
-                                            i32::try_from(discarded_nonlands).map_err(|_| {
-                                                ExecutionError::InternalError(
-                                                    "connive discard count overflow".into(),
-                                                )
-                                            })?,
-                                            ChooseSpec::SpecificObject(target_id),
-                                        )
-                                        .execute_child_with_outputs(game, ctx)?
-                                    } else {
-                                        CompletedEffectOutputs::aggregate_only(
-                                            EffectOutcome::count(0),
-                                        )
-                                    };
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(counters);
-                                    }
-                                    let body = EffectOutcome::aggregate([
-                                        draw.outcome.clone(),
-                                        discard.outcome.clone(),
-                                        counters.outcome.clone(),
-                                    ]);
-                                    let mut body_outputs =
-                                        CompletedEffectOutputs::aggregate_only(body.clone());
-                                    body_outputs.retain_owned_child(draw);
-                                    body_outputs.retain_owned_child(discard);
-                                    body_outputs.retain_owned_child(counters);
+                                    let body = body_outputs.outcome.clone();
                                     children.push(body);
 
                                     let notification =

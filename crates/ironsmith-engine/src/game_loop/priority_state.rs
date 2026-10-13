@@ -514,6 +514,8 @@ pub enum ActivationCostStep {
         /// The exact sacrifice component designated while locking an Emerge
         /// price. Later components can choose the same object independently.
         is_emerge_resource: bool,
+        /// Optional cost whose original sacrifice receipt owns this component.
+        optional_cost_origin: Option<crate::cost::OptionalCostRef>,
     },
     /// A card/object choice that must be surfaced through SelectObjects.
     CardChoice(ActivationCardCostChoice),
@@ -587,6 +589,7 @@ pub(crate) fn choose_tagged_cost_step(
             .display(),
             choice_tag: Some(choose.tag.clone()),
             is_emerge_resource: false,
+            optional_cost_origin: None,
         });
     }
 
@@ -614,6 +617,7 @@ pub(crate) fn choose_tagged_cost_step(
             .display(),
             choice_tag: Some(choose.tag.clone()),
             is_emerge_resource: false,
+            optional_cost_origin: None,
         });
     }
 
@@ -818,6 +822,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                 description,
                 choice_tag: None,
                 is_emerge_resource: false,
+                optional_cost_origin: None,
             });
         }
         CostProcessingMode::DiscardCards { count, filter } => {

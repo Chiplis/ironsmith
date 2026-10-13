@@ -478,7 +478,7 @@ pub(super) fn compile_subject_verb_early(
                         subject.into_player_filter(),
                         resolved_tag,
                         resolved_filter,
-                    ),
+                    ).draw_effect(),
                 )],
                 Vec::new(),
             ))

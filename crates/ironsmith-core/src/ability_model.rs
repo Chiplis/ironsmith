@@ -1072,8 +1072,9 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
         use crate::library_movement::LibraryMovement;
         let mut context = crate::library_movement::LibraryMovementContext::default();
         self.mana_cost.inspect_library_movement(&mut context)
-            || self.effects.all_effects().into_iter().any(|effect| {
-                effect.inspect_library_movement(&mut context)
+            || self.effects.segments.iter().any(|segment| {
+                context.inspect_branches(std::iter::once(segment.default_effects.as_slice())
+                    .chain(segment.self_replacements.iter().map(|branch| branch.replacement_effects.as_slice())))
             })
     }
 
@@ -1298,6 +1299,14 @@ fn parse_named_count_word(word: &str) -> Option<u32> {
 mod tests {
     use super::*;
     use crate::{ChooseSpec, Cost, CounterType};
+
+    // Unit is the no-op effect used only by these model fixtures.
+    impl crate::library_movement::LibraryMovement for () {
+        fn inspect_library_movement(
+            &self,
+            _: &mut crate::library_movement::LibraryMovementContext,
+        ) -> bool { false }
+    }
 
     #[test]
     fn throw_label_preserves_authored_ellipsis() {

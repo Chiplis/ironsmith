@@ -1,8 +1,8 @@
 use super::DrawCardsEffect;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::tag::TagKey;
@@ -21,6 +21,16 @@ pub struct DrawForEachTaggedMatchingEffect {
 }
 
 impl DrawForEachTaggedMatchingEffect {
+    pub fn draw_effect(&self) -> DrawCardsEffect {
+        DrawCardsEffect::new(
+            crate::effect::Value::TaggedSnapshotCount {
+                tag: self.tag.clone(),
+                filter: self.filter.clone(),
+            },
+            self.player.clone(),
+        )
+    }
+
     pub fn new(player: PlayerFilter, tag: impl Into<TagKey>, filter: ObjectFilter) -> Self {
         Self {
             player,
@@ -31,6 +41,10 @@ impl DrawForEachTaggedMatchingEffect {
 }
 
 impl EffectExecutor for DrawForEachTaggedMatchingEffect {
+    fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        Some(crate::effect::Effect::new(self.draw_effect()))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -40,23 +54,7 @@ impl EffectExecutor for DrawForEachTaggedMatchingEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        let filter_ctx = ctx.filter_context(game);
-        let count = ctx
-            .get_tagged_all(self.tag.clone())
-            .map(|snapshots| {
-                snapshots
-                    .iter()
-                    .filter(|snapshot| self.filter.matches_snapshot(snapshot, &filter_ctx, game))
-                    .count()
-            })
-            .unwrap_or(0);
-
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        DrawCardsEffect::new(count as i32, PlayerFilter::Specific(player)).execute_child(game, ctx)
+        self.draw_effect().execute_child(game, ctx)
     }
 }
 
@@ -105,6 +103,12 @@ mod tests {
             game.object(graveyard_id).expect("graveyard object"),
             &game,
         );
+        // The quantity must inspect retained origins, not the current exile
+        // incarnations (nor a later current-zone projection of the filter).
+        game.move_object_by_effect(hand_id, Zone::Exile)
+            .expect("exile hand card");
+        game.move_object_by_effect(graveyard_id, Zone::Exile)
+            .expect("exile graveyard card");
         ctx.set_tagged_objects(
             "searched_multi_zone",
             vec![hand_snapshot, graveyard_snapshot],
@@ -118,6 +122,6 @@ mod tests {
         let outcome = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
-        assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
     }
 }

@@ -1,0 +1,121 @@
+/* Compact layouts share the desktop's floating HUD and uninterrupted arena.
+ * Phone card lanes, hand gestures and safe-area measurements remain independent.
+ */
+@media (max-width: 1023px) {
+  .app-shell {
+    --compact-hud-surface: rgba(15, 14, 22, .82);
+  }
+
+  .mobile-landscape-gate {
+    background: linear-gradient(180deg, rgba(9, 10, 20, .65), rgba(9, 10, 20, .9)) !important;
+    backdrop-filter: blur(8px);
+    padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  }
+  .mobile-landscape-gate-panel {
+    padding: 28px 24px;
+    border: 1px solid var(--ui-border-strong) !important;
+    border-radius: var(--ui-radius-panel);
+    background: var(--compact-hud-surface) !important;
+    box-shadow: var(--ui-shadow-panel) !important;
+  }
+  .mobile-landscape-gate-title { font-size: 28px; letter-spacing: .02em; }
+  .mobile-landscape-gate-copy { color: var(--ui-text-secondary) !important; font-size: 16px; line-height: 1.5; }
+  .mobile-landscape-gate-note { color: var(--ui-text-muted) !important; line-height: 1.5; }
+  .mobile-landscape-gate .stone-pill.mobile-landscape-gate-button {
+    min-height: 44px;
+    margin-block: 8px;
+    border-radius: var(--ui-radius-control) !important;
+    background: #ffe18a !important;
+    color: #17130b !important;
+    font-weight: 700;
+  }
+  .mobile-landscape-gate .stone-pill.mobile-landscape-gate-button:hover:not(:disabled) { background: var(--ui-action-hover) !important; }
+}
+
+@media (min-width: 721px) and (max-width: 1023px) and (min-height: 541px) {
+  .app-shell:has(.table-shell[data-tablet-compact="true"]) { padding: 0; gap: 0; grid-template-rows: minmax(0, 1fr); }
+  .app-shell:has(.table-shell[data-tablet-compact="true"]) > .topbar-shell {
+    position: absolute; top: 4px; right: 8px; z-index: 110;
+    width: auto; min-height: 36px; padding: 0 6px;
+    background: var(--compact-hud-surface) !important;
+    border: 1px solid var(--ui-border-subtle) !important;
+    border-radius: var(--ui-radius-control);
+  }
+  .app-shell:has(.table-shell[data-tablet-compact="true"]) .topbar-mobile-status { display: flex; }
+  .app-shell:has(.table-shell[data-tablet-compact="true"]) .topbar-phase-chip { display: flex; gap: 8px; margin-inline: 8px; font-size: 11px; color: var(--ui-text-secondary); }
+  .app-shell:has(.table-shell[data-tablet-compact="true"]) .table-persistent-diagnostics-fallback { bottom: 12px; right: auto; left: 8px; }
+  .table-shell[data-tablet-compact="true"] .battlefield-panel-header--merged {
+    position: fixed; bottom: 82px; left: 8px; z-index: 35;
+    width: min(360px, calc(100vw - 24px)); min-height: 44px !important;
+    background: var(--compact-hud-surface) !important;
+    border-radius: var(--ui-radius-control) !important;
+  }
+  .table-shell[data-tablet-compact="true"] .my-zone-header-meta { padding-bottom: 0; width: 100%; flex: 1 1 auto !important; }
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .my-zone-header-meta .battlefield-header-zone-counts {
+    position: static; width: auto; padding-left: 8px !important;
+  }
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell {
+    position: fixed; bottom: max(12px, env(safe-area-inset-bottom)); right: max(12px, env(safe-area-inset-right));
+    z-index: 45; width: auto; max-width: min(360px, 44vw);
+  }
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .table-action-bar {
+    border: 0 !important; background: transparent !important;
+  }
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .action-strip-layout { gap: 6px !important; }
+  .table-shell[data-tablet-compact="true"] .my-zone-merged-action-shell .decision-main-button {
+    min-height: 44px !important; border-radius: var(--ui-radius-control) !important;
+  }
+  .table-shell[data-tablet-compact="true"] [data-my-zone] .battlefield-row[data-bf-side="bottom"] { justify-content: center !important; }
+  .table-shell[data-tablet-compact="true"] .battlefield-panel-header--merged .battlefield-header-mana { gap: 6px; }
+}
+
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
+  .mobile-action-controls .mobile-phase-dock {
+    position: fixed;
+    left: max(100px, env(safe-area-inset-left));
+    right: max(112px, env(safe-area-inset-right));
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; gap: 2px; width: auto;
+    border-radius: var(--ui-radius-control);
+    background: var(--compact-hud-surface);
+  }
+  .mobile-action-controls { min-width: 104px; }
+  .mobile-mtga-scene-row--hand { margin-top: var(--mobile-footer-control-height); }
+  .mobile-action-controls .phase-track-group { gap: 2px; }
+  .mobile-action-controls .phase-track { width: 100%; min-height: 0; padding: 0; background: transparent; border: 0; }
+  .mobile-action-controls .phase-track-steps { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
+  .mobile-action-controls .phase-track-cell { min-width: 0; padding: 0; }
+  .mobile-action-controls .phase-track-cell::after { content: none; }
+  .mobile-action-controls .phase-track-stop-button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    width: 100%; min-height: 36px; padding: 2px; font-size: 9px;
+    color: var(--ui-text-secondary); border-radius: 3px;
+  }
+  .mobile-action-controls .phase-track-step-marker { display: none; }
+  .mobile-action-controls .phase-track-step-label { font-size: 9px; white-space: nowrap; }
+  .mobile-action-controls .phase-track-cell[data-phase-active="true"] .phase-track-stop-button { color: var(--ui-text-primary); background: rgba(177, 142, 235, .2); }
+  .mobile-action-controls .mobile-mtga-turn-action-stack {
+    position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom));
+    width: 96px;
+  }
+  .mobile-mtga-turn-action-stack .mobile-decision-primary-button {
+    min-height: 40px; border-radius: var(--ui-radius-control) !important; padding: 6px 10px;
+    background: #ffe18a !important; color: #17130b !important; font-size: 11px; font-weight: 700;
+  }
+  .mobile-mtga-hud-name { font-family: var(--ironsmith-ui-font); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .mobile-mtga-hud-life { font-family: var(--ironsmith-ui-font); font-size: 22px; font-weight: 800; }
+  .mobile-mtga-opponent-hud-body, .mobile-mtga-control-row .mobile-mtga-self-hud-body {
+    padding: 0 6px; border-radius: var(--ui-radius-control); background: var(--compact-hud-surface);
+  }
+  .mobile-mtga-avatar { width: 3px; flex-basis: 3px; height: 24px; border: 0; border-radius: 2px; }
+  .mobile-mtga-avatar-glyph { display: none; }
+  .mobile-mtga-view-toggle--floating, .topbar-mobile-overlay--cog-only .topbar-menu-trigger {
+    background: var(--compact-hud-surface); border-color: var(--ui-border-subtle); border-radius: var(--ui-radius-control);
+  }
+}
+
+/* The hand dialog owns the top-right close target while it is open. */
+.app-shell:has(.mobile-mtga-hand-fullscreen) .topbar-mobile-overlay--cog-only {
+  visibility: hidden;
+  pointer-events: none;
+}

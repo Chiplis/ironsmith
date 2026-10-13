@@ -19,7 +19,7 @@ fn compile_source(name: &str, text: &str) -> CompiledCardArtifact {
         compile_to_artifact(name, text, false));
     let (artifact, _) = compiled.unwrap_or_else(|error| panic!("artifact {name}: {error}"));
     assert!(!artifact_loss.is_lossy(), "artifact {name}: {}", artifact_loss.reasons_text());
-    assert_eq!(FORMAT_VERSION, 18);
+    assert_eq!(FORMAT_VERSION, 19);
     assert_eq!(artifact.format_version, FORMAT_VERSION);
     assert_eq!(artifact.engine_schema_hash, ENGINE_SCHEMA_HASH);
     artifact.validate().unwrap();
@@ -59,7 +59,7 @@ fn source(row: &serde_json::Value) -> String {
 }
 
 fn assert_old_envelopes_refused(artifact: &CompiledCardArtifact) {
-    for version in [11, 12, 13, 14, 15, 16, 17] {
+    for version in [11, 12, 13, 14, 15, 16, 17, 18] {
         let mut stale = artifact.clone();
         stale.format_version = version;
         stale.refresh_checksum();
@@ -176,7 +176,7 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
 // source-cache boundary. This does not claim an old engine is compatible.
 #[test]
 fn step_local_native_history_uses_the_current_compiled_definition_boundary() {
-    assert_eq!(FORMAT_VERSION, 18);
+    assert_eq!(FORMAT_VERSION, 19);
     let rows: Vec<serde_json::Value> = serde_json::from_str(
         include_str!("../../../fixtures/combat_blocked_status.json.fixture")).unwrap();
     for name in ["Deep Wood", "Heavy Fog"] {

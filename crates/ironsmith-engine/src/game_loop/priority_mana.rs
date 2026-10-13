@@ -3190,19 +3190,21 @@ pub(super) fn apply_card_cost_choice_response(
 
     match pending.stage {
         CastStage::ChoosingSacrifice => {
-            let (cost, filter, choice_tag, is_emerge_resource) =
+            let (cost, filter, choice_tag, is_emerge_resource, optional_cost_origin) =
                 match pending.remaining_cost_steps.first() {
                     Some(ActivationCostStep::Sacrifice {
                         cost,
                         filter,
                         choice_tag,
                         is_emerge_resource,
+                        optional_cost_origin,
                         ..
                     }) => (
                         cost.clone(),
                         filter.clone(),
                         choice_tag.clone(),
                         *is_emerge_resource,
+                        optional_cost_origin.clone(),
                     ),
                     _ => {
                         return Err(GameLoopError::InvalidState(
@@ -3245,6 +3247,14 @@ pub(super) fn apply_card_cost_choice_response(
             if decision_maker.awaiting_choice() {
                 state.pending_cast = Some(pending);
                 return Ok(GameProgress::Continue);
+            }
+
+            if let Some(origin) = optional_cost_origin {
+                let receipt = completed_sacrifice.as_ref().ok_or_else(|| {
+                    GameLoopError::InvalidState("optional cost is missing its original sacrifice receipt".into())
+                })?;
+                pending.tagged_objects.entry(ironsmith_core::tag::optional_cost_sacrifice_receipt(&origin))
+                    .or_default().extend(receipt.iter().cloned());
             }
 
             // The preannounced Emerge resource is the exact creature whose

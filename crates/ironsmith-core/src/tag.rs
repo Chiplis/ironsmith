@@ -372,3 +372,9 @@ impl From<&String> for TagKey {
         Self::new(value.clone())
     }
 }
+
+/// Binding for actual sacrifices paid for one typed optional cost. Selected
+/// objects and unrelated mandatory/additional costs never populate this key.
+pub fn optional_cost_sacrifice_receipt(reference: &crate::cost_model::OptionalCostRef) -> TagKey {
+    TagKey::new(format!("__optional_cost_sacrifice:{:?}:{:?}", reference.kind, reference.discriminator))
+}

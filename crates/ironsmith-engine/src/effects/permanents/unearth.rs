@@ -22,6 +22,15 @@ pub use ironsmith_core::UnearthEffect;
 /// Exile it at the beginning of the next end step or if it would leave the
 /// battlefield."
 impl EffectExecutor for UnearthEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&Effect::new(MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false).under_owner_control()));
+        visitor(&Effect::new(ApplyContinuousEffect::with_spec(ChooseSpec::Source,
+            Modification::AddAbility(StaticAbility::haste()), Until::Forever)));
+        // Future exile belongs to the scheduled ability, not this resolution.
+        visitor(&Effect::new(ScheduleDelayedTriggerEffect::new(Trigger::beginning_of_end_step(PlayerFilter::Any),
+            vec![Effect::exile(ChooseSpec::Source)], true, vec![], PlayerFilter::You)));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -120,6 +129,18 @@ fn execute_unearth_with_outputs(
     let primary = move_outcome.outcome.summary_projection();
     let mut children = vec![move_outcome];
 
+    for effect in unearth_arrival_program(new_id, ctx.controller) {
+        children.push(effect.0.execute_child_with_outputs(game, ctx)?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        }
+    }
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        children,
+        |children| EffectOutcome::aggregate_with_primary_result(primary, children),
+    ))
+}
+fn unearth_arrival_program(new_id: crate::ids::ObjectId, controller: crate::ids::PlayerId) -> Vec<Effect> {
     // CR 702.84a gives the returned permanent haste without a duration.
     // It remains if the delayed exile trigger is countered.
     let haste_effect = ApplyContinuousEffect::new(
@@ -130,47 +151,24 @@ fn execute_unearth_with_outputs(
     .with_source_type(EffectSourceType::Resolution {
         locked_targets: vec![new_id],
     });
-    children.push(haste_effect.execute_child_with_outputs(game, ctx)?);
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
     // "If it would leave the battlefield, exile it instead."
     let replacement = ReplacementEffect::with_matcher(
         new_id,
-        ctx.controller,
+        controller,
         WouldLeaveBattlefieldMatcher::new(ObjectFilter::specific(new_id)),
         ReplacementAction::ChangeDestination(Zone::Exile),
     );
-    children
-        .push(ApplyReplacementEffect::one_shot(replacement).execute_child_with_outputs(game, ctx)?);
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
     // "Exile it at the beginning of the next end step."
     let schedule = ScheduleDelayedTriggerEffect::new(
         Trigger::beginning_of_end_step(PlayerFilter::Any),
         vec![Effect::exile(ChooseSpec::SpecificObject(new_id))],
         true,
         vec![new_id],
-        PlayerFilter::Specific(ctx.controller),
+        PlayerFilter::Specific(controller),
     );
-    children.push(schedule.execute_child_with_outputs(game, ctx)?);
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-    Ok(crate::effects::CompletedEffectOutputs::from_children(
-        children,
-        |children| EffectOutcome::aggregate_with_primary_result(primary, children),
-    ))
+    vec![Effect::new(haste_effect), Effect::new(ApplyReplacementEffect::one_shot(replacement)), Effect::new(schedule)]
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

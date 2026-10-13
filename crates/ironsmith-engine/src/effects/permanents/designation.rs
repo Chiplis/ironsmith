@@ -113,3 +113,97 @@ pub(super) fn apply_designation(
     }
     .execute_child(game, ctx)
 }
+
+/// Counter placement followed by a one-time designation. The requested amount
+/// is frozen before replacements run; a departed incarnation cannot acquire the
+/// designation when counter replacement finishes.
+#[derive(Debug, Clone)]
+pub(super) struct DesignationProgram {
+    pub designation: PermanentDesignation,
+    pub amount: crate::effect::Value,
+    pub missing_source_is_invalid: bool,
+}
+
+impl EffectExecutor for DesignationProgram {
+    fn library_movement_policy(
+        &self,
+    ) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
+        ironsmith_core::effect_capabilities::LibraryMovementPolicy::Leaf
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&crate::effect::Effect::new(
+            crate::effects::PutCountersEffect::on_source(
+                crate::object::CounterType::PlusOnePlusOne,
+                self.amount.clone(),
+            ),
+        ));
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        use crate::effects::CompletedEffectOutputs;
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let source = ctx.source;
+                if self.missing_source_is_invalid && game.object(source).is_none() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
+                }
+                if !game
+                    .object(source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    || game.is_phased_out(source)
+                    || self.designation.is_present(game, source)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let amount =
+                    crate::effects::helpers::resolve_nonnegative_u32(game, &self.amount, ctx)?;
+                let placement = crate::effects::PutCountersEffect::on_source(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    amount,
+                )
+                .execute_child_with_outputs(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let designation = apply_designation(game, ctx, source, self.designation, amount)?;
+                let outcome = EffectOutcome::aggregate_with_primary_result(
+                    designation.summary_projection(),
+                    [placement.outcome.clone(), designation.clone()],
+                );
+                let mut outputs = placement;
+                outputs
+                    .retain_batch_children([CompletedEffectOutputs::aggregate_only(designation)]);
+                Ok(outputs.project_aggregate(outcome))
+            },
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        result
+    }
+}

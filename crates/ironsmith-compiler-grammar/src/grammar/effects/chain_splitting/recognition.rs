@@ -495,6 +495,17 @@ pub(super) fn then_followup_facts(
         && ((starts_any(after, &[&["put"], &["double"]])
             && contains_any(after, &["counter", "counters"]))
             || starts_any(after, &[&["copy"], &["copies"]])
+            // A zone action on the preceding object is a separate instruction;
+            // the chain's carry pass binds its pronoun after splitting.
+            || starts_any(
+                after,
+                &[
+                    &["exile", "it"],
+                    &["exile", "them"],
+                    &["exiles", "it"],
+                    &["exiles", "them"],
+                ],
+            )
             || (starts_any(after, &[&["return"], &["returns"]])
                 && contains_any(
                     after,

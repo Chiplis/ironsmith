@@ -1565,6 +1565,8 @@ fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> Va
 /// power, it depends on effects that modify that creature's power.
 fn value_references_pt(value: &Value) -> bool {
     match value {
+        // Retained snapshots are fixed at capture time.
+        Value::TaggedSnapshotCount { .. } => false,
         Value::AnnouncedTargetTotal(metric) => matches!(
             metric,
             ironsmith_core::ChoiceAggregateMetric::Power
@@ -2324,6 +2326,7 @@ fn anthem_count_could_be_affected_by(
 fn value_could_be_affected_by(value: &Value, modification: &Modification) -> bool {
     let pt_affected = modification.layer() == Layer::PowerToughness;
     match value {
+        Value::TaggedSnapshotCount { .. } => false,
         Value::AnnouncedTargetTotal(_) => true,
         Value::SurfaceHinted { value, .. } => value_could_be_affected_by(value, modification),
         Value::Fixed(_)

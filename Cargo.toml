@@ -60,6 +60,26 @@ lto = false
 codegen-units = 16
 incremental = true
 
+# Native test builds need some optimization for compiler/gameplay fixtures, but
+# do not need release's expensive opt-level 3 or per-executable local ThinLTO.
+# Keep production release and browser profiles unchanged.
+[profile.test-fast]
+inherits = "release"
+opt-level = 1
+lto = "off"
+debug = false
+incremental = false
+codegen-units = 16
+
+# These packages own the large integration suites. Optimizing their fixtures and
+# per-test generic instantiations still costs minutes per executable at level 1.
+# The engine, grammar, lowering, and other dependencies retain level 1 above.
+[profile.test-fast.package.ironsmith-compiler-runtime]
+opt-level = 0
+
+[profile.test-fast.package.ironsmith-tools]
+opt-level = 0
+
 # These crates are executed only for the lightweight native registry preflight.
 # Keeping them cheap to code-generate does not slow the card compiler or baker.
 [profile.release.package.ironsmith-card-source]

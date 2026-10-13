@@ -1496,6 +1496,9 @@ fn complete_selected_object_choice(
     let effect = &effect;
     let mut retained_children = Vec::new();
     let mut disclosures = Vec::new();
+    if effect.public_selection {
+        game.mark_hidden_cards_publicly_revealed(&chosen);
+    }
     if effect.reveal && !chosen.is_empty() {
         if effect.reveal_is_presentation_only == Some(true) {
             view_hidden_candidate_objects(
@@ -2044,7 +2047,7 @@ fn run_choose_objects_phase_with_outputs(
                                 DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
                             );
                         }
-                        if reveals_selection_publicly || relation_cost {
+                        if reveals_selection_publicly || relation_cost || effect.public_selection {
                             // The chosen cards are revealed: open them on every peer
                             // before the answer is replayed (as `SearchSpec` does for a
                             // revealed search), so every engine filters the real cards.

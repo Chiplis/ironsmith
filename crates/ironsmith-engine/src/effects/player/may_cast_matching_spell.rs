@@ -11,7 +11,6 @@ pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 use super::runtime_helpers::{
     EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
     complete_effect_driven_cast_with_outputs, effect_driven_cast_options_for_card_in_context,
-    effect_driven_cast_options_for_card_with_payment,
 };
 
 fn runtime_payment(
@@ -68,161 +67,163 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let zone_owner_id = resolve_player_filter(game, &self.zone_owner, ctx)?;
-        let object_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
-        let mut options = Vec::<EffectDrivenCastOption>::new();
-        let payment = runtime_payment(&self.payment);
-        // The permitted cards can be named by a tag bound earlier in this
-        // resolution ("a spell from among them"), so the filter has to be read
-        // against this resolution's bindings rather than the game alone.
-        let filter_ctx = ctx.filter_context(game).with_caster(Some(player_id));
-        for object_id in object_ids {
-            options.extend(effect_driven_cast_options_for_card_in_context(
-                game,
-                player_id,
-                ctx.source,
-                object_id,
-                self.zone,
-                &self.filter,
-                payment,
-                &filter_ctx,
-            ));
-        }
-        // In peer matches only the owner can tell which of its hidden hand
-        // cards are castable here: peers hold placeholders with no cast
-        // options. Ask every peer the same card choice (placeholders
-        // included), open the chosen card publicly before the answer is
-        // replayed, then read its options on the opened card (see
-        // `game_state::hidden_hand_choices`).
-        if self.zone == Zone::Hand
-            && object_ids_in_zone(game, zone_owner_id, self.zone)
-                .into_iter()
-                .any(|id| game.is_hidden_tracked_hand_card(id))
-        {
-            let hand_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
-            let mut candidates: Vec<ObjectId> = Vec::new();
-            for option in &options {
-                if !candidates.contains(&option.object_id) {
-                    candidates.push(option.object_id);
-                }
-            }
-            for id in game.hidden_hand_placeholder_candidates(&self.filter, &filter_ctx, hand_ids) {
-                if !candidates.contains(&id) {
-                    candidates.push(id);
-                }
-            }
-            let spec = crate::decisions::specs::ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose a spell to cast without paying its mana cost",
-                candidates.clone(),
-                0,
-                Some(1),
-            )
-            .require_explicit_choice()
-            .with_selection_reveal_policy(crate::decisions::context::SelectionRevealPolicy::Public);
-            let chosen: Vec<ObjectId> = crate::decisions::make_decision(
-                game,
-                ctx.decision_maker,
-                player_id,
-                Some(ctx.source),
-                spec,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            let Some(card) = chosen.into_iter().find(|id| candidates.contains(id)) else {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            };
-            game.record_hidden_identity_obligations(
-                &[card],
-                &self.filter,
-                &filter_ctx,
-                "cast a spell matching the filter",
-            );
-            game.mark_hidden_cards_publicly_revealed(&[card]);
-            options = effect_driven_cast_options_for_card_in_context(
-                game,
-                player_id,
-                ctx.source,
-                card,
-                self.zone,
-                &self.filter,
-                payment,
-                &filter_ctx,
-            );
-            if options.is_empty() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-        } else {
-            if options.is_empty() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-
-            let should_cast = {
-                let choice_ctx = crate::decisions::context::BooleanContext::new(
-                    player_id,
-                    Some(ctx.source),
-                    "Cast a spell without paying its mana cost?".to_string(),
-                );
-                ctx.decision_maker.decide_boolean(game, &choice_ctx)
-            };
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            if !should_cast {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-        }
-
-        let option = if options.len() == 1 {
-            options[0].clone()
-        } else {
-            let choices = options
-                .iter()
-                .cloned()
-                .map(|option| (option.label.clone(), option))
-                .collect::<Vec<_>>();
-            let Some(choice) = crate::decisions::ask_choose_one(
-                game,
-                ctx.decision_maker,
-                player_id,
-                ctx.source,
-                &choices,
-            ) else {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            };
-            choice
-        };
-
-        let Some(result) =
-            cast_effect_driven_spell_with_payment(game, ctx, player_id, &option, payment)?
-        else {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::impossible(),
-            ));
-        };
-
-        complete_effect_driven_cast_with_outputs(
-            EffectOutcome::with_objects(vec![result.new_id]),
+        crate::effects::composition::execute_transaction(
             game,
-            result,
-            player_id,
-            ctx.provenance,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                let zone_owner_id = resolve_player_filter(game, &self.zone_owner, ctx)?;
+                let object_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
+                let mut options = Vec::<EffectDrivenCastOption>::new();
+                let payment = runtime_payment(&self.payment);
+                // The permitted cards can be named by a tag bound earlier in this
+                // resolution ("a spell from among them"), so the filter has to be read
+                // against this resolution's bindings rather than the game alone.
+                let filter_ctx = ctx.filter_context(game).with_caster(Some(player_id));
+                for object_id in object_ids {
+                    options.extend(effect_driven_cast_options_for_card_in_context(
+                        game,
+                        player_id,
+                        ctx.source,
+                        object_id,
+                        self.zone,
+                        &self.filter,
+                        payment,
+                        &filter_ctx,
+                    ));
+                }
+                // In peer matches only the owner can tell which of its hidden hand
+                // cards are castable here: peers hold placeholders with no cast
+                // options. Ask every peer the same card choice (placeholders
+                // included), open the chosen card publicly before the answer is
+                // replayed, then read its options on the opened card (see
+                // `game_state::hidden_hand_choices`).
+                if self.zone == Zone::Hand
+                    && object_ids_in_zone(game, zone_owner_id, self.zone)
+                        .into_iter()
+                        .any(|id| game.is_hidden_tracked_hand_card(id))
+                {
+                    let hand_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
+                    let mut candidates: Vec<ObjectId> = Vec::new();
+                    for option in &options {
+                        if !candidates.contains(&option.object_id) {
+                            candidates.push(option.object_id);
+                        }
+                    }
+                    for id in
+                        game.hidden_hand_placeholder_candidates(&self.filter, &filter_ctx, hand_ids)
+                    {
+                        if !candidates.contains(&id) {
+                            candidates.push(id);
+                        }
+                    }
+                    let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                        ctx.source,
+                        "Choose a spell to cast without paying its mana cost",
+                        candidates.clone(),
+                        0,
+                        Some(1),
+                    )
+                    .require_explicit_choice()
+                    .with_selection_reveal_policy(
+                        crate::decisions::context::SelectionRevealPolicy::Public,
+                    );
+                    let chosen: Vec<ObjectId> = crate::decisions::make_decision(
+                        game,
+                        ctx.decision_maker,
+                        player_id,
+                        Some(ctx.source),
+                        spec,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    let Some(card) = chosen.into_iter().find(|id| candidates.contains(id)) else {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    };
+                    game.record_hidden_identity_obligations(
+                        &[card],
+                        &self.filter,
+                        &filter_ctx,
+                        "cast a spell matching the filter",
+                    );
+                    game.mark_hidden_cards_publicly_revealed(&[card]);
+                    options = effect_driven_cast_options_for_card_in_context(
+                        game,
+                        player_id,
+                        ctx.source,
+                        card,
+                        self.zone,
+                        &self.filter,
+                        payment,
+                        &filter_ctx,
+                    );
+                    if options.is_empty() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                } else {
+                    if options.is_empty() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+
+                    let should_cast = {
+                        let choice_ctx = crate::decisions::context::BooleanContext::new(
+                            player_id,
+                            Some(ctx.source),
+                            "Cast a spell without paying its mana cost?".to_string(),
+                        );
+                        ctx.decision_maker.decide_boolean(game, &choice_ctx)
+                    };
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    if !should_cast {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                }
+
+                let Some(option) = super::runtime_helpers::choose_effect_driven_cast_option(
+                    game, ctx, player_id, options,
+                ) else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let Some(result) =
+                    cast_effect_driven_spell_with_payment(game, ctx, player_id, &option, payment)?
+                else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::impossible(),
+                    ));
+                };
+
+                complete_effect_driven_cast_with_outputs(
+                    EffectOutcome::with_objects(vec![result.new_id]),
+                    game,
+                    result,
+                    player_id,
+                    ctx.provenance,
+                )
+            },
         )
     }
 }

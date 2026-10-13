@@ -3,9 +3,8 @@
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{
     ChooseObjectsEffect, EffectExecutor, ExecutionContext, ExecutionError, MayEffect,
-    SequenceEffect, execute_effect_with_outputs,
+    SequenceEffect,
 };
-use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -16,7 +15,40 @@ pub type LearnEffect = ironsmith_core::LearnEffect;
 
 const LEARN_LESSON_TAG: &str = "__learn_lesson";
 
+fn learn_body() -> Effect {
+    use crate::effects::composition::{OutcomeBranchProgram, OutcomeBranchTest};
+    let lesson_filter = ObjectFilter::default()
+        .with_subtype(Subtype::Lesson)
+        .owned_by(PlayerFilter::You)
+        .in_zone(Zone::OutsideGame);
+    let lesson = Effect::new(OutcomeBranchProgram {
+        producer: Effect::new(
+            ChooseObjectsEffect::new(lesson_filter, 1, PlayerFilter::You, LEARN_LESSON_TAG)
+                .as_optional_search()
+                .in_zone(Zone::OutsideGame),
+        ),
+        test: OutcomeBranchTest::HasObjects,
+        if_true: vec![Effect::new(SequenceEffect::new(vec![
+            Effect::new(crate::effects::RevealTaggedEffect::new(LEARN_LESSON_TAG)),
+            Effect::move_to_zone(ChooseSpec::tagged(LEARN_LESSON_TAG), Zone::Hand, false),
+        ]))],
+        if_false: vec![],
+    });
+    // The actual discard result gates the draw; declining or replacing the
+    // discard without discarding a card leaves the Lesson option available.
+    Effect::new(OutcomeBranchProgram {
+        producer: Effect::new(MayEffect::single(Effect::discard(1))),
+        test: OutcomeBranchTest::PositiveCount,
+        if_true: vec![Effect::draw(1)],
+        if_false: vec![lesson],
+    })
+}
+
 impl EffectExecutor for LearnEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&learn_body());
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -56,133 +88,22 @@ impl EffectExecutor for LearnEffect {
                     crate::effects::composition::KeywordActionOutput::Body,
                     crate::effects::composition::KeywordActionAmount::Repetitions,
                     |game, ctx, action| {
-                        // CR 701.48a offers the discard first. Only a player who did not
-                        // actually discard a card gets the later Lesson choice.
-                        let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        );
-                        let child = execute_effect_with_outputs(
+                        let outputs = learn_body().0.execute_child_with_outputs(game, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        crate::effects::composition::complete_keyword_action_with_outputs(
                             game,
-                            &Effect::new(MayEffect::single(Effect::discard(1))),
                             ctx,
-                        )?;
-                        let discard_outcome = child.outcome.clone();
-                        outputs.retain_owned_child(child);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                        if discard_outcome.count_or_zero() > 0 {
-                            let child = execute_effect_with_outputs(game, &Effect::draw(1), ctx)?;
-                            let draw_outcome = child.outcome.clone();
-                            outputs.retain_owned_child(child);
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                    EffectOutcome::count(0),
-                                ));
-                            }
-                            return Ok(
-                                crate::effects::composition::complete_keyword_action_with_outputs(
-                                    game,
-                                    ctx,
-                                    outputs.project_aggregate(EffectOutcome::aggregate([
-                                        discard_outcome,
-                                        draw_outcome,
-                                    ])),
-                                    KeywordActionEvent::new(
-                                        KeywordActionKind::Learn,
-                                        ctx.controller,
-                                        action.source,
-                                        1,
-                                    ),
-                                )?,
-                            );
-                        }
-
-                        let lesson_filter = ObjectFilter::default()
-                            .with_subtype(Subtype::Lesson)
-                            .owned_by(PlayerFilter::You)
-                            .in_zone(Zone::OutsideGame);
-
-                        let choose_lesson = Effect::new(
-                            ChooseObjectsEffect::new(
-                                lesson_filter,
+                            outputs,
+                            KeywordActionEvent::new(
+                                KeywordActionKind::Learn,
+                                ctx.controller,
+                                action.source,
                                 1,
-                                PlayerFilter::You,
-                                LEARN_LESSON_TAG,
-                            )
-                            .as_optional_search()
-                            .in_zone(Zone::OutsideGame),
-                        );
-                        let child = execute_effect_with_outputs(game, &choose_lesson, ctx)?;
-                        let choose_outcome = child.outcome.clone();
-                        outputs.retain_owned_child(child);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                        if choose_outcome
-                            .objects()
-                            .is_some_and(|objects| !objects.is_empty())
-                        {
-                            let reveal_and_put = SequenceEffect::new(vec![
-                                Effect::new(crate::effects::RevealTaggedEffect::new(
-                                    LEARN_LESSON_TAG,
-                                )),
-                                Effect::move_to_zone(
-                                    ChooseSpec::tagged(LEARN_LESSON_TAG),
-                                    Zone::Hand,
-                                    false,
-                                ),
-                            ]);
-                            let child = execute_effect_with_outputs(
-                                game,
-                                &Effect::new(reveal_and_put),
-                                ctx,
-                            )?;
-                            let lesson_outcome = child.outcome.clone();
-                            outputs.retain_owned_child(child);
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                    EffectOutcome::count(0),
-                                ));
-                            }
-                            return Ok(
-                                crate::effects::composition::complete_keyword_action_with_outputs(
-                                    game,
-                                    ctx,
-                                    outputs.project_aggregate(EffectOutcome::aggregate([
-                                        discard_outcome,
-                                        choose_outcome,
-                                        lesson_outcome,
-                                    ])),
-                                    KeywordActionEvent::new(
-                                        KeywordActionKind::Learn,
-                                        ctx.controller,
-                                        action.source,
-                                        1,
-                                    ),
-                                )?,
-                            );
-                        }
-
-                        Ok(
-                            crate::effects::composition::complete_keyword_action_with_outputs(
-                                game,
-                                ctx,
-                                outputs.project_aggregate(EffectOutcome::aggregate([
-                                    discard_outcome,
-                                    choose_outcome,
-                                ])),
-                                KeywordActionEvent::new(
-                                    KeywordActionKind::Learn,
-                                    ctx.controller,
-                                    action.source,
-                                    1,
-                                ),
-                            )?,
+                            ),
                         )
                     },
                 )
@@ -257,8 +178,11 @@ mod tests {
         ) -> Vec<usize> {
             ctx.options
                 .iter()
-                .find(|option| option.legal && option.object_id == Some(self.0)
-                    && !option.description.starts_with("Do not apply "))
+                .find(|option| {
+                    option.legal
+                        && option.object_id == Some(self.0)
+                        && !option.description.starts_with("Do not apply ")
+                })
                 .map(|option| vec![option.index])
                 .expect("replacement source must have an offered apply option")
         }

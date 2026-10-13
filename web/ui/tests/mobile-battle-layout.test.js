@@ -54,3 +54,14 @@ test("an impossibly short scene reports overflow without shrinking controls or h
   assert.equal(layout.cardHeight, 24);
   assert.ok(layout.totalHeight > 100);
 });
+
+test("phase and combat tracks reserve their measured height above the phone hand", () => {
+  for (const viewportHeight of [255, 320, 390]) {
+    for (const footerControlHeight of [40, 78]) {
+      const layout = solveMobileBattleLayout({ viewportHeight, footerControlHeight });
+      assert.equal(layout.totalHeight, layout.opponentBandHeight + layout.selfBandHeight + layout.handPeekHeight + footerControlHeight);
+      assert.ok(layout.totalHeight <= viewportHeight);
+      assert.ok(layout.cardHeight >= 24);
+    }
+  }
+});

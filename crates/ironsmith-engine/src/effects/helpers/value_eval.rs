@@ -1577,6 +1577,15 @@ pub(crate) fn resolve_wide(
                 context.layer().counters_on(value, spec, counter_type)
             }
         }
+        Value::TaggedSnapshotCount { tag, filter } => {
+            let Some(ctx) = context.execution() else {
+                return Err(ExecutionError::UnresolvableValue("snapshot count requires a resolution context".into()));
+            };
+            let filter_ctx = ctx.filter_context(game);
+            let count = ctx.get_tagged_all(tag).into_iter().flatten()
+                .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game)).count();
+            i64::try_from(count).map_err(|_| ExecutionError::UnresolvableValue("snapshot count exceeds the wide value range".into()))
+        }
         Value::TaggedCount => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             {

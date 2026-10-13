@@ -22,6 +22,21 @@ use crate::types::CardType;
 pub type EarthbendEffect = ironsmith_core::EarthbendEffect;
 
 impl EffectExecutor for EarthbendEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        let counters = Effect::new(crate::effects::PutCountersEffect::new(
+            CounterType::PlusOnePlusOne, self.counters.clone(), self.target.clone()));
+        if self.awaken { visitor(&counters); }
+        for modification in land_animation_modifications(self.awaken) {
+            visitor(&Effect::new(ApplyContinuousEffect::with_spec(self.target.clone(), modification, Until::Forever)));
+        }
+        if !self.awaken {
+            visitor(&counters);
+            visitor(&Effect::new(ScheduleDelayedTriggerEffect::new(
+                Trigger::this_dies_or_is_exiled(), vec![Effect::return_from_graveyard_or_exile_to_battlefield(true)],
+                true, vec![], crate::target::PlayerFilter::You)));
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -273,7 +288,7 @@ fn collect_animation_outputs(children: Vec<CompletedEffectOutputs>) -> Completed
 }
 
 /// Pure composition plan; all registration is owned by ApplyContinuousEffect.
-fn land_animation_program(target: crate::ids::ObjectId, elemental: bool) -> Vec<Effect> {
+fn land_animation_modifications(elemental: bool) -> Vec<Modification> {
     let mut modifications = vec![Modification::AddCardTypes(vec![CardType::Creature])];
     if elemental {
         modifications.push(Modification::AddSubtypes(vec![
@@ -289,6 +304,10 @@ fn land_animation_program(target: crate::ids::ObjectId, elemental: bool) -> Vec<
         Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
     ]);
     modifications
+}
+
+fn land_animation_program(target: crate::ids::ObjectId, elemental: bool) -> Vec<Effect> {
+    land_animation_modifications(elemental)
         .into_iter()
         .map(|modification| {
             Effect::new(
@@ -311,14 +330,9 @@ fn place_animation_counters(
     target: crate::ids::ObjectId,
     amount: u32,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
-    let event = crate::events::Event::put_counters(
-        target,
-        CounterType::PlusOnePlusOne,
-        amount,
-        ctx.cause.clone(),
-    )
-    .with_provenance(ctx.provenance);
-    crate::effects::counters::execute_counter_placement_with_outputs(game, ctx, event)
+    crate::effects::PutCountersEffect::new(
+        CounterType::PlusOnePlusOne, amount, ChooseSpec::SpecificObject(target),
+    ).execute_child_with_outputs(game, ctx)
 }
 
 #[cfg(test)]

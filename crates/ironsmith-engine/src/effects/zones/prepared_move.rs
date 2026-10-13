@@ -689,3 +689,27 @@ pub(crate) fn execute_battlefield_entries_with_outputs<'a>(
         complete_movement_batch_with_outputs(game, ctx, outcome, receipts, deferred, published)
     })
 }
+
+/// Prepare and commit exact sequential zone moves while retaining their added
+/// programs for an enclosing compound instruction's completion boundary.
+/// Departed/replaced identities are skipped, never followed by stable identity.
+pub(crate) fn commit_exact_zone_moves_before_completion(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    objects: impl IntoIterator<Item = ObjectId>,
+    from: Zone,
+    to: Zone,
+) -> Result<(Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>, Vec<crate::effects::PublishedEffectOutputs>), ExecutionError> {
+    let mut receipts = Vec::new();
+    let mut published = Vec::new();
+    for object in objects {
+        if !game.object(object).is_some_and(|card| card.zone == from) { continue; }
+        let additional = ctx.additional_replacement_effects_snapshot();
+        let committed = super::apply_zone_change_with_context_and_additional_effects_with_outputs(
+            game, object, from, to, ctx.cause.clone(), ctx, &additional)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok((receipts, published)); }
+        crate::effects::PublishedEffectOutputs::append_distinct(&mut published, committed.published_outputs);
+        receipts.push((object, committed.receipt));
+    }
+    Ok((receipts, published))
+}

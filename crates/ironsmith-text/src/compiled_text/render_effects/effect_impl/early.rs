@@ -1,4 +1,34 @@
 {
+
+fn describe_retained_snapshot_count(tag: &TagKey, filter: &ObjectFilter) -> String {
+if filter.zone == Some(Zone::Hand)
+            && filter.controller.is_none()
+            && (tag.as_str().starts_with("searched")
+                || tag.as_str().starts_with("exiled")
+                || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
+        {
+            match &filter.owner {
+                Some(PlayerFilter::You) => "card exiled from your hand this way".to_string(),
+                Some(PlayerFilter::NotYou) => {
+                    "card exiled from your opponent's hand this way".to_string()
+                }
+                Some(PlayerFilter::Specific(_))
+                | Some(PlayerFilter::Target(_))
+                | Some(PlayerFilter::IteratedPlayer)
+                | Some(PlayerFilter::ControllerOf(_)) => {
+                    "card exiled from their hand this way".to_string()
+                }
+                Some(owner) => format!(
+                    "card exiled from {} hand this way",
+                    describe_possessive_player_filter(owner)
+                ),
+                None => "card exiled from hand this way".to_string(),
+            }
+        } else {
+            describe_for_each_count_filter(&filter)
+        }
+}
+
     if let Some(change) = effect.downcast_ref::<crate::effects::ChangeTextEffect>() {
         use ironsmith_core::TextChangeSelection;
         let replacement = match &change.selection {
@@ -4518,6 +4548,11 @@
         return describe_return_all_to_battlefield_effect(return_all_to_battlefield);
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+        if let Value::TaggedSnapshotCount { tag, filter } = draw.count.unhinted() {
+            let player = describe_player_filter(&draw.player);
+            return format!("{player} {} a card for each {}",
+                player_verb(&player, "draw", "draws"), describe_retained_snapshot_count(tag, filter));
+        }
         if draw.player == PlayerFilter::You
             && draw
                 .count
@@ -4554,32 +4589,7 @@
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawForEachTaggedMatchingEffect>() {
         let player = describe_player_filter(&draw.player);
-        let counted = if draw.filter.zone == Some(Zone::Hand)
-            && draw.filter.controller.is_none()
-            && (draw.tag.as_str().starts_with("searched")
-                || draw.tag.as_str().starts_with("exiled")
-                || crate::cards::is_sentence_helper_tag(draw.tag.as_str(), "exiled"))
-        {
-            match &draw.filter.owner {
-                Some(PlayerFilter::You) => "card exiled from your hand this way".to_string(),
-                Some(PlayerFilter::NotYou) => {
-                    "card exiled from your opponent's hand this way".to_string()
-                }
-                Some(PlayerFilter::Specific(_))
-                | Some(PlayerFilter::Target(_))
-                | Some(PlayerFilter::IteratedPlayer)
-                | Some(PlayerFilter::ControllerOf(_)) => {
-                    "card exiled from their hand this way".to_string()
-                }
-                Some(owner) => format!(
-                    "card exiled from {} hand this way",
-                    describe_possessive_player_filter(owner)
-                ),
-                None => "card exiled from hand this way".to_string(),
-            }
-        } else {
-            describe_for_each_count_filter(&draw.filter)
-        };
+        let counted = describe_retained_snapshot_count(&draw.tag, &draw.filter);
         return format!(
             "{player} {} a card for each {}",
             player_verb(&player, "draw", "draws"),

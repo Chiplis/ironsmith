@@ -607,6 +607,55 @@ mod library_movement_tests {
     }
 
     #[test]
+    fn opaque_keyword_draws_disqualify_mana_and_future_abilities_do_not() {
+        use ironsmith_core::library_movement::LibraryMovement;
+        for effect in [Effect::learn(), Effect::connive(ChooseSpec::Source)] {
+            assert!(effect.moves_library_cards());
+            check(TotalCost::free(), vec![Effect::add_mana(vec![ManaSymbol::Green]), effect], false);
+        }
+        let granted = Ability::activated(TotalCost::free(), vec![Effect::draw(1)]);
+        let grant = Effect::new(crate::effects::GrantObjectAbilityEffect::to_source(granted));
+        let mut owned = 0;
+        grant.visit_child_effects(&mut |_| owned += 1);
+        assert_eq!(owned, 1, "owned bodies remain visible to codecs");
+        assert!(!grant.moves_library_cards());
+        check(TotalCost::free(), vec![Effect::add_mana(vec![ManaSymbol::Green]), grant], true);
+        let mana_grant = Effect::new(crate::effects::GrantObjectAbilityEffect::to_source(
+            Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]),
+        ));
+        assert!(!mana_grant.contains_mana_production(), "granting a future ability does not produce mana now");
+    }
+
+    #[test]
+    fn native_and_shared_branch_inspection_preserves_alternatives() {
+        use ironsmith_core::library_movement::LibraryMovement;
+        let condition = crate::effect::Condition::YouControl(crate::ObjectFilter::creature());
+        let branch = Effect::new(crate::effects::ConditionalEffect::new(
+            condition,
+            vec![Effect::look_at_top_cards(PlayerFilter::You, 1, "seen")],
+            vec![Effect::move_to_zone(ChooseSpec::Tagged("seen".into()), Zone::Hand, false)],
+        ));
+        assert!(!branch.moves_library_cards(), "an unrelated tag in the other arm cannot taint this arm");
+        let optional = Effect::may(vec![Effect::look_at_top_cards(PlayerFilter::You, 1, "seen")]);
+        check(TotalCost::free(), vec![optional,
+            Effect::move_to_zone(ChooseSpec::Tagged("seen".into()), Zone::Library, false),
+            Effect::add_mana(vec![ManaSymbol::Green])], false);
+    }
+
+    #[test]
+    fn unmodeled_native_callback_cannot_silently_qualify_as_mana() {
+        #[derive(Debug, Clone)]
+        struct UnmodeledCallback;
+        impl crate::effects::EffectExecutor for UnmodeledCallback {
+            fn execute(&self, _: &mut crate::game_state::GameState, _: &mut crate::effects::ExecutionContext)
+                -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+                Ok(crate::effect::EffectOutcome::resolved())
+            }
+        }
+        check(TotalCost::free(), vec![Effect::add_mana(vec![ManaSymbol::Green]), Effect::new(UnmodeledCallback)], false);
+    }
+
+    #[test]
     fn library_movement_costs_effects_and_optional_branches_disqualify_mana() {
         for effect in [
             Effect::draw(1),

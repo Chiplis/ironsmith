@@ -1653,7 +1653,7 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::you_cast_this_spell(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     crate::effect::Effect::new(
-                        crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
+                        crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new().with_cost_ref(cost_ref.clone()),
                     ),
                 ]),
                 choices: vec![],

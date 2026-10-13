@@ -15,6 +15,7 @@
 
 mod application;
 mod damage_original_payloads;
+mod entry_copy_choice;
 mod prevention_draw_boundary;
 mod simultaneous_redirect_budget;
 
@@ -10220,10 +10221,6 @@ fn prepare_etb_replacements_inner(
     mut draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
     use crate::ability::AbilityKind;
-    use crate::decisions::{
-        make_decision,
-        specs::{ReplacementOption, ReplacementSpec},
-    };
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
     let mut deferred_programs = Vec::new();
     let mut completed_program_outputs = Vec::new();
@@ -10767,22 +10764,16 @@ fn prepare_etb_replacements_inner(
                     event,
                     ..
                 } => {
-                    let options: Vec<ReplacementOption> = applicable_effects
+                    let choice_effects = applicable_effects
                         .iter()
-                        .enumerate()
-                        .filter_map(|(idx, &id)| {
-                            find_effect_for_choice(game, &current_additional_effects, id).map(|e| {
-                                ReplacementOption::new(
-                                    idx,
-                                    e.source,
-                                    replacement_effect_choice_description(game, &e),
-                                )
-                                .with_related_objects(replacement_effect_related_objects(&e))
-                            })
-                        })
-                        .collect();
-                    let chosen_index =
-                        make_decision(game, dm, player, None, ReplacementSpec::new(options));
+                        .map(|&id| find_effect_for_choice(game, &current_additional_effects, id))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| crate::effects::ExecutionError::InternalError(
+                            "applicable entry replacement disappeared".into(),
+                        ))?;
+                    let chosen_index = entry_copy_choice::choose_entry_replacement(
+                        game, dm, player, &choice_effects,
+                    );
                     if dm.awaiting_choice() {
                         return Ok(EtbEventResult {
                             prevented: true,
@@ -12149,10 +12140,46 @@ mod tests {
     }
 
     #[test]
+    fn copy_replacement_identity_required_copy_is_one_candidate_choice() {
+        struct PickLast(ObjectId);
+        impl crate::decision::DecisionMaker for PickLast {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.description, "Choose what to copy as this permanent enters");
+                assert_eq!(ctx.options.len(), 2);
+                assert!(ctx.options.iter().all(|option| option.object_id.is_some()));
+                vec![ctx.options.iter().find(|option| option.object_id == Some(self.0)).unwrap().index]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        create_creature(&mut game, "First candidate", alice);
+        let second = create_creature(&mut game, "Second candidate", alice);
+        let entering = create_creature_in_zone(&mut game, "Required clone", alice, Zone::Hand, 0, 0);
+        let mut spec = external_enter_as_copy_ability().enter_as_copy_as_enters().unwrap().clone();
+        spec.affected_filter = None;
+        spec.copy_source_self = false;
+        spec.filter = ObjectFilter::creature();
+        spec.filter.zone = Some(Zone::Battlefield);
+        spec.may = false;
+        game.object_mut(entering).unwrap().abilities_mut().push(
+            crate::ability::Ability::static_ability(StaticAbility::with_enter_as_copy_as_enters(
+                spec, "Enter as a copy of a creature on the battlefield".into(),
+            )),
+        );
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut PickLast(second)).unwrap();
+        assert_eq!(result.enters_as_copy_of, Some(second));
+    }
+
+    #[test]
     fn copy_replacement_identity_declining_one_external_ability_preserves_the_other() {
         struct ChooseDeclineThenCopy {
             players: Vec<PlayerId>,
             offered: Vec<usize>,
+            select_last: bool,
         }
         impl crate::decision::DecisionMaker for ChooseDeclineThenCopy {
             fn decide_options(
@@ -12160,6 +12187,14 @@ mod tests {
                 _game: &GameState,
                 ctx: &crate::decisions::context::SelectOptionsContext,
             ) -> Vec<usize> {
+                // Competing abilities are ordered before choosing a copy
+                // candidate (or declining) within the selected occurrence.
+                if ctx.description == "Choose which replacement effect to apply" {
+                    assert_eq!(ctx.options.len(), 2);
+                    let option = if self.select_last { ctx.options.last().unwrap() } else { &ctx.options[0] };
+                    return vec![option.index];
+                }
+                assert_eq!(ctx.description, "Choose what to copy as this permanent enters");
                 self.players.push(ctx.player);
                 self.offered.push(ctx.options.len());
                 let copy = self.offered.len() > 1;
@@ -12174,7 +12209,7 @@ mod tests {
             }
         }
         for layered in [false, true] {
-            for same_host in [false, true] {
+            for (same_host, select_last) in [(false, false), (false, true), (true, false), (true, true)] {
                 let mut game = crate::tests::test_helpers::setup_two_player_game();
                 let alice = PlayerId::from_index(0);
                 let bob = PlayerId::from_index(1);
@@ -12232,13 +12267,14 @@ mod tests {
                 let mut dm = ChooseDeclineThenCopy {
                     players: Vec::new(),
                     offered: Vec::new(),
+                    select_last,
                 };
                 let result =
                     process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm)
                         .expect("independent optional copy effects execute");
                 assert_eq!(
                     dm.offered,
-                    vec![4, 2],
+                    vec![2, 2],
                     "declining one occurrence leaves only the other alternatives, layered={layered}"
                 );
                 assert_eq!(
@@ -12246,7 +12282,7 @@ mod tests {
                     vec![alice, alice],
                     "the affected controller chooses both abilities"
                 );
-                assert_eq!(result.enters_as_copy_of, Some(sources[1]));
+                assert_eq!(result.enters_as_copy_of, Some(sources[if select_last { 0 } else { 1 }]));
             }
         }
     }

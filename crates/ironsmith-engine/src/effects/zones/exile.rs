@@ -363,6 +363,9 @@ impl ZoneMovementInstruction for ExileEffect {
                             game.add_linked_exile_pair_member(owner.clone(), new_id);
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
+                        if effect.remember_on_source {
+                            game.imprint_card(ctx.source, new_id);
+                        }
                         if effect.source_controller_may_look {
                             game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
                         }

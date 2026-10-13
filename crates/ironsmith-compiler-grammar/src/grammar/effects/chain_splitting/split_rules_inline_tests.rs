@@ -2,6 +2,24 @@ use super::super::super::super::super::lexer::lex_line;
 use super::*;
 
 #[test]
+fn comma_then_exile_pronoun_splits_into_separate_actions() {
+    for text in [
+        "Destroy target creature, then exile it.",
+        "Destroy two target creatures, then exile them.",
+        "Tap target creature, then exile it face down.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(
+            has_explicit_comma_then_boundary_tokens(&tokens, |_| false),
+            "{text}"
+        );
+        let segments = split_segments_on_comma_then_tokens(vec![&tokens], |_| false);
+        assert_eq!(segments.len(), 2, "{text}");
+        assert!(segments[1][0].is_word("exile"), "{text}");
+    }
+}
+
+#[test]
 fn serial_keyword_filter_commas_are_not_effect_boundaries() {
     let tokens = lex_line(
             "It deals 1 damage to each creature that doesn't have first strike, double strike, vigilance, or haste.",

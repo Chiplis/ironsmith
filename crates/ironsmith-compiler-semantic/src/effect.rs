@@ -610,13 +610,22 @@ impl Effect {
                 .is_some()
     }
 
+    /// Inspect only programs executed now; owned ability templates remain
+    /// available through the general visitor for codecs and text changes.
+    pub fn visit_resolution_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        if ironsmith_core::effect_capabilities::library_movement_policy(self.payload_type_name())
+            != ironsmith_core::effect_capabilities::LibraryMovementPolicy::Deferred {
+            self.visit_child_effects(visitor);
+        }
+    }
+
     pub fn contains_mana_production(&self) -> bool {
         if self.directly_produces_mana() {
             return true;
         }
 
         let mut found = false;
-        self.visit_child_effects(&mut |effect| {
+        self.visit_resolution_child_effects(&mut |effect| {
             if !found && effect.contains_mana_production() {
                 found = true;
             }
@@ -2908,13 +2917,43 @@ impl ironsmith_core::library_movement::LibraryMovement for Effect {
         context: &mut ironsmith_core::library_movement::LibraryMovementContext,
     ) -> bool {
         use ironsmith_core::library_movement::payload_library_movement;
+        use ironsmith_core::effect_capabilities::{LibraryMovementPolicy, library_movement_policy};
+        match library_movement_policy(self.payload_type_name()) {
+            LibraryMovementPolicy::Leaf | LibraryMovementPolicy::Deferred => return false,
+            LibraryMovementPolicy::Moves | LibraryMovementPolicy::Unknown => return true,
+            LibraryMovementPolicy::Inspect => {}
+        }
         if let Some(moves) =
             payload_library_movement::<Effect, crate::costs::Cost>(self.0.as_any(), context)
         {
             return moves;
         }
         let mut found = false;
-        self.visit_child_effects(&mut |child| found |= child.inspect_library_movement(context));
+        self.visit_resolution_child_effects(&mut |child| found |= child.inspect_library_movement(context));
         found
+    }
+}
+
+#[cfg(test)]
+mod library_capability_tests {
+    use super::*;
+    use ironsmith_core::library_movement::{LibraryMovement, LibraryMovementContext};
+
+    #[test]
+    fn opaque_keyword_draws_and_tag_alternatives_are_visible_before_materialization() {
+        assert!(Effect::new(crate::effects::LearnEffect::new()).moves_library_cards());
+        let condition = Condition::YouControl(crate::target::ObjectFilter::creature());
+        let branch = Effect::new(crate::effects::ConditionalEffect::new(
+            condition,
+            vec![Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                crate::target::PlayerFilter::You, 1, "seen",
+            ))],
+            vec![Effect::move_to_zone(crate::target::ChooseSpec::Tagged("seen".into()), crate::zone::Zone::Hand, false)],
+        ));
+        assert!(!branch.moves_library_cards());
+        let mut context = LibraryMovementContext::default();
+        assert!(!branch.inspect_library_movement(&mut context));
+        assert!(Effect::move_to_zone(crate::target::ChooseSpec::Tagged("seen".into()), crate::zone::Zone::Hand, false)
+            .inspect_library_movement(&mut context));
     }
 }

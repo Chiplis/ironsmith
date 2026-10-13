@@ -362,6 +362,14 @@ pub(super) fn cast_effect_driven_spell_with_payment(
     option: &EffectDrivenCastOption,
     payment: EffectDrivenCastPayment,
 ) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
+    cast_effect_driven_spell_with_payment_policy(game, ctx, caster, option, payment, false)
+}
+
+pub(super) fn cast_effect_driven_spell_with_payment_policy(
+    game: &mut GameState, ctx: &mut ExecutionContext, caster: PlayerId,
+    option: &EffectDrivenCastOption, payment: EffectDrivenCastPayment,
+    cancellation_is_decline: bool,
+) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
     let result = crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
         game,
         option.object_id,
@@ -372,11 +380,48 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         None,
         ctx.provenance,
         &mut ctx.decision_maker,
-    )
-    .map_err(effect_driven_cast_error)?;
+    );
+    let result = match result {
+        Err(crate::game_loop::GameLoopError::ActionCancelled(_)) if cancellation_is_decline => None,
+        other => other.map_err(effect_driven_cast_error)?,
+    };
     Ok(result.map(|cast| EffectDrivenCastResult {
         new_id: cast.new_id,
         from_zone: option.from_zone,
         outputs: cast.outputs,
     }))
+}
+
+
+pub(super) fn choose_effect_driven_cast_option(
+    game: &mut GameState, ctx: &mut ExecutionContext, player: PlayerId,
+    options: Vec<EffectDrivenCastOption>,
+) -> Option<EffectDrivenCastOption> {
+    match options.len() {
+        0 => None,
+        1 => options.into_iter().next(),
+        _ => crate::decisions::ask_choose_one(game, ctx.decision_maker, player, ctx.source,
+            &options.into_iter().map(|option| (option.label.clone(), option)).collect::<Vec<_>>()),
+    }
+}
+
+/// Structural view of the shared library/casting operations. Their native
+/// owner freezes operands, handles keyword replacement and retains the exact
+/// consultation receipts at its completion boundary.
+pub(super) fn visit_library_cast_program(
+    visitor: &mut dyn FnMut(&crate::effect::Effect), player: crate::target::PlayerFilter,
+    mode: ironsmith_core::LibraryConsultMode, filter: crate::target::ObjectFilter,
+    stop: ironsmith_core::ConsultTopOfLibraryStopRule, all: &str, matched: &str,
+    put_declined_in_hand: bool, order: ironsmith_core::LibraryBottomOrder,
+) {
+    use crate::effect::Effect;
+    visitor(&Effect::new(crate::effects::ConsultTopOfLibraryEffect::new(player.clone(), mode,
+        filter.clone(), stop, all, matched)));
+    visitor(&Effect::new(super::OfferTaggedCast { tag: matched.into(), player: player.clone(),
+        zone: if mode == ironsmith_core::LibraryConsultMode::Reveal { Zone::Library } else { Zone::Exile },
+        spell_filter: filter, source_name: None }));
+    if put_declined_in_hand {
+        visitor(&Effect::new(crate::effects::MoveToZoneEffect::new(crate::target::ChooseSpec::tagged(matched), Zone::Hand, false)));
+    }
+    visitor(&Effect::put_tagged_remainder_on_library_bottom(all, Some(matched.into()), order, player));
 }

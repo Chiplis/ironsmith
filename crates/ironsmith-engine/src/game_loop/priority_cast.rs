@@ -6480,6 +6480,7 @@ pub(super) fn collect_spell_cost_steps(
         for (idx, optional_cost) in obj.optional_costs.iter().enumerate() {
             let times = optional_costs_paid.times_paid(idx);
             for _ in 0..times {
+                let first = cost_steps.len();
                 extend_non_mana(
                     &mut cost_steps,
                     crate::cost::optional_cost_payment_branch(
@@ -6487,6 +6488,11 @@ pub(super) fn collect_spell_cost_steps(
                         optional_costs_paid.branch_choice(idx),
                     ),
                 );
+                for step in &mut cost_steps[first..] {
+                    if let ActivationCostStep::Sacrifice { optional_cost_origin, .. } = step {
+                        *optional_cost_origin = Some(optional_cost.cost_ref());
+                    }
+                }
             }
         }
         for splice_cost in splice_costs {
@@ -8653,5 +8659,30 @@ mod counter_payment_error_bridge_tests {
             assert_eq!(game.stack.len(), 1);
             assert!(state.pending_activation.is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod optional_sacrifice_origin_tests {
+    use super::*;
+    #[test]
+    fn cost_collection_keeps_optional_sacrifices_separate_from_mandatory_ones() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Cost origin fixture")
+            .card_types(vec![crate::types::CardType::Sorcery]).build();
+        let id = game.create_object_from_card(&card, player, Zone::Stack);
+        let sacrifice = crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(ObjectFilter::creature().you_control()));
+        let spell = game.object_mut(id).unwrap();
+        spell.additional_cost = sacrifice.clone().into();
+        spell.optional_costs.push(crate::cost::OptionalCost::custom("Casualty", sacrifice));
+        let mut paid = OptionalCostsPaid::from_costs(&spell.optional_costs);
+        paid.pay_times(0, 1);
+        let steps = collect_spell_cost_steps(&game, id, player, &CastingMethod::Normal, &paid, &[], None, 0, Zone::Hand);
+        let origins = steps.iter().filter_map(|step| match step {
+            ActivationCostStep::Sacrifice { optional_cost_origin, .. } => Some(optional_cost_origin.clone()),
+            _ => None,
+        }).collect::<Vec<_>>();
+        assert_eq!(origins, vec![None, Some(crate::cost::OptionalCostRef::from("Casualty"))]);
     }
 }

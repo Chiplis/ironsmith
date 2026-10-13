@@ -582,6 +582,13 @@ pub struct DrawForEachTaggedMatchingEffect {
 }
 
 impl DrawForEachTaggedMatchingEffect {
+    /// Compatibility payloads lower to the ordinary draw operation.
+    pub fn draw_effect(&self) -> DrawCardsEffect {
+        DrawCardsEffect::new(Value::TaggedSnapshotCount {
+            tag: self.tag.clone(), filter: self.filter.clone(),
+        }, self.player.clone())
+    }
+
     pub fn new(player: PlayerFilter, tag: crate::tag::TagKey, filter: ObjectFilter) -> Self {
         Self {
             tag,
@@ -1020,6 +1027,9 @@ pub struct GrantPlayTaggedEffect<C> {
     /// their earlier independently tracked spending permission.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "legacy_tagged_play_mana"))]
     pub permission_bound_mana: bool,
+    /// Bind only the tagged object incarnation, never a successor with the same stable identity.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub exact_tagged_objects: bool,
     /// Compatibility flag for older render-pattern predicates. This is true
     /// for both flexible modes; new code must inspect `mana_spend_mode` when
     /// the distinction between color and type matters.
@@ -1089,6 +1099,7 @@ impl<C> GrantPlayTaggedEffect<C> {
             allow_land,
             mana_spend_mode,
             permission_bound_mana: false,
+            exact_tagged_objects: false,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
@@ -5742,5 +5753,67 @@ pub struct GrantLoyaltyActivationAllowanceEffect {
 impl GrantLoyaltyActivationAllowanceEffect {
     pub fn new(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> Self {
         Self { scope, allowance }
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod program_compatibility_tests {
+    use super::*;
+    use crate::Zone;
+
+    #[test]
+    fn casualty_payload_retains_the_exact_cost_and_accepts_legacy_units() {
+        let legacy: crate::VariableCasualtyPlaneswalkerCopyEffect = serde_json::from_str("null").unwrap();
+        assert_eq!(legacy.cost_ref, crate::OptionalCostRef::from("Casualty"));
+        let bound = legacy.with_cost_ref(crate::OptionalCostRef::with_discriminator(
+            crate::OptionalCostKind::Casualty, "printed-2"));
+        let roundtrip = serde_json::from_value::<crate::VariableCasualtyPlaneswalkerCopyEffect>(
+            serde_json::to_value(&bound).unwrap()).unwrap();
+        assert_eq!(roundtrip, bound);
+    }
+
+    #[test]
+    fn legacy_copy_and_choice_payloads_default_new_program_options() {
+        let copy = crate::CopySpellEffect::single(ChooseSpec::Source);
+        let mut payload = serde_json::to_value(&copy).unwrap();
+        payload.as_object_mut().unwrap().remove("set_base_loyalty");
+        let legacy: crate::CopySpellEffect = serde_json::from_value(payload).unwrap();
+        assert_eq!(legacy.set_base_loyalty, None);
+        let copy = copy.with_set_base_loyalty(Value::PowerOf(Box::new(ChooseSpec::tagged("paid"))));
+        assert_eq!(serde_json::from_value::<crate::CopySpellEffect>(serde_json::to_value(&copy).unwrap()).unwrap(), copy);
+        let mut selection = crate::ChooseObjectsEffect::new(ObjectFilter::default(), 1, PlayerFilter::You, "choice");
+        let mut payload = serde_json::to_value(&selection).unwrap();
+        payload.as_object_mut().unwrap().remove("public_selection");
+        assert!(!serde_json::from_value::<crate::ChooseObjectsEffect>(payload).unwrap().public_selection);
+        selection.public_selection = true;
+        assert!(serde_json::from_value::<crate::ChooseObjectsEffect>(serde_json::to_value(&selection).unwrap()).unwrap().public_selection);
+        let mut exile = crate::ExileEffect::with_spec(ChooseSpec::Source);
+        let mut payload = serde_json::to_value(&exile).unwrap();
+        payload.as_object_mut().unwrap().remove("remember_on_source");
+        assert!(!serde_json::from_value::<crate::ExileEffect>(payload).unwrap().remember_on_source);
+        exile.remember_on_source = true;
+        assert!(serde_json::from_value::<crate::ExileEffect>(serde_json::to_value(&exile).unwrap()).unwrap().remember_on_source);
+    }
+
+    #[test]
+    fn legacy_tagged_permissions_default_to_their_original_reference_policy() {
+        let mut permission = GrantPlayTaggedEffect::<()>::new(
+            "card".into(), PlayerFilter::You, GrantPlayTaggedDuration::UntilEndOfTurn, false, false,
+        );
+        let legacy = serde_json::to_value(&permission).unwrap();
+        assert!(legacy.get("exact_tagged_objects").is_none());
+        let restored: GrantPlayTaggedEffect<()> = serde_json::from_value(legacy).unwrap();
+        assert!(!restored.exact_tagged_objects);
+        permission.exact_tagged_objects = true;
+        let restored: GrantPlayTaggedEffect<()> = serde_json::from_value(serde_json::to_value(&permission).unwrap()).unwrap();
+        assert!(restored.exact_tagged_objects);
+    }
+
+    #[test]
+    fn retained_snapshot_quantity_round_trips_with_its_filter_and_tag() {
+        let value = Value::TaggedSnapshotCount {
+            tag: "retained".into(), filter: ObjectFilter::default().in_zone(Zone::Hand),
+        };
+        assert_eq!(serde_json::from_value::<Value>(serde_json::to_value(&value).unwrap()).unwrap(), value);
     }
 }

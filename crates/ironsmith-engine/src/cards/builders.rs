@@ -3246,7 +3246,7 @@ impl CardDefinitionBuilder {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
-                    crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
+                    crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new().with_cost_ref(cost_ref.clone()),
                 )]),
                 choices: vec![],
                 intervening_if: Some(Condition::ThisSpellPaidLabel(cost_ref)),

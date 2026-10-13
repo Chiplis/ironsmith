@@ -30,6 +30,20 @@ test("replacement choices share trigger arrows and require explicit single-effec
 
     for (const suffix of ["", "&mobile", "&spectator"]) {
       const page = await browser.newPage({ viewport: { width: suffix.includes("mobile") ? 700 : 1100, height: 850 } });
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?copy${suffix}`);
+      await page.getByText("Choose what to copy as this permanent enters", { exact: true }).first().waitFor({ state: "attached" });
+      assert.equal(await page.locator('.stack-card[data-pending-replacement="true"]').count(), 0);
+      assert.equal(await page.getByRole("button", { name: /Apply First/i }).count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.__commands), []);
+      if (!suffix.includes("spectator")) {
+        await page.getByText("Don't copy", { exact: true }).first().click();
+        assert.deepEqual(await page.evaluate(() => window.__commands), [{ type: "select_options", option_indices: [0] }]);
+      }
+      await page.close();
+    }
+
+    for (const suffix of ["", "&mobile", "&spectator"]) {
+      const page = await browser.newPage({ viewport: { width: suffix.includes("mobile") ? 700 : 1100, height: 850 } });
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?optional${suffix}`);

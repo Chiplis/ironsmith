@@ -20,12 +20,24 @@ const agent = (id, controller) => ({
   compiled_text: ["You control your opponents while they're searching their libraries."],
   zone: "Battlefield", controller, owner: controller, power: 3, toughness: 2,
 });
-const agents = params.has("optional")
+const agents = params.has("copy")
+  ? ["Hammer of Nazahn", "Blade of the Bloodchief"].map((name, index) => ({
+    ...agent(40 + index, index), name, type_line: "Artifact — Equipment", oracle_text: "", compiled_text: [],
+  }))
+  : params.has("optional")
   ? [{ ...agent(40, 0), name: "Golgari Thug", oracle_text: "Dredge 4", compiled_text: ["Dredge 4"], zone: "Graveyard" }]
   : [agent(40, 1), agent(41, 2)];
 const search = { id: 60, stable_id: 60, name: "Demonic Tutor", type_line: "Sorcery", zone: "Stack", controller: 0, owner: 0, oracle_text: "Search your library for a card.", compiled_text: ["Search your library for a card."] };
 const cards = Object.fromEntries([...agents, search].map(card => [card.id, card]));
-const decision = {
+const decision = params.has("copy") ? {
+  kind: "select_options", player: 0, min: 1, max: 1,
+  description: "Choose what to copy as this permanent enters",
+  options: [
+    { index: 0, legal: true, description: "Don't copy" },
+    { index: 1, legal: true, object_id: 40, description: "Enter as a copy of Hammer of Nazahn" },
+    { index: 2, legal: true, object_id: 41, description: "Enter as a copy of Blade of the Bloodchief" },
+  ],
+} : {
   kind: "select_options", player: 0, min: 1, max: 1,
   description: "Choose which replacement effect to apply",
   options: params.has("optional") ? [

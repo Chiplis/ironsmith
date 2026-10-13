@@ -17,7 +17,7 @@ pub(crate) fn next_turn_number_for_player(game: &GameState, player: PlayerId) ->
     game.next_turn_number_if_player_stayed(player)
 }
 
-fn grant_duration_source(
+pub(crate) fn grant_duration_source(
     duration: GrantDuration,
     game: &GameState,
     source: crate::ids::ObjectId,

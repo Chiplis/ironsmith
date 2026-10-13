@@ -25,6 +25,7 @@ pub struct GrantPlayTaggedEffect {
     pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
     /// Require exact selected-grant authority for this casting conversion.
     pub permission_bound_mana: bool,
+    pub exact_tagged_objects: bool,
     /// Compatibility predicate for older compiled-text pattern matchers.
     /// True for both `AnyColor` and `AnyType`.
     pub allow_any_color_for_cast: bool,
@@ -73,6 +74,7 @@ impl GrantPlayTaggedEffect {
             allow_land,
             mana_spend_mode,
             permission_bound_mana: false,
+            exact_tagged_objects: false,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
@@ -349,7 +351,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             { continue; }
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
-                if self.alternative_cost.is_some() { continue; }
+                if self.alternative_cost.is_some() || self.exact_tagged_objects { continue; }
                 if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
                     object_id = found;
                 } else {
@@ -482,7 +484,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 let price = crate::cost::TotalCost::from_costs(components);
                 game.effect_store.grant_registry.grant_to_card(object_id, object_zone, player_id,
                     Grantable::AlternativeCast(crate::alternative_cast::AlternativeCastingMethod::cast_from_zone_with_total_cost(
-                        "Effect casting price", object_zone, price, None, false)), source.clone());
+                        if price.costs().is_empty() { "Without paying its mana cost" } else { "Effect casting price" }, object_zone, price, None, false)), source.clone());
+                // A price added to an existing play permission shares its use budget.
+                let shared_usage_id = shared_usage_id.or_else(|| game.effect_store.grant_registry.grants.iter().rev().find(|grant| {
+                    grant.target_id == Some(object_id) && grant.player == player_id
+                        && matches!(grant.grantable, Grantable::PlayFrom)
+                        && grant.source.source_id() == ctx.source && grant.shared_usage_id.is_some()
+                }).and_then(|grant| grant.shared_usage_id));
                 let grant = game.effect_store.grant_registry.grants.last_mut().expect("inserted priced grant");
                 grant.filter = Some(spell_filter);
                 grant.play_from_constraints = constraints.clone();

@@ -404,11 +404,15 @@ fn queue_copy_becomes_targeted_events(
 }
 
 trait CopyCharacteristicModifiers {
-    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object);
+    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object, loyalty: Option<u32>);
 }
 
 impl CopyCharacteristicModifiers for CopySpellEffect {
-    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object) {
+    fn apply_copy_characteristic_modifiers(&self, copy: &mut Object, loyalty: Option<u32>) {
+        if let Some(loyalty) = loyalty {
+            copy.base_loyalty = Some(loyalty);
+            copy.counters.remove(&crate::object::CounterType::Loyalty);
+        }
         if let Some(colors) = self.set_colors {
             copy.color_override = Some(colors);
         }
@@ -487,6 +491,8 @@ impl EffectExecutor for CopySpellEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let copy_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let loyalty = self.set_base_loyalty.as_ref().map(|value|
+            crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)).transpose()?;
 
         // Resolve the stack object(s) to copy. `ChooseSpec::All` is a real
         // fanout instruction (for example, "copy all spells you control"),
@@ -554,7 +560,7 @@ impl EffectExecutor for CopySpellEffect {
                         &original_entry,
                         copier,
                         &self.removed_supertypes,
-                        |copy| self.apply_copy_characteristic_modifiers(copy),
+                        |copy| self.apply_copy_characteristic_modifiers(copy, loyalty),
                         None,
                     )?
                     else {
@@ -620,7 +626,7 @@ impl EffectExecutor for CopySpellEffect {
                     &original_entry,
                     copier,
                     &self.removed_supertypes,
-                    |copy| self.apply_copy_characteristic_modifiers(copy),
+                    |copy| self.apply_copy_characteristic_modifiers(copy, loyalty),
                     None,
                 )?
                 else {

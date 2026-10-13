@@ -5,27 +5,54 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{CreateTokenEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
+#[cfg(test)]
+use crate::events::KeywordActionEvent;
+use crate::events::KeywordActionKind;
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 
 /// Effect that performs the investigate keyword action.
 ///
 /// Each investigate creates a Clue token as a separate action.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct InvestigateEffect {
     /// How many times to investigate.
     pub count: Value,
     /// The player who investigates.
     pub player: PlayerFilter,
+    token: crate::cards::CardDefinition,
+}
+
+impl PartialEq for InvestigateEffect {
+    fn eq(&self, other: &Self) -> bool { self.count == other.count && self.player == other.player }
 }
 
 impl InvestigateEffect {
+    fn body_program(
+        &self,
+        player: PlayerFilter,
+    ) -> crate::effects::composition::KeywordCompletionProgram {
+        let token = self.token.clone();
+        let roles = ironsmith_core::TokenTextRoles::rules_implied(
+            ironsmith_core::TokenNameTextRole::SubtypeDerived,
+            token.abilities.len(),
+        );
+        crate::effects::composition::KeywordCompletionProgram {
+            action: KeywordActionKind::Investigate,
+            amount: 1.into(),
+            player: player.clone(),
+            body: crate::effect::Effect::new(
+                CreateTokenEffect::new(token, 1, player).with_text_roles(roles),
+            ),
+        }
+    }
+
     /// Create a new investigate effect.
     pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self {
             count: count.into(),
             player,
+            token: clue_token_definition(),
         }
     }
 
@@ -36,6 +63,12 @@ impl InvestigateEffect {
 }
 
 impl EffectExecutor for InvestigateEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&crate::effect::Effect::new(
+            self.body_program(self.player.clone()),
+        ));
+    }
+
     fn requires_sequential_player_actions(&self) -> bool {
         true
     }
@@ -78,33 +111,9 @@ impl EffectExecutor for InvestigateEffect {
                 );
                 let mut created_clues = 0i64;
                 for _ in 0..count {
-                    let token = clue_token_definition();
-                    let roles = ironsmith_core::TokenTextRoles::rules_implied(
-                        ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len(),
-                    );
-                    let effect = CreateTokenEffect::new(
-                        token,
-                        1,
-                        PlayerFilter::Specific(player_id),
-                    ).with_text_roles(roles);
-                    let creation = effect.execute_child_with_outputs(game, ctx)?;
-                    created_clues += creation.outcome.output_objects().len() as i64;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::resolved(),
-                        ));
-                    }
-                    let child = crate::effects::composition::complete_keyword_action_with_outputs(
-                        game,
-                        ctx,
-                        creation,
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Investigate,
-                            player_id,
-                            ctx.source,
-                            1,
-                        ),
-                    )?;
+                    let effect = self.body_program(PlayerFilter::Specific(player_id));
+                    let child = effect.execute_child_with_outputs(game, ctx)?;
+                    created_clues += child.outcome.output_objects().len() as i64;
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::resolved(),

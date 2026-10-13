@@ -29,6 +29,98 @@ fn definitions(name: &str, text: &str) -> [CardDefinition; 2] {
 fn ob_nixilis_casualty_copy_is_supported_and_rendered() {
     for definition in definitions("Ob Nixilis, the Adversary", OB_NIXILIS) {
         let debug = format!("{definition:?}");
-        assert!(debug.contains("VariableCasualtyPlaneswalkerCopy"), "{debug}");
+        assert!(
+            debug.contains("VariableCasualtyPlaneswalkerCopy"),
+            "{debug}"
+        );
+    }
+}
+
+#[test]
+fn printed_casualty_receipt_survives_compilation_materialization_and_payment() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
+    use ironsmith::effects::{
+        EffectContext as ExecutionContext, EffectExecutor, VariableCasualtyPlaneswalkerCopyEffect,
+    };
+    use ironsmith::{CardId, GameState, PlayerId, Zone};
+    struct PayCasualty;
+    impl DecisionMaker for PayCasualty {
+        fn decide_options(
+            &mut self,
+            game: &GameState,
+            ctx: &ironsmith::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose optional costs for") {
+                return ctx
+                    .options
+                    .iter()
+                    .filter(|option| option.legal)
+                    .take(1)
+                    .map(|option| option.index)
+                    .collect();
+            }
+            SelectFirstDecisionMaker.decide_options(game, ctx)
+        }
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &ironsmith::decisions::context::SelectObjectsContext,
+        ) -> Vec<ironsmith::ObjectId> {
+            SelectFirstDecisionMaker.decide_objects(game, ctx)
+        }
+    }
+    for definition in definitions("Ob Nixilis, the Adversary", OB_NIXILIS) {
+        let effect = definition
+            .abilities
+            .iter()
+            .find_map(|ability| {
+                let AbilityKind::Triggered(trigger) = &ability.kind else {
+                    return None;
+                };
+                trigger
+                    .effects
+                    .iter()
+                    .find_map(|effect| {
+                        effect.downcast_ref::<VariableCasualtyPlaneswalkerCopyEffect>()
+                    })
+                    .cloned()
+            })
+            .expect("casualty copy adapter");
+        assert!(effect.cost_ref.discriminator.is_some());
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&definition, player, Zone::Hand);
+        let creature = ironsmith::card::CardBuilder::new(CardId::new(), "Paid creature")
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(7, 7))
+            .build();
+        game.create_object_from_card(&creature, player, Zone::Battlefield);
+        let snapshot =
+            ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let cast_id = {
+            let mut dm = PayCasualty;
+            let mut ctx = ExecutionContext::new(source, player, &mut dm);
+            ctx.set_tagged_objects("cast_fixture", vec![snapshot]);
+            let cast = ironsmith::effects::CastTaggedEffect::new(
+                "cast_fixture",
+                ironsmith::target::PlayerFilter::You,
+            )
+            .without_paying_mana_cost()
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+            cast.objects().expect("cast completes")[0]
+        };
+        let mut ctx = ExecutionContext::new_default(cast_id, player);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let copy = game
+            .object(outcome.objects().expect("copy result")[0])
+            .unwrap();
+        assert_eq!(copy.base_loyalty, Some(7));
+        assert!(
+            !copy
+                .supertypes
+                .contains(&ironsmith::types::Supertype::Legendary)
+        );
     }
 }

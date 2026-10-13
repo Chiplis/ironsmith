@@ -2686,7 +2686,7 @@ pub(super) fn describe_same_name_extraction_preserves_finite_count_and_hand_draw
         ObjectFilter::default()
             .in_zone(Zone::Hand)
             .owned_by(PlayerFilter::target_opponent()),
-    );
+    ).draw_effect();
     let effects = vec![
         Effect::new(choose_name),
         Effect::new(target_opponent),
@@ -2899,7 +2899,7 @@ pub(super) fn describe_countered_spell_same_name_extraction_keeps_spell_referenc
         ObjectFilter::default()
             .in_zone(Zone::Hand)
             .owned_by(search_owner.clone()),
-    );
+    ).draw_effect();
     let effects = vec![
         counter,
         Effect::new(search),
@@ -2972,7 +2972,7 @@ pub(super) fn describe_exiled_target_same_name_extraction_accepts_exact_controll
         ObjectFilter::default()
             .in_zone(Zone::Hand)
             .owned_by(search_owner),
-    );
+    ).draw_effect();
     let effects = vec![
         exile,
         Effect::new(search),
@@ -3289,6 +3289,9 @@ pub(super) fn describe_draw_for_each_tagged_matching_preserves_hand_origin() {
         filter,
     );
 
+    let canonical = draw.draw_effect();
+    assert_eq!(describe_effect_list(&[Effect::new(draw.clone())]),
+        describe_effect_list(&[Effect::new(canonical)]), "legacy and canonical draw surfaces agree");
     assert_eq!(
         describe_effect_list(&[Effect::new(draw)]),
         "target opponent draws a card for each card exiled from their hand this way"
@@ -4973,4 +4976,11 @@ pub(super) fn describe_each_player_choose_then_untap_preserves_chosen_set() {
         describe_effect(&Effect::new(for_players)),
         "Each player chooses a permanent for each card in their graveyard, then untaps those permanents"
     );
+}
+
+#[test]
+fn describe_copy_spell_starting_loyalty_override() {
+    let effect = Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::Source)
+        .with_set_base_loyalty(Value::Fixed(7)));
+    assert!(describe_effect(&effect).contains("starting loyalty 7"));
 }

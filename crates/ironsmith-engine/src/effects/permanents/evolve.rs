@@ -97,7 +97,15 @@ pub(crate) fn evolve_entering_creature_is_larger(
     entered_power > source_power || entered_toughness > source_toughness
 }
 
+fn evolve_counter_program() -> crate::effects::PutCountersEffect {
+    crate::effects::PutCountersEffect::on_source(CounterType::PlusOnePlusOne, 1)
+}
+
 impl EffectExecutor for EvolveEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&crate::effect::Effect::new(evolve_counter_program()));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -142,16 +150,7 @@ impl EffectExecutor for EvolveEffect {
                     ));
                 }
 
-                let event = crate::events::Event::put_counters(
-                    source_id,
-                    CounterType::PlusOnePlusOne,
-                    1,
-                    ctx.cause.clone(),
-                )
-                .with_provenance(ctx.provenance);
-                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
-                    game, ctx, event,
-                )?;
+                let placement = evolve_counter_program().execute_child_with_outputs(game, ctx)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),

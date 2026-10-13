@@ -26,7 +26,7 @@ pub(crate) mod movement_instruction;
 mod prepared_move;
 pub use entry_observation::battlefield_entry_observation;
 pub(crate) use prepared_move::{
-    PreparedZoneMove, commit_zone_moves, commit_zone_moves_with_completion,
+    PreparedZoneMove, commit_exact_zone_moves_before_completion, commit_zone_moves, commit_zone_moves_with_completion,
     complete_movement_batch, execute_battlefield_entries, execute_battlefield_entries_with_outputs,
     execute_zone_moves, execute_zone_moves_with_outputs, group_zone_move_observations,
     observe_zone_move_originals, observe_zone_move_originals_with_cause, prepare_zone_moves,

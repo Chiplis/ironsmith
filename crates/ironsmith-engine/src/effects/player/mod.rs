@@ -11,6 +11,8 @@ mod become_monarch;
 mod cascade;
 mod cast_source;
 mod cast_tagged;
+mod offer_tagged_cast;
+pub(crate) use offer_tagged_cast::OfferTaggedCast;
 mod choose_card_name;
 mod choose_card_type;
 mod choose_color;
@@ -156,3 +158,6 @@ pub use reveal_chosen_subtype::RevealChosenSubtypeEffect;
 
 mod ripple;
 pub use ripple::RippleEffect;
+
+mod grant_exact_objects;
+pub(crate) use grant_exact_objects::GrantExactObjects;

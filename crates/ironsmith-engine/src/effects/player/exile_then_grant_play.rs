@@ -4,10 +4,10 @@ use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
-use crate::effects::player::grant_by_spec::next_turn_number_for_player;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{GrantDuration, Grantable};
+#[cfg(test)]
 use crate::grant_registry::GrantSource;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
@@ -37,6 +37,13 @@ impl ExileThenGrantPlayEffect {
 }
 
 impl EffectExecutor for ExileThenGrantPlayEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&crate::effect::Effect::new(crate::effects::MoveToZoneEffect::new(self.target.clone(), Zone::Exile, false)));
+        visitor(&crate::effect::Effect::new(crate::effects::GrantBySpecEffect::new(
+            crate::grant::GrantSpec::new(Grantable::PlayFrom, crate::target::ObjectFilter::tagged("__exact_exile_arrivals"), Zone::Exile),
+            self.player.clone(), self.duration)));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -70,13 +77,9 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
                     ));
                 };
                 let player = resolve_player_filter(game, &self.player, ctx)?;
-                let expires = match self.duration {
-                    GrantDuration::UntilEndOfTurn => game.turn.turn_number,
-                    GrantDuration::Forever | GrantDuration::UntilYourNextTurn => u32::MAX,
-                    GrantDuration::UntilYourNextTurnEnd => {
-                        next_turn_number_for_player(game, player)
-                    }
-                };
+                let grant_source = crate::effects::player::grant_by_spec::grant_duration_source(
+                    self.duration, game, ctx.source, player);
+                let starts_on_turn = self.available_starting_next_turn.then_some(game.turn.turn_number.saturating_add(1));
                 let request = crate::effects::zones::PreparedZoneMove::capture(
                     game,
                     target_id,
@@ -105,48 +108,13 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
                             })
                             .collect::<Vec<_>>();
 
-                        for &exiled_id in &exiled_ids {
-                            let grant_source = match self.duration {
-                                GrantDuration::UntilYourNextTurn => {
-                                    GrantSource::until_player_next_turn_start(
-                                        ctx.source,
-                                        player,
-                                        game.turn.turn_number,
-                                    )
-                                }
-                                GrantDuration::UntilYourNextTurnEnd => {
-                                    GrantSource::until_player_next_turn_end(
-                                        ctx.source, player, expires,
-                                    )
-                                }
-                                GrantDuration::UntilEndOfTurn | GrantDuration::Forever => {
-                                    GrantSource::Effect {
-                                        source_id: ctx.source,
-                                        expires_end_of_turn: expires,
-                                    }
-                                }
-                            };
-                            if self.available_starting_next_turn {
-                                game.effect_store
-                                    .grant_registry
-                                    .grant_to_card_starting_on_turn(
-                                        exiled_id,
-                                        Zone::Exile,
-                                        player,
-                                        Grantable::PlayFrom,
-                                        game.turn.turn_number.saturating_add(1),
-                                        grant_source,
-                                    );
-                            } else {
-                                game.effect_store.grant_registry.grant_to_card(
-                                    exiled_id,
-                                    Zone::Exile,
-                                    player,
-                                    Grantable::PlayFrom,
-                                    grant_source,
-                                );
-                            }
-                        }
+                        // Execute the permission child inside original-movement completion:
+                        // replacement-added programs must already see this permission.
+                        super::GrantExactObjects {
+                            objects: exiled_ids.clone(), zone: Zone::Exile, player,
+                            permission: Grantable::PlayFrom, source: grant_source,
+                            starts_on_turn,
+                        }.execute_child_with_outputs(game, ctx)?;
 
                         let original = if exiled_ids.is_empty() {
                             EffectOutcome::count(0)

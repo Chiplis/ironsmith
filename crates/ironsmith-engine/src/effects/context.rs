@@ -1758,6 +1758,20 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Replace any existing object snapshots for a tag.
+    pub(crate) fn with_object_tags<R>(
+        &mut self, tags: impl IntoIterator<Item = TagKey>, run: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let previous = tags.into_iter().map(|tag| {
+            let old = self.tagged_objects.remove(&tag); (tag, old)
+        }).collect::<Vec<_>>();
+        let result = run(self);
+        for (tag, old) in previous {
+            self.tagged_objects.remove(&tag);
+            if let Some(old) = old { self.tagged_objects.insert(tag, old); }
+        }
+        result
+    }
+
     pub(crate) fn with_object_tag<R>(
         &mut self,
         tag: impl Into<TagKey>,

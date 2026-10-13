@@ -1,192 +1,41 @@
-//! Grant temporary "cast this tagged spell without paying its mana cost"
-//! permissions.
+//! Legacy free-cast surface expanded to the shared tagged casting permission.
 
-use crate::alternative_cast::AlternativeCastingMethod;
-use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
-use crate::effects::player::grant_by_spec::next_turn_number_for_player;
-use crate::effects::{ExecutionContext, ExecutionError};
+use crate::effect::{Effect, EffectOutcome};
+use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError, GrantPlayTaggedEffect};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::grant_registry::GrantSource;
 
-/// Grants a temporary zero-mana alternative casting method to tagged spells.
 pub type GrantTaggedSpellFreeCastUntilEndOfTurnEffect =
     ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect;
 
+fn program(effect: &GrantTaggedSpellFreeCastUntilEndOfTurnEffect) -> GrantPlayTaggedEffect {
+    let mut grant = GrantPlayTaggedEffect::new(
+        effect.tag.clone(),
+        effect.player.clone(),
+        effect.duration,
+        false,
+        false,
+    )
+    .with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()))
+    .while_on_top_of_library_if(effect.while_on_top_of_library);
+    if let Some(zone) = effect.zone {
+        grant = grant.with_filter(crate::filter::ObjectFilter::default().in_zone(zone));
+    }
+    grant
+}
+
 impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
+    fn canonical_program(&self) -> Option<Effect> {
+        Some(Effect::new(program(self)))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        self.execute_with_outputs(game, ctx)
-            .map(crate::effects::CompletedEffectOutputs::into_outcome)
-    }
-
-    fn execute_with_outputs(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
-        {
-            if self.while_on_top_of_library {
-                return Err(ExecutionError::IncompleteEvidence(
-                    "source-lifetime casting permission cannot also track a library top".into(),
-                ));
-            }
-            let mut grant = crate::effects::GrantPlayTaggedEffect::new(
-                self.tag.clone(),
-                self.player.clone(),
-                self.duration,
-                false,
-                false,
-            )
-            .with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
-            if let Some(zone) = self.zone {
-                let mut filter = crate::filter::ObjectFilter::default();
-                filter.zone = Some(zone);
-                grant = grant.with_filter(filter);
-            }
-            return crate::effects::execute_effect_with_outputs(
-                game,
-                &crate::effect::Effect::new(grant),
-                ctx,
-            );
-        }
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let Some(snapshots) = ctx.get_tagged_all(self.tag.as_str()).cloned() else {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        };
-
-        let expires_end_of_turn = match self.duration {
-            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
-            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => {
-                next_turn_number_for_player(game, player_id).saturating_sub(1)
-            }
-            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
-                next_turn_number_for_player(game, player_id)
-            }
-            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
-                game.turn.turn_number.saturating_add(1)
-            }
-            crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
-            crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
-            | crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource
-            | crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => u32::MAX,
-        };
-        let mut granted = 0usize;
-        let mut seen = std::collections::HashSet::new();
-
-        for snapshot in snapshots {
-            let mut object_id = snapshot.object_id;
-            if game.object(object_id).is_none() {
-                if let Some(found) = game.find_object_by_stable_id(snapshot.stable_id) {
-                    object_id = found;
-                } else {
-                    continue;
-                }
-            }
-
-            let Some(object) = game.object(object_id) else {
-                continue;
-            };
-            if object.is_land() || !seen.insert(object_id) {
-                continue;
-            }
-            let zone = object.zone;
-            if self.zone.is_some_and(|required_zone| required_zone != zone) {
-                continue;
-            }
-            let source = if self.while_on_top_of_library {
-                GrantSource::EffectWhileStableCardOnTopOfLibrary {
-                    source_id: ctx.source,
-                    expires_end_of_turn,
-                    stable_id: object.stable_id,
-                    player: object.owner,
-                    library_top_revision: game.library_top_revision(object.owner),
-                }
-            } else if self.duration
-                == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
-            {
-                GrantSource::until_player_next_turn_start(
-                    ctx.source,
-                    player_id,
-                    game.turn.turn_number,
-                )
-            } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
-            {
-                GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
-            } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
-            {
-                GrantSource::until_player_next_end_step(ctx.source, player_id, game)
-            } else if self.duration
-                == crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother
-            {
-                GrantSource::until_source_exiles_another(
-                    ctx.source,
-                    game.exiled_with_source_revision(ctx.source),
-                )
-            } else {
-                GrantSource::Effect {
-                    source_id: ctx.source,
-                    expires_end_of_turn,
-                }
-            };
-
-            let method = AlternativeCastingMethod::alternative_cost(
-                "Without paying its mana cost",
-                None,
-                vec![],
-            );
-            if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled {
-                game.effect_store
-                    .grant_registry
-                    .grant_alternative_cast_to_stable_card(
-                        object_id,
-                        object.stable_id,
-                        zone,
-                        player_id,
-                        method,
-                        source,
-                    );
-            } else {
-                game.effect_store
-                    .grant_registry
-                    .grant_alternative_cast_to_card(object_id, zone, player_id, method, source);
-            }
-            // "You may cast a creature spell from among them without paying
-            // its mana cost" (Idol of Endurance): the free cost is a way to
-            // use the same permission, so it shares that permission's total
-            // budget rather than outliving it.
-            let shared_usage_id = game
-                .effect_store
-                .grant_registry
-                .grants
-                .iter()
-                .rev()
-                .find(|grant| {
-                    grant.target_id == Some(object_id)
-                        && grant.player == player_id
-                        && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
-                        && grant.source.source_id() == ctx.source
-                        && grant.shared_usage_id.is_some()
-                })
-                .and_then(|grant| grant.shared_usage_id);
-            if let Some(shared_usage_id) = shared_usage_id
-                && let Some(alternative) = game.effect_store.grant_registry.grants.last_mut()
-            {
-                alternative.shared_usage_id = Some(shared_usage_id);
-            }
-            granted += 1;
-        }
-
-        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(granted as i32),
-        ))
+        program(self).execute_child(game, ctx)
     }
 }
 
@@ -299,9 +148,9 @@ mod tests {
             .granted_alternative_casts_for_card(&game, exiled_id, Zone::Exile, bob);
         assert!(
             alternatives.iter().any(|alternative| matches!(
-                alternative.method,
-                AlternativeCastingMethod::Composed { name, .. }
-                    if name.as_str() == "Without paying its mana cost"
+                &alternative.method,
+                AlternativeCastingMethod::FromZone { name, total_cost, zone: Zone::Exile, .. }
+                    if name.as_str() == "Without paying its mana cost" && total_cost.costs().is_empty()
             )),
             "the owner should receive a no-mana alternative cast from exile, got {alternatives:?}"
         );
@@ -339,6 +188,18 @@ mod tests {
         let reexiled_id = game
             .move_object_by_effect(graveyard_id, Zone::Exile)
             .expect("card should be able to move back to exile");
+        let before = game.effect_store.grant_registry.grants.len();
+        GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+            "release_to_the_wind_exiled",
+            PlayerFilter::You,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("stale tag is harmless");
+        assert_eq!(
+            game.effect_store.grant_registry.grants.len(),
+            before,
+            "a later grant must not follow a stale tag into a new exile incarnation"
+        );
         assert!(
             !game.effect_store.grant_registry.card_can_play_from_zone(
                 &game,

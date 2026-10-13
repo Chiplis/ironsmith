@@ -21,13 +21,15 @@ use crate::target::PlayerFilter;
 use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 
-use super::runtime_helpers::{
-    cast_effect_driven_spell_without_paying, complete_effect_driven_cast_with_outputs,
-    effect_driven_cast_options_for_card,
-};
 
 /// Effect that resolves a discover action for a player.
 impl EffectExecutor for DiscoverEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        super::runtime_helpers::visit_library_cast_program(visitor, self.player.clone(), LibraryConsultMode::Exile,
+            crate::target::ObjectFilter::nonland().with_mana_value(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(self.count.clone()))),
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch, "__discover_all", "__discover_match", true, LibraryBottomOrder::Random);
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -42,6 +44,7 @@ impl EffectExecutor for DiscoverEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        ctx.with_object_tags(["__discover_all", "__discover_match"].map(TagKey::from), |ctx| {
         let mut consultation = None;
         let instruction = crate::effects::composition::execute_transaction(
             game,
@@ -83,84 +86,18 @@ impl EffectExecutor for DiscoverEffect {
                 {
                     let candidate_id = candidate_snapshot.object_id;
 
-                    let candidate_name = candidate_obj.name.to_string();
-                    let choice_ctx = crate::decisions::context::BooleanContext::new(
-                        player_id,
-                        Some(candidate_id),
-                        format!("Cast {candidate_name} without paying its mana cost?"),
-                    );
-                    let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                    let cast = super::OfferTaggedCast {
+                        tag: match_tag.clone(), player: PlayerFilter::Specific(player_id), zone: Zone::Exile,
+                        spell_filter: crate::target::ObjectFilter::nonland().with_mana_value(
+                            crate::filter::Comparison::LessThanOrEqual(count as i32)),
+                        source_name: None,
+                    }.execute_child_with_outputs(game, ctx)?;
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
+                        return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
                     }
-
-                    let mut put_in_hand = !should_cast;
-                    if should_cast {
-                        // CR 701.57a: any face whose resulting spell has mana value N
-                        // or less may be cast (the other half of a split card, an
-                        // Adventure, an MDFC back face).
-                        let from_zone = candidate_obj.zone;
-                        let filter = crate::target::ObjectFilter::nonland().with_mana_value(
-                            crate::filter::Comparison::LessThanOrEqual(count as i32),
-                        );
-                        let options = effect_driven_cast_options_for_card(
-                            game,
-                            player_id,
-                            ctx.source,
-                            candidate_id,
-                            from_zone,
-                            &filter,
-                        );
-                        let option = match options.len() {
-                            0 => None,
-                            1 => options.into_iter().next(),
-                            _ => {
-                                let choices = options
-                                    .into_iter()
-                                    .map(|option| (option.label.clone(), option))
-                                    .collect::<Vec<_>>();
-                                let choice = crate::decisions::ask_choose_one(
-                                    game,
-                                    ctx.decision_maker,
-                                    player_id,
-                                    ctx.source,
-                                    &choices,
-                                );
-                                if ctx.decision_maker.awaiting_choice() {
-                                    return Ok(CompletedEffectOutputs::aggregate_only(
-                                        EffectOutcome::count(0),
-                                    ));
-                                }
-                                choice
-                            }
-                        };
-                        let cast_result = match option {
-                            Some(option) => cast_effect_driven_spell_without_paying(
-                                game, ctx, player_id, &option,
-                            )?,
-                            None => None,
-                        };
-                        if let Some(result) = cast_result {
-                            selected_object = Some(result.new_id);
-                            casted_spell = Some(complete_effect_driven_cast_with_outputs(
-                                EffectOutcome::resolved(),
-                                game,
-                                result,
-                                player_id,
-                                ctx.provenance,
-                            )?);
-                        } else if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        } else {
-                            // CR 701.57a: "If you don't cast it, put that card into
-                            // your hand" — including when the cast attempt fails.
-                            put_in_hand = true;
-                        }
-                    }
+                    selected_object = cast.outcome.objects().and_then(|objects| objects.first()).copied();
+                    let put_in_hand = selected_object.is_none();
+                    if selected_object.is_some() { casted_spell = Some(cast); }
                     if put_in_hand
                         && game
                             .object(candidate_id)
@@ -268,6 +205,8 @@ impl EffectExecutor for DiscoverEffect {
             } else {
                 outputs
             }
+        })
+
         })
     }
 }

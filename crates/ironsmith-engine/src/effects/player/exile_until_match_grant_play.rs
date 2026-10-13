@@ -1,18 +1,12 @@
 //! Exile cards from the top of a library until one matches a filter, then
 //! grant temporary play permission for that exiled card until end of turn.
 
-use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
-use crate::effects::consult_helpers::{
-    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
-};
-use crate::effects::helpers::resolve_player_filter;
+use crate::effects::consult_helpers::LibraryConsultMode;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::grant::Grantable;
-use crate::grant_registry::GrantSource;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
@@ -35,6 +29,46 @@ impl ExileUntilMatchGrantPlayEffect {
 }
 
 impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
+    fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        use crate::effect::Effect;
+        use crate::effects::{
+            ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, GrantPlayTaggedDuration,
+            GrantPlayTaggedEffect,
+        };
+        let owner = TagKey::from("__consult_owner");
+        let caster = TagKey::from("__consult_caster");
+        let all = TagKey::from("__consult_all");
+        let matched = TagKey::from("__consult_match");
+        let mut grant = GrantPlayTaggedEffect::new(
+            matched.clone(),
+            PlayerFilter::TaggedPlayer(caster.clone()),
+            GrantPlayTaggedDuration::UntilEndOfTurn,
+            true,
+            false,
+        )
+        .with_filter(ObjectFilter::default().in_zone(Zone::Exile));
+        grant.exact_tagged_objects = true;
+        Some(Effect::new(crate::effects::composition::ScopedProgram {
+            players: vec![
+                (owner.clone(), self.player.clone()),
+                (caster, self.caster.clone()),
+            ],
+            object_tags: vec![all.clone(), matched.clone()],
+            effects: vec![
+                Effect::new(ConsultTopOfLibraryEffect::new(
+                    PlayerFilter::TaggedPlayer(owner),
+                    LibraryConsultMode::Exile,
+                    self.filter.clone(),
+                    ConsultTopOfLibraryStopRule::FirstMatch,
+                    all,
+                    matched.clone(),
+                )),
+                Effect::new(grant),
+            ],
+            result_objects: (matched, Zone::Exile),
+            retain_result_snapshots: false,
+        }))
+    }
     fn execute(
         &self,
         game: &mut GameState,
@@ -43,90 +77,64 @@ impl EffectExecutor for ExileUntilMatchGrantPlayEffect {
         self.execute_with_outputs(game, ctx)
             .map(CompletedEffectOutputs::into_outcome)
     }
-
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let mut consultation = None;
-        let instruction = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let player_id = resolve_player_filter(game, &self.player, ctx)?;
-                let caster_id = resolve_player_filter(game, &self.caster, ctx)?;
-                let match_tag = TagKey::from("__exile_until_match_grant_play_match");
-                let filter_ctx = ctx.filter_context(game);
-                consultation = Some(execute_library_consult_with_outputs(
-                    game,
-                    ctx,
-                    player_id,
-                    LibraryConsultMode::Exile,
-                    LibraryConsultStopRule::FirstMatch,
-                    None,
-                    Some(&match_tag),
-                    |object, game| self.filter.matches(object, &filter_ctx, game),
-                )?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
+        self.canonical_program()
+            .expect("consultation program")
+            .0
+            .execute_child_with_outputs(game, ctx)
+    }
+}
 
-                let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned() else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
-                let candidate_id = candidate_snapshot.object_id;
-                if !game
-                    .object(candidate_id)
-                    .is_some_and(|object| object.zone == Zone::Exile)
-                {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
 
-                game.effect_store.grant_registry.grant_to_card(
-                    candidate_id,
-                    Zone::Exile,
-                    caster_id,
-                    Grantable::PlayFrom,
-                    GrantSource::Effect {
-                        source_id: ctx.source,
-                        expires_end_of_turn: game.turn.turn_number,
-                    },
-                );
-
-                Ok(CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::with_objects(vec![candidate_id]),
-                ))
-            },
+    #[test]
+    fn consultation_grants_to_the_bound_caster_and_restores_local_tags() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::new(), "Consulted creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let original = game.create_object_from_card(&card, alice, Zone::Library);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_players("__consult_caster", vec![alice]);
+        let result = ExileUntilMatchGrantPlayEffect::new(
+            PlayerFilter::You,
+            ObjectFilter::default().with_type(CardType::Creature),
+            PlayerFilter::Specific(bob),
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        let arrival = result.objects().unwrap()[0];
+        assert_ne!(arrival, original);
+        assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            arrival,
+            Zone::Exile,
+            bob
+        ));
+        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            arrival,
+            Zone::Exile,
+            alice
+        ));
+        assert_eq!(
+            ctx.get_tagged_players("__consult_caster"),
+            Some(&vec![alice])
         );
-        if ctx.decision_maker.awaiting_choice() {
-            return instruction
-                .map(|_| CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
-        }
-        instruction.map(|outputs| {
-            if let Some(consult) = consultation {
-                let observations = consult.attach_to_outputs(EffectOutcome::resolved());
-                let primary_status = outputs.outcome.status;
-                let primary_value = outputs.outcome.value.clone();
-                let mut combined = EffectOutcome::aggregate([
-                    observations.outcome.clone(),
-                    outputs.outcome.clone(),
-                ]);
-                combined.status = primary_status;
-                combined.value = primary_value;
-                let mut outputs = outputs.project_aggregate(combined);
-                outputs.retain_batch_children([observations]);
-                outputs
-            } else {
-                outputs
-            }
-        })
+        assert!(ctx.get_tagged_all("__consult_match").is_none());
+        assert!(ctx.get_tagged_all("__consult_all").is_none());
     }
 }

@@ -1589,18 +1589,38 @@ pub trait EffectExecutor:
         self.transparent_child_effect()
     }
 
+    /// Stateless expansion of a compatibility or convenience payload into
+    /// the canonical effect vocabulary. The same body is available before
+    /// execution to structural visitors. Runtime-bound instructions retain
+    /// their prepared execution boundaries instead of constructing fake nodes.
+    fn canonical_program(&self) -> Option<Effect> { None }
+
+    /// Explicit semantic contract, independent of owned ability templates.
+    /// Native program owners can preserve branch-local bindings during inspection.
+    fn inspect_library_movement_override(&self, _context: &mut ironsmith_core::library_movement::LibraryMovementContext) -> Option<bool> {
+        None
+    }
+
+    fn library_movement_policy(&self) -> ironsmith_core::effect_capabilities::LibraryMovementPolicy {
+        ironsmith_core::effect_capabilities::library_movement_policy(std::any::type_name::<Self>())
+    }
+
     /// Visit immediately nested runtime effects, if this effect is a wrapper or
     /// composition effect.
     ///
     /// Implementations should expose only direct children. Recursive traversal is
     /// provided by the default capability helpers below.
-    fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        if let Some(program) = self.canonical_program() { visitor(&program); }
+    }
 
     /// Children executed by this instruction's resolution. Granted or deferred
     /// ability bodies remain visible to structural visitors but do not create
     /// draw boundaries while the grant itself resolves.
     fn visit_resolution_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        self.visit_child_effects(visitor);
+        if self.library_movement_policy() != ironsmith_core::effect_capabilities::LibraryMovementPolicy::Deferred {
+            self.visit_child_effects(visitor);
+        }
     }
 
 
@@ -1703,7 +1723,7 @@ pub trait EffectExecutor:
         }
 
         let mut found = false;
-        self.visit_child_effects(&mut |effect| {
+        self.visit_resolution_child_effects(&mut |effect| {
             if !found && effect.contains_mana_production() {
                 found = true;
             }
@@ -1724,7 +1744,7 @@ pub trait EffectExecutor:
         }
 
         let mut found = false;
-        self.visit_child_effects(&mut |effect| {
+        self.visit_resolution_child_effects(&mut |effect| {
             if !found && effect.could_produce_mana(game, source, controller) {
                 found = true;
             }
@@ -1757,7 +1777,7 @@ pub trait EffectExecutor:
         if let Some(symbols) = self.producible_mana_symbols(game, source, controller) {
             out.extend(symbols);
         }
-        self.visit_child_effects(&mut |effect| {
+        self.visit_resolution_child_effects(&mut |effect| {
             effect.collect_producible_mana_symbols(game, source, controller, out);
         });
     }

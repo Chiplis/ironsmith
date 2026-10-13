@@ -20,6 +20,7 @@ export function solveMobileBattleLayout({
   topBandHeight = MOBILE_OPPONENT_HUD_HEIGHT_PX,
   controlBandHeight = MOBILE_CONTROL_BAND_HEIGHT_PX,
   handPeekHeight = MOBILE_HAND_PEEK_HEIGHT_PX,
+  footerControlHeight = 0,
   stackVisible = false,
   stackRailWidth = MOBILE_STACK_RAIL_WIDTH_PX,
 } = {}) {
@@ -32,7 +33,8 @@ export function solveMobileBattleLayout({
   const controlHeight = Math.ceil(controlBandHeight);
   const handPeek = Math.ceil(handPeekHeight);
   const stackWidth = stackVisible ? Math.ceil(stackRailWidth) : 0;
-  const fixedHeight = handPeek;
+  const footerHeight = Math.max(0, Math.ceil(footerControlHeight));
+  const fixedHeight = handPeek + footerHeight;
   const availableBattlefieldHeight = Math.max(0, height - fixedHeight);
   const cardHeight = Math.max(MIN_CARD_HEIGHT, Math.min(MAX_CARD_HEIGHT,
     Math.floor((availableBattlefieldHeight - rowGap * 2) / 3.3)));
@@ -52,6 +54,7 @@ export function solveMobileBattleLayout({
     topStatusHeight,
     controlBandHeight: controlHeight,
     handPeekHeight: handPeek,
+    footerControlHeight: footerHeight,
     cardWidth,
     cardHeight,
     landHeight,

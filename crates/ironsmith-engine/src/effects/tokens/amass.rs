@@ -3,10 +3,8 @@
 use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::color::ColorSet;
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, ExecutionFact};
-use crate::effects::helpers::{normalize_object_selection, resolve_value};
+use crate::effects::helpers::resolve_value;
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
@@ -45,10 +43,14 @@ fn army_creature_candidates(game: &GameState, controller: PlayerId) -> Vec<Objec
 }
 
 fn army_token_definition(subtype: Subtype) -> Result<CardDefinition, ExecutionError> {
+    army_token_blueprint(subtype, CardId::new())
+}
+
+fn army_token_blueprint(subtype: Subtype, card_id: CardId) -> Result<CardDefinition, ExecutionError> {
     let subtypes = vec![subtype, Subtype::Army];
     let name = ironsmith_core::subtype_derived_token_name(&subtypes).ok_or_else(||
         ExecutionError::IncompleteEvidence("amass token name requires canonical subtype spellings".into()))?;
-    Ok(CardDefinitionBuilder::new(CardId::new(), &name)
+    Ok(CardDefinitionBuilder::new(card_id, &name)
         .token()
         .card_types(vec![CardType::Creature])
         .subtypes(subtypes)
@@ -58,6 +60,19 @@ fn army_token_definition(subtype: Subtype) -> Result<CardDefinition, ExecutionEr
 }
 
 impl EffectExecutor for AmassEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        if let Ok(token) = army_token_blueprint(amass_token_subtype(self), CardId::from_raw(0)) {
+            visitor(&crate::effect::Effect::new(CreateTokenEffect::you(token, 1)));
+        }
+        visitor(&crate::effect::Effect::new(PutCountersEffect::new(
+            CounterType::PlusOnePlusOne, self.amount.clone(),
+            ChooseSpec::Object(crate::target::ObjectFilter::creature().with_subtype(Subtype::Army)))));
+        visitor(&crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::Object(crate::target::ObjectFilter::creature().with_subtype(Subtype::Army)),
+            crate::continuous::Modification::AddSubtypes(vec![amass_token_subtype(self)]),
+            crate::effect::Until::Forever)));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -83,68 +98,26 @@ impl EffectExecutor for AmassEffect {
             |game, ctx| {
                 let amass_subtype = amass_token_subtype(self);
                 let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-                let mut outcomes = Vec::new();
-                let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::resolved(),
-                );
-
-                let mut army_candidates = army_creature_candidates(game, ctx.controller);
-                if army_candidates.is_empty() {
-                    let token = army_token_definition(amass_subtype)?;
-                    let roles = ironsmith_core::TokenTextRoles::rules_implied(
-                        ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len(),
-                    );
-                    let create_outcome =
+                let (chosen, children) = crate::effects::composition::ensure_chosen_object(
+                    game, ctx, "Choose an Army creature you control for amass",
+                    army_creature_candidates,
+                    |game, ctx| {
+                        let token = army_token_definition(amass_subtype)?;
+                        let roles = ironsmith_core::TokenTextRoles::rules_implied(
+                            ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
                         CreateTokenEffect::you(token, 1).with_text_roles(roles)
-                            .execute_child_with_outputs(game, ctx)?;
-                    outcomes.push(create_outcome.outcome.clone());
-                    outputs.retain_owned_child(create_outcome);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::resolved(),
-                        ));
-                    }
-                    army_candidates = army_creature_candidates(game, ctx.controller);
+                            .execute_child_with_outputs(game, ctx)
+                    },
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()));
                 }
-
-                if army_candidates.is_empty() {
+                let mut outcomes = children.iter().map(|child| child.outcome.clone()).collect::<Vec<_>>();
+                let mut outputs = crate::effects::composition::aggregate_children(children);
+                let Some(chosen_army) = chosen else {
                     return crate::effects::composition::complete_keyword_action_with_outputs(
-                        game,
-                        ctx,
-                        outputs.project_aggregate(EffectOutcome::aggregate(outcomes)),
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Amass,
-                            ctx.controller,
-                            ctx.source,
-                            amount,
-                        ),
-                    );
-                }
-
-                let chosen_army = if army_candidates.len() == 1 {
-                    army_candidates[0]
-                } else {
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose an Army creature you control for amass",
-                        army_candidates.clone(),
-                        1,
-                        Some(1),
-                    );
-                    let chosen = make_decision(
-                        game,
-                        ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::resolved(),
-                        ));
-                    }
-                    let selected = normalize_object_selection(chosen, &army_candidates, 1);
-                    selected.first().copied().unwrap_or(army_candidates[0])
+                        game, ctx, outputs,
+                        KeywordActionEvent::new(KeywordActionKind::Amass, ctx.controller, ctx.source, amount));
                 };
 
                 // CR 701.47a places counters before adding the amass subtype. Counter

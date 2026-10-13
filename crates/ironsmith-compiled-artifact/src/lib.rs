@@ -9,12 +9,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 18 admits the CF8 payload models and main color-identity exclusions.
+// Version 19 admits retained-snapshot quantities, dynamic copy loyalty, exact
+// tagged permissions, public selections and source-linked exile programs.
 // Historical artifacts remain unchanged and require recompilation for admission.
-// See architecture/cf8-main-integrated-schema.descriptor.
-pub const FORMAT_VERSION: u32 = 18;
+// See architecture/effect-program-composition-schema.descriptor.
+pub const FORMAT_VERSION: u32 = 19;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "d3498df224a2c21459f6daac5d8714195702b19406d82b4983fca3d7622ce25d";
+    "9a5d92b13554e0c6c9df7210b8e63ebd519b1f32c79b116ecc47a2ecf38a0a0d";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -444,7 +445,7 @@ mod tests {
 
     #[test]
     fn current_golden_matches_the_integrated_source() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v18.json");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v19.json");
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
         if std::env::var_os("IRONSMITH_UPDATE_ARTIFACT_GOLDEN").is_some() {
             std::fs::write(&path, &actual).unwrap();
@@ -467,6 +468,16 @@ mod tests {
     }
 
     #[test]
+    fn previous_program_schema_is_rejected_without_rewriting_historical_bytes() {
+        let bytes = include_bytes!("../fixtures/v18.json");
+        let historical: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(historical["formatVersion"], 18);
+        assert!(CompiledCardArtifact::from_json(bytes).is_err());
+        let descriptor = include_bytes!("../../../architecture/cf8-main-integrated-schema.descriptor");
+        assert_eq!(sha256_hex(descriptor), "d3498df224a2c21459f6daac5d8714195702b19406d82b4983fca3d7622ce25d");
+    }
+
+    #[test]
     fn preceding_v17_descriptor_keeps_exact_historical_identity() {
         let descriptor = include_bytes!("../../../architecture/oct8-exact-permission-schema.descriptor");
         assert_eq!(sha256_hex(descriptor), "a4bb7964a2b6b477e4d128c655ca747453c74a9d5d1cf119ac7daf399fb840c0");
@@ -474,7 +485,7 @@ mod tests {
         old.format_version = 17;
         old.refresh_checksum();
         assert!(matches!(old.validate(), Err(ArtifactValidationError::UnsupportedFormat {
-            found: 17, expected: 18,
+            found: 17, expected: FORMAT_VERSION,
         })));
         old.format_version = FORMAT_VERSION;
         old.engine_schema_hash = sha256_hex(descriptor);
@@ -484,7 +495,7 @@ mod tests {
 
     #[test]
     fn current_descriptor_matches_the_declared_schema_fingerprint() {
-        let descriptor = include_bytes!("../../../architecture/cf8-main-integrated-schema.descriptor");
+        let descriptor = include_bytes!("../../../architecture/effect-program-composition-schema.descriptor");
         assert!(!descriptor.ends_with(b"\n"));
         assert_eq!(sha256_hex(descriptor), ENGINE_SCHEMA_HASH);
     }
@@ -499,7 +510,7 @@ mod tests {
         old.format_version = 16;
         old.refresh_checksum();
         assert!(matches!(old.validate(), Err(ArtifactValidationError::UnsupportedFormat {
-            found: 16, expected: 18,
+            found: 16, expected: FORMAT_VERSION,
         })));
         old.format_version = FORMAT_VERSION;
         old.engine_schema_hash = "51232067d473dfff42849248b163193463ac225d2861f3bfe693e8d586b8f3b6".into();
@@ -550,7 +561,7 @@ mod tests {
             "ce114b87adedd56e98d8472b5d4e3db436ab9408ff2dc3176a286c32132462b7".into();
         old.refresh_checksum();
         assert!(matches!(old.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 15, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 15, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
 
         old.format_version = FORMAT_VERSION;
@@ -588,7 +599,7 @@ mod tests {
         old.format_version = 12;
         old.refresh_checksum();
         assert!(matches!(old.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 12, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 12, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
     }
 
@@ -598,7 +609,7 @@ mod tests {
         previous.format_version = 11;
         previous.refresh_checksum();
         assert!(matches!(previous.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 11, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 11, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&previous.to_json().unwrap()).is_err());
 
         for schema in [
@@ -625,21 +636,21 @@ mod tests {
     fn previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata() {
         let mut previous = fixture();
         previous.format_version = 4;
-        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 18 })));
+        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v3.json")).is_err());
         let mut missing_keyword_identity = fixture();
         missing_keyword_identity.format_version = 5;
         missing_keyword_identity.refresh_checksum();
-        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 18 })));
+        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: FORMAT_VERSION })));
         let mut ambiguous_mana_origin = fixture();
         ambiguous_mana_origin.format_version = 6;
         ambiguous_mana_origin.refresh_checksum();
-        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: 18 })));
+        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&ambiguous_mana_origin.to_json().unwrap()).is_err());
         let mut missing_numeric_counter_owners = fixture();
         missing_numeric_counter_owners.format_version = 7;
         missing_numeric_counter_owners.refresh_checksum();
-        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: 18 })));
+        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&missing_numeric_counter_owners.to_json().unwrap()).is_err());
     }
 
@@ -649,7 +660,7 @@ mod tests {
         old_format.format_version = 8;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 8, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 8, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
 
         let mut old_schema = fixture();
@@ -667,7 +678,7 @@ mod tests {
         old_format.format_version = 9;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 9, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 9, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
 
         let mut old_schema = fixture();
@@ -685,7 +696,7 @@ mod tests {
         old_format.format_version = 10;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 10, expected: 18 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 10, expected: FORMAT_VERSION })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
         let mut relabeled = fixture();
         relabeled.engine_schema_hash = "e27b521de2a44a2c1c3349a8b8cbf5392da6882c14270112de24faecced0adc9".into();

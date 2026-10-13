@@ -6,6 +6,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 #[cfg(test)]
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::object::CounterType;
 pub use ironsmith_core::RenownEffect;
 
@@ -20,68 +21,25 @@ impl EffectExecutor for RenownEffect {
             .map(CompletedEffectOutputs::into_outcome)
     }
 
+    fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        Some(crate::effect::Effect::new(
+            super::designation::DesignationProgram {
+                designation: super::designation::PermanentDesignation::Renowned,
+                amount: self.amount.into(),
+                missing_source_is_invalid: false,
+            },
+        ))
+    }
+
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let result = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                if !game
-                    .object(ctx.source)
-                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                    || game.is_phased_out(ctx.source)
-                    || game.is_renowned(ctx.source)
-                {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                let event = crate::events::Event::put_counters(
-                    ctx.source,
-                    CounterType::PlusOnePlusOne,
-                    self.amount,
-                    ctx.cause.clone(),
-                )
-                .with_provenance(ctx.provenance);
-                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
-                    game, ctx, event,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let designation = super::designation::apply_designation(
-                    game,
-                    ctx,
-                    ctx.source,
-                    super::designation::PermanentDesignation::Renowned,
-                    self.amount,
-                )?;
-                let outcome = EffectOutcome::aggregate_with_primary_result(
-                    designation.summary_projection(),
-                    [placement.outcome.clone(), designation.clone()],
-                );
-                let mut outputs = placement;
-                outputs
-                    .retain_batch_children([CompletedEffectOutputs::aggregate_only(designation)]);
-                Ok(outputs.project_aggregate(outcome))
-            },
-        );
-        // Preserve this adapter's existing neutral result for a suspended child,
-        // including a child that failed after opening its decision. The shared
-        // transaction owns rollback; an ordinary failure still propagates.
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        result
+        self.canonical_program()
+            .expect("designation program")
+            .0
+            .execute_child_with_outputs(game, ctx)
     }
 }
 #[cfg(test)]

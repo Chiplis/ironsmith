@@ -4,7 +4,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::{
     CompletedEffectOutputs, EffectExecutor, ExecutionContext, ExecutionError, MillEffect,
 };
-use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
@@ -21,6 +20,10 @@ impl RadiationEffect {
 }
 
 impl EffectExecutor for RadiationEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&Self::body(PlayerFilter::You, crate::effect::Value::PlayerCounters(PlayerFilter::You, CounterType::Rad)));
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -44,83 +47,29 @@ impl EffectExecutor for RadiationEffect {
 }
 
 impl RadiationEffect {
-    fn resolve_with_outputs(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let player = ctx.controller;
-        let rad_count = game
-            .player(player)
-            .map_or(0, |player| player.counter_count(CounterType::Rad));
-        if rad_count == 0 {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::resolved(),
-            ));
-        }
-
-        let outcome = MillEffect::new(rad_count, PlayerFilter::Specific(player))
-            .execute_child_with_outputs(game, ctx)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let nonland_cards_milled = outcome
-            .outcome
-            .instruction_result()
-            .affected_object_memory()
-            .map_or(0, |memory| {
-                memory
-                    .iter()
-                    .filter(|card| !card.card_types.contains(&CardType::Land))
-                    .count()
-            });
-
-        let primary = outcome.outcome.summary_projection();
-        let mut outcomes = vec![outcome];
-        for _ in 0..nonland_cards_milled {
-            // CR 614.1a: the radiation life loss is a life-loss event.
-            let loss = crate::effects::life::life_change::execute_life_change_with_outputs(
-                game,
-                ctx,
-                crate::events::Event::new_with_provenance(
-                    LifeLossEvent::from_radiation(player, 1),
-                    ctx.provenance,
-                ),
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            let removal = crate::effects::counters::execute_player_counter_removal_with_outputs(
-                game,
-                ctx,
-                player,
-                CounterType::Rad,
-                1,
-                None,
-                None,
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            outcomes.push(loss);
-            outcomes.push(removal);
-        }
-
-        let outcome = EffectOutcome::aggregate_with_primary_result(
-            primary,
-            outcomes.iter().map(|child| child.outcome.clone()),
-        );
-        let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
-        for child in outcomes {
-            outputs.retain_owned_child(child);
-        }
-        Ok(outputs)
+    fn body(player: PlayerFilter, count: crate::effect::Value) -> crate::effect::Effect {
+        use crate::effect::{Effect, EffectId, Value};
+        use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectMetricQuery, PriorEffectAction};
+        const MILLED: EffectId = EffectId(0xFFFF_FD01);
+        let mut query = PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+            .with_filter(crate::target::ObjectFilter::default().without_type(CardType::Land));
+        query.action = Some(PriorEffectAction::Milled);
+        let count_milled = Value::PriorEffectMetric { effect_id: MILLED, query };
+        Effect::new(crate::effects::composition::ScopedOutcomeProgram {
+            id: MILLED, preserve_producer_result: true,
+            producer: Effect::new(MillEffect::new(count, player.clone())),
+            continuation: vec![Effect::repeat_effects(count_milled, vec![
+                Effect::new(crate::effects::composition::ResolvedLifeLoss {player: player.clone(), amount: 1, from_radiation: true}),
+                Effect::new(crate::effects::composition::ResolvedPlayerCounterRemoval {
+                    player, counter: CounterType::Rad, count: 1, source: None, controller: None,
+                }),
+            ])],
+        })
+    }
+    fn resolve_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let count = game.player(ctx.controller).map_or(0, |player| player.counter_count(CounterType::Rad));
+        if count == 0 { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved())); }
+        Self::body(PlayerFilter::Specific(ctx.controller), count.into()).0.execute_child_with_outputs(game, ctx)
     }
 }
 

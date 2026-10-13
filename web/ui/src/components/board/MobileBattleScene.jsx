@@ -220,6 +220,8 @@ export default function MobileBattleScene({
   const controlBandRef = useRef(null);
   const selfHudRef = useRef(null);
   const actionControlsRef = useRef(null);
+  const phaseDockRef = useRef(null);
+  const [phaseDockHeight, setPhaseDockHeight] = useState(36);
   const [opponentWidth, setOpponentWidth] = useState(170);
   const [selfWidth, setSelfWidth] = useState(150);
   const [actionWidth, setActionWidth] = useState(220);
@@ -232,6 +234,7 @@ export default function MobileBattleScene({
     topBandHeight: topbarHeight,
     controlBandHeight,
     handPeekHeight: DEFAULT_HAND_PEEK_HEIGHT,
+    footerControlHeight: phaseDockHeight + 4,
     stackVisible,
     stackRailWidth: MOBILE_STACK_RAIL_WIDTH_PX,
   }, sceneRef);
@@ -243,6 +246,7 @@ export default function MobileBattleScene({
       measureElementHeight(opponentHudRef.current, 170, setOpponentWidth, "width"),
       measureElementHeight(selfHudRef.current, 150, setSelfWidth, "width"),
       measureElementHeight(actionControlsRef.current, 220, setActionWidth, "width"),
+      measureElementHeight(phaseDockRef.current, 36, setPhaseDockHeight),
     ].filter(Boolean);
     return () => {
       for (const observer of observers) observer.disconnect();
@@ -686,6 +690,7 @@ export default function MobileBattleScene({
         "--mobile-battle-scene-padding": `${layout.sidePadding}px`,
         "--mobile-battle-section-gap": `${layout.sectionGap}px`,
         "--mobile-battle-row-gap": `${layout.rowGap}px`,
+        "--mobile-footer-control-height": `${layout.footerControlHeight}px`,
         "--mobile-mtga-hand-peek-height": `${layout.handPeekHeight}px`,
         "--mobile-mtga-stack-rail-width": `${layout.stackRailWidth}px`,
         "--mobile-opponent-controls-width": `${opponentWidth}px`,
@@ -748,7 +753,7 @@ export default function MobileBattleScene({
             />
             </div>
             <div ref={actionControlsRef} className="mobile-action-controls">
-              <PhaseTrack compact />
+              <div ref={phaseDockRef} className="mobile-phase-dock"><PhaseTrack compact /></div>
               <MobileTurnActionStack ref={setActionStackElement} />
             </div>
           </section>

@@ -5014,7 +5014,9 @@ impl WasmGame {
             ..DispatchPerfMetrics::default()
         };
 
-        if self.pregame.is_some() {
+        // A manual entry can suspend setup with its own replacement/as-enters
+        // decision. Finish that replay before returning to pregame decisions.
+        if self.pregame.is_some() && self.pending_replay_action.is_none() {
             return self.dispatch_pregame_decision(pending_ctx, command);
         }
 
@@ -5455,6 +5457,85 @@ mod replacement_entry_boundary_tests {
                 ),
             ),
         )
+    }
+
+    #[test]
+    fn manual_copy_entry_chooses_equipment_and_resumes_pregame() {
+        let _guard = crate::test_id_counter_guard();
+        for pregame in [false, true] {
+            for candidate_count in [0, 1, 2] {
+                for decline in [false, true] {
+                    let (mut wasm, _, alice, _) = setup();
+                    let definition = ironsmith_registry_test::compile_to_runtime_definition(
+                        "Masterwork of Ingenuity",
+                        "Mana cost: {1}\nType: Artifact — Equipment\nYou may have this Equipment enter as a copy of any Equipment on the battlefield.",
+                        false,
+                    ).unwrap();
+                    wasm.registry.register(definition);
+                    let equipment = |name: &str| CardDefinition::new(
+                        ironsmith::CardBuilder::new(CardId::new(), name)
+                            .card_types(vec![CardType::Artifact])
+                            .subtypes(vec![ironsmith::types::Subtype::Equipment])
+                            .build(),
+                    );
+                    // Neither non-Equipment permanents nor Equipment in another
+                    // zone may become candidates. Opponents' Equipment may.
+                    wasm.game.create_object_from_definition(
+                        &equipment("Buried Equipment"), alice, Zone::Graveyard,
+                    );
+                    let candidates: Vec<_> = (0..candidate_count).map(|index| {
+                        wasm.game.create_object_from_definition(
+                            &equipment(&format!("Equipment {index}")),
+                            PlayerId::from_index(index as u8), Zone::Battlefield,
+                        )
+                    }).collect();
+                    if pregame {
+                        wasm.pregame = Some(PregameState::new(
+                            &[alice, PlayerId::from_index(1)], 7, MatchFormatInput::Normal,
+                        ));
+                        wasm.advance_until_decision().unwrap();
+                    }
+                    let before = wasm.game.battlefield.clone();
+                    let id = wasm.add_card_to_zone(
+                        0, "Masterwork of Ingenuity".into(), "battlefield".into(), false,
+                    ).unwrap();
+                    if candidate_count > 0 {
+                        assert_eq!(id, 0, "entry waits for an explicit choice");
+                        assert_eq!(wasm.game.battlefield, before, "entry remains uncommitted");
+                        let Some(DecisionContext::SelectOptions(context)) = &wasm.pending_decision else {
+                            panic!("expected a copy choice");
+                        };
+                        assert_eq!(context.description, "Choose what to copy as this permanent enters");
+                        assert_eq!(context.options.len(), candidate_count + 1);
+                        let option = if decline {
+                            context.options.iter().find(|option| option.description == "Don't copy").unwrap()
+                        } else {
+                            context.options.iter().find(|option| option.object_id == candidates.last().copied()).unwrap()
+                        };
+                        let command = UiCommand::SelectOptions { option_indices: vec![option.index] };
+                        // Exercise real routing/replay without native JS serialization.
+                        wasm.previewing_crypto_requirements = true;
+                        wasm.dispatch_typed_command(command, 0.0).unwrap();
+                        wasm.previewing_crypto_requirements = false;
+                    } else {
+                        assert_ne!(id, 0);
+                    }
+                    assert!(wasm.pending_replay_action.is_none());
+                    assert_eq!(wasm.game.battlefield.len(), before.len() + 1);
+                    let entered = wasm.game.battlefield.iter().find(|id| !before.contains(id)).unwrap();
+                    let expected = if decline || candidate_count == 0 {
+                        "Masterwork of Ingenuity".to_string()
+                    } else {
+                        format!("Equipment {}", candidate_count - 1)
+                    };
+                    assert_eq!(wasm.game.object(*entered).unwrap().name, expected);
+                    if pregame {
+                        assert!(wasm.pregame.is_some());
+                        assert!(matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))));
+                    }
+                }
+            }
+        }
     }
 
     #[derive(Debug, Clone)]

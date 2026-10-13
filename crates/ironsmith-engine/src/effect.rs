@@ -6293,43 +6293,29 @@ impl ironsmith_core::library_movement::LibraryMovement for Effect {
         context: &mut ironsmith_core::library_movement::LibraryMovementContext,
     ) -> bool {
         use ironsmith_core::library_movement::payload_library_movement;
-        // These native executors have not yet migrated to shared core payloads.
-        macro_rules! is_any {
-            ($($ty:ty),+ $(,)?) => { false $(|| self.downcast_ref::<$ty>().is_some())+ };
+        use ironsmith_core::effect_capabilities::LibraryMovementPolicy;
+        match self.0.library_movement_policy() {
+            LibraryMovementPolicy::Leaf | LibraryMovementPolicy::Deferred => return false,
+            LibraryMovementPolicy::Moves | LibraryMovementPolicy::Unknown => return true,
+            LibraryMovementPolicy::Inspect => {}
         }
-        if is_any!(
-            crate::effects::DrawForEachTaggedMatchingEffect,
-            crate::effects::ExileTopOfLibraryEffect,
-            crate::effects::SurveilEffect,
-            crate::effects::ShuffleGraveyardIntoLibraryEffect,
-            crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect,
-            crate::effects::ExploreEffect,
-            crate::effects::ManifestDreadEffect,
-            crate::effects::ManifestTopCardOfLibraryEffect,
-            crate::effects::CascadeEffect,
-            crate::effects::ExileUntilMatchEffect,
-            crate::effects::ExileUntilMatchCastEffect,
-            crate::effects::ExileUntilMatchGrantPlayEffect
-        ) {
-            return true;
+        if let Some(result) = self.0.inspect_library_movement_override(context) { return result; }
+        if let Some(e) = self.downcast_ref::<crate::effects::ExileThenGrantPlayEffect>() {
+            return context.selects_library(&e.target);
         }
-        if is_any!(
-            crate::effects::ScheduleDelayedTriggerEffect,
-            crate::effects::ReflexiveTriggerEffect,
-            crate::effects::PreventDamageEffect,
-            crate::effects::PreventAllDamageToTargetEffect,
-            crate::effects::GrantPlayTaggedEffect
-        ) {
-            return false;
+        if let Some(e) = self.downcast_ref::<crate::effects::MayEffect>() {
+            return context.inspect_branches([e.effects.as_slice(), &[]]);
         }
         if let Some(e) = self.downcast_ref::<crate::effects::UnlessPaysEffect>() {
-            return e.cost.inspect_library_movement(context)
-                || e.effects
-                    .iter()
-                    .any(|effect| effect.inspect_library_movement(context));
+            let mut payment = context.clone();
+            if e.cost.inspect_library_movement(&mut payment) { return true; }
+            let mut failure = context.clone();
+            if failure.inspect_sequence(&e.effects) { return true; }
+            context.merge_alternatives(&[payment, failure]);
+            return false;
         }
         if let Some(e) = self.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
-            return context.inspect_iteration(context.library_tags.contains(&e.tag), &e.effects);
+            return context.inspect_iteration_origin(context.tag_library_origin(&e.tag), &e.effects);
         }
         if let Some(e) = self.downcast_ref::<crate::effects::ExchangeZonesEffect>() {
             return e.zone1 != e.zone2 && (e.zone1 == Zone::Library || e.zone2 == Zone::Library);
@@ -6341,7 +6327,7 @@ impl ironsmith_core::library_movement::LibraryMovement for Effect {
             return moves;
         }
         let mut found = false;
-        self.visit_child_effects(&mut |child| found |= child.inspect_library_movement(context));
+        self.0.visit_resolution_child_effects(&mut |child| found |= child.inspect_library_movement(context));
         found
     }
 }

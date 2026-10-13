@@ -51,7 +51,20 @@ pub(crate) fn evidence_requirement(
     Ok(resolve_value(game, &effect.amount, ctx)?.max(0) as u32)
 }
 
+fn evidence_choice(amount: Value) -> ChooseObjectsEffect {
+    let mut constraint = ChoiceAggregateConstraint::total_mana_value_at_least(0);
+    constraint.minimum = Some(amount);
+    ChooseObjectsEffect::new(ObjectFilter::default().nontoken().in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You), ChoiceCount::any_number(), PlayerFilter::You, CHOSEN_EVIDENCE)
+        .with_aggregate_constraint(constraint)
+}
+
 impl EffectExecutor for CollectEvidenceEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&crate::effect::Effect::new(evidence_choice(self.amount.clone())));
+        visitor(&crate::effect::Effect::new(ExileEffect::with_spec(ChooseSpec::tagged(CHOSEN_EVIDENCE))));
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -103,19 +116,7 @@ impl EffectExecutor for CollectEvidenceEffect {
                         EffectOutcome::declined(),
                     ));
                 }
-                let filter = ObjectFilter::default()
-                    .nontoken()
-                    .in_zone(Zone::Graveyard)
-                    .owned_by(PlayerFilter::You);
-                let choose = ChooseObjectsEffect::new(
-                    filter,
-                    ChoiceCount::any_number(),
-                    PlayerFilter::You,
-                    CHOSEN_EVIDENCE,
-                )
-                .with_aggregate_constraint(
-                    ChoiceAggregateConstraint::total_mana_value_at_least(required as i32),
-                );
+                let choose = evidence_choice(Value::Fixed(required as i32));
                 ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
                 let choice = choose.execute_child_with_outputs(game, ctx)?;
                 if ctx.decision_maker.awaiting_choice() {

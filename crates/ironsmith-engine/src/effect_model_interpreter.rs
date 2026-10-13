@@ -348,13 +348,7 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::DrawForEachTaggedMatchingEffect>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::DrawForEachTaggedMatchingEffect::new(
-                payload.player.clone(),
-                payload.tag.clone(),
-                payload.filter.clone(),
-            ),
-        ));
+        return Ok(Effect::new(payload.draw_effect()));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::CreateTokenEffect<M::CardDefinition>>(&effect)
@@ -1590,6 +1584,7 @@ where
         }
         grant.spell_filter = payload.spell_filter.clone();
         grant.permission_bound_mana = payload.permission_bound_mana;
+        grant.exact_tagged_objects = payload.exact_tagged_objects;
         grant.alternative_cost = payload
             .alternative_cost
             .clone()

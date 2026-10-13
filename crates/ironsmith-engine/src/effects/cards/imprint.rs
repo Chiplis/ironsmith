@@ -3,17 +3,11 @@
 //! Imprint exiles a card from a zone (typically hand) and associates it with
 //! the source permanent. Used by Chrome Mox, Isochron Scepter, etc.
 
-use crate::effects::CompletedEffectOutputs;
-use crate::decisions::context::SelectionRevealPolicy;
-use crate::decisions::specs::ChooseObjectsSpec;
-use crate::decisions::{MayChooseCardSpec, make_decision};
 use crate::effect::EffectOutcome;
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -60,6 +54,46 @@ impl ImprintFromHandEffect {
 }
 
 impl EffectExecutor for ImprintFromHandEffect {
+    fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        use crate::effect::{ChoiceCount, Effect};
+        use crate::target::{ChooseSpec, PlayerFilter};
+        const SELECTED: &str = "__imprint_selected";
+        const EXILED: &str = "__imprint_arrived";
+        let filter = ObjectFilter {
+            zone: Some(Zone::Hand),
+            owner: Some(PlayerFilter::You),
+            any_of: vec![self.filter.clone()],
+            ..ObjectFilter::default()
+        };
+        let mut choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            SELECTED,
+        )
+        .with_description("choose a card to exile and imprint");
+        choose.public_selection = true;
+        let mut exile = crate::effects::ExileEffect::with_spec(ChooseSpec::tagged(SELECTED));
+        exile.remember_on_source = true;
+        Some(Effect::new(crate::effects::composition::ScopedProgram {
+            players: vec![],
+            object_tags: vec![SELECTED.into(), EXILED.into()],
+            effects: vec![
+                Effect::new(choose),
+                Effect::new(crate::effects::composition::OutcomeBranchProgram {
+                    producer: Effect::new(crate::effects::composition::ExactTaggedObjects {
+                        tag: SELECTED.into(),
+                        zone: Zone::Hand,
+                    }),
+                    test: crate::effects::composition::OutcomeBranchTest::HasObjects,
+                    if_true: vec![Effect::new(exile).tag(EXILED)],
+                    if_false: vec![],
+                }),
+            ],
+            result_objects: (EXILED.into(), Zone::Exile),
+            retain_result_snapshots: true,
+        }))
+    }
     fn execute(
         &self,
         game: &mut GameState,
@@ -68,171 +102,88 @@ impl EffectExecutor for ImprintFromHandEffect {
         self.execute_with_outputs(game, ctx)
             .map(CompletedEffectOutputs::into_outcome)
     }
-
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let controller = ctx.controller;
-                let source_id = ctx.source;
+        self.canonical_program()
+            .unwrap()
+            .0
+            .execute_child_with_outputs(game, ctx)
+    }
+}
 
-                // Find valid cards in hand that match the filter
-                // Imprint filters can depend on resolution context, most notably the
-                // announced X in Panoptic Mirror's "mana value X" restriction.  A
-                // bare game filter context silently evaluates those dynamic values
-                // without X and makes every positive-X card ineligible.
-                let filter_ctx = ctx.filter_context(game);
-                let hand = game
-                    .player(controller)
-                    .map(|p| p.hand.clone())
-                    .unwrap_or_default();
+#[cfg(test)]
+mod composition_regressions {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::SelectFirstDecisionMaker;
+    use crate::effect::{Effect, OutcomeValue};
+    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::{CardId, PlayerId};
 
-                // In peer matches a hidden hand card's filter result is known only
-                // to its owner: keep this peer's placeholders choosable and always ask,
-                // so every peer replays the owner's answer (see
-                // `game_state::hidden_hand_choices`).
-                let hidden_hand_choice =
-                    game.hand_choice_depends_on_hidden_identity(&self.filter, hand.iter().copied());
-                let placeholders = if hidden_hand_choice {
-                    game.hidden_hand_placeholder_candidates(
-                        &self.filter,
-                        &filter_ctx,
-                        hand.iter().copied(),
-                    )
-                } else {
-                    Vec::new()
-                };
-                let valid_cards: Vec<_> = hand
-                    .iter()
-                    .filter_map(|&id| game.object(id))
-                    .filter(|obj| {
-                        placeholders.contains(&obj.id)
-                            || self.filter.matches(obj, &filter_ctx, game)
-                    })
-                    .map(|obj| obj.id)
-                    .collect();
+    #[test]
+    fn hand_selection_keeps_authored_filter_constraints() {
+        for filter in [
+            ObjectFilter::default().in_zone(Zone::Graveyard),
+            ObjectFilter::default().owned_by(PlayerFilter::Opponent),
+        ] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let card = CardBuilder::new(CardId::new(), "Imprint filter fixture").build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let hand = game.create_object_from_card(&card, alice, Zone::Hand);
+            let mut dm = SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ImprintFromHandEffect::new(filter)
+                .execute(&mut game, &mut ctx)
+                .unwrap();
+            assert_eq!(game.object(hand).unwrap().zone, Zone::Hand);
+            assert!(game.get_imprinted_cards(source).is_empty());
+        }
+    }
 
-                if valid_cards.is_empty() && !hidden_hand_choice {
-                    // No valid cards to imprint
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                // Ask the player if they want to imprint (this is optional - "you may")
-                let chosen_card = if hidden_hand_choice
-                    || valid_cards
-                        .iter()
-                        .any(|id| game.hidden_identity_is_private(*id))
-                {
-                    // The exiled card becomes public: the owner opens it on every
-                    // peer before the answer is replayed.
-                    let spec = ChooseObjectsSpec::new(
-                        source_id,
-                        "choose a card to exile and imprint",
-                        valid_cards.clone(),
-                        0,
-                        Some(1),
-                    )
-                    .require_explicit_choice()
-                    .with_selection_reveal_policy(SelectionRevealPolicy::Public);
-                    let chosen: Vec<ObjectId> = make_decision(
-                        game,
-                        &mut ctx.decision_maker,
-                        controller,
-                        Some(source_id),
-                        spec,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    let chosen = chosen.into_iter().find(|id| valid_cards.contains(id));
-                    game.record_hidden_identity_obligations(
-                        chosen.as_slice(),
-                        &self.filter,
-                        &filter_ctx,
-                        "imprint a card matching the filter",
-                    );
-                    if let Some(id) = chosen {
-                        game.mark_hidden_cards_publicly_revealed(&[id]);
-                    }
-                    chosen
-                } else {
-                    let spec = MayChooseCardSpec::new(
-                        source_id,
-                        "choose a card to exile and imprint",
-                        valid_cards.clone(),
-                    );
-                    make_decision(
-                        game,
-                        &mut ctx.decision_maker,
-                        controller,
-                        Some(source_id),
-                        spec,
-                    )
-                };
-
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                // Verify the card is still valid
-                let chosen_card = chosen_card.filter(|card_id| valid_cards.contains(card_id));
-
-                if let Some(card_id) = chosen_card {
-                    let Some(from) = game.object(card_id).map(|object| object.zone) else {
-                        return Ok(CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    };
-                    let movement = crate::effects::zones::PreparedZoneMove::capture(
-                        game,
-                        card_id,
-                        from,
-                        Zone::Exile,
-                        ctx.cause.clone(),
-                        None,
-                    );
-                    crate::effects::zones::execute_zone_moves_with_outputs(
-                        game,
-                        ctx,
-                        vec![movement],
-                        |game, _ctx, receipts| {
-                            let exiled = receipts
-                                .iter()
-                                .filter_map(|(_, receipt)| match &receipt.original {
-                                    crate::events::processing::EventOutcome::Proceed(change)
-                                        if change.final_zone == Zone::Exile =>
-                                    {
-                                        change.new_object_id
-                                    }
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>();
-                            for id in &exiled {
-                                game.imprint_card(source_id, *id);
-                                game.add_exiled_with_source_link(source_id, *id);
-                            }
-                            Ok(EffectOutcome::with_objects(exiled))
-                        },
-                    )
-                } else {
-                    // Player chose not to imprint
-                    Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ))
-                }
-            },
-        )
+    #[test]
+    fn original_exile_result_survives_an_added_move() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Imprint receipt fixture").build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let hand = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.effect_store
+            .replacement_effects
+            .add_one_shot_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(hand),
+                    Some(Zone::Hand),
+                    Some(Zone::Exile),
+                ),
+                ReplacementAction::Additionally(vec![Effect::new(
+                    crate::effects::MoveToZoneEffect::new(
+                        ChooseSpec::tagged("it"),
+                        Zone::Graveyard,
+                        false,
+                    ),
+                )]),
+            ));
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = ImprintFromHandEffect::new(ObjectFilter::default())
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let OutcomeValue::Objects(ids) = outcome.value else {
+            panic!("expected original exile receipt");
+        };
+        assert_eq!(ids.len(), 1);
+        assert!(
+            game.object(ids[0]).is_none(),
+            "summary names the original arrival, not its successor"
+        );
+        assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
+        assert!(game.exile.is_empty());
     }
 }

@@ -5137,22 +5137,23 @@ pub(crate) fn same_name_extraction_hand_draw_matches(
     searched_tag: &TagKey,
     searched_player: &PlayerFilter,
 ) -> bool {
-    let Some(draw) = unwrap_basic_tag_wrappers(draw_effect)
-        .downcast_ref::<crate::effects::DrawForEachTaggedMatchingEffect>()
-    else {
-        return false;
-    };
-    let mut counted = draw.filter.clone();
+    let effect = unwrap_basic_tag_wrappers(draw_effect);
+    let (tag, filter, player) = if let Some(draw) = effect.downcast_ref::<crate::effects::DrawForEachTaggedMatchingEffect>() {
+        (&draw.tag, &draw.filter, &draw.player)
+    } else if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+        let Value::TaggedSnapshotCount { tag, filter } = draw.count.unhinted() else { return false; };
+        (tag, filter, &draw.player)
+    } else { return false; };
+    let mut counted = filter.clone();
     let owner = counted.owner.take();
     counted.zone = None;
     counted.controller = None;
-    draw.tag == *searched_tag
-        && draw.filter.zone == Some(Zone::Hand)
+    tag == searched_tag
+        && filter.zone == Some(Zone::Hand)
         && counted == ObjectFilter::default()
-        && owner
-            .as_ref()
-            .is_some_and(|owner| same_name_extraction_player(owner, searched_player))
-        && same_name_extraction_player(&draw.player, searched_player)
+        && owner.as_ref().is_some_and(|owner| same_name_extraction_player(owner, searched_player))
+        && same_name_extraction_player(player, searched_player)
+
 }
 
 pub(crate) fn render_choose_name_search_same_name_exile_shuffle(

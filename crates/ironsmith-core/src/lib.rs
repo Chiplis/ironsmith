@@ -301,3 +301,5 @@ pub use effect::DealDamageBySourcesEffect;
 pub use effect::DealDamageEachEffect;
 
 pub use effect::{DamageRecipientSetBinding, DamageSourceSetBinding};
+
+pub mod effect_capabilities;
