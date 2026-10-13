@@ -8,9 +8,9 @@ import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-material.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
-import { createExactBuildSnapshotRuntime } from '../lib/exact-build-snapshot.js';
+import { createAvailableExactBuildSnapshotRuntime } from '../lib/exact-build-snapshot.js';
 import { publicCheckpointHash } from '../lib/multiplayer-audit.js';
-import { exactSnapshotBuildId, exactSnapshotLayout, replaceEngineInstance, attachExactBuildGame } from '../../../wasm_demo/pkg/engine.js';
+import * as engineBindings from '../../../wasm_demo/pkg/engine.js';
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
 import { createIsolatedPriorityAnalysis } from "../lib/isolated-priority-analysis.js";
 import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
@@ -818,9 +818,7 @@ async function handleInit(msg = {}) {
     // the one signal that separates "this call is expensive" from "this session
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
-    exactSnapshotRuntime = createExactBuildSnapshotRuntime({ exports: engineExports,
-      layout: exactSnapshotLayout, buildId: exactSnapshotBuildId,
-      replace: replaceEngineInstance, attach: attachExactBuildGame });
+    exactSnapshotRuntime = createAvailableExactBuildSnapshotRuntime({ exports: engineExports, bindings: engineBindings });
     localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch);
     game = localAnalysisJournal.game;
     workerTasks.phase(task, 'catalog_load');
@@ -847,8 +845,8 @@ async function handleInit(msg = {}) {
 
     workerTasks.phase(task, 'ready_post');
     self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function",
-      exactBuildSnapshots: true,
-      exactSnapshotBuildId,
+      exactBuildSnapshots: exactSnapshotRuntime !== null,
+      exactSnapshotBuildId: exactSnapshotRuntime?.buildId ?? null,
       runtimeBranches: typeof game.exchangeRuntimeSavepoint === "function",
       embeddedCardCatalog: embeddedCardIndex !== null });
     outcome = 'ok';
@@ -971,6 +969,9 @@ function handleCall(msg) {
     workerTasks.phase(diagnosticTask, 'preparation_wait');
     const prepared = await preparation;
     if (prepared.error) throw prepared.error;
+    if ((method === 'captureExactBuildSnapshot' || method === 'restoreExactBuildSnapshot') && !exactSnapshotRuntime) {
+      throw new Error('Exact-build snapshots are unavailable in this engine package');
+    }
     if (method === 'restoreExactBuildSnapshot') {
       if (msg.runtimeBranch != null) throw new Error('Cannot restore an instance inside a runtime branch');
       runtimeGeneration++;
