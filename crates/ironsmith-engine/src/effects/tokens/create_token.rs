@@ -1393,7 +1393,7 @@ mod tests {
             .iter()
             .filter(|id| {
                 game.object(**id)
-                    .is_some_and(|token| token.name == "Treasure")
+                    .is_some_and(|token| token.name == "Treasure Token")
             })
             .count();
         assert_eq!(

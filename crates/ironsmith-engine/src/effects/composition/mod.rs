@@ -26,7 +26,10 @@ mod aura_swap;
 mod behold;
 mod bid_life;
 mod branch_program;
+pub(crate) mod temporary_card;
+pub(crate) mod resolved_program;
 mod captured_program;
+pub(crate) mod scoped_choice;
 pub(crate) use captured_program::CapturedProgramFrame;
 mod choose_mode;
 mod choose_mode_runtime;
@@ -249,3 +252,8 @@ pub(crate) use ensure_chosen_object::{ensure_chosen_object, aggregate_children};
 
 mod resolved_player_actions;
 pub(crate) use resolved_player_actions::{ResolvedLifeLoss, ResolvedPlayerCounterRemoval};
+
+pub(crate) mod captured_selection;
+
+#[cfg(test)]
+mod decomposition_regression_tests;

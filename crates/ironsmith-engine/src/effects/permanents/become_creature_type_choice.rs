@@ -1,7 +1,8 @@
 //! "Choose a creature type ... becomes that type" effect.
 
 use crate::continuous::Modification;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -223,46 +224,47 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let subtype_options = creature_type_options(self);
-        if subtype_options.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let options: Vec<SelectableOption> = subtype_options
-            .iter()
-            .enumerate()
-            .map(|(idx, subtype)| SelectableOption::new(idx, subtype.to_string()))
-            .collect();
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            "Choose a creature type",
-            options,
-            1,
-            1,
-        );
-        let chosen = ctx
-            .decision_maker
-            .decide_options(game, &choice_ctx)
+        let options = creature_type_options(self)
             .into_iter()
-            .next();
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            .map(|kind| (kind, kind.to_string()))
+            .collect::<Vec<_>>();
+        if options.is_empty() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
-        let Some(chosen_subtype) = chosen.and_then(|idx| subtype_options.get(idx)).copied() else {
-            return Ok(EffectOutcome::count(0));
-        };
-
-        let apply = ApplyContinuousEffect::with_spec(
-            self.target.clone(),
-            Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
-            self.duration.clone(),
+        crate::effects::composition::scoped_choice::execute_choice_program(
+            game,
+            ctx,
+            chooser,
+            "Choose a creature type",
+            &options,
+            1,
+            false,
+            |selected| {
+                Ok(selected.first().map(|kind| {
+                    crate::effect::Effect::new(
+                        ApplyContinuousEffect::with_spec(
+                            self.target.clone(),
+                            Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
+                            self.duration.clone(),
+                        )
+                        .with_additional_modification(Modification::AddSubtypes(vec![*kind]))
+                        .require_creature_target(),
+                    )
+                }))
+            },
         )
-        .with_additional_modification(Modification::AddSubtypes(vec![chosen_subtype]))
-        .require_creature_target();
-        apply.execute_child(game, ctx)
     }
 }
 

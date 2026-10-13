@@ -103,3 +103,5 @@ pub(crate) use shuffle_library::{
 pub(crate) use draw_cards::{
     PreparedDrawInstruction, execute_prepared_draw_instruction, prepare_draw_instruction,
 };
+
+mod search_result_program;

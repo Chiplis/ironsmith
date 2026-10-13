@@ -286,7 +286,7 @@ pub(super) fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_lif
     let treasure_count = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure Token"))
         .count();
     assert_eq!(treasure_count, 0, "no Treasure tokens should be created");
 }
@@ -342,7 +342,7 @@ pub(super) fn cloakwood_hermit_triggers_at_end_step_after_creature_card_hits_gra
         .battlefield
         .iter()
         .copied()
-        .filter(|id| game.object(*id).is_some_and(|obj| obj.name == "Squirrel"))
+        .filter(|id| game.object(*id).is_some_and(|obj| obj.name == "Squirrel Token"))
         .collect::<Vec<_>>();
     assert_eq!(
         squirrel_ids.len(),

@@ -10,32 +10,62 @@ use crate::types::{CardType, Subtype};
 /// "{2}, {T}, Sacrifice this token: Search your library for a basic land card,
 /// put it onto the battlefield tapped, then shuffle."
 pub fn lander_token_definition() -> CardDefinition {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Lander")
+    use crate::ability::{Ability, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
+    use crate::effect::Effect;
+    use crate::effects::{ChooseObjectsEffect, PutOntoBattlefieldEffect, SequenceEffect};
+    use crate::filter::{ObjectFilter, PlayerFilter};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::tag::TagKey;
+    use crate::target::ChooseSpec;
+    use crate::types::Supertype;
+    use crate::zone::Zone;
+
+    let found = TagKey::from("lander_found");
+    let search = ChooseObjectsEffect::new(
+        ObjectFilter::land()
+            .in_zone(Zone::Library)
+            .with_supertype(Supertype::Basic)
+            .owned_by(PlayerFilter::You),
+        1,
+        PlayerFilter::You,
+        found.clone(),
+    )
+    .in_zone(Zone::Library)
+    .as_search()
+    .with_description("basic land card");
+    let ability = Ability::activated_with_timing(
+        TotalCost::from_costs(vec![
+            Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])),
+            Cost::tap(),
+            Cost::sacrifice_self(),
+        ]),
+        vec![Effect::new(SequenceEffect::new(vec![
+            Effect::new(search),
+            Effect::new(PutOntoBattlefieldEffect::new(
+                ChooseSpec::Tagged(found),
+                true,
+                PlayerFilter::You,
+            )),
+            Effect::shuffle_library(),
+        ]))],
+        ActivationTiming::AnyTime,
+    );
+    CardDefinitionBuilder::new(CardId::new(), "Lander Token")
         .token()
         .card_types(vec![CardType::Artifact])
-        .subtypes(vec![Subtype::Lander]);
-    #[cfg(any(test, feature = "handwritten-parse-support"))]
-    {
-        builder
-            .clone()
-            .parse_text(
-                "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
-            )
-            .unwrap_or_else(|_| builder.build())
-    }
-    #[cfg(not(any(test, feature = "handwritten-parse-support")))]
-    {
-        builder.build()
-    }
+        .subtypes(vec![Subtype::Lander])
+        .with_ability(ability)
+        .build()
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(test)]
 mod tests {
     use super::lander_token_definition;
     use crate::ability::AbilityKind;
     use crate::types::{CardType, Subtype};
 
-    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn lander_token_has_expected_basic_land_search_ability() {
         let lander = lander_token_definition();

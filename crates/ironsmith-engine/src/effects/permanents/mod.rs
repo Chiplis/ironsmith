@@ -408,3 +408,5 @@ pub use unlock_room_door::UnlockRoomDoorEffect;
 pub use untap::UntapEffect;
 
 pub(crate) mod face_down_entry;
+
+mod contributor_selection;

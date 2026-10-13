@@ -2651,10 +2651,14 @@ fn copy_characteristics_from_copiable_values(
 
 /// Apply the face-down characteristics in layer 1b, after all copy effects.
 fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics) {
-    if object.face_down_cast_state.is_none() {
+    let Some(state) = object.face_down_cast_state.as_ref() else {
         return;
-    }
-    let values = CopiableValues::from_object(object);
+    };
+    let disguise_ward = state.disguise_ward;
+    let mut overlay = object.clone();
+    overlay.end_face_down_cast_overlay();
+    overlay.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
+    let values = CopiableValues::from_object(&overlay);
     copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[], None);
 }
 
@@ -3619,7 +3623,19 @@ pub(crate) fn copiable_values_with_effects(
     game: &crate::game_state::GameState,
 ) -> Option<CopiableValues> {
     let object = objects.get(&object_id)?;
-    let mut chars = initial_text_box_characteristics(object);
+    // Flip status isn't copied (CR 707.2, 710.2). Start from the normal
+    // half, then apply the donor's copy exceptions and face-down overlay.
+    let unflipped = (game.is_flipped(object_id)
+        && object.linked_face_layout == crate::card::LinkedFaceLayout::Flip)
+        .then(|| game.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(), object.other_face))
+        .flatten()
+        .map(|definition| {
+            let mut normal = object.as_ref().clone();
+            normal.apply_flipped_face(&definition);
+            normal
+        });
+    let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object));
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
     let layer_effects: Vec<_> = effects
         .iter()

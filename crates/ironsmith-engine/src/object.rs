@@ -1989,8 +1989,12 @@ impl Object {
             compiled_card_text: Arc::from(copiable.compiled_card_text.as_str()),
             ability_labels: copiable.ability_labels.clone().into(),
             rules_text_color_identity: ColorSet::COLORLESS,
-            other_face: snapshot.other_face,
-            other_face_name: snapshot.other_face_name.clone().map(Into::into),
+            other_face: if snapshot.flipped && snapshot.linked_face_layout == LinkedFaceLayout::Flip {
+                None
+            } else { snapshot.other_face },
+            other_face_name: if snapshot.flipped && snapshot.linked_face_layout == LinkedFaceLayout::Flip {
+                Some(snapshot.name.clone().into())
+            } else { snapshot.other_face_name.clone().map(Into::into) },
             linked_face_layout: snapshot.linked_face_layout,
             linked_face_mana_cost: None,
             split_combined: None,

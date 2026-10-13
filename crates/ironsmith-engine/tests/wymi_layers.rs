@@ -1078,3 +1078,224 @@ fn wymi_machine_gods_effigy_excludes_type_cda_without_subtype_override() {
     assert!(!has(&g, token, |s| s.is_changeling()));
     assert!(has(&g, token, |s| s.has_deathtouch()));
 }
+
+// Follow-up regressions: verify the state transitions around the audit failures.
+#[test]
+fn wymi_mutated_face_down_creature_reveals_all_component_abilities() {
+    let mut g = game();
+    let host = put(
+        &mut g,
+        &creature("Host", 4, 4, ColorSet::BLUE, vec![StaticAbility::flying()]),
+        Zone::Battlefield,
+    );
+    g.object_mut(host)
+        .unwrap()
+        .apply_face_down_cast_overlay_with_disguise_ward(true);
+    assert!(g.set_face_down(host));
+    g.set_cloaked(host);
+    let spell = put(
+        &mut g,
+        &creature(
+            "Mutator",
+            3,
+            5,
+            ColorSet::WHITE,
+            vec![StaticAbility::lifelink()],
+        ),
+        Zone::Stack,
+    );
+    assert_eq!(
+        g.merge_mutating_creature_spell(spell, host, false),
+        Some(host)
+    );
+    assert!(!has(&g, host, |s| s.has_lifelink()));
+    assert!(!g.set_face_down(host));
+    assert!(has(&g, host, |s| s.ward_cost().is_some()));
+    assert!(g.set_face_up(host).unwrap());
+    for id in [host, copy(&mut g, host, |_| {})] {
+        assert_pt(&g, id, 4, 4);
+        assert!(has(&g, id, |s| s.has_flying()));
+        assert!(has(&g, id, |s| s.has_lifelink()));
+        assert!(!has(&g, id, |s| s.ward_cost().is_some()));
+    }
+    assert!(g.set_face_down(host));
+    assert_pt(&g, host, 2, 2);
+    assert!(!has(&g, host, |s| s.has_flying() || s.has_lifelink()));
+    assert!(g.set_face_up(host).unwrap());
+    assert!(has(&g, host, |s| s.has_flying()));
+    assert!(has(&g, host, |s| s.has_lifelink()));
+}
+
+#[test]
+fn wymi_copy_of_flipped_card_can_flip_and_be_copied_again() {
+    let mut g = game();
+    let donor = linked_faces(&mut g, true);
+    assert!(g.flip_permanent(donor));
+    let token = copy(&mut g, donor, |_| {});
+    assert_eq!(g.object(token).unwrap().name, "Hired Muscle");
+    assert!(g.flip_permanent(token));
+    assert_eq!(g.object(token).unwrap().name, "Scarmaker");
+    assert_pt(&g, token, 4, 4);
+    let second = copy(&mut g, token, |_| {});
+    assert_eq!(g.object(second).unwrap().name, "Hired Muscle");
+    assert_pt(&g, second, 2, 2);
+}
+
+fn entry_copy_exception_case(retain_colors: bool) {
+    for duration in [None, Some(ironsmith::effect::Until::EndOfTurn)] {
+        let mut g = game();
+        let alice = PlayerId::from_index(0);
+        let donor = put(
+            &mut g,
+            &creature(
+                "CDA donor",
+                2,
+                2,
+                ColorSet::RED,
+                vec![
+                    StaticAbility::set_colors(ObjectFilter::source(), ColorSet::COLORLESS),
+                    StaticAbility::changeling(),
+                    StaticAbility::flying(),
+                ],
+            ),
+            Zone::Battlefield,
+        );
+        let entrant = put(
+            &mut g,
+            &creature("Copy entrant", 0, 0, ColorSet::BLUE, vec![]),
+            Zone::Hand,
+        );
+        g.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                entrant,
+                alice,
+                ironsmith::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ironsmith::replacement::ReplacementAction::EnterAsCopy {
+                    source: donor,
+                    enters_tapped: false,
+                    copy_duration: duration,
+                    linked_exile_objects: vec![],
+                    additional_counters: vec![],
+                    name_override: None,
+                    added_colors: ColorSet::COLORLESS,
+                    added_card_types: if retain_colors {
+                        vec![]
+                    } else {
+                        vec![CardType::Artifact]
+                    },
+                    removes_other_card_types: !retain_colors,
+                    added_supertypes: vec![],
+                    removed_supertypes: vec![],
+                    added_subtypes: vec![],
+                    added_abilities: vec![],
+                    set_base_power_toughness: None,
+                    copy_followups: if retain_colors {
+                        vec![ironsmith_core::EnterAsCopyFollowup::RetainOwnColors]
+                    } else {
+                        vec![]
+                    },
+                },
+            ),
+        );
+        let receipt = g
+            .move_object_with_etb_processing(entrant, Zone::Battlefield)
+            .unwrap();
+        assert!(!receipt.pending);
+        let ironsmith::events::processing::EventOutcome::Proceed(result) = receipt.original else {
+            panic!("entry must complete");
+        };
+        let recopy = copy(&mut g, result.new_id, |_| {});
+        for id in [result.new_id, recopy] {
+            assert!(has(&g, id, |s| s.has_flying()));
+            assert_eq!(has(&g, id, |s| s.is_changeling()), retain_colors);
+            assert_eq!(
+                g.current_colors(id),
+                Some(if retain_colors {
+                    ColorSet::BLUE
+                } else {
+                    ColorSet::COLORLESS
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn wymi_entry_copy_retained_color_excludes_cda() {
+    entry_copy_exception_case(true);
+}
+
+#[test]
+fn wymi_entry_copy_type_replacement_excludes_cda() {
+    entry_copy_exception_case(false);
+}
+
+#[test]
+fn wymi_lander_ability_finds_only_basic_lands_and_puts_them_in_tapped() {
+    use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
+    struct SearchChooser;
+    impl DecisionMaker for SearchChooser {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            context: &ironsmith::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            SelectFirstDecisionMaker.decide_objects(game, context)
+        }
+    }
+    let definition = ironsmith::cards::tokens::lander_token_definition();
+    let AbilityKind::Activated(ability) = &definition.abilities[0].kind else {
+        panic!("Lander has an activated ability");
+    };
+    let costs = ability.mana_cost.costs();
+    assert_eq!(costs.len(), 3);
+    assert_eq!(
+        costs[0].mana_cost_ref(),
+        Some(&ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+    );
+    assert!(costs[1].requires_tap());
+    assert!(costs[2].is_sacrifice_self());
+    for with_basic in [true, false] {
+        let mut g = game();
+        let source = put(&mut g, &definition, Zone::Battlefield);
+        let other = CardDefinitionBuilder::new(CardId::new(), "Nonbasic land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let nonbasic = put(&mut g, &other, Zone::Library);
+        if with_basic {
+            let basic = CardDefinitionBuilder::new(CardId::new(), "Basic land")
+                .card_types(vec![CardType::Land])
+                .supertypes(vec![Supertype::Basic])
+                .build();
+            put(&mut g, &basic, Zone::Library);
+        }
+        let mut dm = SearchChooser;
+        let mut ctx = ExecutionContext::new(source, PlayerId::from_index(0), &mut dm);
+        for effect in ability.effects.iter() {
+            effect.0.execute(&mut g, &mut ctx).unwrap();
+        }
+        assert_eq!(g.object(nonbasic).unwrap().zone, Zone::Library);
+        let lands: Vec<_> = g
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|id| g.object(*id).unwrap().card_types.contains(&CardType::Land))
+            .collect();
+        assert_eq!(lands.len(), usize::from(with_basic));
+        for land in lands {
+            assert!(g.is_tapped(land));
+            assert!(
+                g.object(land)
+                    .unwrap()
+                    .supertypes
+                    .contains(&Supertype::Basic)
+            );
+        }
+    }
+}
+
+#[test]
+fn wymi_squirrel_token_uses_subtype_derived_name() {
+    let def = ironsmith::cards::tokens::squirrel_token_definition();
+    assert_eq!(def.card.name, "Squirrel Token");
+}

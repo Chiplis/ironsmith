@@ -3468,7 +3468,7 @@ pub(super) fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_
     let treasure_count = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure Token"))
         .count();
     assert_eq!(
         treasure_count, 2,

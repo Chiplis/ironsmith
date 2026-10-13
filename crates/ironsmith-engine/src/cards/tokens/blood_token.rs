@@ -22,7 +22,7 @@ pub fn blood_token_definition() -> CardDefinition {
         ActivationTiming::AnyTime,
     );
 
-    CardDefinitionBuilder::new(CardId::new(), "Blood")
+    CardDefinitionBuilder::new(CardId::new(), "Blood Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Blood])

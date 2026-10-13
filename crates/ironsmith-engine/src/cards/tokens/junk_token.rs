@@ -58,7 +58,7 @@ pub fn junk_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Junk")
+    CardDefinitionBuilder::new(CardId::new(), "Junk Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Junk])

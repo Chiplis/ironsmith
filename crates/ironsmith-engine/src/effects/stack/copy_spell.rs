@@ -371,35 +371,55 @@ pub(crate) fn create_stack_copy(
     )
 }
 
-/// A copy that targets a player or object makes it become the target of the
-/// copy (ward, "becomes the target" triggers). Each distinct target becomes a
-/// target once (CR 115.3).
-fn queue_copy_becomes_targeted_events(
+/// The existing adapters expose these observations in different orders.
+#[derive(Clone, Copy)]
+pub(crate) enum CopyCompletionOrder { TargetsThenCopy, CopyThenTargets }
+
+/// Derive completion from the created entry's captured controller, spell/ability
+/// identity and final target assignments. Delivery is owned by the caller.
+pub(crate) fn stack_copy_events(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    copy_id: crate::ids::ObjectId,
+    order: CopyCompletionOrder,
+) -> Vec<TriggerEvent> {
+    let Some(entry) = game.stack.iter().find(|entry| entry.object_id == copy_id) else {
+        return Vec::new();
+    };
+    let mut events = Vec::new();
+    let spell = (!entry.is_ability).then(|| {
+        TriggerEvent::new_with_provenance(
+            SpellCopiedEvent::new(copy_id, entry.controller),
+            ctx.provenance,
+        )
+    });
+    if matches!(order, CopyCompletionOrder::CopyThenTargets) {
+        events.extend(spell.clone());
+    }
+    let mut seen = Vec::new();
+    for target in &entry.targets {
+        if seen.contains(target) {
+            continue;
+        }
+        seen.push(*target);
+        events.push(TriggerEvent::new_with_provenance(
+            crate::events::BecomesTargetedEvent::from_stack_entry(*target, entry)
+                .with_participant_snapshots(game),
+            ctx.provenance,
+        ));
+    }
+    if matches!(order, CopyCompletionOrder::TargetsThenCopy) {
+        events.extend(spell);
+    }
+    events
+}
+pub(crate) fn queue_stack_copy_completion(
     game: &mut GameState,
     ctx: &ExecutionContext,
     copy_id: crate::ids::ObjectId,
 ) {
-    let Some(entry) = game
-        .stack
-        .iter()
-        .find(|entry| entry.object_id == copy_id)
-        .cloned()
-    else {
-        return;
-    };
-    let mut targeted_seen = Vec::new();
-    for target in &entry.targets {
-        if targeted_seen.contains(target) {
-            continue;
-        }
-        targeted_seen.push(*target);
-        game.queue_trigger_event(
-            ctx.provenance,
-            TriggerEvent::new_with_provenance(
-                crate::events::BecomesTargetedEvent::from_stack_entry(*target, &entry),
-                ctx.provenance,
-            ),
-        );
+    for event in stack_copy_events(game, ctx, copy_id, CopyCompletionOrder::TargetsThenCopy) {
+        game.queue_trigger_event(ctx.provenance, event);
     }
 }
 
@@ -414,6 +434,9 @@ impl CopyCharacteristicModifiers for CopySpellEffect {
             copy.counters.remove(&crate::object::CounterType::Loyalty);
         }
         if let Some(colors) = self.set_colors {
+            crate::static_abilities::exclude_cdas_from_copy(
+                &mut copy.abilities, &mut copy.ability_labels, false, true, false,
+            );
             copy.color_override = Some(colors);
         }
         for card_type in &self.added_card_types {
@@ -568,14 +591,7 @@ impl EffectExecutor for CopySpellEffect {
                         continue;
                     };
                     created_ids.push(copy_id);
-                    queue_copy_becomes_targeted_events(game, ctx, copy_id);
-                    game.queue_trigger_event(
-                        ctx.provenance,
-                        TriggerEvent::new_with_provenance(
-                            SpellCopiedEvent::new(copy_id, copier),
-                            ctx.provenance,
-                        ),
-                    );
+                    queue_stack_copy_completion(game,ctx,copy_id);
                 }
                 continue;
             }
@@ -638,20 +654,7 @@ impl EffectExecutor for CopySpellEffect {
                     additional_copies.push(copy_id);
                 }
 
-                queue_copy_becomes_targeted_events(game, ctx, copy_id);
-
-                // Only copying a spell emits the spell-copied event. The same
-                // effect type also represents activated/triggered ability
-                // copies, which must not trigger magecraft-like abilities.
-                if !original_entry.is_ability {
-                    game.queue_trigger_event(
-                        ctx.provenance,
-                        TriggerEvent::new_with_provenance(
-                            SpellCopiedEvent::new(copy_id, copier),
-                            ctx.provenance,
-                        ),
-                    );
-                }
+                queue_stack_copy_completion(game,ctx,copy_id);
             }
         }
 

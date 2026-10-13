@@ -129,7 +129,7 @@ pub(super) fn shiny_impetus_creates_treasure_when_enchanted_creature_attacks() {
         .iter()
         .filter(|&&id| {
             game.object(id).is_some_and(|object| {
-                object.name == "Treasure" && game.controller_of(object) == alice
+                object.name == "Treasure Token" && game.controller_of(object) == alice
             })
         })
         .count();

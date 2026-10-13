@@ -809,6 +809,11 @@ impl GameState {
     /// down. CR 730.2j forbids the action if the face-up merged permanent
     /// contains a double-faced card.
     pub fn set_face_down(&mut self, id: ObjectId) -> bool {
+        // CR 708.2b: a second face-down instruction does not change the
+        // existing overlay or the status of any underlying merged component.
+        if self.is_face_down(id) {
+            return false;
+        }
         let merged_stable_id = self.object(id).and_then(|object| {
             self.commander_tracking
                 .merged_permanents
@@ -837,6 +842,7 @@ impl GameState {
             {
                 for component in &mut merged.components {
                     component.face_down = true;
+                    component.object.apply_face_down_cast_overlay();
                 }
             }
         }
@@ -1093,12 +1099,16 @@ impl GameState {
         {
             for component in &mut merged.components {
                 component.face_down = false;
+                component.object.end_face_down_cast_overlay();
             }
         }
         let _ = self
             .object_store
             .object_mut(id)
             .is_some_and(|object| object.end_face_down_cast_overlay());
+        if merged_stable_id.is_some() {
+            self.refresh_merged_permanent_characteristics(id);
+        }
         let (face_down_changed, origin_changed) = {
             let flags = self.battlefield_flags_mut();
             (
@@ -3336,6 +3346,11 @@ impl GameState {
         let mut merged_labels = Vec::new();
         let mut labels_aligned = true;
         for component in &state.components {
+            // Merge in layer 1a only acquires component text. Ward supplied
+            // by a face-down overlay belongs to layer 1b of the whole permanent.
+            if component.face_down {
+                continue;
+            }
             all_abilities.extend(component.object.abilities.iter().cloned());
             labels_aligned &=
                 component.object.ability_labels.len() == component.object.abilities.len();

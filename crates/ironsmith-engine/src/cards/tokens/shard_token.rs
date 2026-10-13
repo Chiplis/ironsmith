@@ -38,7 +38,7 @@ pub fn shard_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Shard")
+    CardDefinitionBuilder::new(CardId::new(), "Shard Token")
         .token()
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Shard])

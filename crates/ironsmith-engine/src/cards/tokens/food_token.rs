@@ -21,7 +21,7 @@ pub fn food_token_definition() -> CardDefinition {
         ActivationTiming::AnyTime,
     );
 
-    CardDefinitionBuilder::new(CardId::new(), "Food")
+    CardDefinitionBuilder::new(CardId::new(), "Food Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Food])

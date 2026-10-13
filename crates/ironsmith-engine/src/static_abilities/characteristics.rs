@@ -20,21 +20,37 @@ pub(crate) fn exclude_pt_cdas_from_copy(
     abilities: &mut std::sync::Arc<Vec<crate::ability::Ability>>,
     labels: &mut Vec<String>,
 ) {
-    let is_pt_cda = |ability: &crate::ability::Ability| {
+    exclude_cdas_from_copy(abilities, labels, true, false, false);
+}
+
+/// CR 707.9d: replacement/retention exceptions exclude the corresponding
+/// defining abilities. Additive type exceptions do not invoke this exclusion.
+pub(crate) fn exclude_cdas_from_copy(
+    abilities: &mut std::sync::Arc<Vec<crate::ability::Ability>>,
+    labels: &mut Vec<String>,
+    pt: bool,
+    colors: bool,
+    types: bool,
+) {
+    let excluded = |ability: &crate::ability::Ability| {
         matches!(&ability.kind, crate::ability::AbilityKind::Static(ability)
-            if ability.id() == StaticAbilityId::CharacteristicDefiningPT)
+            if (pt && ability.id() == StaticAbilityId::CharacteristicDefiningPT)
+                || (colors && ability.characteristic_defining_colors().is_some())
+                || (types && (ability.is_changeling()
+                    || ability.characteristic_defining_subtypes().is_some()
+                    || ability.is_characteristic_defining_subtype_family())))
     };
-    if !abilities.iter().any(is_pt_cda) {
+    if !abilities.iter().any(excluded) {
         return;
     }
     // Labels are indexed by ability occurrence; preserve that alignment.
     let mut index = 0;
     labels.retain(|_| {
-        let keep = abilities.get(index).is_some_and(|ability| !is_pt_cda(ability));
+        let keep = abilities.get(index).is_some_and(|ability| !excluded(ability));
         index += 1;
         keep
     });
-    std::sync::Arc::make_mut(abilities).retain(|ability| !is_pt_cda(ability));
+    std::sync::Arc::make_mut(abilities).retain(|ability| !excluded(ability));
 }
 
 /// Characteristic-defining ability for power/toughness.

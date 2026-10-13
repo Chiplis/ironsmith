@@ -1,10 +1,5 @@
 //! Search a library for multiple differently-constrained cards as one search.
 
-use crate::effects::zones::{
-    apply_zone_change_with_context_and_additional_effects_with_outputs,
-    finish_zone_change_receipts_with_outputs,
-};
-use crate::events::processing::EventOutcome;
 use crate::filter::ObjectFilterExt as _;
 use std::collections::HashSet;
 
@@ -14,13 +9,9 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::cards::search_overrides::{
     LibrarySearchRequest, execute_library_search_scope,
-    exile_found_cards_for_opposition_agent_with_outputs,
 };
 use crate::effects::context::ObjectSelectionProgress;
 use crate::effects::helpers::view_hidden_candidate_objects;
-use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
-};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
@@ -54,11 +45,8 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         let mut pending_selection_progress = None;
         let mut published_cast_outputs = Vec::new();
         let mut retained_children = Vec::new();
-        let mut published_entry_outputs = Vec::new();
-        let instruction = crate::effects::composition::execute_result_transaction(
-            game,
-            ctx,
-            |game, ctx| {
+        let instruction =
+            crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
                 let chooser_id = crate::effects::helpers::resolve_player_filter_as_chooser(
                     game,
                     &self.chooser,
@@ -261,121 +249,22 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             retained_children.push(outputs);
                         }
 
-                        let mut moved_ids = Vec::new();
-                        let mut receipts = Vec::new();
                         let chosen_ids = chosen
                             .iter()
                             .map(|snapshot| snapshot.object_id)
                             .collect::<Vec<_>>();
-                        if search_override.is_some() {
-                            let (found, published) =
-                                exile_found_cards_for_opposition_agent_with_outputs(
-                                    game,
-                                    ctx,
-                                    &chosen_ids,
-                                    chooser_id,
-                                )?;
-                            crate::effects::PublishedEffectOutputs::append_distinct(
-                                &mut published_entry_outputs,
-                                published,
-                            );
-                            moved_ids = found.moved_ids;
-                            receipts = found.receipts;
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::count(0));
-                            }
-                        } else if self.destination == Zone::Battlefield {
-                            let entries = move_to_battlefield_batch_with_options(
-                                game,
-                                ctx,
-                                chosen_ids
-                                    .iter()
-                                    .copied()
-                                    .map(|id| (id, BattlefieldEntryOptions::preserve(false)))
-                                    .collect(),
-                            )?;
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::count(0));
-                            }
-                            if entries.len() != chosen_ids.len() {
-                                return Err(ExecutionError::InternalError(
-                                    "search entry batch lost a receipt".into(),
-                                ));
-                            }
-                            for (original, entry) in chosen_ids.iter().zip(entries) {
-                                match &entry.outcome {
-                                    BattlefieldEntryOutcome::Moved(id) => moved_ids.push(*id),
-                                    BattlefieldEntryOutcome::Redirected(change) => {
-                                        moved_ids.extend(change.new_object_ids.iter().copied())
-                                    }
-                                    BattlefieldEntryOutcome::Prevented => {}
-                                }
-                                let ((object, receipt), published) =
-                                    entry.into_zone_receipt_with_outputs();
-                                crate::effects::PublishedEffectOutputs::append_distinct(
-                                    &mut published_entry_outputs,
-                                    published,
-                                );
-                                if object != *original {
-                                    return Err(ExecutionError::InternalError(
-                                        "search entry receipt changed original identity".into(),
-                                    ));
-                                }
-                                receipts.push((object, receipt));
-                            }
-                        } else {
-                            let opened_batch = game.open_simultaneous_action();
-                            let moves = (|| -> Result<(), ExecutionError> {
-                                for id in &chosen_ids {
-                                    let Some(from) = game.object(*id).map(|card| card.zone) else {
-                                        continue;
-                                    };
-                                    if self.destination == Zone::Library && from == Zone::Library {
-                                        moved_ids.push(*id);
-                                        continue;
-                                    }
-                                    let additional = ctx.additional_replacement_effects_snapshot();
-                                    let committed =
-                                    apply_zone_change_with_context_and_additional_effects_with_outputs(
-                                        game,
-                                        *id,
-                                        from,
-                                        self.destination,
-                                        ctx.cause.clone(),
-                                        ctx,
-                                        &additional,
-                                    )?;
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(());
-                                    }
-                                    crate::effects::PublishedEffectOutputs::append_distinct(
-                                        &mut published_entry_outputs,
-                                        committed.published_outputs,
-                                    );
-                                    let receipt = committed.receipt;
-                                    match &receipt.original {
-                                        EventOutcome::Proceed(change) => {
-                                            moved_ids.extend(change.new_object_ids.iter().copied())
-                                        }
-                                        EventOutcome::Replaced => {
-                                            let ids = game.take_zone_change_results(*id);
-                                            if !ids.is_empty() {
-                                                game.record_zone_change_results(*id, ids.clone());
-                                            }
-                                            moved_ids.extend(ids);
-                                        }
-                                        EventOutcome::Prevented | EventOutcome::NotApplicable => {}
-                                    }
-                                    receipts.push((*id, receipt));
-                                }
-                                Ok(())
-                            })();
-                            game.close_simultaneous_action(opened_batch);
-                            moves?;
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::count(0));
-                            }
+                        let (found, published) = super::search_result_program::prepare_found_cards(
+                            game,
+                            ctx,
+                            &chosen_ids,
+                            self.destination,
+                            chooser_id,
+                            search_override.is_some(),
+                        )?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
                         }
+                        let moved_ids = found.moved_ids.clone();
                         // The put/exile instruction and permission links complete first;
                         // replacement additions precede the subsequent library shuffle.
                         let original = if moved_ids.is_empty() {
@@ -388,46 +277,31 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             original,
                             retained_children.iter().map(|child| child.outcome.clone()),
                         );
-                        let mut original =
-                            crate::effects::CompletedEffectOutputs::aggregate_only(original);
-                        original.retain_published_references(std::mem::take(
-                            &mut published_entry_outputs,
-                        ));
-                        let zone_outputs = finish_zone_change_receipts_with_outputs(
-                            game, ctx, original, receipts,
+                        let zone_outputs = super::search_result_program::finish_found_cards(
+                            game, ctx, found, published, original,
                         )?;
                         let outcome = zone_outputs.outcome.clone();
                         retained_children.push(zone_outputs);
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(EffectOutcome::count(0));
                         }
-                        let shuffle_action =
+                        let retained =
                             if self.destination == Zone::Library && search_override.is_none() {
-                                let remaining = moved_ids
-                                    .into_iter()
-                                    .filter(|id| {
-                                        game.object(*id)
-                                            .is_some_and(|card| card.zone == Zone::Library)
-                                    })
-                                    .collect::<Vec<_>>();
-                                super::shuffle_library_action(
-                                    player_id,
-                                    &remaining,
-                                    1,
-                                    "searched cards put on top after library shuffle",
-                                )
+                                moved_ids
                             } else {
-                                super::shuffle_library_action(
-                                    player_id,
-                                    &[],
-                                    1,
-                                    "library shuffled after search",
-                                )
+                                vec![]
                             };
-                        let shuffle_outputs = crate::effects::execute_effect_with_outputs(
+                        let shuffle_outputs = super::search_result_program::shuffle_after_search(
                             game,
-                            &shuffle_action,
                             ctx,
+                            player_id,
+                            &retained,
+                            1,
+                            if retained.is_empty() {
+                                "library shuffled after search"
+                            } else {
+                                "searched cards put on top after library shuffle"
+                            },
                         )?;
                         let shuffle = shuffle_outputs.outcome.clone();
                         retained_children.push(shuffle_outputs);
@@ -439,8 +313,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         ))
                     },
                 )
-            },
-        );
+            });
         let pending = ctx.decision_maker.awaiting_choice();
         if pending {
             if let Some((key, progress)) = pending_selection_progress {
@@ -457,7 +330,6 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                     outcome
                 });
             outputs.retain_published_references(published_cast_outputs);
-            outputs.retain_published_references(published_entry_outputs);
             outputs
         })
     }

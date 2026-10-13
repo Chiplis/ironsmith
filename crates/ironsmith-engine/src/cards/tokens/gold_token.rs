@@ -33,7 +33,7 @@ pub fn gold_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Gold")
+    CardDefinitionBuilder::new(CardId::new(), "Gold Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Gold])

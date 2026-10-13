@@ -89,7 +89,7 @@ fn blood_money_destroys_tokens_but_creates_treasures_only_for_destroyed_nontoken
         .copied()
         .filter(|id| {
             game.object(*id).is_some_and(|object| {
-                object.name == "Treasure" && game.controller_of(object) == alice
+                object.name == "Treasure Token" && game.controller_of(object) == alice
             })
         })
         .collect::<Vec<_>>();

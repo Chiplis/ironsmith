@@ -2379,7 +2379,7 @@ pub(super) fn cloud_ex_soldier_attack_trigger_draws_for_equipped_attackers_and_m
     let treasure_count = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure Token"))
         .count();
     assert_eq!(
         treasure_count, 2,
@@ -2470,7 +2470,7 @@ pub(super) fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
     let treasure_count = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure"))
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Treasure Token"))
         .count();
     assert_eq!(
         treasure_count, 0,

@@ -81,8 +81,13 @@ fn backup_grant_program(effect: &BackupEffect, target: ChooseSpec) -> Vec<Effect
 impl EffectExecutor for BackupEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         visitor(&Effect::new(crate::effects::PutCountersEffect::new(
-            CounterType::PlusOnePlusOne, self.amount, ChooseSpec::target_creature())));
-        for child in backup_grant_program(self, ChooseSpec::target_creature()) { visitor(&child); }
+            CounterType::PlusOnePlusOne,
+            self.amount,
+            ChooseSpec::target_creature(),
+        )));
+        for child in backup_grant_program(self, ChooseSpec::target_creature()) {
+            visitor(&child);
+        }
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -114,41 +119,25 @@ impl EffectExecutor for BackupEffect {
                     ctx,
                 )?;
 
-                let mut outcomes = vec![
-                    crate::effects::PutCountersEffect::new(
+                super::ScopedOutcomeProgram {
+                    id: crate::effect::EffectId(0),
+                    producer: Effect::new(crate::effects::PutCountersEffect::new(
                         CounterType::PlusOnePlusOne,
                         self.amount,
                         ChooseSpec::SpecificObject(target),
-                    )
-                    .execute_child_with_outputs(game, ctx)?,
-                ];
-
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
+                    )),
+                    continuation: if target == ctx.source {
+                        vec![]
+                    } else {
+                        vec![Effect::new(super::resolved_program::IfPresentProgram {
+                            object: target,
+                            zone: Zone::Battlefield,
+                            effects: backup_grant_program(self, ChooseSpec::SpecificObject(target)),
+                        })]
+                    },
+                    preserve_producer_result: true,
                 }
-                let primary = outcomes[0].outcome.summary_projection();
-                if target != ctx.source
-                    && game
-                        .object(target)
-                        .is_some_and(|object| object.zone == Zone::Battlefield)
-                    && !game.is_phased_out(target)
-                {
-                    for effect in backup_grant_program(self, ChooseSpec::SpecificObject(target)) {
-                        outcomes.push(effect.0.execute_child_with_outputs(game, ctx)?);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(crate::effects::CompletedEffectOutputs::from_children(
-                    outcomes,
-                    |children| EffectOutcome::aggregate_with_primary_result(primary, children),
-                ))
+                .execute_child_with_outputs(game, ctx)
             },
         )
     }
@@ -1333,9 +1322,14 @@ fn populate_body(effect: &PopulateEffect, target: ChooseSpec) -> super::KeywordC
 
 impl EffectExecutor for PopulateEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        visitor(&Effect::new(populate_body(self, ChooseSpec::Object(
-            crate::target::ObjectFilter::creature().you_control().token(),
-        ))));
+        visitor(&Effect::new(populate_body(
+            self,
+            ChooseSpec::Object(
+                crate::target::ObjectFilter::creature()
+                    .you_control()
+                    .token(),
+            ),
+        )));
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -1373,10 +1367,7 @@ impl EffectExecutor for PopulateEffect {
                 }
 
                 game.reserve_token_repetition_work(count)?;
-                let mut created_ids = Vec::new();
-                let mut outcomes = Vec::new();
-
-                for _ in 0..count {
+                super::captured_selection::repeat_collect_objects(game, ctx, count, |game, ctx| {
                     let candidates = game
                         .battlefield
                         .iter()
@@ -1394,7 +1385,7 @@ impl EffectExecutor for PopulateEffect {
                         .collect::<Vec<_>>();
 
                     if candidates.is_empty() {
-                        outcomes.push(super::publish_keyword_action_completion_receipt(
+                        return super::publish_keyword_action_completion_receipt(
                             game,
                             ctx,
                             crate::triggers::TriggerEvent::new_with_provenance(
@@ -1406,56 +1397,24 @@ impl EffectExecutor for PopulateEffect {
                                 ),
                                 ctx.provenance,
                             ),
-                        )?);
-                        continue;
+                        );
                     }
 
-                    let chosen = if candidates.len() == 1 {
-                        candidates[0]
-                    } else {
-                        let spec = ChooseObjectsSpec::new(
-                            ctx.source,
-                            "Choose a creature token you control to populate",
-                            candidates.clone(),
-                            1,
-                            Some(1),
-                        );
-                        let selection: Vec<ObjectId> = make_decision(
-                            game,
-                            ctx.decision_maker,
-                            ctx.controller,
-                            Some(ctx.source),
-                            spec,
-                        );
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::with_objects(Vec::new()),
-                            ));
-                        }
-                        let normalized = normalize_object_selection(selection, &candidates, 1);
-                        normalized.first().copied().unwrap_or(candidates[0])
-                    };
-
-                    let outcome = populate_body(self, ChooseSpec::SpecificObject(chosen))
-                        .execute_child_with_outputs(game, ctx)?;
-                    if ctx.decision_maker.awaiting_choice() {
+                    let Some(chosen) = super::captured_selection::choose_one(
+                        game,
+                        ctx,
+                        &candidates,
+                        "Choose a creature token you control to populate",
+                        false,
+                    )?
+                    else {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::resolved(),
+                            EffectOutcome::count(0),
                         ));
-                    }
-                    created_ids.extend(outcome.outcome.instruction_result().output_objects());
-                    outcomes.push(outcome);
-                }
-
-                Ok(crate::effects::CompletedEffectOutputs::from_children(
-                    outcomes,
-                    |children| {
-                        EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::with_objects(created_ids),
-                            children,
-                        )
-                    },
-                ))
+                    };
+                    populate_body(self, ChooseSpec::SpecificObject(chosen))
+                        .execute_child_with_outputs(game, ctx)
+                })
             },
         )
     }
@@ -1478,8 +1437,12 @@ impl EffectExecutor for BolsterEffect {
         filter.toughness = Some(crate::filter::Comparison::EqualExpr(Box::new(
             crate::effect::Value::LeastToughness(filter.clone()),
         )));
-        visitor(&Effect::new(bolster_body(ChooseSpec::Object(filter),
-            self.amount_value.clone().unwrap_or_else(|| self.amount.into()))));
+        visitor(&Effect::new(bolster_body(
+            ChooseSpec::Object(filter),
+            self.amount_value
+                .clone()
+                .unwrap_or_else(|| self.amount.into()),
+        )));
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -1523,67 +1486,37 @@ impl EffectExecutor for BolsterEffect {
                     .copied()
                     .filter(|id| !game.is_phased_out(*id))
                     .collect::<Vec<_>>();
-                let frame = game
-                    .try_current_characteristics_batch(&ids)
-                    .map_err(ExecutionError::ContinuousDiscovery)?;
-                let mut candidates = Vec::new();
-                for id in ids {
-                    let chars = frame.get(&id).ok_or_else(|| {
-                        ExecutionError::IncompleteEvidence(format!(
-                            "bolster has no current characteristics for battlefield object {id:?}"
-                        ))
-                    })?;
-                    if chars.controller == ctx.controller
-                        && chars.card_types.contains(&crate::types::CardType::Creature)
-                    {
-                        let toughness = chars.toughness.ok_or_else(|| {
+                let candidates = super::captured_selection::least_characteristic_candidates(
+                    game,
+                    &ids,
+                    |chars| {
+                        if chars.controller != ctx.controller
+                            || !chars.card_types.contains(&crate::types::CardType::Creature)
+                        {
+                            return Ok(None);
+                        }
+                        chars.toughness.map(Some).ok_or_else(|| {
                             ExecutionError::UnresolvableValue(
                                 "bolster creature has no calculated toughness".into(),
                             )
-                        })?;
-                        candidates.push((id, toughness));
-                    }
-                }
-                let Some(least) = candidates.iter().map(|(_, toughness)| *toughness).min() else {
+                        })
+                    },
+                )?;
+                let Some(chosen) = super::captured_selection::choose_one(
+                    game,
+                    ctx,
+                    &candidates,
+                    "Choose a creature with the least toughness you control for bolster",
+                    true,
+                )?
+                else {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
                 };
-                let candidates = candidates
-                    .into_iter()
-                    .filter_map(|(id, toughness)| (toughness == least).then_some(id))
-                    .collect::<Vec<_>>();
-                let chosen = if candidates.len() == 1 {
-                    candidates[0]
-                } else {
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose a creature with the least toughness you control for bolster",
-                        candidates.clone(),
-                        1,
-                        Some(1),
-                    );
-                    let selection: Vec<ObjectId> = make_decision(
-                        game,
-                        ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    if selection.len() != 1 || !candidates.contains(&selection[0]) {
-                        return Err(ExecutionError::InvalidTarget);
-                    }
-                    selection[0]
-                };
 
                 bolster_body(ChooseSpec::SpecificObject(chosen), amount.into())
                     .execute_child_with_outputs(game, ctx)
-
             },
         )
     }

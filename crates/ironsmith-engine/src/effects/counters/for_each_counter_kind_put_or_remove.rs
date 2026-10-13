@@ -1,7 +1,7 @@
 //! For each counter kind on target, choose put or remove one.
 
 use crate::decisions::context::{
-    SelectObjectsContext, SelectOptionsContext, SelectableObject, SelectableOption,
+    SelectObjectsContext, SelectableObject,
 };
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
@@ -78,7 +78,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
     }
 
     fn counter_label(counter_type: CounterType) -> String {
-        format!("{counter_type:?}").to_ascii_lowercase()
+        super::kind_selection::counter_label(counter_type)
     }
 
     fn put_another_of_each_kind_on_players(
@@ -86,7 +86,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         players: &[crate::ids::PlayerId],
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let mut requests = Vec::new();
         for player_id in players {
             let Some(player) = game.player(*player_id) else {
@@ -105,51 +105,16 @@ impl ForEachCounterKindPutOrRemoveEffect {
             }
         }
         if requests.is_empty() {
-            return Ok(EffectOutcome::resolved());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()));
         }
         let children = super::execute_counter_batch_with_outputs(game, ctx, requests)?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         }
-        Ok(EffectOutcome::aggregate_summing_counts(
-            children.into_iter().map(|child| child.outcome),
-        ))
+        Ok(crate::effects::CompletedEffectOutputs::from_children(children,EffectOutcome::aggregate_summing_counts))
     }
 
-    fn choose_counter_kind(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        counter_kinds: &[CounterType],
-    ) -> Option<CounterType> {
-        let options = counter_kinds
-            .iter()
-            .enumerate()
-            .map(|(idx, counter_type)| {
-                SelectableOption::new(
-                    idx,
-                    format!("Choose {} counter", Self::counter_label(*counter_type)),
-                )
-            })
-            .collect::<Vec<_>>();
-        let choice_ctx = SelectOptionsContext::new(
-            ctx.controller,
-            Some(ctx.source),
-            "Choose a counter kind".to_string(),
-            options,
-            1,
-            1,
-        );
-        let choice = ctx
-            .decision_maker
-            .decide_options(game, &choice_ctx)
-            .into_iter()
-            .next();
-        if ctx.decision_maker.awaiting_choice() {
-            return None;
-        }
-        choice.and_then(|idx| counter_kinds.get(idx).copied())
-    }
+
 }
 
 impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
@@ -158,201 +123,204 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // CR 122.1: players can have counters too. "For each kind of counter
-        // on target permanent or player, give that permanent or player
-        // another counter of that kind" puts one more of every kind the
-        // chosen player has.
-        if self.put_only
-            && self.all_kinds
-            && self.counter_source.is_none()
-            && self.fixed_counter_type.is_none()
-            && self.target.is_target()
-            && matches!(
-                self.target.base(),
-                ChooseSpec::ObjectOrPlayer(..) | ChooseSpec::Player(_)
-            )
-        {
-            let players = crate::effects::helpers::matching_player_targets_for_spec(
-                game,
-                &self.target,
-                ctx,
-            );
-            if !players.is_empty() {
-                return self.put_another_of_each_kind_on_players(game, ctx, &players);
-            }
-        }
-
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        if target_ids.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let source_ids = if let Some(counter_source) = &self.counter_source {
-            resolve_objects_for_effect(game, ctx, counter_source)?
-        } else {
-            target_ids.clone()
-        };
-        let mut shared_counter_kinds = source_ids
-            .iter()
-            .filter_map(|source_id| game.object(*source_id))
-            .flat_map(|object| {
-                object
-                    .counters
-                    .iter()
-                    .filter_map(|(counter_type, count)| (*count > 0).then_some(*counter_type))
-            })
-            .collect::<Vec<_>>();
-        shared_counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));
-        shared_counter_kinds.dedup();
-
-        let mut outcomes = Vec::new();
-        let target_groups = if self.counter_source.is_some() {
-            vec![target_ids]
-        } else {
-            target_ids
-                .into_iter()
-                .map(|target_id| vec![target_id])
-                .collect()
-        };
-        for target_group in target_groups {
-            let mut counter_kinds = if self.counter_source.is_some() {
-                shared_counter_kinds.clone()
-            } else {
-                target_group
-                    .first()
-                    .and_then(|target_id| game.object(*target_id))
-                    .map(|object| {
-                        object
-                            .counters
-                            .iter()
-                            .filter_map(|(counter_type, count)| {
-                                (*count > 0).then_some(*counter_type)
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default()
-            };
-            if counter_kinds.is_empty() {
-                continue;
-            }
-            counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));
-
-            let selected_kinds = if let Some(counter_type) = self.fixed_counter_type {
-                vec![counter_type]
-            } else if self.all_kinds {
-                counter_kinds
-            } else {
-                let Some(counter_type) = self.choose_counter_kind(game, ctx, &counter_kinds) else {
-                    return Ok(EffectOutcome::count(0));
-                };
-                vec![counter_type]
-            };
-
-            for counter_type in selected_kinds {
-                let target_id = if self.choose_target_per_kind {
-                    let candidates = target_group
-                        .iter()
-                        .filter_map(|target_id| {
-                            game.object(*target_id).map(|object| {
-                                SelectableObject::new(*target_id, object.name.clone())
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    let choice = SelectObjectsContext::new(
-                        ctx.controller,
-                        Some(ctx.source),
-                        format!(
-                            "Choose an object to receive a {} counter",
-                            Self::counter_label(counter_type)
-                        ),
-                        candidates,
-                        1,
-                        Some(1),
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                // CR 122.1: players can have counters too. "For each kind of counter
+                // on target permanent or player, give that permanent or player
+                // another counter of that kind" puts one more of every kind the
+                // chosen player has.
+                if self.put_only
+                    && self.all_kinds
+                    && self.counter_source.is_none()
+                    && self.fixed_counter_type.is_none()
+                    && self.target.is_target()
+                    && matches!(
+                        self.target.base(),
+                        ChooseSpec::ObjectOrPlayer(..) | ChooseSpec::Player(_)
                     )
-                    .require_explicit_choice();
-                    let selected = ctx
-                        .decision_maker
-                        .decide_objects(game, &choice)
-                        .into_iter()
-                        .next();
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    let Some(target_id) = selected.filter(|selected| {
-                        choice
-                            .candidates
-                            .iter()
-                            .any(|candidate| candidate.legal && candidate.id == *selected)
-                    }) else {
-                        continue;
-                    };
-                    target_id
-                } else {
-                    let Some(target_id) = target_group.first().copied() else {
-                        continue;
-                    };
-                    target_id
-                };
-
-                if self.put_only {
-                    outcomes.push(
-                        PutCountersEffect::new(
-                            counter_type,
-                            1,
-                            ChooseSpec::SpecificObject(target_id),
-                        )
-                        .execute_child(game, ctx)?,
+                {
+                    let players = crate::effects::helpers::matching_player_targets_for_spec(
+                        game,
+                        &self.target,
+                        ctx,
                     );
-                    continue;
+                    if !players.is_empty() {
+                        return self.put_another_of_each_kind_on_players(game, ctx, &players);
+                    }
                 }
 
-                let label = Self::counter_label(counter_type);
-                let mut options = vec![
-                    SelectableOption::new(0, format!("Put one {label} counter on it")),
-                    SelectableOption::new(1, format!("Remove one {label} counter from it")),
-                ];
-                if self.optional_action {
-                    options.push(SelectableOption::new(
-                        2,
-                        format!("Don't add or remove a {label} counter"),
+                let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+                if target_ids.is_empty() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
                     ));
                 }
-                let choice_ctx = SelectOptionsContext::new(
-                    ctx.controller,
-                    Some(ctx.source),
-                    format!("Choose for {label} counter"),
-                    options,
-                    1,
-                    1,
-                );
-                let choice = ctx
-                    .decision_maker
-                    .decide_options(game, &choice_ctx)
-                    .into_iter()
-                    .next();
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let max_choice = if self.optional_action { 2 } else { 1 };
-                let Some(choice) = choice.filter(|idx| *idx <= max_choice) else {
-                    return Ok(EffectOutcome::count(0));
-                };
 
-                if choice == 2 {
-                    continue;
-                }
-
-                let spec = ChooseSpec::SpecificObject(target_id);
-                let outcome = if choice == 1 {
-                    RemoveCountersEffect::new(counter_type, 1, spec).execute_child(game, ctx)?
+                let source_ids = if let Some(counter_source) = &self.counter_source {
+                    resolve_objects_for_effect(game, ctx, counter_source)?
                 } else {
-                    PutCountersEffect::new(counter_type, 1, spec).execute_child(game, ctx)?
+                    target_ids.clone()
                 };
-                outcomes.push(outcome);
-            }
-        }
+                let shared_counter_kinds = super::kind_selection::kinds_on(game, &source_ids);
 
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+                let mut outcomes = Vec::new();
+                let target_groups = if self.counter_source.is_some() {
+                    vec![target_ids]
+                } else {
+                    target_ids
+                        .into_iter()
+                        .map(|target_id| vec![target_id])
+                        .collect()
+                };
+                for target_group in target_groups {
+                    let mut counter_kinds = if self.counter_source.is_some() {
+                        shared_counter_kinds.clone()
+                    } else {
+                        super::kind_selection::kinds_on(game, &target_group)
+                    };
+                    if counter_kinds.is_empty() {
+                        continue;
+                    }
+                    counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));
+
+                    let selected_kinds = if let Some(counter_type) = self.fixed_counter_type {
+                        vec![counter_type]
+                    } else if self.all_kinds {
+                        counter_kinds
+                    } else {
+                        let Some(counter_type) =
+                            super::kind_selection::choose_kind(game, ctx, &counter_kinds)
+                        else {
+                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        };
+                        vec![counter_type]
+                    };
+
+                    for counter_type in selected_kinds {
+                        let target_id = if self.choose_target_per_kind {
+                            let candidates = target_group
+                                .iter()
+                                .filter_map(|target_id| {
+                                    game.object(*target_id).map(|object| {
+                                        SelectableObject::new(*target_id, object.name.clone())
+                                    })
+                                })
+                                .collect::<Vec<_>>();
+                            let choice = SelectObjectsContext::new(
+                                ctx.controller,
+                                Some(ctx.source),
+                                format!(
+                                    "Choose an object to receive a {} counter",
+                                    Self::counter_label(counter_type)
+                                ),
+                                candidates,
+                                1,
+                                Some(1),
+                            )
+                            .require_explicit_choice();
+                            let selected = ctx
+                                .decision_maker
+                                .decide_objects(game, &choice)
+                                .into_iter()
+                                .next();
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                    EffectOutcome::count(0),
+                                ));
+                            }
+                            let Some(target_id) = selected.filter(|selected| {
+                                choice
+                                    .candidates
+                                    .iter()
+                                    .any(|candidate| candidate.legal && candidate.id == *selected)
+                            }) else {
+                                continue;
+                            };
+                            target_id
+                        } else {
+                            let Some(target_id) = target_group.first().copied() else {
+                                continue;
+                            };
+                            target_id
+                        };
+
+                        if self.put_only {
+                            outcomes.push(super::kind_selection::put_kind_on_recipients(
+                                game,
+                                ctx,
+                                counter_type,
+                                &[target_id],
+                                None,
+                                false,
+                            )?);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                    EffectOutcome::count(0),
+                                ));
+                            }
+                            continue;
+                        }
+
+                        let label = Self::counter_label(counter_type);
+                        let mut options = vec![
+                            (0, format!("Put one {label} counter on it")),
+                            (1, format!("Remove one {label} counter from it")),
+                        ];
+                        if self.optional_action {
+                            options.push((2, format!("Don't add or remove a {label} counter")));
+                        }
+                        let Some(choice) = super::kind_selection::choose_binding(
+                            game,
+                            ctx,
+                            &format!("Choose for {label} counter"),
+                            &options,
+                            false,
+                        ) else {
+                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        };
+
+                        if choice == 2 {
+                            continue;
+                        }
+
+                        let spec = ChooseSpec::SpecificObject(target_id);
+                        let outcome = if choice == 1 {
+                            RemoveCountersEffect::new(counter_type, 1, spec)
+                                .execute_child_with_outputs(game, ctx)?
+                        } else {
+                            PutCountersEffect::new(counter_type, 1, spec)
+                                .execute_child_with_outputs(game, ctx)?
+                        };
+                        outcomes.push(outcome);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(crate::effects::CompletedEffectOutputs::from_children(
+                    outcomes,
+                    EffectOutcome::aggregate_summing_counts,
+                ))
+            },
+        )
     }
 }
 

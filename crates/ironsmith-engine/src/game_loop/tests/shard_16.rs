@@ -3045,12 +3045,12 @@ pub(super) fn battle_for_bretagard_chapters_create_and_copy_distinct_named_token
         "chapter III should copy the Elf token chosen from chapter II"
     );
     assert_eq!(
-        count_controlled_named_tokens(&game, alice, "Treasure"),
+        count_controlled_named_tokens(&game, alice, "Treasure Token"),
         3,
         "chapter III should copy only one of two same-named Treasure tokens"
     );
     assert_eq!(
-        count_controlled_named_tokens(&game, bob, "Treasure"),
+        count_controlled_named_tokens(&game, bob, "Treasure Token"),
         1,
         "chapter III should not choose or copy opponents' tokens"
     );
@@ -3168,7 +3168,7 @@ pub(super) fn king_macar_untap_trigger_creates_gold_only_when_optional_exile_hap
             .iter()
             .filter_map(|&id| game.object(id))
             .filter(|object| {
-                object.name == "Gold"
+                object.name == "Gold Token"
                     && object.kind == ObjectKind::Token
                     && game.controller_of(object) == controller
             })

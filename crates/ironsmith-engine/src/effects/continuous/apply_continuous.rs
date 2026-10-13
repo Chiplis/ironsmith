@@ -44,7 +44,8 @@ pub enum RuntimeModification {
     /// Remove the activated ability currently resolving.
     RemoveThisAbility,
     /// Keep the source's colors as the effect begins: "except it doesn't copy
-    /// that creature's color" (CR 707.9b). Resolved to a layer-5 color set.
+    /// that creature's color" (CR 707.9b). With a copy, this is a layer-1
+    /// exception; on its own it resolves to a layer-5 color set.
     RetainSourceColors,
     /// Set the Aura attachment restriction while this effect applies.
     SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
@@ -328,6 +329,7 @@ fn resolve_runtime_modification(
     ctx: &mut ExecutionContext,
     modification: &RuntimeModification,
     copy_pt_exception: Option<(i32, i32)>,
+    copy_color_exception: Option<crate::color::ColorSet>,
 ) -> Result<Modification, ExecutionError> {
     match modification {
         RuntimeModification::ChangeControllerToEffectController => {
@@ -443,6 +445,14 @@ fn resolve_runtime_modification(
                 )
                 .ok_or(ExecutionError::InvalidTarget)?
             };
+            if let Some(colors) = copy_color_exception {
+                crate::static_abilities::exclude_cdas_from_copy(
+                    &mut copiable_values.abilities,
+                    &mut copiable_values.ability_labels,
+                    false, true, false,
+                );
+                copiable_values.colors = colors;
+            }
             if let Some((power, toughness)) = copy_pt_exception {
                 crate::static_abilities::exclude_pt_cdas_from_copy(
                     &mut copiable_values.abilities,
@@ -1191,12 +1201,21 @@ fn acquire_continuous_action(
                 Modification::SetPowerToughness { sublayer: crate::continuous::PtSublayer::Setting, .. }));
         }
     }
+    // Retained color is a copiable layer-1 exception (CR 707.3, 707.9d).
+    let copy_color_exception = (has_runtime_copy && definition.runtime_modifications.iter()
+        .any(|m| matches!(m, RuntimeModification::RetainSourceColors)))
+        .then(|| game.current_colors(ctx.source).unwrap_or_default());
     for runtime_modification in &definition.runtime_modifications {
+        if copy_color_exception.is_some()
+            && matches!(runtime_modification, RuntimeModification::RetainSourceColors) {
+            continue;
+        }
         mods.push(resolve_runtime_modification(
             game,
             ctx,
             runtime_modification,
             copy_pt_exception,
+            copy_color_exception,
         )?);
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);

@@ -297,22 +297,13 @@ impl MayEffect {
             ctx.iteration.iterated_player.unwrap_or(ctx.controller)
         };
 
-        let should_do = crate::decisions::make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            deciding_player,
-            Some(ctx.source),
+        let should_do = super::resolved_program::optional_decision(
+            game, ctx, deciding_player,
             crate::decisions::MaySpec::new(ctx.source, description)
                 .with_can_accept(identity_guard.as_ref().is_none_or(|guard| guard.can_accept)),
             self.fallback,
         );
-
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(None);
-        }
-        if !should_do {
-            return Ok(None);
-        }
+        if should_do != Some(true) { return Ok(None); }
         if identity_guard
             .as_ref()
             .is_some_and(|guard| !guard.can_accept)
@@ -1006,7 +997,7 @@ mod tests {
             .filter(|&&id| {
                 game.object(id).is_some_and(|obj| {
                     matches!(obj.kind, crate::object::ObjectKind::Token)
-                        && obj.name == "Lander"
+                        && obj.name == "Lander Token"
                         && game.controller_of(obj) == controller
                 })
             })

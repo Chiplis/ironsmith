@@ -44,7 +44,7 @@ pub fn powerstone_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Powerstone")
+    CardDefinitionBuilder::new(CardId::new(), "Powerstone Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Powerstone])

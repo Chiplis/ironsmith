@@ -42,7 +42,7 @@ pub fn map_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Map")
+    CardDefinitionBuilder::new(CardId::new(), "Map Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Map])

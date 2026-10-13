@@ -6,16 +6,12 @@ use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::{
-    apply_zone_change_with_context_and_additional_effects, maybe_prompt_for_split_result_order,
-};
 
 pub type MoveToLibraryTopOrBottomChoiceEffect =
     ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect;
@@ -69,33 +65,6 @@ fn ordinal_position(position: u32) -> String {
         2 => "Second".to_string(),
         3 => "Third".to_string(),
         n => format!("{n}th"),
-    }
-}
-
-fn position_library_objects(
-    game: &mut GameState,
-    object_ids: &[ObjectId],
-    position: LibraryPositionChoice,
-    top_position: u32,
-) {
-    for &new_id in object_ids {
-        let Some(owner) = game.object(new_id).map(|object| object.owner) else {
-            continue;
-        };
-        let position = match position {
-            LibraryPositionChoice::Top if top_position > 0 => {
-                crate::effects::cards::LibraryCardPosition::NthFromTop(top_position as usize + 1)
-            }
-            LibraryPositionChoice::Top => crate::effects::cards::LibraryCardPosition::Top,
-            LibraryPositionChoice::Bottom => crate::effects::cards::LibraryCardPosition::Bottom,
-        };
-        crate::effects::cards::position_library_card(
-            game,
-            owner,
-            new_id,
-            position,
-            "card positioned in library",
-        );
     }
 }
 
@@ -160,12 +129,6 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                     let object_name = obj.name.to_string();
                     let pre_snapshot =
                         ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                    let source_lki_before_move = if moves_source && object_id == ctx.source {
-                        Some(pre_snapshot.clone())
-                    } else {
-                        None
-                    };
-
                     let choice = choose_library_position(
                         game,
                         &mut ctx.decision_maker,
@@ -182,7 +145,22 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
 
                     choices.insert(
                         object_id,
-                        (choice, pre_snapshot.clone(), source_lki_before_move),
+                        (
+                            match choice {
+                                LibraryPositionChoice::Top if self.top_position > 0 => {
+                                    crate::effects::cards::LibraryCardPosition::NthFromTop(
+                                        self.top_position as usize + 1,
+                                    )
+                                }
+                                LibraryPositionChoice::Top => {
+                                    crate::effects::cards::LibraryCardPosition::Top
+                                }
+                                LibraryPositionChoice::Bottom => {
+                                    crate::effects::cards::LibraryCardPosition::Bottom
+                                }
+                            },
+                            pre_snapshot.clone(),
+                        ),
                     );
                     moves.push(super::PreparedZoneMove::capture(
                         game,
@@ -194,92 +172,17 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
                     ));
                 }
                 super::execute_zone_moves_with_outputs(game, ctx, moves, |game, ctx, receipts| {
-                    let mut moved_ids = Vec::new();
-                    let mut affected_ids = Vec::new();
-                    let mut any_replaced = false;
-                    let mut any_prevented = false;
-                    let mut moved_source_lki = None;
-                    for (object_id, receipt) in receipts {
-                        let object_id = *object_id;
-                        let (choice, pre_snapshot, source_lki_before_move) = &choices[&object_id];
-                        let choice = *choice;
-                        let from_zone = pre_snapshot.zone;
-                        let original = receipt.original.clone();
-                        match original {
-                            EventOutcome::Prevented => {
-                                any_prevented = true;
-                            }
-                            EventOutcome::Proceed(mut result) => {
-                                if result.new_object_ids.is_empty() {
-                                    continue;
-                                }
-                                ctx.refresh_target_snapshot(pre_snapshot.clone());
-                                if let Some(snapshot) = source_lki_before_move.clone() {
-                                    moved_source_lki = Some(snapshot);
-                                }
-
-                                if result.final_zone == Zone::Exile {
-                                    for &new_id in &result.new_object_ids {
-                                        game.add_exiled_with_source_link(ctx.source, new_id);
-                                    }
-                                } else if result.final_zone == Zone::Library {
-                                    position_library_objects(
-                                        game,
-                                        &result.new_object_ids,
-                                        choice,
-                                        self.top_position,
-                                    );
-                                    if from_zone == Zone::Battlefield {
-                                        maybe_prompt_for_split_result_order(
-                                            game,
-                                            &mut ctx.decision_maker,
-                                            result.final_zone,
-                                            &ctx.cause,
-                                            &mut result,
-                                        );
-                                        if ctx.decision_maker.awaiting_choice() {
-                                            return Ok(EffectOutcome::count(0));
-                                        }
-                                        game.record_zone_change_results(
-                                            object_id,
-                                            result.new_object_ids.clone(),
-                                        );
-                                    }
-                                }
-
-                                affected_ids.extend(result.new_object_ids.iter().copied());
-                                moved_ids.extend(result.new_object_ids.iter().copied());
-                            }
-                            EventOutcome::Replaced => {
-                                any_replaced = true;
-                                if let Some(result) =
-                                    super::take_recorded_zone_change(game, object_id)
-                                {
-                                    affected_ids.extend(result.new_object_ids);
-                                }
-                            }
-                            EventOutcome::NotApplicable => {}
-                        }
-                    }
-
-                    if moves_source && let Some(new_source_id) = moved_ids.first().copied() {
-                        ctx.source = new_source_id;
-                    }
-                    if let Some(snapshot) = moved_source_lki {
-                        ctx.refresh_source_snapshot(snapshot);
-                    }
-
-                    if !moved_ids.is_empty() {
-                        return Ok(EffectOutcome::with_objects(moved_ids)
-                            .with_affected_objects(affected_ids));
-                    }
-                    if any_replaced {
-                        return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
-                    }
-                    if any_prevented {
-                        return Ok(EffectOutcome::prevented());
-                    }
-                    Ok(EffectOutcome::target_invalid())
+                    super::positioned_move::complete_positioned_moves(
+                        game,
+                        ctx,
+                        receipts,
+                        &choices,
+                        if moves_source {
+                            super::positioned_move::SourceCompletion::Rebind
+                        } else {
+                            super::positioned_move::SourceCompletion::Unchanged
+                        },
+                    )
                 })
             },
         );

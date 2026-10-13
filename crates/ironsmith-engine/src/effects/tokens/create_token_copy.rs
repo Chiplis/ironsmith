@@ -174,6 +174,13 @@ fn build_token_copy_object(
             &mut token.ability_labels,
         );
     }
+    crate::static_abilities::exclude_cdas_from_copy(
+        &mut token.abilities,
+        &mut token.ability_labels,
+        false,
+        effect.set_colors.is_some(),
+        effect.set_card_types.is_some() || effect.set_subtypes.is_some(),
+    );
     if let Some(CopyPtAdjustment::HalfRoundUp) = effect.pt_adjustment {
         token.base_power = Some(PtValue::Fixed(half_power));
         token.base_toughness = Some(PtValue::Fixed(half_toughness));
@@ -1380,7 +1387,7 @@ mod tests {
             .iter()
             .filter(|id| {
                 game.object(**id)
-                    .is_some_and(|token| token.name == "Treasure")
+                    .is_some_and(|token| token.name == "Treasure Token")
             })
             .count();
         assert_eq!(
@@ -1457,7 +1464,7 @@ mod tests {
             "Xorn should only affect its controller's Treasure token copies"
         );
         let token = game.object(ids[0]).expect("token should exist");
-        assert_eq!(token.name, "Treasure");
+        assert_eq!(token.name, "Treasure Token");
         assert_eq!(game.controller_of(token), bob);
     }
 

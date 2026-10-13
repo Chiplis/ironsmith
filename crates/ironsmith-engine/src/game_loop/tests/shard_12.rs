@@ -3659,7 +3659,7 @@ pub(super) fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creatur
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id).map(|object| (id, object)))
-        .filter(|(_, object)| object.name == "Cursed Role")
+        .filter(|(_, object)| object.name == "Cursed")
         .collect();
     assert_eq!(
         cursed_roles.len(),

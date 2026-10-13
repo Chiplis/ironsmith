@@ -7,7 +7,8 @@
 //! "{T}: Target land becomes an Island until end of turn."
 
 use crate::continuous::Modification;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -34,88 +35,71 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let options = subtype_options()
             .into_iter()
-            .filter(|(subtype, _, _)| {
-                self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(subtype)
+            .filter(|(kind, _, _)| {
+                self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(kind)
             })
+            .map(|(kind, _, label)| (kind, label.to_string()))
             .collect::<Vec<_>>();
         if self
             .allowed_subtypes
             .iter()
-            .any(|subtype| !subtype.is_basic_land_type())
+            .any(|kind| !kind.is_basic_land_type())
             || options.is_empty()
         {
             return Err(ExecutionError::InternalError(
                 "invalid basic land subtype choice set".into(),
             ));
         }
-        let (subtype, _, _) = if let Some(subtype) = self
+        let program = |kind| {
+            let apply = if self.preserve_other_types {
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    self.target.clone(),
+                    Modification::AddSubtypes(vec![kind]),
+                    self.duration.clone(),
+                )
+            } else {
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    self.target.clone(),
+                    Modification::SetSubtypes(vec![kind]),
+                    self.duration.clone(),
+                )
+                .with_additional_modification(Modification::RemoveLandRulesTextAbilities)
+            };
+            crate::effect::Effect::new(apply)
+        };
+        if let Some(kind) = self
             .fixed_subtype
             .or_else(|| (options.len() == 1).then(|| options[0].0))
         {
-            options
-                .iter()
-                .copied()
-                .find(|(candidate, _, _)| *candidate == subtype)
-                .ok_or_else(|| {
-                    ExecutionError::InternalError("invalid fixed basic land subtype".into())
-                })?
-        } else {
-            let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
-                game,
-                &self.chooser,
-                ctx,
-            )?;
-
-            let displayed: Vec<SelectableOption> = options
-                .iter()
-                .enumerate()
-                .map(|(idx, (_, _, label))| SelectableOption::new(idx, *label))
-                .collect();
-            let choice_ctx = SelectOptionsContext::new(
-                chooser,
-                Some(ctx.source),
-                "Choose a basic land type",
-                displayed,
-                1,
-                1,
-            );
-            let choices = ctx.decision_maker.decide_options(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+            if !options.iter().any(|(candidate, _)| *candidate == kind) {
+                return Err(ExecutionError::InternalError(
+                    "invalid fixed basic land subtype".into(),
+                ));
             }
-            let [chosen] = choices.as_slice() else {
-                return Err(ExecutionError::InternalError(
-                    "basic land selection must contain exactly one index".into(),
-                ));
-            };
-            let Some(chosen) = Some(*chosen).filter(|idx| *idx < options.len()) else {
-                return Err(ExecutionError::InternalError(
-                    "invalid basic land type selection".into(),
-                ));
-            };
-
-            options[chosen]
-        };
-        // CR305.7 changes only land subtypes, not Creature/Artifact/etc
-        // subtypes. Intrinsic basic-land mana is derived at the layer boundary.
-        let apply = if self.preserve_other_types {
-            crate::effects::ApplyContinuousEffect::with_spec(
-                self.target.clone(),
-                Modification::AddSubtypes(vec![subtype]),
-                self.duration.clone(),
-            )
-        } else {
-            crate::effects::ApplyContinuousEffect::with_spec(
-                self.target.clone(),
-                Modification::SetSubtypes(vec![subtype]),
-                self.duration.clone(),
-            )
-            .with_additional_modification(Modification::RemoveLandRulesTextAbilities)
-        };
-
-        apply.execute_child(game, ctx)
+            return program(kind).0.execute_child_with_outputs(game, ctx);
+        }
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
+        crate::effects::composition::scoped_choice::execute_choice_program(
+            game,
+            ctx,
+            chooser,
+            "Choose a basic land type",
+            &options,
+            1,
+            true,
+            |selected| Ok(selected.first().map(|kind| program(*kind))),
+        )
     }
 }
 

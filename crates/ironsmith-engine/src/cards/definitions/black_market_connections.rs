@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_treasure_token_definition() {
         let token = treasure_token_definition();
-        assert_eq!(token.name(), "Treasure");
+        assert_eq!(token.name(), "Treasure Token");
         assert!(token.card.is_token);
         assert!(token.card.card_types.contains(&CardType::Artifact));
         assert!(token.card.subtypes.contains(&Subtype::Treasure));
@@ -277,7 +277,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Treasure" && game.controller_of(obj) == alice)
+            .filter(|obj| obj.name == "Treasure Token" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(treasures.len(), 1, "Should have created 1 Treasure token");
         assert!(treasures[0].card_types.contains(&CardType::Artifact));
@@ -440,7 +440,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Treasure" && game.controller_of(obj) == alice)
+            .filter(|obj| obj.name == "Treasure Token" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(treasures.len(), 1, "Should have 1 Treasure");
 

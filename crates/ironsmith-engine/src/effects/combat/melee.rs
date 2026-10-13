@@ -1,11 +1,10 @@
 //! Melee keyword effect implementation.
 
 use crate::continuous::{EffectTarget, Modification};
-use crate::effect::{Effect, EffectOutcome, Until};
+use crate::effect::{EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MeleeEffect;
@@ -22,30 +21,36 @@ impl EffectExecutor for MeleeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let source = game
             .object(ctx.source)
             .ok_or(ExecutionError::ObjectNotFound(ctx.source))?;
         if game.combat.is_none() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let controller = game.controller_of(source);
-        // CR 702.121a: count each opponent this player attacked with a
-        // creature this combat, as declared. Attacking a planeswalker or
-        // battle doesn't attack its controller or protector; creatures put
-        // onto the battlefield attacking never attacked (CR 508.4); and a
-        // creature later removed from combat still attacked.
-        let mut attacked_opponents: HashSet<crate::ids::PlayerId> = game
-            .turn_store
-            .turn_history
-            .players_attacked_in_combat
-            .get(&(game.turn_store.combat_phases_started_this_turn, controller))
-            .cloned()
-            .unwrap_or_default();
-
-        attacked_opponents.remove(&controller);
-        let amount = attacked_opponents.len() as i32;
+        let amount = crate::effects::helpers::resolve_value(
+            game,
+            &crate::effect::Value::TurnHistoryCount(
+                crate::effect::TurnHistoryCount::PlayersAttackedThisCombat(
+                    crate::target::PlayerFilter::Specific(controller),
+                ),
+            ),
+            ctx,
+        )?;
         if amount <= 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         let apply = ApplyContinuousEffect::new(
@@ -56,8 +61,11 @@ impl EffectExecutor for MeleeEffect {
             },
             Until::EndOfTurn,
         );
-        execute_effect(game, &Effect::new(apply), ctx)?;
-        Ok(EffectOutcome::count(amount))
+        let child = apply.execute_child_with_outputs(game, ctx)?;
+        Ok(CompletedEffectOutputs::with_primary_result(
+            EffectOutcome::count(amount),
+            [child],
+        ))
     }
 }
 

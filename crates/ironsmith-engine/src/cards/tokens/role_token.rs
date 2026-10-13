@@ -37,7 +37,7 @@ fn role_token_builder(name: &str, oracle_text: &str) -> CardDefinitionBuilder {
 pub fn wicked_role_token_definition() -> CardDefinition {
     let enchanted = enchanted_creature_filter();
     role_token_builder(
-        "Wicked Role",
+        "Wicked",
         "Enchant creature\nEnchanted creature gets +1/+1.\nWhen this token is put into a graveyard from the battlefield, each opponent loses 1 life.",
     )
     .with_ability(Ability::static_ability(StaticAbility::anthem(
@@ -79,7 +79,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
     };
 
     role_token_builder(
-        "Young Hero Role",
+        "Young Hero",
         "Enchant creature\nEnchanted creature has \"Whenever this creature attacks, if its toughness is 3 or less, put a +1/+1 counter on it.\"",
     )
     .with_ability(
@@ -98,7 +98,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
 pub fn monster_role_token_definition() -> CardDefinition {
     let enchanted = enchanted_creature_filter();
     role_token_builder(
-        "Monster Role",
+        "Monster",
         "Enchant creature\nEnchanted creature gets +1/+1 and has trample.",
     )
     .with_ability(Ability::static_ability(StaticAbility::anthem(
@@ -117,7 +117,7 @@ pub fn sorcerer_role_token_definition() -> CardDefinition {
     let granted_trigger = Ability::triggered(Trigger::this_attacks(), vec![Effect::scry(1)]);
 
     role_token_builder(
-        "Sorcerer Role",
+        "Sorcerer",
         "Enchant creature\nEnchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\"",
     )
     .with_ability(Ability::static_ability(StaticAbility::anthem(
@@ -139,7 +139,7 @@ pub fn royal_role_token_definition() -> CardDefinition {
     let enchanted = enchanted_creature_filter();
     let ward_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]);
     role_token_builder(
-        "Royal Role",
+        "Royal",
         "Enchant creature\nEnchanted creature gets +1/+1 and has ward {1}.",
     )
     .with_ability(Ability::static_ability(StaticAbility::anthem(
@@ -156,7 +156,7 @@ pub fn royal_role_token_definition() -> CardDefinition {
 
 pub fn cursed_role_token_definition() -> CardDefinition {
     role_token_builder(
-        "Cursed Role",
+        "Cursed",
         "Enchant creature\nEnchanted creature has base power and toughness 1/1.",
     )
     .with_ability(Ability::static_ability(

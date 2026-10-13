@@ -10,7 +10,7 @@ use crate::types::{CardType, Subtype};
 ///
 /// A Squirrel is a 1/1 green Squirrel creature token.
 pub fn squirrel_token_definition() -> CardDefinition {
-    CardDefinitionBuilder::new(CardId::new(), "Squirrel")
+    CardDefinitionBuilder::new(CardId::new(), "Squirrel Token")
         .token()
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Squirrel])

@@ -5,7 +5,8 @@
 
 use crate::color::Color;
 use crate::continuous::Modification;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -30,49 +31,47 @@ impl EffectExecutor for BecomeColorChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-
-        let options: Vec<SelectableOption> = color_options()
-            .iter()
-            .enumerate()
-            .map(|(idx, (_, label))| SelectableOption::new(idx, *label))
-            .collect();
-        let maximum = if self.allow_multiple {
-            options.len()
-        } else {
-            1
-        };
-        let choice_ctx = SelectOptionsContext::new(
+        let options = color_options()
+            .into_iter()
+            .map(|(color, label)| (color, label.to_string()))
+            .collect::<Vec<_>>();
+        crate::effects::composition::scoped_choice::execute_choice_program(
+            game,
+            ctx,
             chooser,
-            Some(ctx.source),
             if self.allow_multiple {
                 "Choose one or more colors"
             } else {
                 "Choose a color"
             },
-            options,
-            1,
-            maximum,
-        );
-        let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let colors = chosen
-            .into_iter()
-            .filter_map(|index| color_options().get(index).map(|(color, _)| *color))
-            .collect::<crate::color::ColorSet>();
-        if colors.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let apply = crate::effects::ApplyContinuousEffect::with_spec(
-            self.target.clone(),
-            Modification::SetColors(colors),
-            self.duration.clone(),
-        );
-
-        apply.execute_child(game, ctx)
+            &options,
+            if self.allow_multiple {
+                options.len()
+            } else {
+                1
+            },
+            false,
+            |colors| {
+                let colors = colors.into_iter().collect::<crate::color::ColorSet>();
+                Ok((!colors.is_empty()).then(|| {
+                    crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                        self.target.clone(),
+                        Modification::SetColors(colors),
+                        self.duration.clone(),
+                    ))
+                }))
+            },
+        )
     }
 }
 

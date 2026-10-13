@@ -616,7 +616,7 @@ fn unassuming_sage_case(accept_optional: bool, available_mana: u32) {
         .into_iter()
         .filter(|id| {
             game.object(*id)
-                .is_some_and(|object| object.name == "Sorcerer Role")
+                .is_some_and(|object| object.name == "Sorcerer")
         })
         .collect::<Vec<_>>();
     let should_create = accept_optional && available_mana >= 2;

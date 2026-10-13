@@ -454,7 +454,7 @@ fn choose_player_gluntch_keeps_first_second_and_third_players_distinct() {
     game.create_object_from_card(&library_card, charlie, Zone::Library);
 
     let hand_before = game.player(charlie).expect("charlie exists").hand.len();
-    let treasures_before = count_battlefield_name(&game, alice, "Treasure");
+    let treasures_before = count_battlefield_name(&game, alice, "Treasure Token");
 
     let triggered = first_triggered_ability(&gluntch);
     let mut dm = ScriptedDecisionMaker::new(&["Bob", "Charlie", "Alice"], &["Bob Bear"]);
@@ -479,7 +479,7 @@ fn choose_player_gluntch_keeps_first_second_and_third_players_distinct() {
         "the second chosen player should draw a card"
     );
     assert_eq!(
-        count_battlefield_name(&game, alice, "Treasure"),
+        count_battlefield_name(&game, alice, "Treasure Token"),
         treasures_before + 2,
         "the third chosen player should create two Treasure tokens"
     );

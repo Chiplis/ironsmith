@@ -15,7 +15,6 @@ use crate::zone::Zone;
 
 use super::search_overrides::{
     LibrarySearchRequest, execute_library_search_scope,
-    exile_found_cards_for_opposition_agent_with_outputs,
 };
 
 pub type SearchLibraryEffect = ironsmith_core::SearchLibraryEffect;
@@ -182,14 +181,15 @@ impl EffectExecutor for SearchLibraryEffect {
                                     } else {
                                         1
                                     };
-                                    let shuffle = super::shuffle_library_with_outputs(
-                                        game,
-                                        ctx,
-                                        player_id,
-                                        &[card_id],
-                                        position_from_top,
-                                        "searched card restored after library shuffle",
-                                    )?;
+                                    let shuffle =
+                                        super::search_result_program::shuffle_after_search(
+                                            game,
+                                            ctx,
+                                            player_id,
+                                            &[card_id],
+                                            position_from_top,
+                                            "searched card restored after library shuffle",
+                                        )?;
                                     let shuffle_outcome = shuffle.outcome.clone();
                                     retained_children.push(shuffle);
                                     let mut outcome = EffectOutcome::with_objects(vec![card_id])
@@ -210,11 +210,13 @@ impl EffectExecutor for SearchLibraryEffect {
                                 // links before additions; shuffle only after it resolves.
                                 let movement_outputs = if search_override.is_some() {
                                     let (found, published_outputs) =
-                                        exile_found_cards_for_opposition_agent_with_outputs(
+                                        super::search_result_program::prepare_found_cards(
                                             game,
                                             ctx,
                                             &[card_id],
+                                            self.destination,
                                             chooser_id,
+                                            true,
                                         )?;
                                     if ctx.decision_maker.awaiting_choice() {
                                         return Ok(EffectOutcome::count(0));
@@ -223,21 +225,17 @@ impl EffectExecutor for SearchLibraryEffect {
                                         EffectOutcome::count(0)
                                     } else {
                                         EffectOutcome::with_objects(found.moved_ids.clone())
-                                            .with_affected_objects(found.moved_ids)
+                                            .with_affected_objects(found.moved_ids.clone())
                                     };
                                     if let Some(memory) = chosen_memory.clone() {
                                         original = original.with_chosen_object_memory(vec![memory]);
                                     }
-                                    let mut original =
-                                        crate::effects::CompletedEffectOutputs::aggregate_only(
-                                            original,
-                                        );
-                                    original.retain_published_references(published_outputs);
-                                    crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                                    super::search_result_program::finish_found_cards(
                                         game,
                                         ctx,
+                                        found,
+                                        published_outputs,
                                         original,
-                                        found.receipts,
                                     )?
                                 } else {
                                     let move_effect = crate::effect::Effect::move_to_zone(
@@ -277,7 +275,7 @@ impl EffectExecutor for SearchLibraryEffect {
                                 }
                                 let outcome = include_search_disclosures(outcome, &disclosures);
 
-                                let shuffle = super::shuffle_library_with_outputs(
+                                let shuffle = super::search_result_program::shuffle_after_search(
                                     game,
                                     ctx,
                                     player_id,
@@ -295,7 +293,7 @@ impl EffectExecutor for SearchLibraryEffect {
                         }
 
                         // No card found or chosen - still shuffle (searching always shuffles)
-                        let shuffle = super::shuffle_library_with_outputs(
+                        let shuffle = super::search_result_program::shuffle_after_search(
                             game,
                             ctx,
                             player_id,

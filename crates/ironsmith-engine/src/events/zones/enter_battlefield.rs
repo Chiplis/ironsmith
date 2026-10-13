@@ -325,11 +325,23 @@ impl EnterBattlefieldEvent {
             object.attachments.clear();
             object.counters.clear();
 
+            let retained_colors = self.copy_followups
+                .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
+                .then(|| object.colors());
             if let Some(source) = source_object.as_ref() {
                 object.copy_copiable_values_from(source);
             }
             if let Some(values) = copiable_values {
                 object.copy_copiable_values_from_values(&values);
+            }
+            if self.enters_as_copy_of.is_some() {
+                crate::static_abilities::exclude_cdas_from_copy(
+                    &mut object.abilities, &mut object.ability_labels,
+                    false, retained_colors.is_some(), self.removes_other_card_types,
+                );
+                if let Some(colors) = retained_colors {
+                    object.color_override = Some(colors);
+                }
             }
             if let Some(name) = &self.copy_name_override {
                 object.name = name.clone().into();

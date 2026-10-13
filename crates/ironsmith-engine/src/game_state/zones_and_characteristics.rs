@@ -3527,6 +3527,10 @@ impl GameState {
         {
             new_obj.capture_enters_as_copy_restore_state();
         }
+        let retained_colors = result.copy_followups
+            .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
+            .then(|| self.object(new_id).map(|object| object.colors()))
+            .flatten();
         if let Some(copy_source_id) = result.enters_as_copy_of {
             if let Some(duration) = temporary_copy_duration.clone() {
                 let effects = self.all_continuous_effects();
@@ -3539,6 +3543,13 @@ impl GameState {
                     self,
                 );
                 if let Some(mut copiable_values) = copiable_values {
+                    crate::static_abilities::exclude_cdas_from_copy(
+                        &mut copiable_values.abilities, &mut copiable_values.ability_labels,
+                        false, retained_colors.is_some(), result.removes_other_card_types,
+                    );
+                    if let Some(colors) = retained_colors {
+                        copiable_values.colors = colors;
+                    }
                     let controller = self
                         .current_controller(new_id)
                         .ok_or(crate::effects::ExecutionError::ObjectNotFound(new_id))?;
@@ -3634,11 +3645,6 @@ impl GameState {
             } else {
                 // CR 707.9b: "it doesn't copy that creature's color" keeps the
                 // entering object's own colors as its copiable color.
-                let retained_colors = result
-                    .copy_followups
-                    .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
-                    .then(|| self.object(new_id).map(|object| object.colors()))
-                    .flatten();
                 let copy_source = self.object(copy_source_id).cloned();
                 let effects = self.all_continuous_effects();
                 let copiable_values = crate::continuous::copiable_values_with_effects(
@@ -3660,6 +3666,10 @@ impl GameState {
                             &mut new_obj.ability_labels,
                         );
                     }
+                    crate::static_abilities::exclude_cdas_from_copy(
+                        &mut new_obj.abilities, &mut new_obj.ability_labels,
+                        false, retained_colors.is_some(), result.removes_other_card_types,
+                    );
                     if let Some(colors) = retained_colors {
                         new_obj.color_override = Some(colors);
                     }

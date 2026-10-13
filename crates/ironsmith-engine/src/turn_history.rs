@@ -2353,6 +2353,14 @@ pub(crate) fn resolve_turn_history_count(
         }
         TurnHistoryCount::PlayersAttackedThisCombat(player) => {
             let mut seen = HashSet::new();
+            // The declaration cache also covers callers which record combat
+            // declarations directly. Projected records cover prepared histories.
+            for ((combat, attacker), defenders) in &history.players_attacked_in_combat {
+                if *combat == game.turn_store.combat_phases_started_this_turn
+                    && player.matches_player(*attacker, filter_ctx) {
+                    seen.extend(defenders.iter().copied().filter(|defender| defender != attacker));
+                }
+            }
             for record in history.projected_records().rev() {
                 if record
                     .event
@@ -2371,7 +2379,7 @@ pub(crate) fn resolve_turn_history_count(
                     && let crate::triggers::event::AttackEventTarget::Player(defender) =
                         event.target
                 {
-                    seen.insert(defender);
+                    if defender != snapshot.controller { seen.insert(defender); }
                 }
             }
             seen.len() as i32

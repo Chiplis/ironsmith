@@ -1162,3 +1162,5 @@ pub use shuffle_objects_into_library::ShuffleObjectsIntoLibraryEffect;
 mod zone_entry_carrier_tests;
 
 pub(crate) use sacrifice::sacrifice_selected_objects_with_original_outputs;
+
+mod positioned_move;

@@ -15,9 +15,6 @@
 
 use std::collections::HashMap;
 
-use crate::ability::AbilityKind;
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -25,7 +22,6 @@ use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent}
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
-use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
 
@@ -46,90 +42,13 @@ impl SaddleCostEffect {
         controller: PlayerId,
         source: ObjectId,
     ) -> Vec<ObjectId> {
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|&id| {
-                if id == source {
-                    return false;
-                }
-                let Some(obj) = game.object(id) else {
-                    return false;
-                };
-                game.current_is_creature(id)
-                    && game.controller_of(obj) == controller
-                    && !game.is_tapped(id)
-                    // CR 702.26b: a phased-out permanent is treated as though
-                    // it doesn't exist.
-                    && !game.is_phased_out(id)
-            })
-            .collect()
-    }
-
-    fn object_power(game: &GameState, object_id: ObjectId) -> i32 {
-        game.calculated_characteristics(object_id)
-            .and_then(|calc| calc.power)
-            .or_else(|| game.object(object_id).and_then(|obj| obj.power()))
-            .unwrap_or(0)
-    }
-
-    fn object_toughness(game: &GameState, object_id: ObjectId) -> i32 {
-        game.calculated_characteristics(object_id)
-            .and_then(|calc| calc.toughness)
-            .or_else(|| game.object(object_id).and_then(|obj| obj.toughness()))
-            .unwrap_or(0)
-    }
-
-    fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
-        let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
-            game.object(object_id)
-                .map(|obj| obj.abilities_vec())
-                .unwrap_or_default()
-        });
-        abilities
-            .into_iter()
-            .filter_map(|ability| match ability.kind {
-                AbilityKind::Static(static_ability)
-                    if static_ability.id() == StaticAbilityId::KeywordMarker =>
-                {
-                    Some(static_ability.display().to_ascii_lowercase())
-                }
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn saddle_power_bonus_from_marker(marker: &str) -> Option<i32> {
-        let prefixes = [
-            "this creature saddles mounts and crews vehicles as though its power were ",
-            "this token saddles mounts and crews vehicles as though its power were ",
-        ];
-        prefixes.iter().find_map(|prefix| {
-            marker
-                .strip_prefix(prefix)
-                .and_then(|rest| rest.strip_suffix(" greater."))
-                .and_then(|amount| amount.parse::<i32>().ok())
-        })
+        super::contributor_selection::candidates(game,source,controller,|_| true)
     }
 
     fn saddle_value(game: &GameState, object_id: ObjectId) -> i32 {
-        let markers = Self::keyword_marker_texts(game, object_id);
-        let use_toughness = markers.iter().any(|marker| {
-            let marker = marker.trim_end_matches('.');
-            marker
-                == "this creature saddles mounts and crews vehicles using its toughness rather than its power"
-        });
-        let base = if use_toughness {
-            Self::object_toughness(game, object_id)
-        } else {
-            Self::object_power(game, object_id)
-        };
-        let bonus: i32 = markers
-            .iter()
-            .filter_map(|marker| Self::saddle_power_bonus_from_marker(marker))
-            .sum();
-        base + bonus
+        super::contributor_selection::contribution_value(game,object_id,false)
     }
+
 }
 
 fn keyword_saddle_event(
@@ -189,61 +108,28 @@ impl EffectExecutor for SaddleCostEffect {
             |game, ctx| {
                 let controller = ctx.controller;
                 let source = ctx.source;
-                let mut candidates = Self::saddle_candidates(game, controller, source);
+                let candidates = Self::saddle_candidates(game, controller, source);
                 if candidates.is_empty() && self.required_power > 0 {
                     return Err(ExecutionError::Impossible(
                         "No untapped creatures available to saddle".to_string(),
                     ));
                 }
 
-                let min = if self.required_power == 0 { 0 } else { 1 };
-                let max = Some(candidates.len());
-                let chosen = {
-                    // Prefer the actual saddle contribution, including marker-based modifications.
-                    candidates.sort_by_key(|id| -Self::saddle_value(game, *id));
-                    let spec = ChooseObjectsSpec::new(
-                        source,
-                        "Choose other creatures to saddle",
-                        candidates.clone(),
-                        min,
-                        max,
-                    );
-                    make_decision(game, ctx.decision_maker, controller, Some(source), spec)
-                };
-                if ctx.decision_maker.awaiting_choice() {
+                let Some((chosen, sufficient)) = super::contributor_selection::select_contributors(
+                    game,
+                    ctx,
+                    candidates,
+                    self.required_power,
+                    "Choose other creatures to saddle",
+                    |id| Self::saddle_value(game, id),
+                ) else {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
-                }
-
-                let mut chosen = chosen;
-                chosen.sort();
-                chosen.dedup();
-
-                // If the decision maker picked a set that doesn't meet the requirement,
-                // greedily add remaining candidates until it does (or we exhaust options).
-                let required = self.required_power as i32;
-                let mut total_power: i32 =
-                    chosen.iter().map(|id| Self::saddle_value(game, *id)).sum();
-                if total_power < required {
-                    let mut remaining: Vec<ObjectId> = candidates
-                        .iter()
-                        .copied()
-                        .filter(|id| !chosen.contains(id))
-                        .collect();
-                    remaining.sort_by_key(|id| -Self::saddle_value(game, *id));
-                    for id in remaining {
-                        if total_power >= required {
-                            break;
-                        }
-                        chosen.push(id);
-                        total_power += Self::saddle_value(game, id);
-                    }
-                }
-
-                if total_power < required {
+                };
+                if !sufficient {
                     return Err(ExecutionError::Impossible(
-                        "Not enough total power to saddle".to_string(),
+                        "Not enough total power to saddle".into(),
                     ));
                 }
 

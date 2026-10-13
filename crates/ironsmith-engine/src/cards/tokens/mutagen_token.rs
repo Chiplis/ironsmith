@@ -44,7 +44,7 @@ pub fn mutagen_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Mutagen")
+    CardDefinitionBuilder::new(CardId::new(), "Mutagen Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Mutagen])

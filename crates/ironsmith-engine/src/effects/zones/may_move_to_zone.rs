@@ -1,9 +1,8 @@
 //! Prompt a player to optionally move an object to a zone.
 
-use crate::decision::FallbackStrategy;
 use crate::decisions::context::DecisionHiddenCardVisibility;
-use crate::decisions::{make_decision_with_fallback, specs::MaySpec};
-use crate::effect::{EffectOutcome, ExecutionFact};
+use crate::decisions::specs::MaySpec;
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -58,9 +57,20 @@ impl EffectExecutor for MayMoveToZoneEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         let Some(object_id) = object_ids.first().copied() else {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         };
         let decider =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.decider, ctx)?;
@@ -74,24 +84,16 @@ impl EffectExecutor for MayMoveToZoneEffect {
                 "Inspect hidden card for decision",
             );
         }
-        let should_move = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            decider,
-            Some(ctx.source),
+        crate::effects::composition::resolved_program::ResolvedOptionalProgram {
+            player: decider,
             spec,
-            FallbackStrategy::Decline,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            body: Effect::new(crate::effects::MoveToZoneEffect::new(
+                self.target.clone(),
+                self.zone,
+                false,
+            )),
         }
-        if !should_move {
-            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::Declined));
-        }
-
-        let move_effect =
-            crate::effects::MoveToZoneEffect::new(self.target.clone(), self.zone, false);
-        move_effect.execute_child(game, ctx)
+        .execute_child_with_outputs(game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

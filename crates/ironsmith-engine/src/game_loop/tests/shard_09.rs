@@ -1107,7 +1107,7 @@ pub(super) fn cavern_hoard_dragon_combat_damage_trigger_counts_damaged_players_a
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.name == "Treasure")
+        .filter(|obj| obj.name == "Treasure Token")
         .count();
     assert_eq!(
         treasure_count, 3,

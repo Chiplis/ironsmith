@@ -8,9 +8,6 @@
 
 use std::collections::HashMap;
 
-use crate::ability::AbilityKind;
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{
     CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor,
@@ -21,7 +18,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
-use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
@@ -37,93 +33,14 @@ const PENDING_CREWERS_TAG: &str = "__crew_activation_pending_crewers";
 
 /// CR 702.122a: crew taps any number of *other* untapped creatures.
 fn crew_candidates(game: &GameState, source: ObjectId, controller: PlayerId) -> Vec<ObjectId> {
-    game.battlefield
-        .iter()
-        .copied()
-        .filter(|&id| {
-            if id == source {
-                return false;
-            }
-            let Some(obj) = game.object(id) else {
-                return false;
-            };
-            game.current_is_creature(id)
-                && game.controller_of(obj) == controller
-                && !game.is_tapped(id)
-                // "can't crew Vehicles" (Revoke Privileges).
-                && !game.effect_store.cant_effects.cant_crew.contains(&id)
-                // CR 702.26b: a phased-out permanent is treated as though it
-                // doesn't exist.
-                && !game.is_phased_out(id)
-        })
-        .collect()
-}
-
-fn object_power(game: &GameState, object_id: ObjectId) -> i32 {
-    game.calculated_characteristics(object_id)
-        .and_then(|calc| calc.power)
-        .or_else(|| game.object(object_id).and_then(|obj| obj.power()))
-        .unwrap_or(0)
-}
-
-fn object_toughness(game: &GameState, object_id: ObjectId) -> i32 {
-    game.calculated_characteristics(object_id)
-        .and_then(|calc| calc.toughness)
-        .or_else(|| game.object(object_id).and_then(|obj| obj.toughness()))
-        .unwrap_or(0)
-}
-
-fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
-    let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
-        game.object(object_id)
-            .map(|obj| obj.abilities_vec())
-            .unwrap_or_default()
-    });
-    abilities
-        .into_iter()
-        .filter_map(|ability| match ability.kind {
-            AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::KeywordMarker =>
-            {
-                Some(static_ability.display().to_ascii_lowercase())
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-fn crew_power_bonus_from_marker(marker: &str) -> Option<i32> {
-    let prefixes = [
-        "this creature crews vehicles as though its power were ",
-        "this creature saddles mounts and crews vehicles as though its power were ",
-        "this token saddles mounts and crews vehicles as though its power were ",
-    ];
-    prefixes.iter().find_map(|prefix| {
-        marker
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_suffix(" greater."))
-            .and_then(|amount| amount.parse::<i32>().ok())
-    })
+    super::contributor_selection::candidates(game,source,controller,
+        |id| !game.effect_store.cant_effects.cant_crew.contains(&id))
 }
 
 fn crew_value(game: &GameState, object_id: ObjectId) -> i32 {
-    let markers = keyword_marker_texts(game, object_id);
-    let use_toughness = markers.iter().any(|marker| {
-        let marker = marker.trim_end_matches('.');
-        marker == "this creature crews vehicles using its toughness rather than its power"
-            || marker
-                == "this creature saddles mounts and crews vehicles using its toughness rather than its power"
-    });
-    let base = if use_toughness {
-        object_toughness(game, object_id)
-    } else {
-        object_power(game, object_id)
-    };
-    base + markers
-        .iter()
-        .filter_map(|marker| crew_power_bonus_from_marker(marker))
-        .sum::<i32>()
+    super::contributor_selection::contribution_value(game,object_id,true)
 }
+use super::contributor_selection::{keyword_marker_texts, object_power};
 
 fn source_has_loyalty_crew_alternative(game: &GameState, source: ObjectId) -> bool {
     keyword_marker_texts(game, source).iter().any(|marker| {
@@ -410,7 +327,7 @@ impl EffectExecutor for CrewCostEffect {
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
                 let controller = ctx.controller;
-                let mut candidates = crew_candidates(game, ctx.source, controller);
+                let candidates = crew_candidates(game, ctx.source, controller);
                 if candidates.is_empty() && self.required_power > 0 {
                     if !self.teamwork
                         && can_pay_loyalty_crew_alternative(game, ctx.source, controller)
@@ -432,58 +349,23 @@ impl EffectExecutor for CrewCostEffect {
                     ));
                 }
 
-                let min = if self.required_power == 0 { 0 } else { 1 };
-                let max = Some(candidates.len());
-                let chosen = {
-                    // Prefer higher-power candidates in fallback selection.
-                    candidates.sort_by_key(|id| -contributor_value(self, game, *id));
-                    let spec = ChooseObjectsSpec::new(
-                        ctx.source,
-                        if self.teamwork {
-                            "Choose creatures for teamwork"
-                        } else {
-                            "Choose creatures to crew"
-                        },
-                        candidates.clone(),
-                        min,
-                        max,
-                    );
-                    make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec)
-                };
-                if ctx.decision_maker.awaiting_choice() {
+                let Some((chosen, sufficient)) = super::contributor_selection::select_contributors(
+                    game,
+                    ctx,
+                    candidates,
+                    self.required_power,
+                    if self.teamwork {
+                        "Choose creatures for teamwork"
+                    } else {
+                        "Choose creatures to crew"
+                    },
+                    |id| contributor_value(self, game, id),
+                ) else {
                     return Ok(CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
-                }
-
-                let mut chosen = chosen;
-                chosen.sort();
-                chosen.dedup();
-
-                // If the decision maker picked a set that doesn't meet the requirement,
-                // greedily add remaining candidates until it does (or we exhaust options).
-                let required = self.required_power as i32;
-                let mut total_power: i32 = chosen
-                    .iter()
-                    .map(|id| contributor_value(self, game, *id))
-                    .sum();
-                if total_power < required {
-                    let mut remaining: Vec<ObjectId> = candidates
-                        .iter()
-                        .copied()
-                        .filter(|id| !chosen.contains(id))
-                        .collect();
-                    remaining.sort_by_key(|id| -contributor_value(self, game, *id));
-                    for id in remaining {
-                        if total_power >= required {
-                            break;
-                        }
-                        chosen.push(id);
-                        total_power += contributor_value(self, game, id);
-                    }
-                }
-
-                if total_power < required {
+                };
+                if !sufficient {
                     if !self.teamwork
                         && can_pay_loyalty_crew_alternative(game, ctx.source, controller)
                     {

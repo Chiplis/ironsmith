@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn test_treasure_token_properties() {
         let token = treasure_token_definition();
-        assert_eq!(token.name(), "Treasure");
+        assert_eq!(token.name(), "Treasure Token");
         assert!(token.card.has_card_type(CardType::Artifact));
         assert!(token.card.has_subtype(Subtype::Treasure));
         assert!(token.card.is_token);
@@ -557,7 +557,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Treasure" && game.controller_of(o) == alice)
+                    .map(|o| o.name == "Treasure Token" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .count();
@@ -641,7 +641,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Treasure" && game.controller_of(o) == controller)
+                    .map(|o| o.name == "Treasure Token" && game.controller_of(o) == controller)
                     .unwrap_or(false)
             })
             .count();

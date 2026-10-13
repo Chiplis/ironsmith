@@ -4,11 +4,9 @@ use crate::ability::{Ability, AbilityKind};
 use crate::effect::EffectOutcome;
 use crate::effects::stack::copy_spell::create_stack_copy_from_object;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::spells::SpellCopiedEvent;
 use crate::game_state::{GameState, StackEntry};
 use crate::object::Object;
 use crate::static_abilities::StaticAbilityId;
-use crate::triggers::TriggerEvent;
 
 /// Copies the spell characteristics captured when an Epic spell resolved.
 ///
@@ -50,13 +48,7 @@ impl EffectExecutor for EpicSpellCopyEffect {
             None,
         )? else { return Ok(EffectOutcome::protected()); };
 
-        game.queue_trigger_event(
-            ctx.provenance,
-            TriggerEvent::new_with_provenance(
-                SpellCopiedEvent::new(copy_id, ctx.controller),
-                ctx.provenance,
-            ),
-        );
+        super::copy_spell::queue_stack_copy_completion(game,ctx,copy_id);
 
         Ok(EffectOutcome::with_objects(vec![copy_id]))
     }
@@ -145,5 +137,25 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("epic")
         );
+    }
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+    #[test]
+    fn stored_spell_copy_publishes_each_target_and_spell_copy_once() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let player=crate::ids::PlayerId(0);
+        let card=crate::card::CardBuilder::new(crate::ids::CardId::new(),"Captured spell").card_types(vec![crate::types::CardType::Instant]).build();
+        let source=game.create_object_from_card(&card,player,crate::Zone::Stack);
+        let spell=game.object(source).unwrap().clone();
+        let entry=StackEntry::new(source,player).with_targets(vec![crate::game_state::Target::Player(player),crate::game_state::Target::Player(player)]);
+        game.take_pending_trigger_events();
+        let mut ctx=ExecutionContext::new_default(source,player);
+        let outcome=EpicSpellCopyEffect::new(&spell,&entry).execute(&mut game,&mut ctx).unwrap();
+        assert!(outcome.events.is_empty(),"queued observations must not also be returned");
+        let events=game.take_pending_trigger_events();
+        assert_eq!(events.iter().filter(|event|event.downcast::<crate::events::SpellCopiedEvent>().is_some()).count(),1);
+        assert_eq!(events.iter().filter(|event|event.downcast::<crate::events::BecomesTargetedEvent>().is_some()).count(),1);
     }
 }

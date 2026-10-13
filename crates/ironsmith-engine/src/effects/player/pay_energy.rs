@@ -1,7 +1,5 @@
 //! Pay energy effect implementation.
 
-use crate::decision::FallbackStrategy;
-use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::executor_trait::CostValidationError;
 use crate::effects::helpers::{resolve_nonnegative_u32, resolve_player_from_spec};
@@ -224,31 +222,11 @@ impl EffectExecutor for PayAnyEnergyEffect {
             ));
         }
 
-        let number_spec = if self.min_amount == 0 {
-            NumberSpec::up_to(ctx.source, available, "Choose how much {E} to pay")
-        } else {
-            NumberSpec::range(
-                ctx.source,
-                self.min_amount,
-                available,
-                "Choose how much {E} to pay",
-            )
+        let Some(chosen) = crate::effects::composition::scoped_choice::choose_bounded_payment_amount(
+            game, ctx, player_id, self.min_amount, available, "Choose how much {E} to pay",
+        ) else {
+            return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         };
-
-        let chosen = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            player_id,
-            Some(ctx.source),
-            number_spec,
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let chosen = chosen.clamp(self.min_amount, available);
 
         if chosen == 0 {
             return Ok(CompletedEffectOutputs::aggregate_only(
@@ -332,31 +310,11 @@ impl EffectExecutor for PayAnyLifeEffect {
             ));
         }
 
-        let number_spec = if self.min_amount == 0 {
-            NumberSpec::up_to(ctx.source, available, "Choose how much life to pay")
-        } else {
-            NumberSpec::range(
-                ctx.source,
-                self.min_amount,
-                available,
-                "Choose how much life to pay",
-            )
+        let Some(chosen) = crate::effects::composition::scoped_choice::choose_bounded_payment_amount(
+            game, ctx, player_id, self.min_amount, available, "Choose how much life to pay",
+        ) else {
+            return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         };
-
-        let chosen = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            player_id,
-            Some(ctx.source),
-            number_spec,
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let chosen = chosen.clamp(self.min_amount, available);
 
         let Some(outcome) = game.pay_life_with_context_and_outputs(player_id, chosen, ctx)? else {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -418,29 +376,9 @@ impl EffectExecutor for PayAnyLifeEffect {
                 prepared: None,
             }));
         }
-        let number_spec = if self.min_amount == 0 {
-            NumberSpec::up_to(ctx.source, available, "Choose how much life to pay")
-        } else {
-            NumberSpec::range(
-                ctx.source,
-                self.min_amount,
-                available,
-                "Choose how much life to pay",
-            )
-        };
-        let chosen = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            player_id,
-            Some(ctx.source),
-            number_spec,
-            FallbackStrategy::Maximum,
-        );
-        let amount = if ctx.decision_maker.awaiting_choice() {
-            0
-        } else {
-            chosen.clamp(self.min_amount, available)
-        };
+        let amount = crate::effects::composition::scoped_choice::choose_bounded_payment_amount(
+            game, ctx, player_id, self.min_amount, available, "Choose how much life to pay",
+        ).unwrap_or(0);
         Ok(Box::new(PayAnyLifeProposal {
             player: player_id,
             amount,
