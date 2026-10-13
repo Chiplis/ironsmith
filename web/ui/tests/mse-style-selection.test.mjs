@@ -21,3 +21,11 @@ test('explicit styles are unrestricted and take precedence over automatic defaul
   assert.equal(selectMseStyle(card,{style:'another-game.mse-style',defaultStyle:'custom.mse-style'}),'another-game.mse-style');
   assert.equal(selectMseStyle(card,{style:'auto',defaultStyle:'auto'}),'magic-m15-mainframe-battles.mse-style');
 });
+
+
+test('a selected DFC back face chooses its own layout family',()=>{
+  const snapshot={layout:'transform',card_faces:[{type_line:'Creature'},{type_line:'Planeswalker'}]};
+  assert.equal(selectMseStyle(snapshot,{faceIndex:1}),'magic-m15-mainframe-planeswalker.mse-style');
+  assert.equal(selectMseStyle(snapshot),'magic-m15-altered.mse-style');
+  assert.equal(selectMseStyle(snapshot,{faceIndex:1,style:'custom.mse-style'}),'custom.mse-style');
+});

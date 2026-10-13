@@ -5,17 +5,22 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import upstream from '../src/lib/mse/upstream.mjs';
-import {engineCardToMse} from '../src/lib/mse/engine-card.mjs';
 const args=process.argv.slice(2),fetchAssets=args.includes('--fetch-assets'),layers=args.includes('--layers'),useSession=args.includes('--session');
+const fontDpi=Number(args.find(arg=>arg.startsWith('--font-dpi='))?.slice(11)??96);
+if(![72,96].includes(fontDpi))throw new Error('Font DPI must be 72 (native macOS) or 96 (native Windows/Linux)');
 const cardPath=args.find(arg=>arg.startsWith('--card='))?.slice(7);
 const engineCardPath=args.find(arg=>arg.startsWith('--engine-card='))?.slice(14);
 if(cardPath&&engineCardPath)throw new Error('Use either --card or --engine-card');
-const cardOptions=engineCardPath?engineCardToMse(JSON.parse(await readFile(resolve(engineCardPath),'utf8'))):cardPath?JSON.parse(await readFile(resolve(cardPath),'utf8')):{};
+const snapshot=engineCardPath?JSON.parse(await readFile(resolve(engineCardPath),'utf8')):undefined;
+const faceIndex=Number(args.find(arg=>arg.startsWith('--face-index='))?.slice(13)??0);
+if(!Number.isInteger(faceIndex)||faceIndex<0)throw new Error('Invalid face index');
+const ordered=args.includes('--ordered-fields');
+const cardOptions=cardPath?JSON.parse(await readFile(resolve(cardPath),'utf8')):{};
 const artPath=args.find(arg=>arg.startsWith('--art='))?.slice(6);
 const artBytes=artPath?await readFile(resolve(artPath)):null;
 if(artPath)cardOptions.card={...cardOptions.card,image:basename(artPath)};
 const [directory,style='magic-m15-altered.mse-style',output='reports/mse/browser-template.json']=args.filter(arg=>!arg.startsWith('--'));
-if(!directory || args.some(arg=>arg.startsWith('--')&&!['--fetch-assets','--layers','--session'].includes(arg)&&!arg.startsWith('--card=')&&!arg.startsWith('--engine-card=')&&!arg.startsWith('--art=')))throw new Error('Usage: node scripts/mse-browser-template-probe.mjs CORPUS_DIRECTORY [STYLE] [REPORT.json] [--fetch-assets] [--layers] [--session] [--card=CONTEXT.json | --engine-card=SNAPSHOT.json] [--art=IMAGE]');
+if(!directory || args.some(arg=>arg.startsWith('--')&&!['--fetch-assets','--layers','--session','--ordered-fields'].includes(arg)&&!arg.startsWith('--card=')&&!arg.startsWith('--engine-card=')&&!arg.startsWith('--art=')&&!arg.startsWith('--font-dpi=')&&!arg.startsWith('--face-index=')))throw new Error('Usage: node scripts/mse-browser-template-probe.mjs CORPUS_DIRECTORY [STYLE] [REPORT.json] [--fetch-assets] [--layers] [--session] [--card=CONTEXT.json | --engine-card=SNAPSHOT.json] [--art=IMAGE] [--font-dpi=72|96] [--face-index=N] [--ordered-fields]');
 const root=resolve(directory),library=resolve(dirname(fileURLToPath(import.meta.url)),'../src/lib/mse');
 const tree=JSON.parse(await readFile(resolve(root,'upstream-tree.json'),'utf8'));
 if(tree.sha!==upstream.revision||tree.truncated)throw new Error('Expected a complete pinned corpus index');
@@ -57,15 +62,14 @@ let browser;
 try{
   browser=await chromium.launch({headless:true});const page=await browser.newPage();
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  const result=await page.evaluate(async({files,fontPaths,style,layers,cardOptions,artName,useSession})=>{
+  const result=await page.evaluate(async({files,fontPaths,style,layers,cardOptions,artName,useSession,fontDpi,snapshot,faceIndex,ordered})=>{
     const {MseBrowserFonts}=await import('/browser-fonts.mjs');
     const {createFetchMseStore}=await import('/packages.mjs');
-    const {loadMseTemplate,MseTemplateContext}=await import('/template.mjs');
     const {MseImageRenderer}=await import('/image-renderer.mjs');
     const {createMseImageLoader}=await import('/browser-images.mjs');
     const {createBrowserSymbolRenderer}=await import('/browser-symbols.mjs');
     const {MseCardRenderer}=await import('/card-renderer.mjs');
-    const fonts=new MseBrowserFonts({allowSystemFonts:useSession}),fontFailures=[];let phase='fonts',field=null,session;
+    const fonts=new MseBrowserFonts({allowSystemFonts:useSession,pixelsPerPoint:fontDpi/72}),fontFailures=[];let phase='fonts',field=null,session;
     const createCanvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
     const artworkLoader=artName?createMseImageLoader({assetUrl:()=>'/__artwork'}):null;
     const loadCardImage=artworkLoader?async value=>{if(value!==artName)throw new Error(`No supplied artwork for ${value}`);return artworkLoader({key:artName});}:undefined;
@@ -79,18 +83,18 @@ try{
         await fonts.registerFile(await response.arrayBuffer());
       }catch(error){fontFailures.push({path,message:error.message});}}
       const store=session?.store||createFetchMseStore(new URL('/data/',location.href),fetch,{files});
-      phase='load';const template=await loadMseTemplate(store,style);
-      phase='initialize';const context=new MseTemplateContext(template,{fieldUpdateMode:session?.renderer.fieldUpdateMode||'lazy',...cardOptions,spellcheckEnabled:false}).initialize();
+      const renderer=session?.renderer.images||new MseImageRenderer({loadAsset:createMseImageLoader(store),renderSymbol:createBrowserSymbolRenderer({store})});
+      const service=session?.renderer||new MseCardRenderer({store,fonts,imageRenderer:renderer,loadCardImage,createCanvas,fieldUpdateMode:ordered?'ordered':cardOptions.fieldUpdateMode||'lazy'});
+      phase='initialize';const context=await service.prepareContext({style,context:cardOptions,snapshot,
+        adapter:{faceIndex:snapshot&&['split','adventure'].includes(snapshot.layout)?null:faceIndex,nativeCard:cardOptions.card||{}}});
       const original=context.layoutTaggedText.bind(context);
       context.layoutTaggedText=async(name,...args)=>{field=name;return original(name,...args);};
       const originalChoice=context.measureChoiceImage.bind(context);
       context.measureChoiceImage=async(name,...args)=>{field=name;return originalChoice(name,...args);};
-      const renderer=session?.renderer.images||new MseImageRenderer({loadAsset:createMseImageLoader(store),renderSymbol:createBrowserSymbolRenderer({store})});
       phase='measure';const measured=await context.prepareTextLayouts(fonts,renderer);
       phase='layout';field=null;const layout=context.layout({visibleOnly:true});
       phase='draw';
       const stages=[];
-      const service=session?.renderer||new MseCardRenderer({store,fonts,imageRenderer:renderer,loadCardImage,createCanvas});
       const {canvas,context:renderedContext,...drawn}=await service.renderContext(context,{
         onFieldDrawn:layers?({group,name,surface})=>{stages.push({name:`stage.${group}.${name}`,png:surface.toDataURL().split(',')[1]});}:undefined,
       });
@@ -103,13 +107,15 @@ try{
         let png;
         if(raster){const c=document.createElement('canvas');c.width=raster.width;c.height=raster.height;
           const dc=c.getContext('2d'),p=dc.createImageData(c.width,c.height);p.data.set(raster.data);dc.putImageData(p,0,0);png=c.toDataURL().split(',')[1];}
-        diagnostics.push({name:`${f.group}.${f.name}`,properties:f.properties,png});
+        const textLayout=context.textMeasurements.get(`${f.group}.${f.name}`)?.result;
+        diagnostics.push({name:`${f.group}.${f.name}`,properties:f.properties,png,
+          textLayout:textLayout?.measurement?{scale:textLayout.scale,lines:textLayout.lines}:undefined});
       }
       const measuredText=Object.fromEntries([...context.textMeasurements].filter(([,v])=>v.result?.measurement).map(([key,v])=>[key,v.result.measurement.runs.filter(r=>!r.soft).map(r=>r.text).join('')]));
       return {success:true,phase,drawn,fontFailures,passes:measured.passes,textFields:measured.fields,dimensions:[layout.width,layout.height],fields:layout.fields.length,measuredText,diagnostics};
     }catch(error){return {success:false,phase,field:error.field||field,fontFailures,error:{code:error.code||'host',message:error.message}};}
     finally{if(session)session.dispose();else fonts.dispose();}
-  },{files,fontPaths,style,layers,cardOptions,useSession,artName:artPath?basename(artPath):null});
+  },{files,fontPaths,style,layers,cardOptions,useSession,fontDpi,snapshot,faceIndex,ordered,artName:artPath?basename(artPath):null});
   for(const d of result.diagnostics||[]){if(!d.png)continue;
     d.imagePath=resolve(output.replace(/\.json$/i,'')+'.layers',d.name+'.png');
     await mkdir(dirname(d.imagePath),{recursive:true});await writeFile(d.imagePath,Buffer.from(d.png,'base64'));delete d.png;
@@ -121,7 +127,7 @@ try{
     const data=await page.locator('#rendered-card').evaluate(canvas=>canvas.toDataURL('image/png').split(',')[1]);
     await writeFile(imagePath,Buffer.from(data,'base64'));
   }
-  const report={upstream,style,engineCardPath:engineCardPath?resolve(engineCardPath):undefined,cardPath:cardPath?resolve(cardPath):undefined,artPath:artPath?resolve(artPath):undefined,generatedAt:new Date().toISOString(),fetchedAssets,browserSession:useSession,scope:'Actual Chromium font metrics, template layout, and card drawing; no native visual parity comparison.',renderingVerified:false,imagePath,...result};
+  const report={upstream,style,engineCardPath:engineCardPath?resolve(engineCardPath):undefined,cardPath:cardPath?resolve(cardPath):undefined,artPath:artPath?resolve(artPath):undefined,generatedAt:new Date().toISOString(),fetchedAssets,browserSession:useSession,fontDpi,faceIndex,scope:'Actual Chromium font metrics, template layout, and card drawing; no native visual parity comparison.',renderingVerified:false,imagePath,...result};
   await mkdir(dirname(resolve(output)),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
   console.log(JSON.stringify(report,null,2));if(!result.success)process.exitCode=1;
 }finally{await browser?.close();await new Promise(done=>server.close(done));}

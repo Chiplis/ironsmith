@@ -1,7 +1,9 @@
 import {MseError} from './document.mjs';
 import {loadMseTemplate,MseTemplateContext} from './template.mjs';
 import {paintMseCard} from './card-painter.mjs';
-import {engineCardToMse} from './engine-card.mjs';
+import {engineCardToMse,engineDoubleFacesToMse} from './engine-card.mjs';
+import {MseCardRegistry} from './card-links.mjs';
+import {selectMseStyle} from './style-selection.mjs';
 import {MseImageRenderer} from './image-renderer.mjs';
 import {createMseImageLoader} from './browser-images.mjs';
 import {createBrowserSymbolRenderer} from './browser-symbols.mjs';
@@ -27,12 +29,32 @@ export class MseCardRenderer{
     }
     const template=await this.templates.get(style);this.check();return template;
   }
-  async render({style,context={},snapshot,adapter={}},{signal,onFieldDrawn}={}){
+  async prepareContext({style,context={},snapshot,adapter={}},{signal}={}){
     this.check(signal);
     const template=await this.template(style);this.check(signal);
-    const values=snapshot===undefined?context:engineCardToMse(snapshot,adapter);
+    const regions=template.style.all('card region').map(region=>region.record().text('name'));
+    const combinedFaces=regions.includes('front')&&regions.includes('back');
+    const doubleFaces=combinedFaces||adapter.linkedFaces===false?null:engineDoubleFacesToMse(snapshot,adapter);
+    if(doubleFaces){
+      const registry=new MseCardRegistry();
+      const templates=await Promise.all(doubleFaces.cards.map((_,index)=>index===doubleFaces.selected?template:this.template(selectMseStyle(snapshot,{faceIndex:index}))));
+      this.check(signal);
+      const contexts=doubleFaces.cards.map((values,index)=>new MseTemplateContext(templates[index],{
+        fieldUpdateMode:this.fieldUpdateMode,...values,cardRegistry:registry,spellcheckEnabled:false,
+      }));
+      // Register both faces before scripts run: get_front_face/get_back_face
+      // must work while defaults and automatic frame choices are evaluated.
+      for(const card of contexts)card.initializeScripts();
+      for(const card of contexts)card.initialize();
+      return contexts[doubleFaces.selected];
+    }
+    const values=snapshot===undefined?context:engineCardToMse(snapshot,combinedFaces?{...adapter,faceIndex:null}:adapter);
     const card=new MseTemplateContext(template,{fieldUpdateMode:this.fieldUpdateMode,...values,spellcheckEnabled:false}).initialize();
-    return this.renderContext(card,{signal,onFieldDrawn});
+    return card;
+  }
+  async render(request,options={}){
+    const context=await this.prepareContext(request,options);
+    return this.renderContext(context,options);
   }
   async renderContext(context,{signal,onFieldDrawn}={}){
     this.check(signal);

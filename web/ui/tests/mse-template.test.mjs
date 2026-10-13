@@ -9,7 +9,7 @@ const files = {
 set field:
 \ttype: text
 \tname: label
-\tinitial: !
+\tdefault: "!"
 card field:
 \ttype: text
 \tname: name
@@ -447,17 +447,15 @@ test('ordered field evaluation reads stored peers and updates edited dependencie
   const fixture={...files,'example.mse-game/game':`card field:
 \ttype: text
 \tname: a
-\tinitial: 0
 \tdefault: to_string(to_int(card.b)+1)
 card field:
 \ttype: text
 \tname: b
-\tinitial: 0
 \tdefault: to_string(to_int(card.a)+1)
 card field:
 \ttype: text
 \tname: unchanged
-\tinitial: X
+\tdefault: "X"
 \tscript: input + "!"
 `,'example.mse-style/style':'game: example\n'};
   const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
@@ -481,7 +479,7 @@ card field:
 card field:
 \ttype: text
 \tname: untouched
-\tinitial: X
+\tdefault: "X"
 \tscript: input + "!"
 `,'example.mse-style/style':`game: example
 card style:
@@ -544,5 +542,105 @@ test('sliders retain native choice strings through defaults, scripts, supplied v
     supplied.setField('styling','opacity',80);
     assert.equal(force(supplied.field('styling','opacity')),'80');
     assert.equal(force(supplied.field('card','branch')),'other');
+  }
+});
+
+test('text fields convert script results and edits to strings before dependent scripts run',async()=>{
+  const sources={
+    'strings.mse-game/game':'card field:\n\ttype: text\n\tname: number\n\tdefault: 12\n\tscript: if input == "12" then 24 else input\ncard field:\n\ttype: text\n\tname: check\n\tdefault: if card.number == "24" then "string" else "wrong"\ncard field:\n\ttype: text\n\tname: retained\n\tdefault: "valid"\n\tscript: to_image("unused.png")\n',
+    'strings.mse-style/style':'game: strings\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>sources[p.key]}),'strings.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(force(context.field('card','number')),'24');
+    assert.equal(force(context.field('card','check')),'string');
+    assert.equal(force(context.field('card','retained')),'valid');
+    assert.equal(context.diagnostics[0].code,'script-conversion');
+    const supplied=new MseTemplateContext(template,{fieldUpdateMode,card:{number:24}}).initialize();
+    assert.equal(force(supplied.field('card','check')),'string');
+    supplied.setField('card','number',12);
+    assert.equal(force(supplied.field('card','number')),'24');
+    assert.equal(force(supplied.field('card','check')),'string');
+  }
+});
+
+test('native text fields start empty and use default scripts rather than an initial property',async()=>{
+  const sources={
+    'empty.mse-game/game':'card field:\n\ttype: text\n\tname: empty\n\tinitial: ignored\ncard field:\n\ttype: text\n\tname: defaulted\n\tinitial: ignored\n\tdefault: "default content"\n',
+    'empty.mse-style/style':'game: empty\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>sources[p.key]}),'empty.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(force(context.field('card','empty')),'');
+    assert.equal(force(context.field('card','defaulted')),'default content');
+    const supplied=new MseTemplateContext(template,{fieldUpdateMode,card:{empty:'saved content'}}).initialize();
+    assert.equal(force(supplied.field('card','empty')),'saved content');
+  }
+});
+
+test('color fields use native defaults and keep typed colors across scripts and edits',async()=>{
+  const sources={
+    'colors.mse-game/game':`card field:
+\ttype: color
+\tname: empty
+card field:
+\ttype: color
+\tname: first
+\tchoice:
+\t\tname: Ocean
+\t\tcolor: rgb(12,34,56)
+\tchoice: red
+card field:
+\ttype: color
+\tname: shorthand
+\tchoice: blue
+card field:
+\ttype: color
+\tname: unknown
+\tchoice: not-a-color
+card field:
+\ttype: color
+\tname: explicit
+\tinitial: red
+\tchoice: blue
+card field:
+\ttype: color
+\tname: script
+\tdefault: "blue"
+\tscript: if type_name(input) == "color" then "red" else "green"
+card field:
+\ttype: color
+\tname: retained
+\tinitial: green
+\tdefault: "blue"
+\tscript: "not-a-color"
+card field:
+\ttype: text
+\tname: check
+\tdefault: type_name(card.script)
+`,
+    'colors.mse-style/style':'game: colors\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>sources[p.key]}),'colors.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    const channels=name=>force(context.field('card',name)).channels;
+    assert.deepEqual(channels('empty'),[0,0,0,0]);
+    assert.deepEqual(channels('first'),[12,34,56,255]);
+    assert.deepEqual(channels('shorthand'),[0,0,255,255]);
+    assert.deepEqual(channels('unknown'),[0,0,0,0]);
+    assert.deepEqual(channels('explicit'),[255,0,0,255]);
+    assert.deepEqual(channels('script'),[255,0,0,255]);
+    assert.equal(force(context.field('card','check')),'color');
+    assert.deepEqual(channels('retained'),[0,0,255,255]);
+    assert.equal(context.diagnostics[0].code,'script-conversion');
+    const supplied=new MseTemplateContext(template,{fieldUpdateMode,card:{empty:'red'}}).initialize();
+    assert.deepEqual(force(supplied.field('card','empty')).channels,[255,0,0,255]);
+    supplied.setField('card','empty','rgba(1,2,3,4)');
+    assert.deepEqual(force(supplied.field('card','empty')).channels,[1,2,3,4]);
+    assert.throws(()=>supplied.setField('card','empty','not-a-color'),{code:'script-conversion'});
+    assert.deepEqual(force(supplied.field('card','empty')).channels,[1,2,3,4]);
   }
 });

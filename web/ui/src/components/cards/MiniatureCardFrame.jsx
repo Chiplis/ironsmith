@@ -2,6 +2,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HoverArtOverlay from '../right-rail/HoverArtOverlay';
 import { GameContext } from '@/context/GameContext.shared';
 import MseCardFrame from './MseCardFrame';
+import { MSE_PRINTING_FIELDS } from '@/lib/mse/printing-style.mjs';
 
 // Lay out the composition at inspector size. Only its finished presentation
 // scales with the battlefield slot, including pixel-sized icons and borders.
@@ -13,7 +14,7 @@ export const CARD_FRAME_RENDER_HEIGHT = 531;
 const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
-const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'type_line_display', 'card_types', 'cardTypes', 'supertypes', 'subtypes', 'layout', 'color_identity', 'colorIdentity', 'color_indicator', 'card_faces', 'colors', 'characteristic_signature', 'keywords', 'power', 'toughness', 'power_toughness', 'loyalty', 'defense', 'owner', 'controller'];
+const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'flavor_text', 'rarity', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'type_line_display', 'card_types', 'cardTypes', 'supertypes', 'subtypes', 'layout', 'color_identity', 'colorIdentity', 'color_indicator', 'card_faces', 'colors', 'characteristic_signature', 'keywords', 'power', 'toughness', 'power_toughness', 'loyalty', 'defense', 'owner', 'controller'];
 
 const MiniatureComposition = memo(function MiniatureComposition({snapshot, imageUrl}) {
   const card = useMemo(() => JSON.parse(snapshot), [snapshot]);
@@ -28,8 +29,8 @@ const MiniatureComposition = memo(function MiniatureComposition({snapshot, image
   </GameContext.Provider>;
 });
 
-export default function MiniatureCardFrame({ card, imageUrl }) {
-  const snapshot = JSON.stringify(Object.fromEntries(FRAME_FIELDS.map(key => [key, card[key]])));
+export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0 }) {
+  const snapshot = JSON.stringify(Object.fromEntries([...FRAME_FIELDS, ...MSE_PRINTING_FIELDS, 'printing'].map(key => [key, card[key]])));
   const host = useRef(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
@@ -44,7 +45,7 @@ export default function MiniatureCardFrame({ card, imageUrl }) {
       width: WIDTH, height: HEIGHT,
       transform: `scale(${scale})`, visibility: scale > 0 ? 'visible' : 'hidden',
     }}>
-      <MseCardFrame snapshot={snapshot} imageUrl={imageUrl} style={card.mse_style}
+      <MseCardFrame snapshot={snapshot} imageUrl={imageUrl} style={card.mse_style} faceIndex={faceIndex}
         fallback={<MiniatureComposition snapshot={snapshot} imageUrl={imageUrl} />} />
     </div>
   </div>;

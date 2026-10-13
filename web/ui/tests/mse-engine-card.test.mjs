@@ -1,3 +1,4 @@
+import {engineDoubleFacesToMse} from '../src/lib/mse/engine-card.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {engineCardToMse,engineRulesToMse} from '../src/lib/mse/engine-card.mjs';
@@ -20,12 +21,13 @@ test('face indicators stay separate and native overrides remain authoritative',(
   assert.throws(()=>engineCardToMse({colors:['purple']}),{code:'engine-colors'});
 });
 test('engine snapshots map current stats and preserve symbol and literal text boundaries',()=>{
-  const source={id:7,name:'Trial',mana_cost:'{2}{W/U}{B/P}',type_line:'Legendary Creature — Wizard',oracle_text:'{T}: Add {U}. <b> is literal.',power_toughness:'3/4',power:'5',rarity:'mythic'};
+  const source={id:7,name:'Trial',mana_cost:'{2}{W/U}{B/P}',type_line:'Legendary Creature — Wizard',oracle_text:'{T}: Add {U}. <b> is literal.',power_toughness:'3/4',power:'5',rarity:'mythic',flavor_text:'A <b>literal</b> story.'};
   const result=engineCardToMse(source);
   assert.equal(result.card.casting_cost,'2W/UB/P');
   assert.equal(result.card.super_type,'Legendary Creature');assert.equal(result.card.sub_type,'Wizard');
   assert.equal(result.card.rule_text,'<sym>T</sym>: Add <sym>U</sym>. \u0001b> is literal.');
   assert.equal(result.card.power,'5');assert.equal(result.card.toughness,'4');
+  assert.equal(result.card.flavor_text,'A \u0001b>literal\u0001/b> story.');
   assert.equal(result.card.rarity,'mythic rare');assert.equal(result.uid,7);
   assert.equal(source.oracle_text,'{T}: Add {U}. <b> is literal.');
 });
@@ -75,4 +77,24 @@ test('Saga adaptation preserves face offsets, explicit selection, and non-Saga t
   const selected=engineCardToMse(snapshot,{faceIndex:1});assert.equal(selected.card.level_1_text,'One.');
   assert.equal(engineCardToMse({type_line:'Instant',oracle_text:'I — One.'}).card.level_1_text,undefined);
   assert.throws(()=>engineCardToMse({type_line:'Enchantment — Saga',oracle_text:'I, III — One.'}),{code:'engine-saga'});
+});
+
+
+test('double-faced snapshots become reciprocal linked cards with independent face fields',()=>{
+  const snapshot={id:'example',layout:'modal_dfc',card_faces:[
+    {name:'Front',type_line:'Creature',power:'2',toughness:'3',oracle_text:'First.'},
+    {name:'Back',type_line:'Planeswalker',loyalty:'4',oracle_text:'+1: Draw a card.'},
+  ]};
+  const result=engineDoubleFacesToMse(snapshot,{faceIndex:1,rulesText:'-2: Scry 2.',nativeCard:{image:'back-art'}});
+  const [front,back]=result.cards;
+  assert.equal(result.selected,1);
+  assert.equal(front.card.name,'Front');assert.equal(front.card.name_2,undefined);
+  assert.equal(front.card.rule_text,'First.');assert.equal(front.card.image,undefined);
+  assert.equal(back.card.name,'Back');assert.equal(back.card.loyalty_cost_1,'-2');assert.equal(back.card.image,'back-art');
+  assert.equal(front.card.linked_card_1,back.uid);assert.equal(back.card.linked_card_1,front.uid);
+  assert.equal(front.card.linked_relation_1,'Back Face');assert.equal(back.card.linked_relation_1,'Front Face');
+  assert.equal(front.card.transformation,'modal front');assert.equal(back.card.transformation,'modal back');
+  assert.equal(engineDoubleFacesToMse({...snapshot,layout:'split'}),null);
+  assert.throws(()=>engineDoubleFacesToMse(snapshot,{faceIndex:2}),{code:'engine-face'});
+  assert.throws(()=>engineDoubleFacesToMse({...snapshot,card_faces:[{}]}),{code:'engine-face'});
 });

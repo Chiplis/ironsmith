@@ -1,3 +1,4 @@
+import {text} from '../src/lib/mse/script-values.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {MseCardRenderer} from '../src/lib/mse/card-renderer.mjs';
@@ -34,4 +35,39 @@ test('cancellation and disposal prevent in-flight work from changing a visible c
     await ready;if(action==='abort')controller.abort();else r.dispose();release();await rejected;
     assert.equal(target.width,7);assert.equal(target.height,8);assert.equal(target.calls.length,0);
   }
+});
+
+test('DFC rendering initializes linked faces with independent styles before rendering the selected face',async()=>{
+  const files={
+    'example.mse-game/game':'card field:\n\ttype: text\n\tname: name\ncard field:\n\ttype: text\n\tname: counterpart\n\tdefault: if get_back_face(card) != nil then get_back_face(card).name else get_front_face(card).name\n',
+    'magic-m15-altered.mse-style/style':'game: example\ncard width: 10\ncard height: 12\n',
+    'magic-m15-mainframe-planeswalker.mse-style/style':'game: example\ncard width: 10\ncard height: 12\n',
+    'magic-m15-planeswalker.mse-style/style':'game: example\ncard width: 10\ncard height: 12\n',
+  };
+  const r=new MseCardRenderer({store:new MsePackageStore({readText:async p=>files[p.key]}),fonts:{},imageRenderer:{},fieldUpdateMode:'ordered'});
+  r.renderContext=async context=>context;
+  const snapshot={layout:'transform',card_faces:[{name:'Day',type_line:'Creature'},{name:'Night',type_line:'Planeswalker'}]};
+  const front=await r.render({style:'magic-m15-altered.mse-style',snapshot});
+  assert.equal(text(front.field('card','counterpart')),'Night');
+  assert.equal(text(front.runtime.run('get_back_face(card).name')),'Night');
+  assert.equal(front.runtime.run('length(set.cards)'),2);
+  const back=await r.render({style:'magic-m15-planeswalker.mse-style',snapshot,adapter:{faceIndex:1}});
+  assert.equal(text(back.field('card','name')),'Night');
+  assert.equal(text(back.field('card','counterpart')),'Day');
+  assert.equal(text(back.runtime.run('get_front_face(card).name')),'Day');
+  assert.equal(back.template.name,'magic-m15-planeswalker.mse-style');
+  r.dispose();
+});
+
+test('legacy front/back region templates retain both numbered faces',async()=>{
+  const files={
+    'example.mse-game/game':'card field:\n\ttype: text\n\tname: name\ncard field:\n\ttype: text\n\tname: name 2\n',
+    'legacy.mse-style/style':'game: example\ncard width: 20\ncard height: 12\ncard region:\n\tname: front\ncard region:\n\tname: back\n',
+  };
+  const r=new MseCardRenderer({store:new MsePackageStore({readText:async p=>files[p.key]}),fonts:{},imageRenderer:{}});
+  r.renderContext=async context=>context;
+  const context=await r.render({style:'legacy.mse-style',snapshot:{layout:'transform',card_faces:[{name:'Day'},{name:'Night'}]},adapter:{faceIndex:0}});
+  assert.equal(text(context.field('card','name')),'Day');
+  assert.equal(text(context.field('card','name_2')),'Night');
+  assert.equal(context.runtime.run('length(set.cards)'),1);
 });

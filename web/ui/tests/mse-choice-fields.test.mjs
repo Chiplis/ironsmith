@@ -86,3 +86,34 @@ test('last_change is empty initially and explicitly selects the preferred option
   c.invalidate();
   assert.equal(text(c.field('card', 'exclusive')), 'blue');
 });
+
+test('choice-family script results and supplied values retain native string storage',async()=>{
+  for(const type of ['choice','boolean','multiple choice','slider']){
+    const files={
+      'scalar.mse-game/game':`card field:\n\ttype: ${type}\n\tname: value\n\tchoice: 12\n\tchoice: 24\n\tdefault: 12\n\tscript: if input == "12" then 24 else input\ncard field:\n\ttype: text\n\tname: check\n\tdefault: if card.value == "24" then "string" else "wrong"\n`,
+      'scalar.mse-style/style':'game: scalar\n',
+    };
+    const template=await loadMseTemplate(new MsePackageStore({readText:async p=>files[p.key]}),'scalar.mse-style');
+    for(const fieldUpdateMode of ['lazy','ordered']){
+      const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+      assert.equal(text(context.field('card','check')),'string',type);
+      const supplied=new MseTemplateContext(template,{fieldUpdateMode,card:{value:24}}).initialize();
+      assert.equal(text(supplied.field('card','check')),'string',type);
+      supplied.setField('card','value',12);
+      assert.equal(text(supplied.field('card','check')),'string',type);
+    }
+  }
+});
+
+test('failed choice script conversion retains the last valid value',async()=>{
+  const files={
+    'retain.mse-game/game':'card field:\n\ttype: choice\n\tname: value\n\tinitial: original\n\tdefault: "defaulted"\n\tscript: to_image("unused.png")\n',
+    'retain.mse-style/style':'game: retain\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>files[p.key]}),'retain.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(text(context.field('card','value')),'defaulted');
+    assert.equal(context.diagnostics[0].code,'script-conversion');
+  }
+});

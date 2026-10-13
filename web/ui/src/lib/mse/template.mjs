@@ -24,16 +24,36 @@ import { color } from './color-values.mjs';
 import { loadMseKeywords, keywordBuiltins } from './keywords.mjs';
 import { imageBuiltins, mseImage } from './image-builtins.mjs';
 import { MseCardRegistry, cardLinkBuiltins } from './card-links.mjs';
-import { choiceDefinitions, normalizeMultipleChoice } from './choice-fields.mjs';
+import { choiceDefinitions, normalizeMultipleChoice, isChoiceFieldType, choiceRenderFlags } from './choice-fields.mjs';
 
 const numericStyleProperties = new Set('left right top bottom width height angle z_index tab_index padding_left padding_right padding_top padding_bottom padding_left_min padding_right_min padding_top_min padding_bottom_min line_height_soft line_height_hard line_height_line line_height_soft_max line_height_hard_max line_height_line_max paragraph_height'.split(' '));
+
+function storedFieldValue(definition,value) {
+  const type=definition?.record.text('type');
+  if(type==='color')return color(value);
+  return type==='text'||isChoiceFieldType(type)?text(value):value;
+}
 
 function initialValue(record, choices) {
   const value = record.text('initial');
   switch (record.text('type')) {
+    // TextField does not reflect an `initial` property. TextValue starts
+    // empty; the field's default script supplies any initial content.
+    case 'text': return '';
     case 'boolean': return value || 'yes';
     case 'choice': case 'slider': return value || choices[0]?.name || '';
-    case 'color': return color(value || 'black');
+    case 'color': {
+      if(value)return color(value);
+      const first=record.all('choice')[0];
+      if(!first)return color(null);
+      if(!first.inline)return color(first.record().text('color')||null);
+      // ColorField::Choice leaves its default transparent color when a
+      // shorthand choice name does not parse as a color.
+      try{return color(first.inline);}catch(error){
+        if(error.code!=='script-conversion')throw error;
+        return color(null);
+      }
+    }
     case 'image': case 'symbol': return null;
     default: return value;
   }
@@ -56,7 +76,7 @@ export async function loadMseTemplate(store, name, { setKeywords = [] } = {}) {
     const record = await store.expandRecord(entry.record());
     const fieldName = canonicalName(record.text('name'));
     if (!fieldName || record.text('type') === 'info') continue;
-    const choices = ['choice', 'multiple choice', 'boolean', 'slider'].includes(record.text('type')) ? choiceDefinitions(record) : [];
+    const choices = isChoiceFieldType(record.text('type')) ? choiceDefinitions(record) : [];
     definitions[group].set(fieldName, {
       name: fieldName, record, choices, initial: initialValue(record, choices),
       defaultScript: await compile(record.last('default')),
@@ -140,7 +160,7 @@ export class MseTemplateContext {
       const supplied = Object.fromEntries(Object.entries(input).map(([key, value]) => [canonicalName(key), fromHost(value)]));
       for (const [name, definition] of template.definitions[group]) {
         let value = Object.hasOwn(supplied, name) ? supplied[name] : definition.initial;
-        if(definition.record.text('type')==='slider')value=text(value);
+        value=storedFieldValue(definition,value);
         cells.set(name, { definition, value, sourceValue: value, isDefault: !Object.hasOwn(supplied, name), resolved: false });
       }
       for (const [name, value] of Object.entries(supplied)) if (!cells.has(name)) cells.set(name, { value, isDefault: false, resolved: true });
@@ -154,7 +174,8 @@ export class MseTemplateContext {
     this.runtime.scope.set('extra_card_style', new MseObject(name => template.extraLayouts.has(name) ? new MseObject(property => this.property(name, property, 'extra_card')) : missingMember(name)));
     this.card = cardRegistry.register(this, card, uid);
     this.runtime.scope.set('card', this.card);
-    this.runtime.scope.set('set', new MseSet(cardRegistry, name => name==='stylesheet'?this.stylesheet:this.field('set', name)));
+    this.setInfo=new MseObject(name=>this.field('set',name));
+    this.runtime.scope.set('set', new MseSet(cardRegistry, name => name==='set_info'?this.setInfo:name==='stylesheet'?this.stylesheet:this.field('set', name)));
     if(!this.cells.set.has('cards'))this.cells.set.set('cards', { value: cardRegistry.cards, resolved: true, isDefault: false });
     if(fieldUpdateMode==='ordered'){
       this.fieldUpdates=cardRegistry.fieldUpdates ||= new MseFieldUpdateQueue();
@@ -177,15 +198,24 @@ export class MseTemplateContext {
     }
 
   }
-  initialize() {
+  initializeScripts() {
     if (this.active || this.initializing) return this;
     this.initializing = true;
     try {
       for (const program of this.template.init) this.runtime.run(program);
       this.active = true;
-      if(this.fieldUpdates)this.fieldUpdates.initialize(this.fieldOrder);
+
     } catch(error){this.active=false;throw error;}
     finally { this.initializing = false; }
+    return this;
+  }
+  initialize() {
+    this.initializeScripts();
+    if(this.active&&!this.fieldsInitialized){
+      this.fieldsInitialized=true;
+      try{if(this.fieldUpdates)this.fieldUpdates.initialize(this.fieldOrder);}
+      catch(error){this.fieldsInitialized=false;throw error;}
+    }
     return this;
   }
   invalidate({ keepMeasurements = false } = {}) {
@@ -201,7 +231,7 @@ export class MseTemplateContext {
     const cell = this.cells[group]?.get(name);
     if (!cell) throw new MseError('field-name', `No field ${group}.${name}`);
     value = fromHost(value);
-    if(cell.definition?.record.text('type')==='slider')value=text(value);
+    value=storedFieldValue(cell.definition,value);
     this.cardRegistry.age = Math.max(this.cardRegistry.age, age);
     Object.assign(cell, { value, sourceValue: value, isDefault, lastUpdate: age, lastChange, resolved: false });
     const modified=group==='set'?null:this.cardRegistry.touch(this.card);
@@ -218,13 +248,16 @@ export class MseTemplateContext {
         scope.set('value', this.fieldValue(group, name, cell));
         scope.set('input', cell.value);
         const multipleChoice = cell.definition.record.text('type') === 'multiple choice';
-        const slider = cell.definition.record.text('type') === 'slider';
+        const evaluate=program=>{
+          const value=force(this.runtime.evaluate(program,scope));
+          // Native invokeOn converts before assigning: a failed conversion
+          // must retain the previous valid field value.
+          return storedFieldValue(cell.definition,value);
+        };
         if (multipleChoice) scope.set('last_change', cell.lastChange || '');
-        if (cell.isDefault && cell.definition.defaultScript) cell.value = force(this.runtime.evaluate(cell.definition.defaultScript, scope));
-        if(slider)cell.value=text(cell.value);
+        if (cell.isDefault && cell.definition.defaultScript) cell.value = evaluate(cell.definition.defaultScript);
         scope.set('input', cell.value);
-        if (cell.definition.script) cell.value = force(this.runtime.evaluate(cell.definition.script, scope));
-        if(slider)cell.value=text(cell.value);
+        if (cell.definition.script) cell.value = evaluate(cell.definition.script);
         if (multipleChoice) cell.value = normalizeMultipleChoice(text(cell.value), cell.definition.choices, cell.definition.record.text('empty choice'));
         cell.resolved = true;
     }catch(error){
@@ -255,7 +288,7 @@ export class MseTemplateContext {
     for (const [group, layouts] of [['card', this.template.layouts], ['extra_card', this.template.extraLayouts]]) {
       for (const name of layouts.keys()) {
         const type = this.cells[group].get(name)?.definition?.record.text('type');
-        if (['text','choice','boolean','multiple choice'].includes(type)) fields.push({ group, name, type, key: `${group}.${name}` });
+        if ((type==='text'||isChoiceFieldType(type))) fields.push({ group, name, type, key: `${group}.${name}` });
       }
     }
     this.textMeasurements = new Map(fields.map(field => [field.key, { info: dummyTextLayout(), result: null }]));
@@ -315,12 +348,12 @@ export class MseTemplateContext {
   async measureChoiceImage(field, renderer, group = 'card') {
     const layout = (group === 'card' ? this.template.layouts : this.template.extraLayouts).get(field);
     const get = (key, fallback) => layout.programs.has(key) ? this.property(field,key,group) : fallback;
-    const renderStyle = text(get('render_style','text'));
+    const renderStyle = choiceRenderFlags(text(get('render_style','text')));
     const empty = { width: 0, height: 0, lines: [], scale: 1, image: null };
-    if (!renderStyle.includes('image') || (!layout.programs.has('image') && !layout.choiceImages.size)) return empty;
+    if (!renderStyle.image || (!layout.programs.has('image') && !layout.choiceImages.size)) return empty;
     const graph = mseImage(this.property(field,'image',group),this.template.name);
     if (graph.operation === 'blank') return empty;
-    const bounds = renderStyle.includes('text') ? {width:0,height:0} : {
+    const bounds = renderStyle.text ? {width:0,height:0} : {
       width:Math.trunc(this.property(field,'width',group)),height:Math.trunc(this.property(field,'height',group)),
     };
     const raster = await renderer.render(graph,bounds);
@@ -488,7 +521,7 @@ export class MseTemplateContext {
     try {
       const scope = new MseScope(this.runtime.scope);
       scope.set('value', this.field(group, field));
-      if (name === 'image' && ['choice', 'multiple choice', 'boolean'].includes(this.cells[group].get(field)?.definition?.record.text('type'))) scope.set('input', force(this.field(group, field)));
+      if (name === 'image' && isChoiceFieldType(this.cells[group].get(field)?.definition?.record.text('type'))) scope.set('input', force(this.field(group, field)));
       let result = force(this.runtime.evaluate(program, scope));
       if (numericStyleProperties.has(name)) result = number(result);
       this.layoutValues.set(key, result);
@@ -522,5 +555,9 @@ export class MseTemplateSet {
     this.registry = new MseCardRegistry();
     this.contexts = cards.map(entry => new MseTemplateContext(entry.template || template, { card: entry.card || {}, extraCard: entry.extraCard || {}, uid: entry.uid, set, styling: entry.styling || styling, builtins, spellcheck, fieldUpdateMode, cardRegistry: this.registry }));
   }
-  initialize() { for (const context of this.contexts) context.initialize(); return this; }
+  initialize() {
+    for(const context of this.contexts)context.initializeScripts();
+    for(const context of this.contexts)context.initialize();
+    return this;
+  }
 }

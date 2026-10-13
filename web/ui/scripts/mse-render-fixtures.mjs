@@ -1,6 +1,29 @@
 import {engineCardToMse} from '../src/lib/mse/engine-card.mjs';
+import {selectMseStyle} from '../src/lib/mse/style-selection.mjs';
+const doubleFaces=['transform','modal_dfc'].flatMap(layout=>{
+  const snapshot={id:`trial-${layout}`,layout,card_faces:[
+    {name:'Day Trial',mana_cost:'{1}{U}',type_line:'Creature — Wizard',oracle_text:'Draw a card.',power:'2',toughness:'3'},
+    {name:'Night Trial',type_line:'Legendary Planeswalker — Trial',oracle_text:'+1: Draw a card.\n-2: Scry 2.',loyalty:'4'},
+  ]};
+  return [0,1].map(faceIndex=>({id:`engine-${layout}-${faceIndex}`,snapshot,faceIndex,style:selectMseStyle(snapshot,{faceIndex}),dimensions:[375,523],text:{'card.name':snapshot.card_faces[faceIndex].name}}));
+});
+const frameFamilies=[
+  ['old','magic-old',375,523],['new','magic-new',375,523],['future','magic-future',375,523],
+  ['kaldheim','magic-m15-showcase-kaldheim',750,1046],['invocation','magic-m15-invocation',375,523],
+].map(([id,style,width,height])=>({
+  id:`family-${id}`,style:`${style}.mse-style`,dimensions:[width,height],
+  context:engineCardToMse({name:'Archive Scholar',mana_cost:'{2}{U}{B}',type_line:'Legendary Creature — Human Wizard',
+    oracle_text:'Flying\nWhenever this creature attacks, draw a card, then discard a card.\n{1}{U}, {T}: Scry 2.',
+    flavor_text:'Every frame preserves a different age.',rarity:'rare',power:'3',toughness:'4'}),
+  text:{'card.name':'Archive Scholar','card.type':'Legendary Creature — Human Wizard',
+    'card.text':'Flying\nWhenever this creature attacks, draw a card, then discard a card.\n1U, T: Scry 2.\nEvery frame preserves a different age.',
+    ...(id==='invocation'?{'card.power':'3','card.toughness':'4'}:{'card.pt':'3/4'})},
+}));
 // Original diagnostic cards: exercise layout families without external card art.
 export default [
+  ...doubleFaces,
+  ...frameFamilies,
+  {id:'engine-printing',style:'magic-m15-altered.mse-style',dimensions:[375,523],context:engineCardToMse({name:'Collected Trial',mana_cost:'{1}{U}',type_line:'Creature — Wizard',oracle_text:'When this creature enters, draw a card.',flavor_text:'Every margin holds another story.',rarity:'mythic',power:'2',toughness:'3'}),text:{'card.name':'Collected Trial','card.card_code':'M 0001 ','card.text':'When this creature enters, draw a card.\nEvery margin holds another story.'}},
   {id:'engine-color-indicator',style:'magic-m15-altered.mse-style',dimensions:[375,523],context:engineCardToMse({name:'Blue Reflection',type_line:'Creature — Spirit',color_indicator:['U'],oracle_text:'Flying',power:'2',toughness:'2'}),text:{'card.name':'Blue Reflection','card.type':'Creature — Spirit'}},
   {id:'engine-colorless',style:'magic-m15-altered.mse-style',dimensions:[375,523],context:engineCardToMse({name:'Colorless Trial',type_line:'Creature — Eldrazi',mana_cost:'{2}{R}',colors:[],oracle_text:'Devoid',power:'3',toughness:'2'}),text:{'card.name':'Colorless Trial','card.casting_cost':'2R'}},
   {id:'engine-modal',style:'magic-m15-altered.mse-style',dimensions:[375,523],context:engineCardToMse({name:'A Choice of Paths',mana_cost:'{1}{U}',type_line:'Instant',oracle_text:'Choose one —\n• Draw two cards, then discard a card.\n• Return target creature to its owner’s hand.'}),text:{'card.name':'A Choice of Paths','card.text':'Choose one —\n• Draw two cards, then discard a card.\n• Return target creature to its owner’s hand.\n'}},

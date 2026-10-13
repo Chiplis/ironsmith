@@ -7,7 +7,9 @@ let nextFamilyId = 0;
 // Named families use registered files or an explicitly enabled exact local()
 // lookup. Missing fonts never silently fall back to a different browser family.
 export class MseBrowserFonts {
-  constructor({ fontSet = globalThis.document?.fonts, FontFaceClass = globalThis.FontFace, canvas = globalThis.document?.createElement('canvas'), normalFont = null,allowSystemFonts=false } = {}) {
+  constructor({ fontSet = globalThis.document?.fonts, FontFaceClass = globalThis.FontFace, canvas = globalThis.document?.createElement('canvas'), normalFont = null,allowSystemFonts=false,pixelsPerPoint=96/72 } = {}) {
+    if(!Number.isFinite(pixelsPerPoint)||pixelsPerPoint<=0)throw new MseError('font-provider','Invalid font pixels per point');
+    this.pixelsPerPoint=pixelsPerPoint;
     this.fontSet = fontSet;
     this.FontFaceClass = FontFaceClass;
     this.context = canvas?.getContext('2d');
@@ -47,10 +49,10 @@ export class MseBrowserFonts {
     const metadata = readFontMetadata(bytes);
     const normalized = normalizeFont(bytes);
     const names=new Set([...metadata.families,metadata.fullName,metadata.postscriptName].filter(Boolean));
-    for (const name of names) await this.register(name, normalized.bytes, { weight: String(metadata.weight), style: metadata.style },metadata.decoration);
+    for (const name of names) await this.register(name, normalized.bytes, { weight: String(metadata.weight), style: metadata.style },metadata.decoration,metadata.verticalMetrics);
     return { ...metadata, repairs: normalized.repairs };
   }
-  async register(name, source, descriptors = {}, decoration = null) {
+  async register(name, source, descriptors = {}, decoration = null, verticalMetrics = null) {
     this.requireActive();
     if (!this.fontSet || !this.FontFaceClass) throw new MseError('font-provider', 'Browser FontFace support is required');
     const key=name.toLowerCase();
@@ -62,12 +64,13 @@ export class MseBrowserFonts {
     const face = new this.FontFaceClass(family.alias, source, descriptors);
     const pending = face.load();
     family.pending.add(pending);
-    try { await pending; this.requireActive(); this.fontSet.add(face); family.faces.push(face);family.metrics.push({weight:Number(descriptors.weight)||400,style:descriptors.style||'normal',decoration}); }
+    try { await pending; this.requireActive(); this.fontSet.add(face); family.faces.push(face);family.metrics.push({weight:Number(descriptors.weight)||400,style:descriptors.style||'normal',decoration,verticalMetrics}); }
     finally { family.pending.delete(pending); }
     return face;
   }
-  async prepare(font, { pixelsPerPoint = 96 / 72, ...flags } = {}) {
+  async prepare(font, { pixelsPerPoint = this.pixelsPerPoint, ...flags } = {}) {
     this.requireActive();
+    if(!Number.isFinite(pixelsPerPoint)||pixelsPerPoint<=0)throw new MseError('font-provider','Invalid font pixels per point');
     if (!this.context) throw new MseError('font-provider', 'A canvas text context is required');
     const face = resolveFontFace(font, flags);
     let family,normal=null;
@@ -88,14 +91,19 @@ export class MseBrowserFonts {
       if (!family.faces.length) throw new MseError('font-missing', `Font failed to load: ${face.name}`);
     }
     const ctx = this.context;
-    const selected=family?.metrics.slice().sort((a,b)=>{
+    const selectedFace=family?.metrics.slice().sort((a,b)=>{
       const rank=m=>(m.style===(face.italic?'italic':'normal')?0:10000)+Math.abs(m.weight-(face.bold?700:400));
       return rank(a)-rank(b);
-    })[0]?.decoration;
+    })[0];
+    const selected=selectedFace?.decoration;
+    const vertical=selectedFace?.verticalMetrics;
+    // Native macOS exports use 72 DPI and a 4x text surface. wxGCDC
+    // rounds CoreText extents upward before MSE divides them by four.
+    const textScale=pixelsPerPoint===1?4:1;
     const setup = (scale, target = ctx) => {
       this.requireActive();
-      const pixels = font.code&&Math.floor(scale*font.size+0.5)<2?this.systemFont().pixelSize
-        :Math.max(1, Math.floor(scale * (normal && font.size <= 1 ? normal.pixelSize : font.size * pixelsPerPoint) + 0.5));
+      const pixels = font.code&&Math.floor(textScale*scale*font.size+0.4999995)<2?this.systemFont().pixelSize/textScale
+        :Math.max(1, Math.floor(textScale * scale * (normal && font.size <= 1 ? normal.pixelSize : font.size * pixelsPerPoint) + (textScale===4?0.4999995:0.5)))/textScale;
       target.font = normal ? `normal normal ${pixels}px ${normal.family}`
         : `${face.italic ? 'italic' : 'normal'} ${face.bold ? 'bold' : 'normal'} ${pixels}px "${family.alias}"`;
       target.fontKerning = 'normal';
@@ -103,11 +111,15 @@ export class MseBrowserFonts {
       return pixels;
     };
     const extent = (text, scale) => {
-      setup(scale);
+      const pixels=setup(scale);
       const metric = ctx.measureText(text);
-      const height = metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
+      // CoreText reports a positive descent even for legacy fonts whose hhea
+      // descender is positive (the pack's ModMatrix is one such font).
+      const height = textScale===4&&vertical
+        ? pixels*(vertical.ascent+Math.abs(vertical.descent)+vertical.lineGap)/vertical.unitsPerEm
+        : metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
       if (!Number.isFinite(height)) throw new MseError('font-metrics', 'Browser font bounding-box metrics are required');
-      return { width: metric.width, height };
+      return textScale===4?{width:Math.ceil(metric.width*4)/4,height:Math.ceil(height*4)/4}:{ width: metric.width, height };
     };
     return {
       measure: (text, unusedFont, scale) => extent(text, scale),

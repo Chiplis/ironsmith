@@ -28,3 +28,21 @@ test('MSE color conversions preserve alpha and explicit conversion failures', ()
     assert((to_color("unknown") or else "failed") == "failed")`);
   assert.equal(vm.assertions, 9);
 });
+
+test('named colors and signed channel prefixes follow pinned native wx/MSE behavior',()=>{
+  const vm=new MseRuntime({builtins:coreBuiltins()});
+  vm.run(`assert(to_color("green") == rgb(0,128,0))
+    assert(to_color("LIME") == rgb(0,255,0))
+    assert(to_color("gold") == rgb(200,180,0))
+    assert(to_color("GOLD") == rgb(255,215,0))
+    assert(to_color("silver") == rgb(200,200,200))
+    assert(to_color("SILVER") == rgb(192,192,192))
+    assert(to_color("light blue") == rgb(191,216,216))
+    assert(to_color("LightBlue") == rgb(173,216,230))
+    assert(to_color("rgb(-1,+2,259)") == rgb(255,2,3))
+    assert(to_color("rgba(-1,258,+3,-128)") == rgba(255,2,3,128))
+    assert(to_color("transparent") == rgba(0,0,0,0))
+    assert((to_color("TRANSPARENT") or else "error") == "error")
+    assert((to_color("constructor") or else "error") == "error")`);
+  assert.equal(vm.assertions,13);
+});

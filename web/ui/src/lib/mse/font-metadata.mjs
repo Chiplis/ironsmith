@@ -49,5 +49,10 @@ export function readFontMetadata(input) {
   if(head&&head.length>=20)decoration.unitsPerEm=view.getUint16(head.offset+18);
   if(post&&post.length>=12){decoration.underlinePosition=view.getInt16(post.offset+8);decoration.underlineThickness=view.getInt16(post.offset+10);}
   if(os2&&os2.length>=30){decoration.strikeThickness=view.getInt16(os2.offset+26);decoration.strikePosition=view.getInt16(os2.offset+28);}
-  return {families,family:name(1)||name(16),subfamily:name(2),typographicFamily:name(16),typographicSubfamily:name(17),fullName:name(4),postscriptName:name(6),weight,style:italic?'italic':'normal',decoration};
+  const hhea=tables.get('hhea');
+  const verticalMetrics=hhea&&hhea.length>=10&&decoration.unitsPerEm>0?{
+    unitsPerEm:decoration.unitsPerEm,ascent:view.getInt16(hhea.offset+4),
+    descent:view.getInt16(hhea.offset+6),lineGap:view.getInt16(hhea.offset+8),
+  }:null;
+  return {verticalMetrics,families,family:name(1)||name(16),subfamily:name(2),typographicFamily:name(16),typographicSubfamily:name(17),fullName:name(4),postscriptName:name(6),weight,style:italic?'italic':'normal',decoration};
 }

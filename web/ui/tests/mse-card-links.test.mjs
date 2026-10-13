@@ -172,3 +172,14 @@ for(const fieldUpdateMode of ['lazy','ordered'])test(`${fieldUpdateMode} cards s
   a.setField('set','title','Final');
   assert.deepEqual(set.contexts.map(c=>text(c.field('card','heading'))),['Final!: A','Final!: B']);
 });
+
+test('set_info exposes shared native set fields and retains update dependencies',async()=>{
+  const t=await template('set field:\n\ttype: text\n\tname: title\ncard field:\n\ttype: text\n\tname: set title\n\tscript: set.set_info.title\n');
+  const set=new MseTemplateSet(t,{set:{title:'First'},cards:[{},{}],fieldUpdateMode:'ordered'}).initialize();
+  for(const context of set.contexts){
+    assert.equal(text(context.field('card','set_title')),'First');
+    assert.equal(context.runtime.run('set.title == set.set_info.title'),true);
+  }
+  set.contexts[1].setField('set','title','Second');
+  for(const context of set.contexts)assert.equal(text(context.field('card','set_title')),'Second');
+});

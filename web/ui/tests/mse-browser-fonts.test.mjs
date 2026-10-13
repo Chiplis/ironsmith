@@ -101,3 +101,43 @@ test('enabled local fonts resolve exact names once and never substitute an absen
   assert.equal((await fonts.prepare({name:'Missing',size:12})).measure('A',null,1).width,10);
   fonts.dispose();assert.equal(options.fontSet.size,0);
 });
+
+test('explicit native font DPI changes point conversion while the default remains 96 DPI',async()=>{
+  for(const [pixelsPerPoint,expected] of [[undefined,16],[1,12]]){
+    const options=fixture(),ctx=options.canvas.getContext();options.canvas={getContext:()=>ctx};
+    const fonts=new MseBrowserFonts({...options,pixelsPerPoint});
+    const face=await fonts.register('Example','fixture');
+    const metrics=await fonts.prepare({name:'Example',size:12});
+    metrics.measure('text',null,1);
+    assert.equal(ctx.font,`normal normal ${expected}px "${face.family}"`);
+    const override=await fonts.prepare({name:'Example',size:12},{pixelsPerPoint:1});
+    override.measure('text',null,1);assert.equal(ctx.font,`normal normal 12px "${face.family}"`);
+    await assert.rejects(fonts.prepare({name:'Example',size:12},{pixelsPerPoint:0}),{code:'font-provider'});
+    fonts.dispose();
+  }
+  assert.throws(()=>new MseBrowserFonts({...fixture(),pixelsPerPoint:NaN}),{code:'font-provider'});
+});
+
+test('macOS reference metrics include hhea leading and native fourfold quantization',async()=>{
+  const options=fixture(),ctx=options.canvas.getContext();options.canvas={getContext:()=>ctx};
+  const fonts=new MseBrowserFonts({...options,pixelsPerPoint:1});
+  const face=await fonts.register('MPlantin','fixture',{},null,{unitsPerEm:1000,ascent:774,descent:-225,lineGap:150});
+  const metrics=await fonts.prepare({name:'MPlantin',size:14});
+  assert.deepEqual(metrics.measure('Ability',null,1),{width:10,height:16.25});
+  metrics.measure('Ability',null,0.9);
+  assert.equal(ctx.font,`normal normal 12.5px "${face.family}"`);
+  // MSE's tie bias rounds 50.5 down on its fourfold text surface.
+  metrics.measure('Ability',null,50.5/56);
+  assert.equal(ctx.font,`normal normal 12.5px "${face.family}"`);
+  const browser=await fonts.prepare({name:'MPlantin',size:14},{pixelsPerPoint:96/72});
+  assert.equal(browser.measure('Ability',null,1).height,10);
+  fonts.dispose();
+});
+
+test('macOS metrics use descent magnitude for legacy positive hhea descenders',async()=>{
+  const fonts=new MseBrowserFonts({...fixture(),pixelsPerPoint:1});
+  await fonts.register('ModMatrix','fixture',{weight:'700'},null,{unitsPerEm:1000,ascent:633,descent:167,lineGap:0});
+  const metrics=await fonts.prepare({name:'ModMatrix',size:18,bold:true});
+  assert.equal(metrics.measure('3/4',null,1).height,14.5);
+  fonts.dispose();
+});

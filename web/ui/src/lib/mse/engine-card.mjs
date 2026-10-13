@@ -120,3 +120,24 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
   Object.assign(card,nativeCard);
   return {card,set:{...set},styling:{...inferredStyling,...styling},uid:snapshot.stable_id??snapshot.id};
 }
+
+// Modern MSE styles render DFC faces as separate linked cards. Split/adventure
+// layouts still use the numbered fields in engineCardToMse.
+export function engineDoubleFacesToMse(snapshot,options={}){
+  if(!['transform','modal_dfc','double_faced_token','reversible_card'].includes(snapshot?.layout))return null;
+  if(!Array.isArray(snapshot.card_faces)||snapshot.card_faces.length!==2)
+    throw new MseError('engine-face','A double-faced layout requires two card faces');
+  const selected=options.faceIndex??0;
+  if(!Number.isInteger(selected)||selected<0||selected>1)throw new MseError('engine-face','Card face index is out of range');
+  const uid=String(snapshot.stable_id??snapshot.id??'engine-dfc');
+  const cards=snapshot.card_faces.map((face,index)=>{
+    const values=engineCardToMse(snapshot,index===selected?{...options,faceIndex:index}:{faceIndex:index,set:options.set});
+    values.uid=`${uid}:face:${index}`;
+    values.card.linked_card_1=`${uid}:face:${1-index}`;
+    values.card.linked_relation_1=index===0?'Back Face':'Front Face';
+    if(snapshot.layout==='modal_dfc'&&values.card.transformation===undefined)
+      values.card.transformation=index===0?'modal front':'modal back';
+    return values;
+  });
+  return {cards,selected};
+}

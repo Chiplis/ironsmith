@@ -1,3 +1,11 @@
+// SliderStyle and SliderValue inherit the native choice implementation.
+export const isChoiceFieldType = type => ['choice','boolean','multiple choice','slider'].includes(type);
+export function choiceRenderFlags(style='text') {
+  const modes={text:1,image:2,both:3,hidden:4,'image hidden':6,checklist:1,'image checklist':2,'both checklist':3,'text list':1,'image list':2,'both list':3};
+  const flags=Object.hasOwn(modes,style)?modes[style]:1;
+  return {text:Boolean(flags&1),image:Boolean(flags&2),hidden:Boolean(flags&4)};
+}
+
 // IDs follow MSE's depth-first choice order. A group with a default name has
 // its own selectable value before its children; unnamed groups omit a prefix.
 export function choiceDefinitions(record) {

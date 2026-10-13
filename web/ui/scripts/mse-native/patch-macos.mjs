@@ -35,6 +35,7 @@ const patches=[
   {file:'src/gui/symbol/window.cpp',fragment:'_ERROR_1_("can\'t write symbol", new_filename)',replacement:'_ERROR_1_("can\'t write symbol", new_filename.toStringForKey())',change:'Convert LocalFileName to wxString for symbol-save error formatting'},
   {file:'src/main.cpp',fragment:'int MSE::OnRun() {\r\n  try {',replacement:'int MSE::OnRun() {\r\n  if (argc > 1) wxLog::SetActiveTarget(new wxLogStderr()); // Keep reference CLI diagnostics out of modal dialogs.\r\n  try {',change:'Route command-line wx logs to stderr instead of modal GUI dialogs'},
   {file:'src/data/font.cpp',fragment:fontFragment,replacement:fontReplacement,change:'Provide process-local CoreText font registration for the macOS CLI'},
+  {file:'src/data/font.cpp',fragment:'fontFilePath.EndsWith(_(".ttf")) || fontFilePath.EndsWith(_(".otf"))',replacement:'fontFilePath.Lower().EndsWith(_(".ttf")) || fontFilePath.Lower().EndsWith(_(".otf"))',change:'Register packaged fonts with uppercase extensions, including MATRIX.TTF'},
   {file:'src/data/font.cpp',fragment:'wxFont::AddPrivateFont(fontFilePath)',replacement:'registerReferenceFont(fontFilePath)',change:'Use actual font registration instead of macOS wx bundle-path validation'},
 ];
 const records=[];

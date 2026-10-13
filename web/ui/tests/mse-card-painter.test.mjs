@@ -74,3 +74,23 @@ test('empty artwork fields use the template default image',async()=>{
   await paintMseCard(s.target,s.context,{},s.renderer,s);
   assert.deepEqual(s.surfaces[1].getContext().calls[0],['pixels',[40,50,60,255,40,50,60,255]]);
 });
+
+test('missing artwork uses native checker cells, clips partial checks and applies image masks',async()=>{
+  const s=setup([{name:'art',type:'image',value:null,props:{width:41,height:13,mask:'mask.png',angle:90}}]);
+  s.renderer.render=async()=>{
+    const data=new Uint8ClampedArray(41*13*4).fill(255);
+    for(let i=0;i<data.length;i+=4)data[i]=128;
+    return {width:41,height:13,hasAlpha:false,data};
+  };
+  await paintMseCard(s.target,s.context,{},s.renderer,s);
+  const pixels=s.surfaces[1].getContext().calls.find(call=>call[0]==='pixels')[1];
+  const sample=(x,y)=>pixels.slice((y*41+x)*4,(y*41+x)*4+4);
+  assert.deepEqual(sample(0,0),[235,235,235,128]);
+  assert.deepEqual(sample(10,0),[255,255,255,128]);
+  assert.deepEqual(sample(10,10),[235,235,235,128]);
+  assert.deepEqual(sample(40,12),[255,255,255,128]);
+  assert(s.surfaces[0].getContext().calls.some(call=>call[0]==='rotate'&&call[1]===-Math.PI/2));
+  const narrow=setup([{name:'art',type:'image',value:null,props:{width:40,height:13}}]);
+  await paintMseCard(narrow.target,narrow.context,{},narrow.renderer,narrow);
+  assert.equal(narrow.surfaces.length,1);
+});

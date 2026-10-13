@@ -14,7 +14,7 @@ node web/ui/scripts/mse-write-native-fixtures.mjs "$MSE_CORPUS" "$MSE_FIXTURES"
 
 The macOS patches guard an unavailable updater API, fix a symbol-editor error
 formatter, send CLI diagnostics to stderr, and register package fonts with
-CoreText for the current process. wxWidgets' macOS AddPrivateFont implementation
+CoreText for the current process, including uppercase `.TTF`/`.OTF` filenames. wxWidgets' macOS AddPrivateFont implementation
 only validates bundle paths; it does not register fonts. No fonts are installed
 into the user's system. Layout and drawing algorithms remain unchanged. The
 patcher records complete original/patched file hashes and is idempotent.
@@ -40,3 +40,33 @@ The browser implementation currently follows that 96-DPI path. Preserve this
 platform distinction when evaluating pixel differences; do not adjust native
 layout algorithms to make screenshots agree. Fixture serialization currently
 covers diagnostic scalar fields and styling, not general MSE set round-tripping.
+
+Color parsing can be checked independently of card layout:
+
+```sh
+node web/ui/scripts/mse-native/check-colors.mjs "$MSE_BUILD/magicseteditor" "$MSE_OUTPUT/colors.json"
+```
+
+This compares every supported wx color name in lowercase and uppercase, plus
+fully specified numeric and hexadecimal cases, against the actual executable.
+MSE's lowercase `gold`, `silver`, and `transparent` overrides are case-sensitive.
+The pinned wxWidgets 3.3.x default uses its CSS color scheme; legacy names with
+spaces are separate entries. Incomplete `scanf` channel lists are excluded
+because native MSE can read uninitialized channels for those malformed inputs.
+
+For comparisons against the macOS executable, use the browser probe or populated
+regression runner with `--font-dpi=72`. Both reports record this setting. Omitting
+it retains the production 96-DPI default used by MSE's Windows/Linux branches.
+This selects native point conversion, fourfold font-size/extent quantization,
+and hhea ascent/descent/line-gap metrics for registered font files. Local fonts
+without file metadata retain browser bounding-box metrics. This does not
+guarantee identical rasterization or layout across every font and script. The browser font provider also accepts
+`pixelsPerPoint` so hosts can select the relevant platform explicitly.
+
+The populated fixtures include both selected faces of transforming and modal
+DFCs. Their native sets contain two cards with reciprocal UID links and separate
+stylesheets. The exporter uses each manifest entry's `cardIndex` (default zero).
+The browser regression uses the renderer's engine-snapshot preparation path for
+these fixtures, so it exercises linked-face initialization as well as drawing.
+Automatic DFC planeswalkers use the mainframe style because the older
+planeswalker style does not render transformation symbols.

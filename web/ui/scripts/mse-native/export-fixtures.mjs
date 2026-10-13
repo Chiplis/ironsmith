@@ -17,11 +17,13 @@ for(const patch of portability.patches){
 await mkdir(output,{recursive:true});
 const report={scope:'Native macOS reference exports. Font metrics differ from the Windows/Linux 96-DPI path; exports alone do not establish browser visual parity.',exportMethod:'write_image_file, zoom:100, use_user_settings:false',upstream:manifest.upstream,platform:process.platform,executable,executableSha256:hash(await readFile(executable)),manifestSha256:hash(manifestBytes),portability,results:[]};
 for(const fixture of manifest.fixtures){
-  if(!/^[a-z0-9-]+$/.test(fixture.id))throw new Error('Unsafe fixture ID');
+  if(!/^[a-z0-9_-]+$/.test(fixture.id))throw new Error('Unsafe fixture ID');
   const imagePath=join(output,`${fixture.id}.png`),logPath=join(output,`${fixture.id}.log`);
   await rm(imagePath,{force:true}); // Never accept a previous run's export.
   const scriptPath=JSON.stringify(imagePath).replaceAll('{','\\{');
-  const input=`write_image_file(input:set.cards.0,file:${scriptPath},zoom:100,use_user_settings:false)\n:quit\n`;
+  const cardIndex=fixture.cardIndex??0;
+  if(!Number.isSafeInteger(cardIndex)||cardIndex<0)throw new Error('Invalid fixture card index');
+  const input=`write_image_file(input:set.cards.${cardIndex},file:${scriptPath},zoom:100,use_user_settings:false)\n:quit\n`;
   const run=spawnSync(executable,['--cli',fixture.path,'--raw'],{input,cwd:dirname(executable),encoding:'utf8',timeout:60000,maxBuffer:8*1024*1024});
   const log=(run.stdout??'')+(run.stderr??'');
   await writeFile(logPath,log);

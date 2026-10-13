@@ -1,3 +1,4 @@
+import {isChoiceFieldType,choiceRenderFlags} from './choice-fields.mjs';
 import { paintChoiceLabel } from './choice-painter.mjs';
 import { MseError } from './document.mjs';
 import { text, force } from './script-values.mjs';
@@ -35,9 +36,9 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
       if(!Number.isFinite(angle))throw new MseError('card-rotation','Field angle must be finite');
       // Native text/art viewers do not have a combine property. A color
       // field's combine mode applies only to its mask-generated bitmap.
-      const supportsCombine=['choice','boolean','multiple choice'].includes(type)||(type==='color'&&get('mask',null));
+      const supportsCombine=isChoiceFieldType(type)||(type==='color'&&get('mask',null));
       let combine=supportsCombine?text(get('combine','normal')):'normal';
-      if(['choice','boolean','multiple choice'].includes(type)){
+      if(isChoiceFieldType(type)){
         const imageMode=context.textMeasurements.get(`${group}.${name}`)?.result?.combine;
         if(imageMode&&imageMode!=='default')combine=imageMode;
       }
@@ -57,12 +58,12 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
           if(result)await paintTextLayout(ctx,result,fonts);
         }else{
           let image;
-          if(['choice','boolean','multiple choice'].includes(type)){
-            const style=text(get('render_style','text'));
+          if(isChoiceFieldType(type)){
+            const style=choiceRenderFlags(text(get('render_style','text')));
             const value=text(context.field(group,name));
-            if(value&&!style.includes('hidden')){
-              image=style.includes('image')?context.textMeasurements.get(`${group}.${name}`)?.result?.image:null;
-              if(style.includes('text'))label={value,font:context.font(name,group),options:{width:w,height:h,alignment:text(get('alignment','stretch')),withImage:style.includes('image'),imageWidth:image?.width??null}};
+            if(value&&!style.hidden){
+              image=style.image?context.textMeasurements.get(`${group}.${name}`)?.result?.image:null;
+              if(style.text)label={value,font:context.font(name,group),options:{width:w,height:h,alignment:text(get('alignment','stretch')),withImage:style.image,imageWidth:image?.width??null}};
             }
             const maskValue=get('mask',null);
             if(image && maskValue!==null && maskValue!==''){
@@ -106,6 +107,16 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
             if(!image&&defaultValue!==null&&defaultValue!==''){
               const graph=mseImage(defaultValue,context.template.name);
               if(graph.operation!=='blank')image=resizeRaster(await renderer.render(graph,{width:iw,height:ih}),iw,ih,renderer.maxPixels);
+            }
+            // ImageValueViewer uses this placeholder even for non-editing
+            // exports. Its 10-pixel checks are local to the image field and
+            // pass through the same mask/rotation as actual artwork.
+            if(!image&&w>40){
+              image=allocateRaster(iw,ih,false,renderer.maxPixels);
+              for(let y=0;y<ih;y++)for(let x=0;x<iw;x++){
+                const shade=(Math.floor(x/10)+Math.floor(y/10))%2?255:235;
+                image.data.set([shade,shade,shade,255],(y*iw+x)*4);
+              }
             }
             const maskValue=get('mask',null);
             if(image&&maskValue!==null&&maskValue!==''){

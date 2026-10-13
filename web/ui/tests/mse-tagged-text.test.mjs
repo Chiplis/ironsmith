@@ -9,7 +9,7 @@ test('code formatting preserves native syntax-color precedence and restores surr
   const parsed=parseTaggedText('<i>A<code>B<code-str>C</code-str><code-kw>D</code-kw><color:green>E</color><soft>F</soft></code>G</i><code-str>H</code-str>',font);
   assert.deepEqual(parsed.unsupported,[]);
   assert.deepEqual(parsed.runs.map(r=>r.font.color.channels),[
-    [0,0,0,255],[128,0,0,255],[128,0,0,255],[158,100,0,255],[0,255,0,255],[128,128,128,255],[0,0,0,255],[0,0,100,255],
+    [0,0,0,255],[128,0,0,255],[128,0,0,255],[158,100,0,255],[0,128,0,255],[128,128,128,255],[0,0,0,255],[0,0,100,255],
   ]);
   assert.deepEqual(resolveFontFace(parsed.runs[1].font),{name:'Courier New',bold:false,italic:false});
   assert.deepEqual(resolveFontFace(parsed.runs[3].font),{name:'Courier New',bold:true,italic:false});
