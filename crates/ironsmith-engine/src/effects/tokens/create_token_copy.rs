@@ -168,6 +168,12 @@ fn build_token_copy_object(
         Object::token_copy_of(target, id, controller_id)
     };
 
+    if effect.pt_adjustment.is_some() || resolved_base_power_toughness.is_some() {
+        crate::static_abilities::exclude_pt_cdas_from_copy(
+            &mut token.abilities,
+            &mut token.ability_labels,
+        );
+    }
     if let Some(CopyPtAdjustment::HalfRoundUp) = effect.pt_adjustment {
         token.base_power = Some(PtValue::Fixed(half_power));
         token.base_toughness = Some(PtValue::Fixed(half_toughness));
@@ -942,6 +948,51 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn copy_pt_exception_removes_cda_but_mutate_preserves_it() {
+        for mutate in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let definition = CardDefinitionBuilder::new(CardId::new(), "Counting creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(0, 0))
+                .with_ability(Ability::static_ability(StaticAbility::characteristic_defining_pt(
+                    Value::Count(ObjectFilter::creature().you_control()),
+                    Value::Count(ObjectFilter::creature().you_control()),
+                )))
+                .with_ability(Ability::static_ability(StaticAbility::flying()))
+                .build();
+            let original = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            create_creature(&mut game, "Other creature", alice);
+            if mutate {
+                let card = make_creature_card(900, "Mutating top");
+                let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+                assert_eq!(game.merge_mutating_creature_spell(spell, original, true), Some(original));
+                assert_eq!(game.object(original).unwrap().base_power, Some(PtValue::Fixed(3)));
+            }
+            assert_eq!(game.calculated_power(original), Some(2));
+            let copy = |game: &mut GameState, source, exception| {
+                let mut effect = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(source));
+                if exception {
+                    effect = effect.set_base_power_toughness(1, 1);
+                }
+                let mut ctx = ExecutionContext::new_default(source, alice);
+                let outcome = effect.execute(game, &mut ctx).unwrap();
+                let crate::effect::OutcomeValue::Objects(ids) = outcome.value else { panic!("copy token"); };
+                ids[0]
+            };
+            let token = copy(&mut game, original, true);
+            assert_eq!(game.calculated_power(token), Some(1), "mutated source: {mutate}");
+            assert_eq!(game.calculated_toughness(token), Some(1));
+            assert_eq!(game.object(token).unwrap().abilities.len(), 1, "flying survives, CDA does not");
+            let second = copy(&mut game, token, false);
+            assert_eq!(game.calculated_power(second), Some(1));
+            let ordinary = copy(&mut game, original, false);
+            assert_eq!(game.calculated_power(ordinary), Some(5), "ordinary copies retain the dynamic CDA");
+            assert_eq!(game.calculated_power(original), Some(5), "copy exceptions do not change the donor");
+        }
     }
 
     fn make_creature_card(card_id: u32, name: &str) -> crate::card::Card {

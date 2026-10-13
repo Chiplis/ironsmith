@@ -2247,7 +2247,7 @@ pub(super) fn rewrite_lowered_mana_ability_preserves_fixed_mana_groups() -> Resu
 }
 
 #[test]
-pub(super) fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability()
+pub(super) fn rewrite_lowered_nested_mana_with_draw_is_not_a_mana_ability()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Selvala, Explorer Returned")
         .card_types(vec![CardType::Creature]);
@@ -2265,7 +2265,7 @@ pub(super) fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability()
     match &ability.kind {
         crate::ability::AbilityKind::Activated(activated) => {
             assert!(activated.produces_mana());
-            assert!(activated.is_mana_ability());
+            assert!(!activated.is_mana_ability());
             assert!(
                 activated.mana_symbols().is_empty(),
                 "nested mana production should resolve through its effect payload"

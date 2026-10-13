@@ -1,3 +1,6 @@
+import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
+import { registerCustomCardFlavor } from "@/lib/custom-card-flavor";
+import { setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
 import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { useGame } from "@/context/GameContext";
@@ -43,6 +46,11 @@ export default function AddCardSheet({
     setStatus,
     multiplayer,
   } = useGame();
+  const [includeCustom, setIncludeCustom] = useState(false);
+  const [customCards, setCustomCards] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState("");
+  const [selectedOption, setSelectedOption] = useState(null);
   const [open, setOpen] = useState(false);
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("hand");
@@ -68,6 +76,29 @@ export default function AddCardSheet({
     autocompleteOpen && visibleAutocompleteOptions.length > 0;
 
   useEffect(() => {
+    if (!open) return;
+    let active = true;
+    let revision = 0;
+    const load = async () => {
+      const request = ++revision;
+      setLibraryLoading(true);
+      const results = await Promise.allSettled([loadBundledCustomCards(), listSavedCustomCards()]);
+      if (!active || revision !== request) return;
+      setCustomCards(results.flatMap(result => result.status === "fulfilled" ? result.value : []));
+      setLibraryError(results.filter(result => result.status === "rejected").map(result => String(result.reason?.message || result.reason)).join(". "));
+      setLibraryLoading(false);
+    };
+    void load();
+    window.addEventListener(CUSTOM_CARD_LIBRARY_CHANGED, load);
+    window.addEventListener("focus", load);
+    return () => {
+      active = false;
+      window.removeEventListener(CUSTOM_CARD_LIBRARY_CHANGED, load);
+      window.removeEventListener("focus", load);
+    };
+  }, [open]);
+
+  useEffect(() => {
     const query = cardName.trim();
     if (addLocked || !query || !game || typeof game.autocompleteCardNames !== "function") return;
 
@@ -80,7 +111,11 @@ export default function AddCardSheet({
     autocompleteRequestRef.current = requestId;
     const timeoutId = window.setTimeout(async () => {
       try {
-        const matches = await game.autocompleteCardNames(query, 5);
+        const standard = await game.autocompleteCardNames(query, 5);
+        const matches = [
+          ...(includeCustom ? customCardOptions(customCards, query) : []),
+          ...standard.map(name => ({ name })),
+        ];
         if (autocompleteRequestRef.current !== requestId) return;
         setAutocompleteOptions(matches);
         setAutocompleteOpen(matches.length > 0);
@@ -96,8 +131,9 @@ export default function AddCardSheet({
 
     return () => {
       window.clearTimeout(timeoutId);
+      autocompleteRequestRef.current += 1;
     };
-  }, [addLocked, cardName, game]);
+  }, [addLocked, cardName, game, includeCustom, customCards]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -127,13 +163,25 @@ export default function AddCardSheet({
     setAutocompleteIndex(-1);
   }, []);
 
-  const handleAdd = useCallback(async (requestedName = cardName) => {
+  const handleAdd = useCallback(async (requestedName = selectedOption || cardName) => {
     return runWasmInteraction(async () => {
       if (addLocked) {
         setStatus("Card injection is disabled while a lobby is active", true);
         return;
       }
-      const name = String(requestedName || "").trim();
+      const option = typeof requestedName === "object" ? requestedName : null;
+      const name = String(option?.name || requestedName || "").trim();
+      const exactCustom = includeCustom && !option
+        ? customCardOptions(customCards, name, customCards.length).filter(match =>
+          match.name.toLowerCase() === name.toLowerCase()
+          || match.card.draft.faces.some(face => face.name.toLowerCase() === name.toLowerCase()))
+        : [];
+      const custom = includeCustom ? (option?.card
+        || (exactCustom.length === 1 ? exactCustom[0].card : null)) : null;
+      if (!option && !selectedOption && exactCustom.length > 1) {
+        setStatus("Choose a custom card from the search results", true);
+        return;
+      }
       if (!name) {
         setStatus("Enter a card name to add", true);
         return;
@@ -143,7 +191,15 @@ export default function AddCardSheet({
         return;
       }
       try {
-        await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
+        if (custom) {
+          await game.createCustomCard({ draft: custom.draft, playerIndex: selectedPlayer, zoneName: zone, skipTriggers });
+          registerCustomCardFlavor([custom]);
+          setCustomCardArtUrls(custom.draft.faces.filter(face => face.artUrl).map(face => ({ name: face.name, artUrl: face.artUrl })));
+          setCompiledCardNames(custom.draft.faces.map(face => face.name));
+        } else {
+          await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
+        }
+        setSelectedOption(null);
         const injectedDuringMatch = Boolean(multiplayer.matchStarted);
         setCardName("");
         setAutocompleteOptions([]);
@@ -174,6 +230,9 @@ export default function AddCardSheet({
     });
   }, [
     addLocked,
+    includeCustom,
+    customCards,
+    selectedOption,
     cardName,
     closeSheet,
     game,
@@ -187,9 +246,11 @@ export default function AddCardSheet({
     multiplayer.matchStarted,
   ]);
 
-  const handleAutocompletePick = useCallback((name) => {
+  const handleAutocompletePick = useCallback((option) => {
+    setSelectedOption(option);
+    autocompleteRequestRef.current += 1;
     suppressAutocompleteRef.current = true;
-    setCardName(name);
+    setCardName(option.name);
     setAutocompleteOptions([]);
     setAutocompleteOpen(false);
     setAutocompleteIndex(-1);
@@ -214,6 +275,16 @@ export default function AddCardSheet({
         </SheetHeader>
 
         <div className="add-card-sheet-body grid gap-4 p-4">
+          <label className="toolbar-checkbox flex items-center gap-2 text-[13px]">
+            <Checkbox checked={includeCustom} disabled={addLocked} onCheckedChange={(checked) => {
+              suppressAutocompleteRef.current = false;
+              setIncludeCustom(checked === true);
+              setSelectedOption(null);
+              setAutocompleteOptions([]);
+            }} />
+            {ui("Include custom cards")} ({libraryLoading ? ui("Loading...") : customCards.length.toLocaleString()} {ui("available")})
+          </label>
+          {libraryError && <p role="alert" className="text-[12px] text-amber-300">{libraryError}</p>}
           <div className="relative grid gap-1" ref={autocompleteRef}>
             <label className={labelClass}>{ui("Card Name")}<input
                 ref={cardNameInputRef}
@@ -227,6 +298,9 @@ export default function AddCardSheet({
                 value={cardName}
                 disabled={addLocked}
                 onChange={(event) => {
+                  autocompleteRequestRef.current += 1;
+                  setAutocompleteOptions([]);
+                  setSelectedOption(null);
                   setCardName(event.target.value);
                   setAutocompleteOpen(true);
                   setAutocompleteIndex(-1);
@@ -283,10 +357,10 @@ export default function AddCardSheet({
               />
             </label>
             {autocompleteVisible ? (
-              <div id={autocompleteId} role="listbox" aria-label={ui("Matching cards")} className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
+              <div id={autocompleteId} role="listbox" aria-label={ui("Matching cards")} className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 max-h-60 w-full overflow-y-auto p-1">
                 {visibleAutocompleteOptions.map((option, index) => (
                   <button
-                    key={option}
+                    key={option.card?.id || `standard:${option.name}`}
                     id={`${autocompleteId}-${index}`}
                     role="option"
                     aria-selected={index === autocompleteIndex}
@@ -298,7 +372,7 @@ export default function AddCardSheet({
                     onMouseEnter={() => setAutocompleteIndex(index)}
                     onClick={() => handleAutocompletePick(option)}
                   >
-                    {option}
+                    {option.name}{" "}{option.card ? <span className="ml-2 text-[10px] text-muted-foreground">{ui(option.card.savedAt ? "Saved custom" : "Custom")}</span> : null}
                   </button>
                 ))}
               </div>
@@ -356,7 +430,7 @@ export default function AddCardSheet({
               type="button"
               size="sm"
               className="add-card-submit ui-primary-action w-full justify-center uppercase tracking-wide"
-              onClick={() => handleAdd()}
+              onClick={() => handleAdd(selectedOption || (visibleAutocompleteOptions.length === 1 ? visibleAutocompleteOptions[0] : cardName))}
               disabled={addLocked || !cardName.trim()}
             >{ui("Add to Game")}</Button>
           </div>

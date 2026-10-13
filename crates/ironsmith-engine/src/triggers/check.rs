@@ -4860,6 +4860,7 @@ fn verify_intervening_if_checked_impl(
         ability_index: None,
         options: crate::condition_eval::ExternalEvaluationOptions {
             triggering_object_current,
+            ignore_trigger_limits: triggering_object_current,
             ..Default::default()
         },
     };

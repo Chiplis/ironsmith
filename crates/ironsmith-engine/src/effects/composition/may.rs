@@ -96,19 +96,17 @@ fn execute_optional_effects_with_outputs(
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
-            let aggregate = EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted),
-                [outputs.outcome.clone()],
-            );
+            let aggregate = outputs.outcome.clone().with_execution_fact(ExecutionFact::Accepted);
             return Ok(outputs.project_aggregate(aggregate));
         }
-        return match crate::special_actions::pay_total_cost_with_choice_in_context(
+        return match crate::special_actions::pay_total_cost_with_choice_in_context_with_outputs(
             game, payer, ctx.source, &cost, crate::costs::PaymentReason::Effect, ctx,
         ) {
-            Ok(()) if !ctx.decision_maker.awaiting_choice() => Ok(
-                crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted))),
-            Ok(()) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+            Ok(children) if !ctx.decision_maker.awaiting_choice() => Ok(
+                crate::effects::CompletedEffectOutputs::from_children(children, |outcomes| {
+                    EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted)
+                })),
+            Ok(_) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
             Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
             Err(_) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())),
         };
@@ -574,8 +572,7 @@ struct OptionalPaymentOutcome;
 impl super::OriginalOutcomeAdapter for OptionalPaymentOutcome {
     fn finish(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext,
         result: Result<EffectOutcome, ExecutionError>) -> Result<EffectOutcome, ExecutionError> {
-        result.map(|outcome| EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted), [outcome]))
+        result.map(|outcome| outcome.with_execution_fact(ExecutionFact::Accepted))
     }
 }
 

@@ -519,7 +519,7 @@ pub(crate) fn select_payable_total_cost(
             let mut payable = Vec::new();
             for branch in branches {
                 if acknowledged_total_cost(
-                    crate::special_actions::can_pay_total_cost_with_reason_in_context(
+                    crate::special_actions::can_begin_total_cost_payment_in_context(
                         game, payer, source, branch, reason, ctx,
                     ),
                 )?

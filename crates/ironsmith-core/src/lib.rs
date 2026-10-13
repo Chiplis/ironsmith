@@ -36,6 +36,7 @@ pub use granted_spell_keyword_model::{
 pub mod ids;
 pub mod interned;
 pub mod mana;
+pub mod library_movement;
 pub mod ordinal;
 pub mod resolution_model;
 pub mod spell_cost_condition_model;

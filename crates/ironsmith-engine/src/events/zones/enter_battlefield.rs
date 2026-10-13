@@ -360,6 +360,12 @@ impl EnterBattlefieldEvent {
                     object.subtypes.push(*subtype);
                 }
             }
+            if self.enters_as_copy_of.is_some() && self.set_base_power_toughness.is_some() {
+                crate::static_abilities::exclude_pt_cdas_from_copy(
+                    &mut object.abilities,
+                    &mut object.ability_labels,
+                );
+            }
             object.abilities_mut().extend(self.added_abilities.iter().cloned());
             if let Some((power, toughness)) = self.set_base_power_toughness {
                 object.base_power = Some(crate::card::PtValue::Fixed(power));
@@ -726,6 +732,58 @@ mod entry_granted_occurrence_tests {
             assert_eq!(instances.iter().copied().collect::<std::collections::HashSet<_>>().len(), 3);
             assert_eq!(game.object(result.new_id).unwrap().counters.get(&CounterType::PlusOnePlusOne).copied(), Some(3),
                 "copied and granted replacements each apply once: {duration:?}");
+        }
+    }
+
+    #[test]
+    fn copy_pt_exception_excludes_donor_cda_in_preview_and_commit() {
+        for duration in [None, Some(crate::effect::Until::EndOfTurn)] {
+            for grant_cda in [false, true] {
+                let mut game = crate::tests::test_helpers::setup_two_player_game();
+                let alice = PlayerId::from_index(0);
+                let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "CDA donor")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+                    .with_ability(Ability::static_ability(StaticAbility::characteristic_defining_pt(
+                        crate::effect::Value::Fixed(8), crate::effect::Value::Fixed(8),
+                    )))
+                    .with_ability(Ability::static_ability(StaticAbility::flying()))
+                    .build();
+                let donor = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                let entrant_definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Quicksilver Gargantuan")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(7, 7)).build();
+                let entrant = game.create_object_from_definition(&entrant_definition, alice, Zone::Hand);
+                let grants = if grant_cda {
+                    vec![Ability::static_ability(StaticAbility::characteristic_defining_pt(
+                        crate::effect::Value::Fixed(4), crate::effect::Value::Fixed(4),
+                    ))]
+                } else { vec![] };
+                let mut event = EnterBattlefieldEvent::new(entrant, Zone::Hand)
+                    .with_copy_of(donor).with_copy_duration(duration.clone()).with_base_power_toughness(7, 7);
+                event.added_abilities = grants.clone();
+                let preview = event.try_prospective_game_state(&game).unwrap().unwrap();
+                let expected = if grant_cda { 4 } else { 7 };
+                assert_eq!(preview.calculated_power(entrant), Some(expected));
+                assert_eq!(preview.current_abilities(entrant).unwrap().len(), 1 + usize::from(grant_cda));
+                game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+                    entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    crate::replacement::ReplacementAction::EnterAsCopy {
+                        source: donor, enters_tapped: false, copy_duration: duration.clone(),
+                        linked_exile_objects: vec![], additional_counters: vec![], name_override: None,
+                        added_colors: ColorSet::new(), added_card_types: vec![], removes_other_card_types: false,
+                        added_supertypes: vec![], removed_supertypes: vec![], added_subtypes: vec![],
+                        added_abilities: grants, set_base_power_toughness: Some((7, 7)), copy_followups: vec![],
+                    },
+                ));
+                let receipt = game.move_object_with_etb_processing(entrant, Zone::Battlefield).unwrap();
+                assert!(!receipt.pending && receipt.programs.is_empty());
+                let crate::events::processing::EventOutcome::Proceed(result) = receipt.original else { panic!("copy enters"); };
+                assert_eq!(game.calculated_power(result.new_id), Some(expected));
+                assert_eq!(game.calculated_toughness(result.new_id), Some(expected));
+                assert_eq!(game.current_abilities(result.new_id).unwrap().len(), 1 + usize::from(grant_cda));
+                assert_eq!(game.calculated_power(donor), Some(8));
+            }
         }
     }
 

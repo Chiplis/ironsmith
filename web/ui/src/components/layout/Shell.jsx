@@ -289,7 +289,7 @@ export default function Shell() {
           const skippedSuffix = loaded.skippedCardNames.length > 0
             ? `; skipped unsupported cards: ${loaded.skippedCardNames.join(", ")}`
             : "";
-          await refresh(`Puzzle loaded from link${skippedSuffix}`);
+          await refresh(`Puzzle loaded from link${skippedSuffix}`, { throwOnError: true });
         } else if (!fixedStartingBoard && (
           initialLobbyQueryRef.current.lobbyId
           || initialLobbyQueryRef.current.deckText
@@ -298,7 +298,7 @@ export default function Shell() {
           // A multiplayer link supplies its own decks. Initialize the empty
           // table needed by the lobby without loading an unrelated random game.
           await game.resetEmpty(parseNames(playerNames), startingLife);
-          await refresh("WASM loaded");
+          await refresh("WASM loaded", { throwOnError: true });
         } else {
           const names = parseNames(playerNames);
           const prefetched = startupBoardRef.current;
@@ -311,7 +311,7 @@ export default function Shell() {
           } else {
             await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           }
-          await refresh("WASM loaded");
+          await refresh("WASM loaded", { throwOnError: true });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -632,6 +632,9 @@ export default function Shell() {
         <span className="text-[18px] font-bold uppercase tracking-wider">{ui("Game initialization failed")}</span>
         <span className="max-w-2xl text-sm text-muted-foreground">
           {ui(initializationError)}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {ui("Refresh the tab to try again.")}
         </span>
       </div>
     );

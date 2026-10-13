@@ -11,9 +11,7 @@ use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::special_actions::{
-    can_pay_total_cost_with_reason_in_context, pay_total_cost_with_choice_in_context_with_outputs,
-};
+use crate::special_actions::pay_total_cost_with_choice_in_context_with_outputs;
 use crate::target::PlayerFilter;
 
 // Execution failures do not establish that a legal cost cannot be paid.
@@ -21,11 +19,6 @@ fn acknowledged_payment<T>(
     result: Result<T, crate::cost::CostPaymentError>,
 ) -> Result<Option<T>, ExecutionError> {
     crate::costs::acknowledged_total_cost(result)
-}
-fn payment_succeeded(
-    result: Result<(), crate::cost::CostPaymentError>,
-) -> Result<bool, ExecutionError> {
-    acknowledged_payment(result).map(|receipt| receipt.is_some())
 }
 
 /// Offers select willingness only. Queries and pending decisions establish
@@ -36,26 +29,17 @@ fn select_payment_offer(
     cost: &crate::cost::TotalCost,
     ctx: &mut ExecutionContext,
 ) -> Result<Option<bool>, ExecutionError> {
-    let can_afford = payment_succeeded(can_pay_total_cost_with_reason_in_context(
+    // Willingness belongs to the player, even for a free or currently
+    // unfunded cost. Funding and legality are checked by the payment owner
+    // after acceptance; an affordability query must never answer this offer.
+    let wants_to_pay = make_boolean_decision(
         game,
+        &mut ctx.decision_maker,
         payer,
         ctx.source,
-        cost,
-        crate::costs::PaymentReason::Effect,
-        ctx,
-    ))?;
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(None);
-    }
-    let wants_to_pay = can_afford
-        && make_boolean_decision(
-            game,
-            &mut ctx.decision_maker,
-            payer,
-            ctx.source,
-            format!("{} to prevent effect?", cost.display()),
-            FallbackStrategy::Accept,
-        );
+        format!("{} to prevent effect?", cost.display()),
+        FallbackStrategy::Accept,
+    );
     Ok((!ctx.decision_maker.awaiting_choice()).then_some(wants_to_pay))
 }
 
@@ -958,6 +942,187 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[derive(Default)]
+    struct PendingPaymentOffer {
+        prompted: Vec<PlayerId>,
+    }
+
+    impl DecisionMaker for PendingPaymentOffer {
+        fn awaiting_choice(&self) -> bool {
+            !self.prompted.is_empty()
+        }
+
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.prompted.push(ctx.player);
+            false
+        }
+    }
+
+    struct AnswerPaymentOffer {
+        accept: bool,
+        cancel: bool,
+        offers: usize,
+        payments: usize,
+    }
+
+    impl DecisionMaker for AnswerPaymentOffer {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.offers += 1;
+            self.accept
+        }
+
+        fn decide_mana_payment(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::ManaPaymentContext,
+        ) -> crate::mana_payment::ManaPaymentResponse {
+            self.payments += 1;
+            if self.cancel {
+                crate::mana_payment::ManaPaymentResponse::Cancel
+            } else {
+                assert!(ctx.plan.payable);
+                crate::mana_payment::ManaPaymentResponse::Confirm {
+                    plan_id: ctx.plan.id,
+                    request_hash: ctx.plan.request_hash,
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unless_payment_always_waits_for_an_explicit_answer() {
+        for floating_mana in [0, 1] {
+            for amount in [0, 1] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                game.player_mut(alice).unwrap().mana_pool.blue = floating_mana;
+                let source = game.new_object_id();
+                let mut dm = PendingPaymentOffer::default();
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                let effect = UnlessPaysEffect::new(
+                    vec![Effect::lose_life(5)],
+                    PlayerFilter::You,
+                    vec![ManaSymbol::Generic(amount)],
+                );
+
+                effect.execute(&mut game, &mut ctx).unwrap();
+                assert!(ctx.decision_maker.awaiting_choice());
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert_eq!(game.player(alice).unwrap().mana_pool.blue, floating_mana);
+                assert_eq!(dm.prompted, vec![alice]);
+            }
+        }
+    }
+
+    #[test]
+    fn accepted_unless_payment_waits_for_mana_confirmation_even_without_funding() {
+        #[derive(Default)]
+        struct PendingManaPayment {
+            offers: usize,
+            pending: bool,
+        }
+        impl DecisionMaker for PendingManaPayment {
+            fn awaiting_choice(&self) -> bool {
+                self.pending
+            }
+            fn decide_boolean(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::BooleanContext,
+            ) -> bool {
+                self.offers += 1;
+                true
+            }
+            fn decide_mana_payment(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::ManaPaymentContext,
+            ) -> crate::mana_payment::ManaPaymentResponse {
+                assert!(!ctx.plan.payable);
+                self.pending = true;
+                crate::mana_payment::ManaPaymentResponse::Cancel
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let effect = UnlessPaysEffect::new(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            vec![ManaSymbol::Generic(1)],
+        );
+        let mut dm = PendingManaPayment::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert_eq!(dm.offers, 1);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+    }
+
+    #[test]
+    fn crystal_shard_payment_offer_waits_for_target_controller_with_untapped_land() {
+        for target_controller in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            let creature = add_creature_with_mana_value(&mut game, target_controller, 2);
+            let land_card = CardBuilder::new(CardId::new(), "Mana land")
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&land_card, target_controller, Zone::Battlefield);
+            game.object_mut(land).unwrap().abilities_mut().push(Ability::mana(
+                TotalCost::from_cost(Cost::tap()),
+                vec![ManaSymbol::Blue],
+            ));
+            let effect = UnlessPaysEffect::new(
+                vec![Effect::new(crate::effects::ReturnToHandEffect::target(
+                    crate::target::ChooseSpec::Object(crate::filter::ObjectFilter::creature()),
+                ))],
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                vec![ManaSymbol::Generic(1)],
+            );
+            let mut dm = PendingPaymentOffer::default();
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+                .with_targets(vec![crate::effects::ResolvedTarget::Object(creature)]);
+
+            effect.execute(&mut game, &mut ctx).unwrap();
+            assert!(ctx.decision_maker.awaiting_choice());
+            assert_eq!(game.object(creature).unwrap().zone, Zone::Battlefield);
+            assert!(!game.is_tapped(land));
+            assert_eq!(dm.prompted, vec![target_controller]);
+
+            // Resuming must honor either explicit answer. Acceptance can fund
+            // the payment from the land without floating mana beforehand.
+            for (accept, cancel) in [(true, false), (false, false), (true, true)] {
+                let mut branch = game.clone();
+                let mut dm = AnswerPaymentOffer { accept, cancel, offers: 0, payments: 0 };
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+                    .with_targets(vec![crate::effects::ResolvedTarget::Object(creature)]);
+                effect.execute(&mut branch, &mut ctx).unwrap();
+                assert_eq!(dm.offers, 1);
+                assert_eq!(dm.payments, usize::from(accept));
+                if accept && !cancel {
+                    assert_eq!(branch.object(creature).unwrap().zone, Zone::Battlefield);
+                    assert!(branch.is_tapped(land));
+                } else {
+                    assert!(branch.player(target_controller).unwrap().hand.iter()
+                        .any(|id| branch.object(*id).unwrap().name == "Exchanged creature"));
+                    assert!(!branch.is_tapped(land));
+                }
+                assert_eq!(branch.player(target_controller).unwrap().mana_pool.total(), 0);
+            }
+        }
     }
 
     struct AcceptForLastOpponent {

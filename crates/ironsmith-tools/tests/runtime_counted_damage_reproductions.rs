@@ -101,7 +101,7 @@ fn expected(name:&str, count:usize, removed:Option<usize>) -> Value {
     for i in 0..4 {
         if removed==Some(i) { ws.push(json!({"battlefield":false,"power":null,"toughness":null,"damage":0,"plus":0,"minus":0,"vigilance":false,"first_strike":false,"lifelink":false}));continue; }
         let (mut p,mut t)=(2+i as i32,10+i as i32);let(mut plus,mut minus,mut damage)=(0,0,0);let(mut vigilance,mut first_strike,mut lifelink)=(false,false,false);
-        if i<count {damage=crate::damage(name);}
+        if i<count {damage=self::damage(name);}
         ws.push(json!({"battlefield":true,"power":p,"toughness":t,"damage":damage,"plus":plus,"minus":minus,"vigilance":vigilance,"first_strike":first_strike,"lifelink":lifelink}));
     }
     json!({"error":null,"witnesses":ws})

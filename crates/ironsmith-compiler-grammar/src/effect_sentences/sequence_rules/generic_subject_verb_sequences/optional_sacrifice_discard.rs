@@ -32,7 +32,8 @@ mod tests {
         )
         .expect("exact pair should parse");
         let debug = format!("{effects:#?}");
-        assert!(debug.contains("VillainousChoice"), "{debug}");
+        assert!(debug.contains("ChooseOneOf"), "{debug}");
+        assert!(!debug.contains("VillainousChoice"), "{debug}");
         assert!(debug.contains("ForEachOpponentDid"), "{debug}");
         assert!(debug.contains("DidNot"), "{debug}");
         assert!(debug.contains("DealDamageEqualToPower"), "{debug}");
@@ -47,7 +48,7 @@ mod tests {
         assert!(lowered_debug.contains("WithIdEffect"), "{lowered_debug}");
         assert!(lowered_debug.contains("MayEffect"), "{lowered_debug}");
         assert!(
-            lowered_debug.contains("VillainousChoiceEffect"),
+            lowered_debug.contains("ChooseModeEffect"),
             "{lowered_debug}"
         );
         assert!(

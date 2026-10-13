@@ -4890,7 +4890,7 @@ impl WasmGame {
         Ok(())
     }
 
-    /// Cancel the current pending decision chain.
+    /// Decline a resolution payment, or cancel the current pending action chain.
     ///
     /// Rollback preference:
     /// 1. The active user-action checkpoint (start of this spell/ability chain).
@@ -4901,6 +4901,12 @@ impl WasmGame {
     /// preserving the broader epoch rollback as a fallback.
     #[wasm_bindgen(js_name = cancelDecision)]
     pub fn cancel_decision(&mut self) -> Result<JsValue, JsValue> {
+        // A resolution payment is a decision within an already committed
+        // effect. Cancel declines that payment and continues resolution;
+        // restoring the action checkpoint would incorrectly undo the effect.
+        if let Some(command) = self.resolution_payment_cancel_command() {
+            return self.dispatch_typed_command(command, 0.0);
+        }
         if !self.is_cancelable() {
             return Err(JsValue::from_str("current decision cannot be cancelled"));
         }

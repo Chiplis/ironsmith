@@ -327,6 +327,7 @@ fn resolve_runtime_modification(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     modification: &RuntimeModification,
+    copy_pt_exception: Option<(i32, i32)>,
 ) -> Result<Modification, ExecutionError> {
     match modification {
         RuntimeModification::ChangeControllerToEffectController => {
@@ -442,6 +443,14 @@ fn resolve_runtime_modification(
                 )
                 .ok_or(ExecutionError::InvalidTarget)?
             };
+            if let Some((power, toughness)) = copy_pt_exception {
+                crate::static_abilities::exclude_pt_cdas_from_copy(
+                    &mut copiable_values.abilities,
+                    &mut copiable_values.ability_labels,
+                );
+                copiable_values.power = Some(power);
+                copiable_values.toughness = Some(toughness);
+            }
             if let RuntimeModification::CopyOfWithAbilities { abilities, .. } = modification {
                 let old_len = copiable_values.abilities.len();
                 copiable_values
@@ -1161,11 +1170,33 @@ fn acquire_continuous_action(
         mods.push(modification.clone());
     }
     mods.extend(definition.additional_modifications.iter().cloned());
+    // BecomeCopy lowering carries a resolution-locked P/T exception beside
+    // the runtime copy. Fold it into layer 1, not a separate layer-7b effect:
+    // it must exclude donor CDAs and survive a subsequent copy (CR 707.9b/d).
+    let has_runtime_copy = definition.runtime_modifications.iter().any(|modification| {
+        matches!(modification, RuntimeModification::CopyOf { .. }
+            | RuntimeModification::CopyOfWithAbilities { .. })
+    });
+    let mut copy_pt_exception = None;
+    if has_runtime_copy && definition.resolve_set_pt_values_at_resolution {
+        for modification in &mods {
+            if let Modification::SetPowerToughness {
+                power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
+            } = modification {
+                copy_pt_exception = Some((resolve_value(game, power, ctx)?, resolve_value(game, toughness, ctx)?));
+            }
+        }
+        if copy_pt_exception.is_some() {
+            mods.retain(|modification| !matches!(modification,
+                Modification::SetPowerToughness { sublayer: crate::continuous::PtSublayer::Setting, .. }));
+        }
+    }
     for runtime_modification in &definition.runtime_modifications {
         mods.push(resolve_runtime_modification(
             game,
             ctx,
             runtime_modification,
+            copy_pt_exception,
         )?);
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
@@ -1811,6 +1842,51 @@ mod tests {
         assert!(current.supertypes.contains(&Supertype::Legendary));
         assert_eq!(current.power, Some(2));
         assert_eq!(current.toughness, Some(2));
+    }
+
+    #[test]
+    fn copy_pt_exception_is_copiable_and_preserves_explicitly_granted_cda() {
+        for grant_cda in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let recipient = create_creature(&mut game, "Copy recipient", alice);
+            let donor = create_creature(&mut game, "CDA donor", alice);
+            game.object_mut(donor).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::characteristic_defining_pt(Value::Fixed(8), Value::Fixed(8)),
+            ));
+            let abilities = if grant_cda {
+                vec![Ability::static_ability(StaticAbility::characteristic_defining_pt(
+                    Value::Fixed(4), Value::Fixed(4),
+                ))]
+            } else { vec![] };
+            let effect = Effect::new(ApplyContinuousEffect::new_runtime(
+                EffectTarget::Specific(recipient),
+                RuntimeModification::CopyOfWithAbilities {
+                    source: ChooseSpec::SpecificObject(donor), preserve_source_abilities: false,
+                    name_override: None, name_override_surface: None, add_supertypes: vec![],
+                    copy_exception_surface: None, abilities,
+                },
+                Until::EndOfTurn,
+            ).with_additional_modification(Modification::SetPowerToughness {
+                power: Value::Fixed(1), toughness: Value::Fixed(1),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            }).resolve_set_pt_values_at_resolution());
+            let mut ctx = ExecutionContext::new_default(recipient, alice);
+            execute_effect(&mut game, &effect, &mut ctx).unwrap();
+            let expected = if grant_cda { 4 } else { 1 };
+            assert_eq!(game.calculated_power(recipient), Some(expected));
+            assert_eq!(game.current_abilities(recipient).unwrap().len(), usize::from(grant_cda));
+
+            let copy = crate::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(recipient));
+            let outcome = copy.execute(&mut game, &mut ctx).unwrap();
+            let crate::effect::OutcomeValue::Objects(ids) = outcome.value else { panic!("copy token"); };
+            assert_eq!(game.calculated_power(ids[0]), Some(expected));
+            assert_eq!(game.object(ids[0]).unwrap().base_power, Some(crate::card::PtValue::Fixed(1)));
+            game.effect_store.continuous_effects.cleanup_end_of_turn();
+            assert_eq!(game.calculated_power(recipient), Some(2));
+            assert_eq!(game.calculated_power(ids[0]), Some(expected));
+            assert_eq!(game.calculated_power(donor), Some(8));
+        }
     }
 
     #[test]

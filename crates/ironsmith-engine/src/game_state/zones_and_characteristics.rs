@@ -3577,6 +3577,12 @@ impl GameState {
                             copiable_values.subtypes.push(*subtype);
                         }
                     }
+                    if result.set_base_power_toughness.is_some() {
+                        crate::static_abilities::exclude_pt_cdas_from_copy(
+                            &mut copiable_values.abilities,
+                            &mut copiable_values.ability_labels,
+                        );
+                    }
                     std::sync::Arc::make_mut(&mut copiable_values.abilities)
                         .extend(result.added_abilities.iter().cloned());
                     if let Some((power, toughness)) = result.set_base_power_toughness {
@@ -3647,6 +3653,12 @@ impl GameState {
                     new_obj.copy_copiable_values_from(&source_obj);
                     if let Some(values) = copiable_values.as_ref() {
                         new_obj.copy_copiable_values_from_values(values);
+                    }
+                    if result.set_base_power_toughness.is_some() {
+                        crate::static_abilities::exclude_pt_cdas_from_copy(
+                            &mut new_obj.abilities,
+                            &mut new_obj.ability_labels,
+                        );
                     }
                     if let Some(colors) = retained_colors {
                         new_obj.color_override = Some(colors);

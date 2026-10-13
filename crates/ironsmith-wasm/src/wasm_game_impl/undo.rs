@@ -9,9 +9,77 @@ fn loaded_deck_sample_index(_len: usize) -> usize {
     0
 }
 
+#[cfg(test)]
+mod resolution_payment_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn resolution_payment_cancel_answers_the_prompt_instead_of_undoing() {
+        // Debug session construction has large native stack frames; keep the
+        // allowance local to this fixture rather than changing runtime limits.
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(check_resolution_payment_cancel)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    fn check_resolution_payment_cancel() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let player = PlayerId::from_index(0);
+        let source = wasm.game.new_object_id();
+        for reason in [
+            ironsmith::costs::PaymentReason::Effect,
+            ironsmith::costs::PaymentReason::CastSpell,
+            ironsmith::costs::PaymentReason::ActivateAbility,
+        ] {
+            let request = ironsmith::mana_payment::ManaPaymentRequest::new(
+                player,
+                source,
+                reason,
+                ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Generic(1)]),
+            );
+            let plan = ironsmith::mana_payment::unfunded_mana_payment_plan(&wasm.game, &request);
+            let context = DecisionContext::ManaPayment(
+                ironsmith::decisions::context::ManaPaymentContext::new(
+                    player, source, "Payment", request, plan,
+                ),
+            );
+            wasm.pending_decision = Some(context.clone());
+            let command = wasm.resolution_payment_cancel_command();
+            if reason == ironsmith::costs::PaymentReason::Effect {
+                assert!(wasm.is_cancelable(), "declining needs no undo checkpoint");
+                let answer = wasm.command_to_replay_answer(&context, command.unwrap()).unwrap();
+                assert!(matches!(answer, ReplayDecisionAnswer::ManaPayment(
+                    ironsmith::mana_payment::ManaPaymentResponse::Cancel
+                )));
+            } else {
+                assert!(command.is_none(), "casting and activation retain their undo behavior");
+            }
+        }
+    }
+}
+
 impl WasmGame {
+    fn resolution_payment_cancel_command(&self) -> Option<UiCommand> {
+        let DecisionContext::ManaPayment(payment) = self.pending_decision.as_ref()? else {
+            return None;
+        };
+        (payment.request.reason == ironsmith::costs::PaymentReason::Effect).then_some(
+            UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Cancel,
+            },
+        )
+    }
+
     pub(super) fn is_cancelable(&self) -> bool {
         if self.payment_disclosure.is_some() { return false; }
+        if self.resolution_payment_cancel_command().is_some() {
+            return true;
+        }
         if let Some(replay) = self.pending_replay_action.as_ref() {
             return self.is_replay_chain_cancelable(replay);
         }

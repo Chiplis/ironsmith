@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "ironsmith-compiler-runtime"
 version = "0.1.0"
 edition = "2024"
@@ -17,3 +18,103 @@ path = "src/lib.rs"
 
 [features]
 default = []
+
+# BEGIN GENERATED NATIVE TEST SUITES
+# Regenerate with python3 scripts/generate-native-test-suites.py.
+
+[[test]]
+name = "suite_00"
+path = "tests/suites/suite_00.rs"
+
+[[test]]
+name = "suite_01"
+path = "tests/suites/suite_01.rs"
+
+[[test]]
+name = "suite_02"
+path = "tests/suites/suite_02.rs"
+
+[[test]]
+name = "suite_03"
+path = "tests/suites/suite_03.rs"
+
+[[test]]
+name = "suite_04"
+path = "tests/suites/suite_04.rs"
+
+[[test]]
+name = "suite_05"
+path = "tests/suites/suite_05.rs"
+
+[[test]]
+name = "suite_06"
+path = "tests/suites/suite_06.rs"
+
+[[test]]
+name = "suite_07"
+path = "tests/suites/suite_07.rs"
+
+[[test]]
+name = "suite_08"
+path = "tests/suites/suite_08.rs"
+
+[[test]]
+name = "suite_09"
+path = "tests/suites/suite_09.rs"
+
+[[test]]
+name = "suite_10"
+path = "tests/suites/suite_10.rs"
+
+[[test]]
+name = "suite_11"
+path = "tests/suites/suite_11.rs"
+
+[[test]]
+name = "suite_12"
+path = "tests/suites/suite_12.rs"
+
+[[test]]
+name = "suite_13"
+path = "tests/suites/suite_13.rs"
+
+[[test]]
+name = "suite_14"
+path = "tests/suites/suite_14.rs"
+
+[[test]]
+name = "suite_15"
+path = "tests/suites/suite_15.rs"
+
+[[test]]
+name = "suite_16"
+path = "tests/suites/suite_16.rs"
+
+[[test]]
+name = "suite_17"
+path = "tests/suites/suite_17.rs"
+
+[[test]]
+name = "suite_18"
+path = "tests/suites/suite_18.rs"
+
+[[test]]
+name = "suite_19"
+path = "tests/suites/suite_19.rs"
+
+[[test]]
+name = "suite_20"
+path = "tests/suites/suite_20.rs"
+
+[[test]]
+name = "suite_21"
+path = "tests/suites/suite_21.rs"
+
+[[test]]
+name = "suite_22"
+path = "tests/suites/suite_22.rs"
+
+[[test]]
+name = "suite_23"
+path = "tests/suites/suite_23.rs"
+# END GENERATED NATIVE TEST SUITES

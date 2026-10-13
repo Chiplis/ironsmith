@@ -222,7 +222,21 @@ impl crate::effects::SimultaneousEffectProposal for TaggedProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<(), ExecutionError> {
-        self.inner.prepare_original(game, ctx)
+        self.inner.prepare_original(game, ctx)?;
+        // A coordinated damage clause binds every recipient before committing
+        // any damage. References such as "its controller" name the selected
+        // object, even if damage to it will be prevented. Expose only that
+        // selection here; outcome-only tags still wait for the actual result.
+        if !ctx.decision_maker.awaiting_choice()
+            && !self.adapter.effect.outcome_only
+            && self.adapter.effect.effect.0.supports_damage_action_cohort()
+        {
+            let snapshots = capture_all_effect_target_snapshots(
+                game, &self.adapter.effect.effect, ctx,
+            );
+            ctx.set_tagged_objects(self.adapter.effect.tag.clone(), snapshots);
+        }
+        Ok(())
     }
 
     fn seal_original(

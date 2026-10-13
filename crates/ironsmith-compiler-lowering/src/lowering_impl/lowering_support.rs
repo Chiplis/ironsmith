@@ -1078,12 +1078,16 @@ fn default_trigger_last_object_prelude(
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
         TriggerSpec::ThisBecomesTargetedBySpell(_)
         | TriggerSpec::ThisBecomesTargetedByStackObject(_)
-        | TriggerSpec::BecomesTargetedByStackObject { .. }
-        | TriggerSpec::BecomesTargetedByAbilitySource { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. } =>
             Some(EffectPreludeTag::TriggeringSource(tag.clone())),
+        // In an object-subject targeting trigger, "it" / "that creature"
+        // names the targeted permanent. Explicit references to "that spell
+        // or ability" have their own TriggeringSource binding.
+        TriggerSpec::BecomesTargetedByStackObject { .. }
+        | TriggerSpec::BecomesTargetedByAbilitySource { .. } =>
+            Some(EffectPreludeTag::TriggeringObject(tag.clone())),
         TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other } => {
             Some(EffectPreludeTag::OtherBlockParticipantMatchingSubject {
                 tag: tag.clone(),

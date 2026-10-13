@@ -861,7 +861,11 @@ where
         self
     }
 
-    pub fn is_mana_ability(&self) -> bool {
+    pub fn is_mana_ability(&self) -> bool
+    where
+        E: crate::library_movement::LibraryMovement,
+        C: crate::library_movement::LibraryMovement,
+    {
         matches!(&self.kind, AbilityKind::Activated(a) if a.is_mana_ability())
     }
 
@@ -1058,8 +1062,28 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
         self.is_loyalty_ability || self.mana_cost.has_loyalty_activation_cost()
     }
 
-    pub fn is_mana_ability(&self) -> bool {
+    /// CR 605.1a: mana production is insufficient when a cost or effect moves
+    /// cards to/from a library. All authored self-replacement branches count.
+    pub fn moves_library_cards(&self) -> bool
+    where
+        E: crate::library_movement::LibraryMovement,
+        C: crate::library_movement::LibraryMovement,
+    {
+        use crate::library_movement::LibraryMovement;
+        let mut context = crate::library_movement::LibraryMovementContext::default();
+        self.mana_cost.inspect_library_movement(&mut context)
+            || self.effects.all_effects().into_iter().any(|effect| {
+                effect.inspect_library_movement(&mut context)
+            })
+    }
+
+    pub fn is_mana_ability(&self) -> bool
+    where
+        E: crate::library_movement::LibraryMovement,
+        C: crate::library_movement::LibraryMovement,
+    {
         self.produces_mana() && !self.has_targets() && !self.is_loyalty_ability()
+            && !self.moves_library_cards()
     }
 
     pub fn mana_symbols(&self) -> &[ManaSymbol] {

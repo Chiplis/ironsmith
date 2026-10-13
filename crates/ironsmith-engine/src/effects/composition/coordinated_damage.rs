@@ -133,6 +133,34 @@ mod tests {
     use crate::effects::EffectExecutor;
 
     #[test]
+    fn coordinated_damage_binds_the_selected_objects_controller_before_damage() {
+        for amount in [0, 1] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = crate::PlayerId::from_index(0);
+            let bob = crate::PlayerId::from_index(1);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Recipient")
+                .card_types(vec![crate::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 3))
+                .build();
+            let source = game.create_object_from_card(&card, alice, crate::Zone::Battlefield);
+            let target = game.create_object_from_card(&card, bob, crate::Zone::Battlefield);
+            let sequence = super::super::sequence::SequenceEffect::coordinated(vec![
+                crate::Effect::deal_damage(amount, crate::ChooseSpec::target(crate::ChooseSpec::creature()))
+                    .tag("recipient"),
+                crate::Effect::deal_damage(1, crate::ChooseSpec::Player(
+                    crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged("recipient")),
+                )),
+            ]);
+            let mut ctx = ExecutionContext::new_default(source, alice)
+                .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+            sequence.execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(game.damage_on(target), amount as u32);
+            assert_eq!(game.player(bob).unwrap().life, 19);
+            assert_eq!(game.player(alice).unwrap().life, 20);
+        }
+    }
+
+    #[test]
     fn coordinated_damage_uses_one_batch_but_successive_damage_does_not() {
         for coordinated in [false, true] {
             for dispatched in [false, true] {

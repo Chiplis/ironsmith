@@ -384,6 +384,31 @@ fn trigger_limits_are_checked_at_registration_without_rejecting_resolution() {
 }
 
 #[test]
+fn stacked_trigger_rechecks_intervening_condition_but_not_registration_limits() {
+    let (mut game, alice, _, source, _) = fixture();
+    let identity = TriggerIdentity(99003);
+    let event = crate::triggers::TriggerEvent::new(
+        crate::events::StateTriggerEvent::new(source), Default::default(),
+    );
+    game.record_trigger_fired(source, identity);
+    game.record_do_this_action(source, identity);
+    for limit in [Condition::MaxTimesEachTurn(1), Condition::DoThisMaxTimesEachTurn(1)] {
+        for (life_condition, expected) in [
+            (Condition::LifeTotalOrGreater(1), true),
+            (Condition::LifeTotalOrLess(0), false),
+        ] {
+            let condition = Condition::And(Box::new(limit.clone()), Box::new(life_condition));
+            assert!(!crate::triggers::verify_intervening_if_checked(
+                &game, &condition, alice, &event, source, Some(identity), None,
+            ).unwrap());
+            assert_eq!(crate::triggers::verify_intervening_if_at_resolution_checked(
+                &game, &condition, alice, &event, source, Some(identity), None,
+            ).unwrap(), expected);
+        }
+    }
+}
+
+#[test]
 fn quantified_opponent_count_keeps_controller_perspective_in_every_phase() {
     let (mut game, alice, bob, source, _) = fixture();
     let condition = Condition::PlayerHasAtLeast {

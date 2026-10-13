@@ -3335,6 +3335,8 @@ pub enum ConditionEvaluationMode {
 pub struct ExternalEvaluationOptions {
     /// Recheck the current exact event object when a triggered ability resolves.
     pub triggering_object_current: bool,
+    /// The ability already triggered; registration limits do not gate resolution.
+    pub ignore_trigger_limits: bool,
     /// If true, treat timing restrictions as satisfied.
     pub ignore_timing: bool,
     /// If true, treat per-turn activation limits as satisfied.
@@ -5341,6 +5343,9 @@ fn evaluate_condition_in_context(
             let Some(ctx) = ctx.external() else {
                 return Ok(true);
             };
+            if ctx.options.ignore_trigger_limits {
+                return Ok(true);
+            }
             Ok(ctx
                 .trigger_identity
                 .map(|id| game.do_this_action_count_this_turn(ctx.source, id) < *limit)
@@ -5350,6 +5355,9 @@ fn evaluate_condition_in_context(
             let Some(ctx) = ctx.external() else {
                 return Ok(true);
             };
+            if ctx.options.ignore_trigger_limits {
+                return Ok(true);
+            }
             Ok(ctx
                 .trigger_identity
                 .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)

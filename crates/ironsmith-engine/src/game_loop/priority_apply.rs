@@ -1092,9 +1092,18 @@ pub(super) fn apply_admitted_priority_action(
                     if let AbilityKind::Activated(activated) = &ability.kind {
                         let is_turn_capped = activated.max_activations_per_turn().is_some();
                         let is_loyalty_ability = activated.is_loyalty_ability();
+                        // Fixed-output definitions can become nonmana abilities
+                        // under CR 605.1a (for example, a mill activation cost).
+                        // Preserve their mana production when using the stack.
+                        let mut effects = activated.effects.clone();
+                        if effects.all_effects().is_empty() && !activated.mana_symbols().is_empty() {
+                            effects.push_segment(crate::resolution::ResolutionSegment::from_effects(
+                                vec![crate::effect::Effect::add_mana(activated.mana_symbols().to_vec())],
+                            ));
+                        }
                         (
                             activated.mana_cost.clone(),
-                            activated.effects.clone(),
+                            effects,
                             is_turn_capped,
                             is_loyalty_ability,
                             stable_id,

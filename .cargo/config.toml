@@ -1,10 +1,13 @@
 [build]
 jobs = 8
+# Keep incremental artifacts from growing independently in every worktree.
+incremental = false
+rustc-wrapper = "scripts/rustc-cache.sh"
 
 [env]
-# Large native session/checkpoint fixtures exceed the default debug test stack.
+# Unoptimized native test suites need room for large session/checkpoint fixtures.
 # This does not configure the wasm32 runtime stack.
-RUST_MIN_STACK = "16777216"
+RUST_MIN_STACK = "67108864"
 
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

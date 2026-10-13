@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "ironsmith-tools"
 version = "0.1.0"
 edition = "2024"
@@ -183,3 +184,71 @@ test = false
 name = "probe_badgermole_tap"
 path = "src/bin/probe_badgermole_tap.rs"
 test = false
+
+# BEGIN GENERATED NATIVE TEST SUITES
+# Regenerate with python3 scripts/generate-native-test-suites.py.
+
+[[test]]
+name = "suite_00"
+path = "tests/suites/suite_00.rs"
+
+[[test]]
+name = "suite_01"
+path = "tests/suites/suite_01.rs"
+
+[[test]]
+name = "suite_02"
+path = "tests/suites/suite_02.rs"
+
+[[test]]
+name = "suite_03"
+path = "tests/suites/suite_03.rs"
+
+[[test]]
+name = "suite_04"
+path = "tests/suites/suite_04.rs"
+
+[[test]]
+name = "suite_05"
+path = "tests/suites/suite_05.rs"
+
+[[test]]
+name = "suite_06"
+path = "tests/suites/suite_06.rs"
+
+[[test]]
+name = "suite_07"
+path = "tests/suites/suite_07.rs"
+
+[[test]]
+name = "suite_08"
+path = "tests/suites/suite_08.rs"
+
+[[test]]
+name = "suite_09"
+path = "tests/suites/suite_09.rs"
+
+[[test]]
+name = "suite_10"
+path = "tests/suites/suite_10.rs"
+
+[[test]]
+name = "suite_11"
+path = "tests/suites/suite_11.rs"
+
+[[test]]
+name = "suite_12"
+path = "tests/suites/suite_12.rs"
+
+[[test]]
+name = "suite_13"
+path = "tests/suites/suite_13.rs"
+
+[[test]]
+name = "suite_14"
+path = "tests/suites/suite_14.rs"
+
+[[test]]
+name = "suite_15"
+path = "tests/suites/suite_15.rs"
+# END GENERATED NATIVE TEST SUITES

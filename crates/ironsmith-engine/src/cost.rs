@@ -401,3 +401,16 @@ mod tests {
         assert_eq!(paid.times_paid_label("Gift"), 1);
     }
 }
+
+impl ironsmith_core::library_movement::LibraryMovement for Cost {
+    fn inspect_library_movement(
+        &self,
+        context: &mut ironsmith_core::library_movement::LibraryMovementContext,
+    ) -> bool {
+        self.compiled_model()
+            .is_some_and(|cost| cost.inspect_library_movement(context))
+            || self
+                .effect_ref()
+                .is_some_and(|effect| effect.inspect_library_movement(context))
+    }
+}

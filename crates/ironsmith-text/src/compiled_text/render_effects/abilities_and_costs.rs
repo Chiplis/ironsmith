@@ -1894,7 +1894,14 @@ pub(crate) fn describe_ability(
                     line.push_str(&pre.join(", "));
                 }
             }
-            if !activated.effects.is_empty() {
+            if activated.effects.all_effects().is_empty() && !activated.mana_symbols().is_empty() {
+                if !line.is_empty() {
+                    line.push_str(": ");
+                }
+                line.push_str("Add ");
+                line.push_str(&activated.mana_symbols().iter().copied()
+                    .map(describe_mana_symbol).collect::<Vec<_>>().join(""));
+            } else if !activated.effects.is_empty() {
                 if !line.is_empty() {
                     line.push_str(": ");
                 }

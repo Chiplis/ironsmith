@@ -393,9 +393,24 @@ impl OptionalActionProgram {
                     }
                 }
                 let optional = unwrapped.downcast_ref::<crate::effects::MayEffect>();
-                // A compound payment is one action owner. Splitting its
-                // children would bypass the TotalCost transaction.
-                if optional.is_some_and(|optional| optional.pay_as_cost) {
+                // Keep compound payments with TotalCost. A selection prelude
+                // followed by one simultaneous action is still one instruction:
+                // retain the payment offer (including its affordability check),
+                // but collect every participant's choices before that action.
+                let single_selected_action = optional.is_some_and(|optional| {
+                    let Some((action, selections)) = optional.effects.split_last() else {
+                        return false;
+                    };
+                    !selections.is_empty()
+                        && selections.iter().all(|selection| {
+                            super::may::is_object_selection(selection)
+                                && selection.0.is_read_only_simultaneous_player_action()
+                        })
+                        && action.0.supports_simultaneous_player_action()
+                });
+                if optional.is_some_and(|optional| optional.pay_as_cost)
+                    && !single_selected_action
+                {
                     program.effects.push(effect);
                     program.markers.push(None);
                     program.paths.push(path.to_vec());

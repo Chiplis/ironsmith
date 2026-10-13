@@ -423,6 +423,10 @@ impl CopyCharacteristicModifiers for CopySpellEffect {
             }
         }
         if let Some((power, toughness)) = self.set_base_power_toughness {
+            crate::static_abilities::exclude_pt_cdas_from_copy(
+                &mut copy.abilities,
+                &mut copy.ability_labels,
+            );
             copy.base_power = Some(crate::card::PtValue::Fixed(power));
             copy.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
         }
@@ -911,6 +915,11 @@ mod tests {
             .power_toughness(PowerToughness::fixed(3, 3))
             .build();
         let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.object_mut(spell_id).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::characteristic_defining_pt(
+                crate::effect::Value::Fixed(8), crate::effect::Value::Fixed(8),
+            ),
+        ));
         game.stack.push(StackEntry::new(spell_id, alice));
 
         let mut ctx = ExecutionContext::new_default(source, alice);
@@ -930,9 +939,13 @@ mod tests {
         assert_eq!(copy.subtypes, [Subtype::Wizard, Subtype::Spirit]);
         assert_eq!(copy.base_power, Some(crate::card::PtValue::Fixed(1)));
         assert_eq!(copy.base_toughness, Some(crate::card::PtValue::Fixed(1)));
+        assert!(copy.abilities.is_empty(), "P/T exception excludes the donor CDA");
+        assert_eq!(game.calculated_power(copy.id), Some(1));
+        assert_eq!(game.object(spell_id).unwrap().abilities.len(), 1);
 
         let second_copy_id = game.new_object_id();
         let second_copy = Object::spell_copy_of(&copy, second_copy_id, alice);
+        assert!(second_copy.abilities.is_empty());
         assert_eq!(second_copy.subtypes, [Subtype::Wizard, Subtype::Spirit]);
         assert_eq!(second_copy.base_power, Some(crate::card::PtValue::Fixed(1)));
         assert_eq!(

@@ -6286,3 +6286,62 @@ mod retained_effect_model_tests {
         );
     }
 }
+
+impl ironsmith_core::library_movement::LibraryMovement for Effect {
+    fn inspect_library_movement(
+        &self,
+        context: &mut ironsmith_core::library_movement::LibraryMovementContext,
+    ) -> bool {
+        use ironsmith_core::library_movement::payload_library_movement;
+        // These native executors have not yet migrated to shared core payloads.
+        macro_rules! is_any {
+            ($($ty:ty),+ $(,)?) => { false $(|| self.downcast_ref::<$ty>().is_some())+ };
+        }
+        if is_any!(
+            crate::effects::DrawForEachTaggedMatchingEffect,
+            crate::effects::ExileTopOfLibraryEffect,
+            crate::effects::SurveilEffect,
+            crate::effects::ShuffleGraveyardIntoLibraryEffect,
+            crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect,
+            crate::effects::ExploreEffect,
+            crate::effects::ManifestDreadEffect,
+            crate::effects::ManifestTopCardOfLibraryEffect,
+            crate::effects::CascadeEffect,
+            crate::effects::ExileUntilMatchEffect,
+            crate::effects::ExileUntilMatchCastEffect,
+            crate::effects::ExileUntilMatchGrantPlayEffect
+        ) {
+            return true;
+        }
+        if is_any!(
+            crate::effects::ScheduleDelayedTriggerEffect,
+            crate::effects::ReflexiveTriggerEffect,
+            crate::effects::PreventDamageEffect,
+            crate::effects::PreventAllDamageToTargetEffect,
+            crate::effects::GrantPlayTaggedEffect
+        ) {
+            return false;
+        }
+        if let Some(e) = self.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+            return e.cost.inspect_library_movement(context)
+                || e.effects
+                    .iter()
+                    .any(|effect| effect.inspect_library_movement(context));
+        }
+        if let Some(e) = self.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+            return context.inspect_iteration(context.library_tags.contains(&e.tag), &e.effects);
+        }
+        if let Some(e) = self.downcast_ref::<crate::effects::ExchangeZonesEffect>() {
+            return e.zone1 != e.zone2 && (e.zone1 == Zone::Library || e.zone2 == Zone::Library);
+        }
+
+        if let Some(moves) =
+            payload_library_movement::<Effect, crate::costs::Cost>(self.0.as_ref(), context)
+        {
+            return moves;
+        }
+        let mut found = false;
+        self.visit_child_effects(&mut |child| found |= child.inspect_library_movement(context));
+        found
+    }
+}

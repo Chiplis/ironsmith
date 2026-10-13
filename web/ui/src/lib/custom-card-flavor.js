@@ -10,7 +10,7 @@ function read() {
 export function registerCustomCardFlavor(cards) {
   memory = read();
   for (const card of cards) {
-    for (const face of card.draft.faces) memory[normalized(face.name)] = face.flavorText || card.source.post;
+    for (const face of card.draft.faces) memory[normalized(face.name)] = face.flavorText || card.source?.post || "";
   }
   try { globalThis.localStorage?.setItem(key, JSON.stringify(memory)); } catch { /* memory fallback */ }
 }

@@ -1,3 +1,4 @@
+import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
@@ -555,6 +556,8 @@ export default function CreateCardForgeSheet({
   const { game, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [counterShowcaseLoading, setCounterShowcaseLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -627,6 +630,7 @@ export default function CreateCardForgeSheet({
   const handleOpenChange = useCallback((nextOpen) => {
     setOpen(nextOpen);
     if (nextOpen) {
+      setSaveMessage("");
       void loadSeed();
     }
   }, [loadSeed]);
@@ -678,6 +682,24 @@ export default function CreateCardForgeSheet({
     setDraft(cloneDraft(seedDraft));
     setActiveFace("face-0");
   }, [seedDraft]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaveMessage("");
+    try {
+      const savedDraft = normalizeDraftForApi(draft);
+      savedDraft.faces.forEach((face, index) => { face.artUrl = draft.faces[index].artUrl || ""; });
+      // Validate this exact snapshot, even if the debounced preview is stale.
+      const validation = await game.previewCustomCard(savedDraft);
+      if (!validation.canCreate) throw new Error("This card must compile before it can be saved");
+      await saveCustomCard(savedDraft);
+      setSaveMessage(`Saved ${savedDraft.faces[0].name}. Enable custom cards in Add Card to use it. Saved on this browser; saving the same name updates it.`);
+    } catch (error) {
+      setSaveMessage(`Save failed: ${String(error?.message || error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, game]);
 
   const handleCompile = useCallback(async () => {
     return runWasmInteraction(async () => {
@@ -1004,7 +1026,9 @@ export default function CreateCardForgeSheet({
           </div>
 
           <div className="card-forge-footer">
-            <div className="card-forge-footer-note">{ui("Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.")}</div>
+            {saveMessage
+              ? <p role="status" className="text-[12px] leading-4 text-foreground">{saveMessage}</p>
+              : <div className="card-forge-footer-note">{ui("Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.")}</div>}
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -1013,6 +1037,9 @@ export default function CreateCardForgeSheet({
                 className="stone-pill"
                 onClick={() => setOpen(false)}
               >{ui("Cancel")}</Button>
+              <Button type="button" variant="secondary" size="sm" className="stone-pill"
+                disabled={disabled || saving || submitting || seedLoading || !game || draft.faces.some(face => !face.name.trim())}
+                onClick={() => void handleSave()}>{saving ? ui("Saving...") : ui("Save")}</Button>
               <Button
                 type="button"
                 size="sm"

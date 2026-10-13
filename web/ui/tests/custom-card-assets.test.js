@@ -41,7 +41,7 @@ test("every custom face has distinct local full and art assets and a real type",
 });
 
 
-test("every admitted card retains printed creature stats in the real engine", async () => {
+test("every admitted card retains fixed stats and calculates variable stats in the real engine", async () => {
   const {initWasmGame} = await import("../../../scripts/wasm-test-harness.mjs");
   const pool = JSON.parse(await readFile(new URL("../public/custommagic/pool.json", import.meta.url)));
   const {game} = await initWasmGame({pkg: "demo"});
@@ -52,7 +52,13 @@ test("every admitted card retains printed creature stats in the real engine", as
       const details = game.objectDetails(id);
       const face = card.draft.faces[0];
       for (const stat of ["power", "toughness", "loyalty"]) {
-        if (face[stat] != null) assert.equal(String(details[stat]), String(face[stat]), face.name + " " + stat);
+        if (face[stat] == null) continue;
+        if (face[stat] === "*") {
+          // The Dean counts legendary creatures; this empty game has none.
+          assert.equal(details[stat], 0, face.name + " calculated " + stat);
+        } else {
+          assert.equal(String(details[stat]), String(face[stat]), face.name + " " + stat);
+        }
       }
       assert.ok(details.type_line && details.type_line !== "Card", face.name);
     }

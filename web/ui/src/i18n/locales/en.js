@@ -792,6 +792,7 @@ export const ui = {
   "Fuse enabled": "Fuse enabled",
   "G": "G",
   "Game engine is not ready for multiplayer": "Game engine is not ready for multiplayer",
+  "Refresh the tab to try again.": "Refresh the tab to try again.",
   "Game initialization failed": "Game initialization failed",
   "Game Log": "Game Log",
   "Game reset": "Game reset",

@@ -3603,7 +3603,18 @@ mod live_action_rollback_tests {
     }
 
     #[test]
-    fn post_resolution_hidden_reveals_do_not_advance_priority_after_mana_ability() {
+    fn post_resolution_hidden_reveals_do_not_advance_priority_after_selvala() {
+        // The native debug session/stack-resolution fixture exceeds the
+        // default test-thread stack. This does not change WASM stack sizing.
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(selvala_stack_resolution_preserves_priority)
+            .expect("spawn Selvala fixture")
+            .join()
+            .expect("Selvala fixture should pass");
+    }
+
+    fn selvala_stack_resolution_preserves_priority() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -3622,8 +3633,9 @@ mod live_action_rollback_tests {
 
         let selvala = CardDefinitionBuilder::new(CardId::new(), "Selvala, Explorer Returned")
             .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 4))
             .parse_text(
-                "{T}: Each player reveals the top card of their library. For each nonland permanent revealed this way, add {G} and you gain 1 life. Then each player draws a card.",
+                "{T}: Each player reveals the top card of their library. For each nonland card revealed this way, add {G} and you gain 1 life. Then each player draws a card.",
             )
             .expect("Selvala parley ability should parse");
         let selvala_id =
@@ -3645,12 +3657,18 @@ mod live_action_rollback_tests {
         dispatch_priority_action_matching(&mut wasm, |action| {
             matches!(
                 action,
-                LegalAction::ActivateManaAbility { source, .. } if *source == selvala_id
+                LegalAction::ActivateAbility { source, .. } if *source == selvala_id
             )
         });
 
-        // Hidden libraries suspend the mana ability until each public opening
-        // is supplied. Only then does the completed ability return priority.
+        // CR 605.1a: drawing makes this an ordinary activated ability. No
+        // cards are consulted and no mana is added until both players pass.
+        assert_eq!(wasm.game.stack.len(), 1);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.green, 0);
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        // Hidden libraries suspend resolution until each public opening is supplied.
         for (owner, card_name, commitment) in [(0, "Black Lotus", "alice-slot-0"), (1, "Selvala, Explorer Returned", "bob-slot-0")] {
             let Some(DecisionContext::SelectObjects(objects)) = wasm.pending_decision.as_ref() else {
                 panic!("expected library reveal: {:?}", wasm.pending_decision);
@@ -3678,7 +3696,7 @@ mod live_action_rollback_tests {
         }
         assert!(
             wasm.pending_live_continuation.is_none(),
-            "ordinary priority after a completed mana ability should not keep a replay continuation"
+            "ordinary priority after a completed ability should not keep a replay continuation"
         );
 
         wasm.reveal_hidden_slot_input(RevealHiddenSlotInput {

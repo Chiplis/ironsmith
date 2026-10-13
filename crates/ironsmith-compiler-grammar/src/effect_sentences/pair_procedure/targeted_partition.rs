@@ -79,13 +79,13 @@ pub(super) fn read(
     let mut effects = vec![
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-            tag: crate::tag::TagRef::of(pool.clone()),
+            tag: pool.clone(),
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: ObjectFilter::tagged(pool.clone()),
             count: ChoiceCount::exactly(1),
             player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(chosen.clone()),
+            tag: chosen.clone(),
             zone: Zone::Battlefield,
         }),
         // Capture the complement before exile replacements can change the
@@ -93,10 +93,10 @@ pub(super) fn read(
         EffectAst::subject_verb_tag_matching_objects(
             ObjectFilter::tagged(pool).not_tagged(chosen.clone()),
             vec![Zone::Battlefield],
-            crate::tag::TagRef::of(remainder.clone()),
+            remainder.clone(),
         ),
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::TagRef::of(chosen), None),
+            TargetAst::Tagged(chosen, None),
             Zone::Exile,
             false,
             ReturnControllerAst::Preserve,
@@ -107,7 +107,7 @@ pub(super) fn read(
     effects.push(EffectAst::subject_verb_put_counters(
         descriptor.counter_type,
         Value::Fixed(descriptor.count as i32),
-        TargetAst::Tagged(crate::tag::TagRef::of(remainder), None),
+        TargetAst::Tagged(remainder, None),
         None,
         false,
     ));

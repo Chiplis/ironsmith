@@ -2901,3 +2901,20 @@ mod payload_serialization_tests {
         }
     }
 }
+
+impl ironsmith_core::library_movement::LibraryMovement for Effect {
+    fn inspect_library_movement(
+        &self,
+        context: &mut ironsmith_core::library_movement::LibraryMovementContext,
+    ) -> bool {
+        use ironsmith_core::library_movement::payload_library_movement;
+        if let Some(moves) =
+            payload_library_movement::<Effect, crate::costs::Cost>(self.0.as_any(), context)
+        {
+            return moves;
+        }
+        let mut found = false;
+        self.visit_child_effects(&mut |child| found |= child.inspect_library_movement(context));
+        found
+    }
+}

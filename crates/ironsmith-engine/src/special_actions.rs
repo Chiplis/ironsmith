@@ -3906,6 +3906,32 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
     .map(|_| ())
 }
 
+/// Resolution payments can activate mana abilities after accepting the offer.
+/// Validate non-mana obligations now, but leave funding to the interactive
+/// payment owner. Other callers retain their existing funding preflight.
+pub(crate) fn can_begin_total_cost_payment_in_context(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<(), CostPaymentError> {
+    can_pay_total_cost_in_context_with_funding(
+        game,
+        payer,
+        source,
+        cost,
+        reason,
+        execution_ctx,
+        if reason == crate::costs::PaymentReason::Effect {
+            CostQueryFunding::DeferredMana
+        } else {
+            CostQueryFunding::Available
+        },
+    )
+}
+
 pub(crate) fn pay_total_cost_with_choice_in_context_with_outputs(
     game: &mut GameState,
     payer: PlayerId,
@@ -3919,7 +3945,7 @@ pub(crate) fn pay_total_cost_with_choice_in_context_with_outputs(
         execution_ctx,
         Vec::new,
         |game, execution_ctx| {
-            can_pay_total_cost_with_reason_in_context(
+            can_begin_total_cost_payment_in_context(
                 game,
                 payer,
                 source,
@@ -4482,7 +4508,7 @@ fn pay_total_cost_branch_in_context_with_outputs(
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut payable = Vec::new();
             for (index, branch) in branches.iter().enumerate() {
-                match can_pay_total_cost_with_reason_in_context(
+                match can_begin_total_cost_payment_in_context(
                     game,
                     payer,
                     source,
@@ -4576,6 +4602,7 @@ fn pay_component_without_execution_context_with_outputs(
         let execution = cost_ctx.capture_execution_context();
         if cost_ctx.interactive_mana_exclusions.is_some()
             || adjusted_cost.has_waterbend_obligation()
+            || cost_ctx.reason == crate::costs::PaymentReason::Effect
         {
             adjusted_cost
                 .waterbend_capacity_checked(cost_ctx.x_value.unwrap_or(0))
@@ -4651,7 +4678,7 @@ fn pay_component_in_context_with_outputs(
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
         let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
-        if adjusted_cost.has_waterbend_obligation() {
+        if adjusted_cost.has_waterbend_obligation() || reason == crate::costs::PaymentReason::Effect {
             return crate::mana_payment::pay_mana_interactively_in_context_with_outputs(
                 game,
                 payer,

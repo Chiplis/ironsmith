@@ -48,6 +48,8 @@ pub struct ManaAbilityFacts {
     pub produces_mana: bool,
     pub targets: bool,
     pub loyalty_ability: bool,
+    /// CR 605.1a only: false for triggered abilities (605.1b).
+    pub activated_moves_library_cards: bool,
     pub triggered_from_non_mana_ability: bool,
 }
 
@@ -56,6 +58,7 @@ impl ManaAbilityFacts {
         self.produces_mana
             && !self.targets
             && !self.loyalty_ability
+            && !self.activated_moves_library_cards
             && !self.triggered_from_non_mana_ability
     }
 }

@@ -1966,7 +1966,7 @@ export function GameProvider({ children }) {
   ]);
 
   const refresh = useCallback(
-    async (message) => {
+    async (message, { throwOnError = false } = {}) => {
       if (!game) return;
       try {
         if (multiplayer.matchStarted && multiplayer.role === "client") {
@@ -1991,6 +1991,7 @@ export function GameProvider({ children }) {
         });
       } catch (err) {
         setStatus(`Refresh failed: ${err}`, true);
+        if (throwOnError) throw err;
       }
     },
     [

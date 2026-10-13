@@ -128,7 +128,20 @@ impl WasmGame {
         let mut key = self.priority_analysis_key();
         key.pending_decision_hash = 0;
         if self.priority_affordability_seed_key.as_ref() == Some(&key) { return Ok(()); }
-        let eligible = self.current_non_mana_eligibility(&cached)?;
+        // Publish every currently eligible source before payment searches start.
+        // A newly drawn/created card has no previous affordability cache entry.
+        let counters = snapshot_id_counters();
+        let eligible = (|| {
+            let mut eligible = Vec::new();
+            for actor in self.game.priority_team_players() {
+                eligible.extend(ironsmith::decision::compute_actions_assuming_mana_for_presentation(
+                    &self.game, actor, None,
+                )?);
+            }
+            Ok::<_, ironsmith::effects::ExecutionError>(eligible)
+        })();
+        restore_id_counters(counters);
+        let eligible = eligible?;
         let mut displayed = vec![LegalAction::PassPriority];
         for action in cached {
             if eligible.contains(&action) && !displayed.contains(&action) { displayed.push(action); }
@@ -137,6 +150,7 @@ impl WasmGame {
             .map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         ctx.analysis_complete = false;
         ctx.payment_proven_actions = Some(vec![LegalAction::PassPriority]);
+        ctx.presentation_actions = eligible;
         self.pending_decision = Some(DecisionContext::Priority(ctx));
         self.priority_affordability_seed_key = Some(key);
         self.priority_affordability_completed_key = None;
@@ -265,7 +279,7 @@ impl WasmGame {
             player: ctx.player,
             candidates,
             actions: vec![LegalAction::PassPriority],
-            presentation_actions: Vec::new(),
+            presentation_actions: ctx.presentation_actions.clone(),
             provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
         }));
         true
@@ -416,6 +430,48 @@ mod priority_analysis_tests {
             assert!(resolve_priority_action(&wasm.game, &ctx, None, Some(&action.action_ref)).unwrap().is_some());
             wasm.game.turn.active_player = PlayerId::from_index(1);
             assert!(resolve_priority_action(&wasm.game, &ctx, None, Some(&action.action_ref)).unwrap().is_none(), "off-turn sorcery must remain illegal");
+        });
+    }
+
+    #[test]
+    fn new_hand_cards_show_pending_payment_before_their_search_starts() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            wasm.game.turn.active_player = alice;
+            wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            wasm.game.turn.step = None;
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 2;
+            let card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "New hand sorcery")
+                .card_types(vec![ironsmith::types::CardType::Sorcery])
+                .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Red])).build();
+            let first = wasm.game.create_object_from_card(&card, alice, ironsmith::Zone::Hand);
+            let second = wasm.game.create_object_from_card(&card, alice, ironsmith::Zone::Hand);
+            let payment_status = |wasm: &WasmGame, id: ObjectId| {
+                let view = DecisionView::from_context(&wasm.game, wasm.pending_decision.as_ref().unwrap(), alice, None, None);
+                let DecisionView::Priority { actions, .. } = view else { panic!("expected priority") };
+                actions.iter().find(|action| action.object_id == Some(id.0)).map(|action| action.payment_proven)
+            };
+            assert!(wasm.priority_affordability_cache.is_empty());
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert_eq!(payment_status(&wasm, first), Some(Some(false)));
+            assert_eq!(payment_status(&wasm, second), Some(Some(false)));
+            assert!(wasm.begin_priority_analysis("new-hand".into()));
+            assert_eq!(wasm.advance_priority_analysis("new-hand", 1).unwrap(), Some(false));
+            assert_eq!(payment_status(&wasm, second), Some(Some(false)),
+                "publishing another card's search must retain unvisited candidates");
+            for _ in 0..1000 {
+                if wasm.advance_priority_analysis("new-hand", 8).unwrap() == Some(true) { break; }
+            }
+            assert!(!wasm.priority_analysis_pending());
+            assert_eq!(payment_status(&wasm, second), Some(Some(true)));
+            wasm.game.turn.phase = ironsmith::game_state::Phase::Combat;
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            wasm.refresh_priority_affordability_display().unwrap();
+            assert_eq!(payment_status(&wasm, second), None,
+                "assuming mana must still enforce sorcery timing");
         });
     }
 

@@ -337,3 +337,42 @@ fn compiled_optional_sacrifice_keeps_apnap_choices_and_pause_replay() {
         }
     }
 }
+
+#[test]
+fn compiled_optional_sacrifice_does_not_pay_an_unaffordable_partial_selection() {
+    struct Accept;
+    impl crate::decision::DecisionMaker for Accept {
+        fn decide_boolean(&mut self, game: &crate::game_state::GameState,
+            choice: &crate::decisions::context::BooleanContext) -> bool {
+            assert_eq!(choice.player, game.players[1].id, "only the player with two creatures can pay");
+            assert_eq!(game.battlefield.len(), 4, "offers precede sacrifice commits");
+            true
+        }
+        fn decide_objects(&mut self, game: &crate::game_state::GameState,
+            choice: &crate::decisions::context::SelectObjectsContext) -> Vec<crate::ids::ObjectId> {
+            assert_eq!(choice.player, game.players[1].id);
+            assert_eq!(game.battlefield.len(), 4);
+            assert_eq!(choice.candidates.len(), 3);
+            choice.candidates.iter().take(2).map(|candidate| candidate.id).collect()
+        }
+    }
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Optional pair offering")
+        .card_types(vec![CardType::Sorcery]).parse_text("Each player may sacrifice two creatures.").unwrap();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Offering candidate")
+        .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+    let retained = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    for _ in 0..3 { game.create_object_from_card(&creature, bob, Zone::Battlefield); }
+    let mut answers = Accept;
+    let mut ctx = crate::effects::EffectContext::new_default(source, alice).with_decision_maker(&mut answers);
+    for effect in definition.spell_effect.as_ref().unwrap() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+    }
+    assert!(game.battlefield.contains(&retained));
+    assert_eq!(game.battlefield.len(), 2);
+    assert!(game.players[0].graveyard.is_empty());
+    assert_eq!(game.players[1].graveyard.len(), 2);
+}

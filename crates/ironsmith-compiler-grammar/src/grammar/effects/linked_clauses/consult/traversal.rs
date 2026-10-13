@@ -97,9 +97,11 @@ fn first_consult_trailing_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
 fn comma_continues_card_descriptor(tokens: &[OwnedLexToken]) -> bool {
     let arm_end = first_comma(tokens).unwrap_or(tokens.len());
     let arm = trim_commas(&tokens[..arm_end]);
-    if crate::effect_sentences::find_verb(arm).is_some_and(|(_, index)| {
-        index == 0 || (index == 1 && arm[0].is_any_word(&["then", "and"]))
-    }) {
+    // An instruction can carry its own subject ("this spell deals ...",
+    // "then you put ..."). Its verb need not be the first word. The filter
+    // parser accepts partial noun descriptions, so it cannot decide whether
+    // such an instruction belongs to the stop condition.
+    if crate::effect_sentences::find_verb(arm).is_some() {
         return false;
     }
     TokenWordView::new(arm).word_refs().iter().any(|word| matches!(*word, "card" | "cards"))

@@ -120,6 +120,7 @@ impl ActivatedAbilityRuntimeExt for ActivatedAbility {
         self.could_add_mana(game, source, controller)
             && !self.has_targets()
             && !self.is_loyalty_ability()
+            && !self.moves_library_cards()
     }
 
     fn inferred_mana_symbols(
@@ -397,7 +398,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
-                default_effects: vec![Effect::draw(1)],
+                default_effects: vec![Effect::gain_life(1)],
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                     crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
                     vec![Effect::add_mana(vec![ManaSymbol::Green])],
@@ -581,4 +582,156 @@ pub fn visit_activated_owned_effects(
         functional_zones: Vec::new(),
     };
     visit_owned_effects(&ability, visitor);
+}
+
+#[cfg(test)]
+mod library_movement_tests {
+    use super::*;
+    use crate::{Zone, cost::TotalCost, costs::Cost, effect::Effect, target::ChooseSpec};
+
+    fn check(cost: TotalCost, effects: impl Into<ResolutionProgram>, expected: bool) {
+        let ability = Ability::mana_with_effects(cost, effects);
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            unreachable!()
+        };
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        assert_eq!(activated.is_mana_ability(), expected, "{activated:?}");
+        assert_eq!(
+            activated.is_runtime_mana_ability(
+                &game,
+                ObjectId::from_raw(1),
+                PlayerId::from_index(0)
+            ),
+            expected
+        );
+    }
+
+    #[test]
+    fn library_movement_costs_effects_and_optional_branches_disqualify_mana() {
+        for effect in [
+            Effect::draw(1),
+            Effect::mill(1),
+            Effect::surveil(1),
+            Effect::move_to_zone(ChooseSpec::Source, Zone::Library, true),
+            Effect::move_to_zone(
+                ChooseSpec::Object(crate::ObjectFilter::default().in_zone(Zone::Library)),
+                Zone::Hand,
+                false,
+            ),
+            Effect::shuffle_graveyard_into_library_player(PlayerFilter::You),
+            Effect::may(vec![Effect::draw(1)]),
+        ] {
+            check(
+                TotalCost::free(),
+                vec![Effect::add_mana(vec![ManaSymbol::Green]), effect],
+                false,
+            );
+        }
+        check(
+            TotalCost::from_cost(Cost::mill(1)),
+            vec![Effect::add_mana(vec![ManaSymbol::Colorless])],
+            false,
+        );
+        // All branches count even when a free alternative would be payable.
+        let alternative =
+            TotalCost::one_of(vec![TotalCost::free(), TotalCost::from_cost(Cost::mill(1))]);
+        let mut activated = ActivatedAbility::basic_mana(ManaSymbol::Green);
+        activated.mana_cost = alternative;
+        assert!(activated.moves_library_cards());
+        assert!(!activated.is_mana_ability());
+    }
+
+    #[test]
+    fn library_observation_and_reordering_are_not_zone_movement() {
+        for effect in [
+            Effect::scry(1),
+            Effect::shuffle_library(),
+            Effect::reveal_top(PlayerFilter::You, "seen"),
+            Effect::look_at_top_cards(PlayerFilter::You, 1, "seen"),
+            Effect::gain_life(1),
+        ] {
+            check(
+                TotalCost::free(),
+                vec![Effect::add_mana(vec![ManaSymbol::Green]), effect],
+                true,
+            );
+        }
+        check(
+            TotalCost::free(),
+            vec![
+                Effect::look_at_top_cards(PlayerFilter::You, 1, "seen"),
+                Effect::move_to_zone(ChooseSpec::Tagged("seen".into()), Zone::Library, false),
+                Effect::add_mana(vec![ManaSymbol::Green]),
+            ],
+            true,
+        );
+        check(
+            TotalCost::free(),
+            vec![
+                Effect::look_at_top_cards(PlayerFilter::You, 1, "seen"),
+                Effect::move_to_zone(ChooseSpec::Tagged("seen".into()), Zone::Hand, false),
+                Effect::add_mana(vec![ManaSymbol::Green]),
+            ],
+            false,
+        );
+    }
+
+    #[test]
+    fn library_movement_in_self_replacement_counts_but_separate_trigger_does_not() {
+        let program = ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::add_mana(vec![ManaSymbol::Green])],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                crate::effect::Condition::YouControl(crate::ObjectFilter::creature()),
+                vec![Effect::draw(1)],
+            )],
+            starts_new_source_line: false,
+        }]);
+        check(TotalCost::free(), program, false);
+        let replacement = ironsmith_core::RegisterZoneReplacementEffect::new(
+            ChooseSpec::Source,
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+            Zone::Library,
+            ironsmith_core::ReplacementApplyMode::Resolution,
+        );
+        check(
+            TotalCost::free(),
+            vec![
+                Effect::add_mana(vec![ManaSymbol::Green]),
+                Effect::new(crate::effects::LocalRewriteEffect::new(
+                    Effect::move_to_zone(ChooseSpec::Source, Zone::Graveyard, false),
+                    vec![replacement.clone()],
+                )),
+            ],
+            false,
+        );
+        check(
+            TotalCost::free(),
+            vec![
+                Effect::add_mana(vec![ManaSymbol::Green]),
+                Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+                    ChooseSpec::Source,
+                    Some(Zone::Battlefield),
+                    Some(Zone::Graveyard),
+                    Zone::Library,
+                    ironsmith_core::ReplacementApplyMode::Resolution,
+                )),
+            ],
+            true,
+        );
+        let trigger = crate::effects::ReflexiveTriggerEffect::new(
+            crate::effect::EffectId(1),
+            crate::effect::EffectPredicate::Happened,
+            vec![Effect::draw(1)],
+            vec![],
+        );
+        check(
+            TotalCost::free(),
+            vec![
+                Effect::add_mana(vec![ManaSymbol::Green]),
+                Effect::new(trigger),
+            ],
+            true,
+        );
+    }
 }

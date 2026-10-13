@@ -911,6 +911,7 @@ export const ui = {
   "Fuse enabled": "Fusionar activado",
   "G": "C",
   "Game engine is not ready for multiplayer": "El motor de juego no está listo para multijugador",
+  "Refresh the tab to try again.": "Actualiza la pestaña para volver a intentarlo.",
   "Game initialization failed": "Error al inicializar la partida",
   "Game Log": "Registro de partida",
   "Game reset": "Partida reiniciada",
