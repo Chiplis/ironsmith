@@ -17,7 +17,7 @@ import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
-import { defaultCardFrame, fallbackCardFrameColors } from "@/lib/default-card-frames";
+import { defaultCardFrame, fallbackCardFrameColors, isSagaCardFrame } from "@/lib/default-card-frames";
 import { fullCardImageUrl } from '@/lib/card-frame-colors';
 import { cardFrameTone } from '@/lib/card-frame-tone';
 import "@/styles/card-frame-colors.css";
@@ -2436,6 +2436,11 @@ export default function HoverArtOverlay({
     const manaTokens = String(displayManaCost || "").match(/\{[^}]+\}/g) || [];
     return (
       <CardFrameStage
+        animateRenderer={!isMiniatureFrame}
+        transitionIdentity={`${detailsObjectIdKey || ""}:${objectName || ""}`}
+        transitionRenderer={preparedFrame?.registration ? "registered"
+          : hasSourceMask ? "masked" : stockFrame ? `stock:${stockFrame.defaultFrame}`
+          : customArt ? "custom" : customFrame ? "placeholder" : "original"}
         assets={preparedFrame}
         showLoadingFrame={showLoadingFrame}
         showLiveFrame={Boolean(stockFrame)}
@@ -2454,6 +2459,7 @@ export default function HoverArtOverlay({
         data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
         data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
         data-art-source={artSource}
+        data-art-fit={stockFrame && isSagaCardFrame(frameToneInput) ? "contain" : undefined}
         data-inspected-object-id={detailsObjectIdKey || undefined}
         data-inner-frame-border={frameGeometry?.["--inner-frame-bevel-profile"] ? frameGeometry["--inner-frame-border-kind"] : undefined}
         data-whole-title={frameGeometry?.["--whole-title-image"] ? "true" : undefined}

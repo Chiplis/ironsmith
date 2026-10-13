@@ -45,15 +45,24 @@ export function fallbackCardFrameColors({ cards = [], printing = null, manaCost 
   return normalizeArtColors([...colors, ...cardFrameColors({ cards, printing, manaCost })]);
 }
 
+export function isSagaCardFrame({ cards = [], printing = null, typeLine = '' } = {}) {
+  return /\bSaga\b/i.test(typeLine) || [...cards, printing].some(card =>
+    card && (card.layout === 'saga' || /\bSaga\b/i.test(card.type_line || ''))
+  );
+}
+
 export function defaultCardFrameKey({ cards = [], printing = null, manaCost = '', typeLine = '' } = {}) {
   const sources = [...cards.filter(Boolean), printing].filter(Boolean);
   const type = typeLine || sources.find(card => card.type_line)?.type_line || '';
-  if (!type || sources.some(card =>
+  // Sagas use the ordinary identity frame with live chapter text and a fitted
+  // art crop; source-mask eligibility still guards the original scan separately.
+  const saga = isSagaCardFrame({ cards, printing, typeLine: type });
+  if (!type || (!saga && (sources.some(card =>
     (card.layout && card.layout !== 'normal')
     || excludedNames.has(String(card.name || '').toLowerCase())
     || sourceMaskLayoutGap({ ...card, type_line: card.type_line || type, layout: card.layout || 'normal' })
   ) || sourceMaskLayoutGap({ type_line: type, layout: 'normal' })
-    || /\b(Class|Case|Room)\b/i.test(type)) return null;
+    || /\b(Class|Case|Room)\b/i.test(type)))) return null;
   const colors = fallbackCardFrameColors({ cards, printing, manaCost, typeLine: type });
   if (colors.length) return colors.join('');
   if (/\bLand\b/i.test(type)) return 'land';

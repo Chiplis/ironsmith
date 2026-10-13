@@ -44,3 +44,18 @@
     transition: none;
   }
 }
+
+/* Only the new renderer handles input; the outgoing frame is a brief visual
+   cover while image decoding and text fitting finish underneath it. */
+[data-frame-transition-snapshot] {
+  z-index: 31 !important;
+  pointer-events: none !important;
+  will-change: opacity;
+}
+[data-frame-transition-snapshot] * {
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-frame-transition-snapshot] { display: none !important; }
+}

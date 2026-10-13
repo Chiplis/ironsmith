@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import './card-frame-stage.css';
+import FrameRendererTransition from './FrameRendererTransition';
 
 // Rendering history follows the cached asset bundle without retaining evicted
 // frames. Live DOM/layout and game actions are still recomputed for each view.
 const renderedFrames = new WeakSet();
 
-export default function CardFrameStage({ preparation, assets = preparation, showLoadingFrame = false, showLiveFrame = false, onReadyChange, children, style, ...props }) {
+export default function CardFrameStage({ preparation, assets = preparation, showLoadingFrame = false, showLiveFrame = false, onReadyChange, transitionIdentity, transitionRenderer, animateRenderer = false, children, style, ...props }) {
   const ref = useRef(null);
   const [finished, setFinished] = useState(null);
   const [presentation, setPresentation] = useState(() => ({ assets, reuse: Boolean(assets && renderedFrames.has(assets)) }));
@@ -44,7 +45,8 @@ export default function CardFrameStage({ preparation, assets = preparation, show
   }, [preparation]);
 
   useLayoutEffect(() => { onReadyChange?.(frameVisible); }, [onReadyChange, frameVisible]);
-  return <div className="card-frame-preview-shell">
+  return <FrameRendererTransition enabled={animateRenderer} identity={transitionIdentity}
+    renderer={transitionRenderer} ready={ready} visible={frameVisible}>
     <div {...props} ref={ref} data-render-ready={ready ? 'true' : 'false'} data-frame-reused={presentation.reuse ? 'true' : 'false'}
     data-printing-profile={preparation?.typography?.profile?.id}
     data-printing-branches={preparation?.typography?.profile?.chartBranches?.join(' ')}
@@ -52,5 +54,5 @@ export default function CardFrameStage({ preparation, assets = preparation, show
     aria-hidden={!frameVisible} inert={!frameVisible}
     style={{...style, opacity: frameVisible ? 1 : 0, ...(presentation.reuse ? {transition: 'none'} : {}), ...(!frameVisible ? {pointerEvents: 'none'} : {})}}>
     {children}
-  </div></div>;
+  </div></FrameRendererTransition>;
 }

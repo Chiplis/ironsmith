@@ -771,11 +771,39 @@ cargo run -p ironsmith-cli --bin ironsmith
 
 ### Tests
 
-- **Rust:** `cargo test -p <crate>` for Rust crates.
+- **Rust workspace:** `./scripts/test-workspace.sh` (requires cargo-nextest).
+  This refreshes integration-test suites and uses the `test-fast` Cargo profile:
+  optimization level 1 by default, unoptimized compiler-runtime/tools test
+  packages, no LTO, and the same assertion/overflow settings as release.
+  This profile favors compilation speed over runtime optimization.
+  Production `release` and WASM profiles are unchanged.
+  Build concurrency defaults to four jobs to bound compiler memory use; override
+  it with `CARGO_BUILD_JOBS=8 ./scripts/test-workspace.sh` on larger machines.
+  Cargo's native thread-stack default is 64 MiB for large unoptimized fixtures.
+- **Focused Rust tests:** `cargo nextest run --cargo-profile test-fast -p <crate>`.
+  In `ironsmith-compiler-runtime` and `ironsmith-tools`, the old test-file name is
+  now a module prefix. For example, use
+  `cargo nextest run --cargo-profile test-fast -p ironsmith-compiler-runtime -E 'test(cast_timing_windows::)'`.
+  Plain `cargo test -p <crate>` still works, but nextest preserves per-test process
+  isolation for tests that touch global state.
 - **Web:** focused suites in `web/ui`, including `pnpm test:wasm-real-engine`,
   `test:relay`, `test:p2p-browser`, `test:hidden-info`, and
   `test:deck-catalog`.
 - **Ported XMage tests:** `./run-mage-tests.sh [--no-build] [--concurrency N]`.
+
+The two largest Rust test packages group their existing source files into 40
+integration-test executables instead of about 1,000. Files stay in `tests/`, so
+relative fixture and helper paths remain intact. Stable hash assignments avoid
+reshuffling existing tests when a file is added. Nextest still discovers and runs
+each individual test separately. After adding or removing a file, run
+`python3 scripts/generate-native-test-suites.py` (the workspace script does this
+automatically). `--check` verifies the generated layout without editing it; a
+coverage test also detects missing or duplicate registrations.
+
+For release validation, the original
+`cargo nextest run --release --workspace --all-targets --no-fail-fast` command
+uses the same consolidated suites. To measure compilation separately, pass
+`--no-run --timings` to either nextest command or the workspace script.
 
 ### Competitive deck catalog
 

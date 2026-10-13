@@ -504,3 +504,10 @@
 .interactive-card-frame-stage[data-default-frame] .interactive-card-frame__type {
   max-width: 100%;
 }
+
+/* Saga crops are tall: preserve the complete illustration inside the stock
+   art window, below the title, instead of zooming it to landscape proportions. */
+.interactive-card-frame-stage[data-default-frame][data-art-fit="contain"] .interactive-card-frame__art img {
+  object-fit: contain;
+  object-position: center;
+}
