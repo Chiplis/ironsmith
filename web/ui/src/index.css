@@ -14,6 +14,7 @@
 @import "./styles/mana-payment.css";
 @import "./styles/priority-stops.css";
 @import "./styles/compact-desktop.css";
+@import "./styles/desktop-full-cards.css";
 
 .surrender-button,
 .table-shell button.surrender-button.table-zone-action-button,
