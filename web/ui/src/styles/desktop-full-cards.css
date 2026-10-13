@@ -108,13 +108,26 @@
     display: flex !important;
     width: max-content !important;
     max-width: calc(100vw - 24px) !important;
-    height: 38px !important;
+    height: auto !important;
     min-height: 38px !important;
     flex-direction: row !important;
-    flex-wrap: nowrap !important;
+    /* wrap-reverse stacks any overflow line above the first one, so the
+       identity row stays on the bottom edge. */
+    flex-wrap: wrap-reverse !important;
     align-items: center !important;
+    align-content: flex-start !important;
     gap: 6px !important;
     padding: 0 8px 0 9px !important;
+  }
+
+  /* Below wide screens the card tools (Build card, Add card, Custom cards)
+     would run into the hand: they move to a line of their own above life,
+     name and Lobby. */
+  @media (max-width: 1919px) {
+    .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header {
+      max-width: 340px !important;
+      padding-top: 4px !important;
+    }
   }
 
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header [data-my-zone-header-content] {
