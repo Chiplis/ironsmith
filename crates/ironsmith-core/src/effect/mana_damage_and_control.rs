@@ -4627,6 +4627,9 @@ pub enum CopyInstructionSurface {
 #[derive(Debug, Clone, TagKeyWalk)]
 #[cfg_attr(feature = "serde", serde(bound(deserialize = "C: serde::Deserialize<'de>")))]
 pub struct CastTaggedEffect<C> {
+    /// Copy the printed definition identified by the retained name, not the current object.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub copy_named_definition: bool,
     pub tag: TagKey,
     pub player: PlayerFilter,
     pub allow_land: bool,
@@ -4668,6 +4671,7 @@ pub enum CastTaggedAlternativePayment {
 impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
     fn eq(&self, other: &Self) -> bool {
         self.tag == other.tag
+            && self.copy_named_definition == other.copy_named_definition
             && self.player == other.player
             && self.allow_land == other.allow_land
             && self.as_copy == other.as_copy
@@ -4683,6 +4687,7 @@ impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
 impl<C> CastTaggedEffect<C> {
     pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self {
+            copy_named_definition: false,
             tag: tag.into(),
             player,
             allow_land: false,
@@ -4705,6 +4710,7 @@ impl<C> CastTaggedEffect<C> {
 
     pub fn try_map_cost<C2, Error>(self, mut map: impl FnMut(C) -> Result<C2, Error>) -> Result<CastTaggedEffect<C2>, Error> {
         Ok(CastTaggedEffect {
+            copy_named_definition: self.copy_named_definition,
             tag: self.tag, player: self.player, allow_land: self.allow_land, as_copy: self.as_copy,
             copy_cast_reminder_surface: self.copy_cast_reminder_surface,
             copy_instruction_surface: self.copy_instruction_surface,

@@ -6545,3 +6545,6 @@ mod owned_zone_participant_tests {
         assert_eq!(selected(&game), vec![bob, cara]);
     }
 }
+
+/// Structural keyword test for a frozen copy envelope.
+pub(crate) fn copy_abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool { descriptions::abilities_have_marker(abilities, marker) }

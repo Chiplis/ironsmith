@@ -2,10 +2,8 @@
 
 use std::collections::HashMap;
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_count_outputs};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -46,17 +44,9 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
-        if symbols.is_empty() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-        let count = symbols.mana_count();
-        Ok(mana_added_count_outputs(ctx, player_id, symbols, count))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::CreditedCount, ManaChoiceMenu::AvailableColors)
     }
 
     fn producible_mana_symbols(

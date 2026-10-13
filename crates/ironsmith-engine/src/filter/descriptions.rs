@@ -870,7 +870,7 @@ fn abilities_have_vanishing(abilities: &[crate::ability::Ability]) -> bool {
         })
 }
 
-pub(super) fn abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool {
+pub(crate) fn abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool {
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();

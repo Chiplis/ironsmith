@@ -201,6 +201,9 @@ pub enum WireRuntimeModification {
     },
     /// "except it doesn't copy that creature's color" (CR 707.9b).
     RetainSourceColors,
+    ClearCopyManaCost,
+    RetainSourceName,
+    CopyAbilityAbsent(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

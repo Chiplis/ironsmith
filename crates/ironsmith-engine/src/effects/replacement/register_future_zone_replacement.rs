@@ -67,28 +67,10 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
         let replacement =
             ReplacementEffect::with_matcher(ctx.source, ctx.controller, matcher, action);
 
-        match self.mode {
-            crate::effects::ReplacementApplyMode::OneShot => {
-                game.effect_store
-                    .replacement_effects
-                    .add_one_shot_effect(replacement);
-            }
-            crate::effects::ReplacementApplyMode::UntilEndOfTurn => {
-                game.effect_store
-                    .replacement_effects
-                    .add_until_end_of_turn_effect(replacement);
-            }
-            crate::effects::ReplacementApplyMode::UntilYourNextTurn => {
-                game.effect_store
-                    .replacement_effects
-                    .add_until_next_turn_effect(replacement, ctx.controller, game.turn.turn_number);
-            }
-            crate::effects::ReplacementApplyMode::Resolution => {
-                game.effect_store
-                    .replacement_effects
-                    .add_resolution_effect(replacement);
-            }
-        }
+        crate::effects::ApplyReplacementEffect {
+                effect: replacement,
+                mode: self.mode,
+            }.execute(game, ctx)?;
 
         Ok(EffectOutcome::from_status(OutcomeStatus::Succeeded))
     }
@@ -340,4 +322,29 @@ mod tests {
         let chosen_after = game.find_object_by_stable_id(chosen_stable).unwrap();
         assert_eq!(game.object(chosen_after).unwrap().zone, Zone::Exile);
     }
+    #[test]
+    fn shared_registration_keeps_all_four_lifetime_modes_and_publishes_once() {
+        for mode in [ReplacementApplyMode::OneShot, ReplacementApplyMode::UntilEndOfTurn,
+            ReplacementApplyMode::UntilYourNextTurn, ReplacementApplyMode::Resolution] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let player = PlayerId(0);
+            let source = game.new_object_id();
+            let turn = game.turn.turn_number;
+            let mut ctx = ExecutionContext::new_default(source, player);
+            RegisterFutureZoneReplacementEffect::new(ObjectFilter::creature(), Some(Zone::Battlefield),
+                Some(Zone::Graveyard), Zone::Exile, mode).execute(&mut game, &mut ctx).unwrap();
+            let store = &mut game.effect_store.replacement_effects;
+            assert_eq!(store.effects().len(), 1);
+            assert_eq!(store.one_shot_effects_snapshot().len(), usize::from(mode == ReplacementApplyMode::OneShot));
+            assert_eq!(store.until_end_of_turn_effects_snapshot().len(), usize::from(mode == ReplacementApplyMode::UntilEndOfTurn));
+            store.clear_one_shot_effects();
+            store.clear_until_end_of_turn_effects();
+            assert_eq!(store.effects().len(), usize::from(matches!(mode, ReplacementApplyMode::UntilYourNextTurn | ReplacementApplyMode::Resolution)));
+            store.expire_at_turn_start(turn + 1, &[PlayerId(1)]);
+            assert_eq!(store.effects().len(), usize::from(matches!(mode, ReplacementApplyMode::UntilYourNextTurn | ReplacementApplyMode::Resolution)));
+            store.expire_at_turn_start(turn + 2, &[player]);
+            assert_eq!(store.effects().len(), usize::from(mode == ReplacementApplyMode::Resolution));
+        }
+    }
+
 }

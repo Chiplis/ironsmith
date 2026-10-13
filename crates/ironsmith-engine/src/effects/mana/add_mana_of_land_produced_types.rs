@@ -1,12 +1,8 @@
 //! Add mana of any color/type that lands matching a filter could produce.
 
-use super::choice_helpers::{
-    choose_mana_symbols, credit_mana_symbols_from_context, mana_added_count_outputs,
-};
 use crate::ability::{AbilityKind, ActivatedAbility, ActivatedAbilityRuntimeExt as _};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -104,56 +100,9 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-        if amount == 0 {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let available = match self.mana_type_source {
-            ManaTypeSource::MatchingLandsCouldProduce => {
-                collect_available_mana_symbols(game, ctx, &self.land_filter)
-            }
-            ManaTypeSource::TriggeringEventProduced => {
-                collect_triggering_event_mana_symbols(game, ctx, &self.land_filter)?
-            }
-        };
-        let available = available
-            .into_iter()
-            .filter(|symbol| is_allowed_symbol(*symbol, self.allow_colorless))
-            .collect::<Vec<_>>();
-        if available.is_empty() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let chosen_symbols = choose_mana_symbols(
-            game,
-            ctx,
-            player_id,
-            amount,
-            self.same_type,
-            &available,
-            available[0],
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let chosen_symbols =
-            credit_mana_symbols_from_context(game, player_id, chosen_symbols, ctx)?;
-
-        Ok(mana_added_count_outputs(
-            ctx,
-            player_id,
-            chosen_symbols,
-            amount as i32,
-        ))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::AuthoredCount, ManaChoiceMenu::Types)
     }
 }
 

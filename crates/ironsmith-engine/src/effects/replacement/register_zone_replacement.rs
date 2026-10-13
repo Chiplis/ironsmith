@@ -351,32 +351,10 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
                 );
                 continue;
             }
-            match self.mode {
-                ReplacementApplyMode::OneShot => {
-                    game.effect_store
-                        .replacement_effects
-                        .add_one_shot_effect(replacement);
-                }
-                ReplacementApplyMode::UntilEndOfTurn => {
-                    game.effect_store
-                        .replacement_effects
-                        .add_until_end_of_turn_effect(replacement);
-                }
-                ReplacementApplyMode::UntilYourNextTurn => {
-                    game.effect_store
-                        .replacement_effects
-                        .add_until_next_turn_effect(
-                            replacement,
-                            ctx.controller,
-                            game.turn.turn_number,
-                        );
-                }
-                ReplacementApplyMode::Resolution => {
-                    game.effect_store
-                        .replacement_effects
-                        .add_resolution_effect(replacement);
-                }
-            }
+            crate::effects::ApplyReplacementEffect {
+                effect: replacement,
+                mode: self.mode,
+            }.execute(game, ctx)?;
         }
 
         Ok(EffectOutcome::with_objects(object_ids))

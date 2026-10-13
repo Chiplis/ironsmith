@@ -759,6 +759,7 @@ pub struct SpliceCastState {
 /// Stored copiable fields needed to restore a card after a face-down cast.
 #[derive(Debug, Clone)]
 pub struct FaceDownCastState {
+    pub custom_copiable_values: Option<Box<crate::snapshot::CopiableValues>>,
     pub name: SharedStr,
     pub first_printed_set_name: Option<SharedStr>,
     pub mana_cost: Option<SharedValue<ManaCost>>,
@@ -820,6 +821,9 @@ pub struct PrototypeCastState {
 /// precomputed so accessors can hand out slices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SplitCombinedCharacteristics {
+    pub other_half_abilities: Arc<Vec<Ability>>,
+    pub other_half_ability_labels: SharedVec<String>,
+    pub other_half_compiled_text: Arc<str>,
     /// Name of the half that isn't currently shown.
     pub other_half_name: SharedStr,
     /// Colors of the half that isn't currently shown.
@@ -842,6 +846,9 @@ impl SplitCombinedCharacteristics {
             combined
         }
         Self {
+            other_half_abilities: other.abilities.clone(),
+            other_half_ability_labels: other.ability_labels.clone(),
+            other_half_compiled_text: other.compiled_card_text.clone(),
             other_half_name: other.name.clone(),
             other_half_colors: other.own_colors(),
             card_types: union(&own.card_types, &other.card_types).into(),
@@ -867,6 +874,8 @@ pub struct Object {
     /// This is clone/rollback state, not an id source and not a serialization surface.
     pub last_modified: u64,
     pub kind: ObjectKind,
+    pub copied_face_values: Option<Box<CopiableValues>>,
+    pub token_creation_method: Option<ironsmith_core::effect::TokenCreationMethod>,
     /// Reference to the original card definition (None for pure tokens)
     pub card: Option<CardId>,
     pub zone: Zone,
@@ -1173,6 +1182,14 @@ fn scalar_temporary_ability_constructor(ability: StaticAbilityId) -> Option<fn()
     }
 }
 impl Object {
+    pub(crate) fn apply_embalm_copy_exception(&mut self) {
+        if self.token_creation_method != Some(ironsmith_core::effect::TokenCreationMethod::Embalm) { return; }
+        crate::static_abilities::exclude_cdas_from_copy(&mut self.abilities, &mut self.ability_labels, false, true, false);
+        self.mana_cost = None;
+        self.color_override = Some(ColorSet::WHITE);
+        if !self.subtypes.contains(&Subtype::Zombie) { self.subtypes.push(Subtype::Zombie); }
+    }
+
     /// The X this object's own entering ability or replacement effect sees
     /// (CR 107.3m): the value chosen as it was cast, or 0 when it has X in
     /// its mana cost but entered without being cast. `None` when its mana
@@ -1292,7 +1309,11 @@ impl Object {
     }
 
     pub(crate) fn materialized_text_box_abilities(&self) -> Arc<Vec<Ability>> {
-        self.abilities_with_enchant_metadata(self.aura_attach_filter.as_ref())
+        let mut abilities = self.abilities_with_enchant_metadata(self.aura_attach_filter.as_ref());
+        if let Some(combined) = self.split_combined_active() {
+            Arc::make_mut(&mut abilities).extend(combined.other_half_abilities.iter().cloned());
+        }
+        abilities
     }
 
     pub(crate) fn materialized_copiable_abilities(&self) -> Arc<Vec<Ability>> {
@@ -1302,7 +1323,11 @@ impl Object {
             .map_or(self.aura_attach_filter.as_ref(), |restore| {
                 restore.aura_attach_filter.as_ref()
             });
-        self.abilities_with_enchant_metadata(metadata)
+        let mut abilities = self.abilities_with_enchant_metadata(metadata);
+        if let Some(combined) = self.split_combined_active() {
+            Arc::make_mut(&mut abilities).extend(combined.other_half_abilities.iter().cloned());
+        }
+        abilities
     }
 
     pub fn cast_alternative_method_owned(&self) -> Option<AlternativeCastingMethod> {
@@ -1328,6 +1353,8 @@ impl Object {
             } else {
                 ObjectKind::Card
             },
+            copied_face_values: None,
+            token_creation_method: None,
             card: (!is_token).then_some(card.id),
             zone,
             owner,
@@ -1419,6 +1446,8 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Card,
+            copied_face_values: None,
+            token_creation_method: None,
             card: None,
             zone,
             owner,
@@ -1729,6 +1758,8 @@ impl Object {
             stable_id: StableId::from(id), // New token gets its own stable_id
             last_modified: 0,
             kind: ObjectKind::Token,
+            copied_face_values: None,
+            token_creation_method: None,
             card: None,
             zone: Zone::Battlefield,
             owner,
@@ -1808,6 +1839,8 @@ impl Object {
             stable_id: StableId::from(id), // Token copy is a new instance
             last_modified: 0,
             kind: ObjectKind::Token,
+            copied_face_values: source.copied_face_values.clone(),
+            token_creation_method: None,
             card: None,
             zone: Zone::Battlefield,
             owner,
@@ -1890,6 +1923,8 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::SpellCopy,
+            copied_face_values: None,
+            token_creation_method: None,
             card: None,
             zone: Zone::Stack,
             owner,
@@ -1975,6 +2010,8 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Token,
+            copied_face_values: Some(Box::new(copiable.clone())),
+            token_creation_method: None,
             card: None,
             zone: Zone::Battlefield,
             owner,
@@ -2008,21 +2045,25 @@ impl Object {
             counters: ObjectCounters::default(),
             attached_to: None,
             attachments: Vec::new(),
-            spell_effect: None,
+            spell_effect: match &copiable.spell_effect {
+                crate::snapshot::SpellProgramState::Present(program) => Some(program.clone().into()),
+                crate::snapshot::SpellProgramState::Absent => None,
+                crate::snapshot::SpellProgramState::Unavailable => Some(crate::resolution::ResolutionProgram::unavailable_copied_definition().into()),
+            },
             splice_cast_state: None,
             aura_attach_filter: copiable.aura_attach_filter.clone().map(Into::into),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
             enters_as_copy_restore_state: None,
-            alternative_casts: Vec::new().into(),
+            alternative_casts: copiable.alternative_casts.clone().into(),
             cast_alternative_method: None,
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
             cast_play_permission: None,
             has_fuse: false,
-            optional_costs: Vec::new().into(),
+            optional_costs: copiable.optional_costs.clone().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -2056,6 +2097,8 @@ impl Object {
             stable_id: StableId::from(id), // Emblems get their own stable_id
             last_modified: 0,
             kind: ObjectKind::Emblem,
+            copied_face_values: None,
+            token_creation_method: None,
             card: None,
             zone: Zone::Command,
             owner,
@@ -2146,6 +2189,9 @@ impl Object {
     /// layers 1a and 1b, so a copy of a copy does not fall back to the source
     /// object's printed/raw fields (CR 707.2–707.3).
     pub fn copy_copiable_values_from_values(&mut self, values: &CopiableValues) {
+        self.copied_face_values = Some(Box::new(values.clone()));
+        self.alternative_casts = values.alternative_casts.clone().into();
+        self.optional_costs = values.optional_costs.clone().into();
         self.name = values.name.clone().into();
         self.mana_cost = shared_optional_value(values.mana_cost.clone());
         // A permanent copy receives the copied face's cost rather than the
@@ -2334,6 +2380,18 @@ impl Object {
         true
     }
 
+    /// Characteristics supplied by a face-down instruction replace the
+    /// ordinary 2/2 form in layer 1b (CR 708.2), above any copy effects.
+    pub fn apply_custom_face_down_overlay(&mut self, values: crate::snapshot::CopiableValues) {
+        self.apply_face_down_cast_overlay();
+        let prior_copy = self.copied_face_values.clone();
+        let prior_alternative_casts = self.alternative_casts.clone();
+        self.copy_copiable_values_from_values(&values);
+        self.copied_face_values = prior_copy;
+        self.alternative_casts = prior_alternative_casts;
+        self.face_down_cast_state.as_mut().expect("face-down restore state").custom_copiable_values = Some(Box::new(values));
+    }
+
     /// Begin a splice modification, preserving any earlier stack program snapshot.
     pub fn begin_splice_cast_overlay(&mut self) -> bool {
         self.begin_stack_program_overlay()
@@ -2377,6 +2435,7 @@ impl Object {
         }
 
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
+            custom_copiable_values: None,
             name: self.name.clone(),
             first_printed_set_name: self.first_printed_set_name.clone(),
             mana_cost: self.mana_cost.clone(),
@@ -2477,6 +2536,7 @@ impl Object {
         self.optional_costs = Vec::new().into();
         self.additional_cost = TotalCost::free().into();
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
+            custom_copiable_values: None,
             name: face_up.name,
             first_printed_set_name: face_up.first_printed_set_name,
             mana_cost: face_up.mana_cost,
@@ -2638,6 +2698,7 @@ impl Object {
 
     fn live_copiable_restore_fields(&self) -> FaceDownCastState {
         FaceDownCastState {
+            custom_copiable_values: None,
             name: self.name.clone(),
             first_printed_set_name: self.first_printed_set_name.clone(),
             mana_cost: self.mana_cost.clone(),
@@ -2674,6 +2735,7 @@ impl Object {
             linked_face_layout,
             has_fuse,
         } = *restore;
+        self.copied_face_values = None;
         self.name = restore.name;
         self.first_printed_set_name = restore.first_printed_set_name;
         self.mana_cost = restore.mana_cost;
@@ -2735,6 +2797,12 @@ impl Object {
             return ColorSet::COLORLESS;
         }
 
+        self.copiable_colors()
+    }
+
+    /// Layer-1 color derives from mana cost or color indicator (CR 707.2a).
+    /// Color CDAs, including devoid, apply later in layer 5.
+    pub(crate) fn copiable_colors(&self) -> ColorSet {
         if let Some(override_colors) = self.color_override {
             return override_colors;
         }
@@ -3093,6 +3161,8 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Token,
+            copied_face_values: None,
+            token_creation_method: None,
             card: None,
             zone: Zone::Battlefield,
             owner: controller,

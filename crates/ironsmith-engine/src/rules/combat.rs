@@ -863,6 +863,8 @@ mod tests {
     fn make_creature(name: &str, power: i32, toughness: i32) -> Object {
         let raw = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Object {
+            copied_face_values: None,
+            token_creation_method: None,
             id: ObjectId::from_raw(raw),
             stable_id: StableId::from_raw(raw),
             last_modified: 0,

@@ -15,7 +15,7 @@ pub(crate) struct PreparedEtbChoices {
     pub(crate) chosen_named_option: Option<String>,
     pub(crate) noted_life_total: Option<i32>,
     pub(crate) power_toughness_choices:
-        Vec<(i32, i32, Vec<crate::static_abilities::StaticAbility>)>,
+        Vec<crate::static_abilities::PowerToughnessChoiceOption>,
     pub(crate) battle_protector: Option<PlayerId>,
     pub(crate) discard_hand: bool,
     pub(crate) as_enters_counters: Vec<(crate::object::CounterType, u32)>,
@@ -182,6 +182,12 @@ fn merge_retained_tagged_objects(
 }
 
 impl GameState {
+    /// Frozen layer-1 rules, including casting abilities and copiable other halves.
+    pub fn calculated_copiable_values(&self, id: ObjectId) -> Option<crate::snapshot::CopiableValues> {
+        crate::continuous::copiable_values_with_effects(id, self.objects_map(),
+            &self.all_continuous_effects(), &self.battlefield, self.commander_objects(), self)
+    }
+
     /// A spell reads its current layer-derived program. Captured activated and
     /// triggered abilities are owned by their StackEntry instead (CR 113.7a).
     pub fn current_spell_program(
@@ -269,7 +275,7 @@ impl GameState {
                     );
                 }
                 // Applied with the copiable values as the object entered.
-                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors => {}
+                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors | ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics => {}
                 ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
                     // "When you do, tap the copied creature and it doesn't
                     // untap during its controller's untap step for as long as
@@ -1442,8 +1448,13 @@ impl GameState {
             && new_object.prototype_cast_state.is_some();
         let preserve_temporary_static_ability_grants =
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
-        let preserve_cast_tags =
-            new_zone == Zone::Stack || (old_zone == Zone::Stack && new_zone == Zone::Battlefield);
+        if !(old_zone == Zone::Command && new_zone == Zone::Battlefield) {
+            new_object.token_creation_method = None;
+        }
+        let preserve_cast_tags = new_zone == Zone::Stack
+            || (old_zone == Zone::Stack && new_zone == Zone::Battlefield)
+            || (old_zone == Zone::Command && new_zone == Zone::Battlefield
+                && matches!(new_object.kind, crate::object::ObjectKind::Token));
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         // Restore enters-as characteristics first, so the printed values saved
@@ -2893,11 +2904,7 @@ impl GameState {
                     .filter(|idx| *idx < spec.options.len())
                     .map(|idx| spec.options[idx].clone())
                 {
-                    choices.power_toughness_choices.push((
-                        option.power,
-                        option.toughness,
-                        option.abilities,
-                    ));
+                    choices.power_toughness_choices.push(option);
                 }
             }
         }
@@ -3522,7 +3529,8 @@ impl GameState {
                 || !result.removed_supertypes.is_empty()
                 || !result.added_subtypes.is_empty()
                 || !result.added_abilities.is_empty()
-                || result.set_base_power_toughness.is_some())
+                || result.set_base_power_toughness.is_some()
+                || !choices.power_toughness_choices.is_empty())
             && let Some(new_obj) = self.object_mut(new_id)
         {
             new_obj.capture_enters_as_copy_restore_state();
@@ -3601,7 +3609,7 @@ impl GameState {
                         copiable_values.toughness = Some(toughness);
                     }
 
-                    let modification = crate::continuous::Modification::CopyOf {
+                    let modification = crate::continuous::Modification::CopyOf { retain_original_name: false,
                         target_id: copy_source_id,
                         copiable_values: Box::new(copiable_values),
                         preserve_source_abilities: false,
@@ -3775,11 +3783,18 @@ impl GameState {
         if let Some(life_total) = choices.noted_life_total {
             self.set_noted_life_total_for_source(new_id, life_total);
         }
-        for (power, toughness, abilities) in &choices.power_toughness_choices {
+        if result.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics)
+            && let Some(object) = self.object_mut(new_id)
+        {
+            object.apply_embalm_copy_exception();
+        }
+        for option in &choices.power_toughness_choices {
             if let Some(object) = self.object_mut(new_id) {
-                object.base_power = Some(crate::card::PtValue::Fixed(*power));
-                object.base_toughness = Some(crate::card::PtValue::Fixed(*toughness));
-                for granted in abilities {
+                object.base_power = Some(crate::card::PtValue::Fixed(option.power));
+                object.base_toughness = Some(crate::card::PtValue::Fixed(option.toughness));
+                if let Some(types) = &option.card_types { object.card_types = types.clone().into(); }
+                for subtype in &option.added_subtypes { if !object.subtypes.contains(subtype) { object.subtypes.push(*subtype); } }
+                for granted in &option.abilities {
                     let ability = crate::ability::Ability::static_ability(granted.clone());
                     self.install_authored_object_ability(
                         new_id,
@@ -4948,6 +4963,7 @@ impl GameState {
         }
         let owner = self.object(object)?.owner;
         Some(crate::continuous::CalculatedCharacteristics {
+            copy_values: None,
             alternate_name: None,
             name: "".into(),
             mana_cost: None,
@@ -5194,6 +5210,7 @@ impl GameState {
         let mut chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
+                    copy_values: None,
                     alternate_name: object.split_other_half_name().map(str::to_string),
                     name: object.name.clone(),
                     mana_cost: object.mana_cost_owned(),

@@ -11,6 +11,57 @@ use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 pub use ironsmith_core::CantEffect;
 
+/// Frozen registration batch. Selection/normalization belongs to the adapter;
+/// this owner preserves per-record timestamps and refreshes only after the batch.
+pub(crate) struct ResolvedRestrictions {
+    pub restrictions: Vec<Restriction>,
+    pub duration: Until,
+    pub iterated_player: Option<crate::ids::PlayerId>,
+    pub starts_next_turn_of: Option<crate::ids::PlayerId>,
+    pub tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    pub through_next_turn: bool,
+}
+
+impl ResolvedRestrictions {
+    pub(crate) fn new(restrictions: Vec<Restriction>, duration: Until) -> Self {
+        Self {
+            restrictions,
+            duration,
+            iterated_player: None,
+            starts_next_turn_of: None,
+            tagged_objects: Default::default(),
+            through_next_turn: false,
+        }
+    }
+
+    pub(crate) fn register(self, game: &mut GameState, ctx: &ExecutionContext) {
+        for restriction in self.restrictions {
+            game.add_restriction_effect_with_start_and_tagged_objects(
+                restriction,
+                self.duration.clone(),
+                ctx.source,
+                ctx.controller,
+                self.iterated_player,
+                self.starts_next_turn_of,
+                self.tagged_objects.clone(),
+            );
+            if self.through_next_turn
+                && matches!(self.duration, Until::EndOfTurn)
+                && self.starts_next_turn_of.is_none()
+                && let Some(added) = game.effect_store.restriction_effects.last_mut()
+            {
+                added.expires_end_of_turn = added.expires_end_of_turn.saturating_add(1);
+            }
+        }
+    }
+
+    pub(crate) fn apply(self, game: &mut GameState, ctx: &ExecutionContext) {
+        self.register(game, ctx);
+        game.update_cant_effects();
+    }
+}
+
 /// The object "this" names for a restriction this resolution creates.
 ///
 /// CR 400.7, 611.2c: the source is the object it still is, or the object a
@@ -702,24 +753,14 @@ impl EffectExecutor for CantEffect {
             }
             // A known empty affected set cannot become a future broad rule.
         } else {
-            game.add_restriction_effect_with_start_and_tagged_objects(
-                restriction,
-                duration.clone(),
-                ctx.source,
-                ctx.controller,
-                ctx.iteration.iterated_player,
+            ResolvedRestrictions {
+                restrictions: vec![restriction],
+                duration,
+                iterated_player: ctx.iteration.iterated_player,
                 starts_next_turn_of,
-                ctx.tagged_objects.clone(),
-            );
-            // "This turn and next turn" (CR 611.2a): the end-of-turn duration
-            // runs through the end of the turn after this one.
-            if self.duration_surface == ironsmith_core::RestrictionDurationSurface::ThisTurnAndNextTurn
-                && matches!(duration, Until::EndOfTurn)
-                && starts_next_turn_of.is_none()
-                && let Some(added) = game.effect_store.restriction_effects.last_mut()
-            {
-                added.expires_end_of_turn = added.expires_end_of_turn.saturating_add(1);
-            }
+                tagged_objects: ctx.tagged_objects.clone(),
+                through_next_turn: self.duration_surface == ironsmith_core::RestrictionDurationSurface::ThisTurnAndNextTurn,
+            }.register(game, ctx);
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())

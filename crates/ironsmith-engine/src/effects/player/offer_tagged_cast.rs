@@ -64,48 +64,15 @@ impl EffectExecutor for OfferTaggedCast {
                 if let Some(name) = &self.source_name {
                     prompt = prompt.with_source_name(name);
                 }
-                let accepted = ctx.decision_maker.decide_boolean(game, &prompt);
-                if ctx.decision_maker.awaiting_choice() || !accepted {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let options = super::runtime_helpers::effect_driven_cast_options_for_card(
-                    game,
+                super::resolved_cast_offer::ResolvedCastOffer {
                     player,
-                    ctx.source,
-                    id,
-                    self.zone,
-                    &self.spell_filter,
-                );
-                let option = super::runtime_helpers::choose_effect_driven_cast_option(
-                    game, ctx, player, options,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let Some(option) = option else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
-                let Some(cast) = super::runtime_helpers::cast_effect_driven_spell_without_paying(
-                    game, ctx, player, &option,
-                )?
-                else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
-                super::runtime_helpers::complete_effect_driven_cast_with_outputs(
-                    EffectOutcome::with_objects(vec![cast.new_id]),
-                    game,
-                    cast,
-                    player,
-                    ctx.provenance,
-                )
+                    candidates: super::resolved_cast_offer::CastOfferCandidates::Exact {
+                        object: id, zone: self.zone, spell_filter: self.spell_filter.clone(),
+                    },
+                    prompt: Some(prompt),
+                    payment: super::runtime_helpers::EffectDrivenCastPayment::WithoutPayingManaCost,
+                    failed_cast: EffectOutcome::count(0),
+                }.execute(game, ctx)
             },
         )
     }

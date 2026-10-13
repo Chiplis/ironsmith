@@ -709,6 +709,24 @@ impl GameState {
             return false;
         }
 
+        if let Some(values) = self.object(id).and_then(|object| object.copied_face_values.clone()) {
+            if values.copy_face_layout == crate::card::LinkedFaceLayout::Flip {
+                if let Some(other) = &values.other_copy_face {
+                    self.object_mut(id).unwrap().copy_copiable_values_from_values(other);
+                    self.object_mut(id).unwrap().copied_face_values = Some(values);
+                    self.flip(id);
+                    return true;
+                }
+            }
+        }
+        // An ongoing copy effect carries its own frozen flip half.
+        if self.object(id).is_some_and(|object| object.linked_face_layout != crate::card::LinkedFaceLayout::Flip)
+            && self.calculated_copiable_values(id).is_some_and(|values|
+            values.copy_face_layout == crate::card::LinkedFaceLayout::Flip && values.other_copy_face.is_some()) {
+            self.flip(id);
+            return true;
+        }
+
         let merged_stable_id = self.object(id).and_then(|object| {
             self.commander_tracking
                 .merged_permanents
@@ -2667,6 +2685,8 @@ impl GameState {
                 if let Some(object) = self.object_mut(permanent_id) {
                     object.base_power = Some(crate::card::PtValue::Fixed(option.power));
                     object.base_toughness = Some(crate::card::PtValue::Fixed(option.toughness));
+                    if let Some(types) = &option.card_types { object.card_types = types.clone().into(); }
+                    for subtype in &option.added_subtypes { if !object.subtypes.contains(subtype) { object.subtypes.push(*subtype); } }
                     for granted in &option.abilities {
                         let ability = crate::ability::Ability::static_ability(granted.clone());
                         self.install_authored_object_ability(

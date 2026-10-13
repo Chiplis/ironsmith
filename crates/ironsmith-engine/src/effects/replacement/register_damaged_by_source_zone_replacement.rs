@@ -28,28 +28,10 @@ impl EffectExecutor for RegisterDamagedBySourceZoneReplacementEffect {
             ReplacementAction::ChangeDestination(self.replacement_zone),
         );
 
-        match self.mode {
-            crate::effects::ReplacementApplyMode::OneShot => {
-                game.effect_store
-                    .replacement_effects
-                    .add_one_shot_effect(replacement);
-            }
-            crate::effects::ReplacementApplyMode::UntilEndOfTurn => {
-                game.effect_store
-                    .replacement_effects
-                    .add_until_end_of_turn_effect(replacement);
-            }
-            crate::effects::ReplacementApplyMode::UntilYourNextTurn => {
-                game.effect_store
-                    .replacement_effects
-                    .add_until_next_turn_effect(replacement, ctx.controller, game.turn.turn_number);
-            }
-            crate::effects::ReplacementApplyMode::Resolution => {
-                game.effect_store
-                    .replacement_effects
-                    .add_resolution_effect(replacement);
-            }
-        }
+        crate::effects::ApplyReplacementEffect {
+                effect: replacement,
+                mode: self.mode,
+            }.execute(game, ctx)?;
 
         Ok(EffectOutcome::from_status(OutcomeStatus::Succeeded))
     }

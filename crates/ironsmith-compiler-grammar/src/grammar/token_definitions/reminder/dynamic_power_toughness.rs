@@ -156,7 +156,14 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
             power_rhs.get(and_idx + 1..)?,
             &["toughness", "equal", "to"],
         )?;
-        return Some((power, parse_dynamic_rhs(toughness_rhs)?));
+        let mut toughness = parse_dynamic_rhs(toughness_rhs)?;
+        if let (Value::PowerOf(power_source), Value::ToughnessOf(toughness_source)) = (&power, &toughness)
+            && power_source.is_target()
+            && matches!(toughness_source.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        {
+            toughness = Value::ToughnessOf(power_source.clone());
+        }
+        return Some((power, toughness));
     }
 
     if let Some(rhs) = common::strip_phrase_prefix(

@@ -176,7 +176,7 @@ fn native_printed_copied_and_granted_subtypes_keep_cda_order_and_zones() {
     assert_eq!(game.current_subtypes(printed).unwrap(), [Subtype::Zombie], "CDA before older replacement");
     let copied = witness(&mut game, A, Zone::Battlefield, vec![CardType::Creature], vec![Subtype::Elf]);
     let values = CopiableValues::from_object(game.object(printed).unwrap());
-    effect(&mut game, copied, EffectTarget::Source, Modification::CopyOf { target_id: printed,
+    effect(&mut game, copied, EffectTarget::Source, Modification::CopyOf { retain_original_name: false, target_id: printed,
         copiable_values: Box::new(values), preserve_source_abilities: false, name_override: None,
         name_override_surface: None, add_supertypes: vec![] });
     assert_eq!(game.current_subtypes(copied).unwrap(), [Subtype::Zombie]);

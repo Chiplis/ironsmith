@@ -1953,7 +1953,7 @@ fn test_clone_copies_base_not_modifications() {
         clone_id,
         alice,
         EffectTarget::Source,
-        Modification::CopyOf {
+        Modification::CopyOf { retain_original_name: false,
             target_id: bear_id,
             copiable_values: Box::new(bear_copiable_values),
             preserve_source_abilities: false,
@@ -2019,7 +2019,7 @@ fn i050_add_copy_effect(
             target,
             controller,
             EffectTarget::Specific(target),
-            Modification::CopyOf {
+            Modification::CopyOf { retain_original_name: false,
                 target_id: source,
                 copiable_values: Box::new(source_values),
                 preserve_source_abilities: false,

@@ -4,24 +4,9 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::zone::Zone;
 pub type ReorderLibraryTopEffect = ironsmith_core::ReorderLibraryTopEffect;
 
-fn normalize_order_response(
-    response: Vec<crate::ids::ObjectId>,
-    original: &[crate::ids::ObjectId],
-) -> Vec<crate::ids::ObjectId> {
-    let mut remaining = original.to_vec();
-    let mut out = Vec::with_capacity(original.len());
-    for id in response {
-        if let Some(pos) = remaining.iter().position(|x| *x == id) {
-            out.push(id);
-            remaining.remove(pos);
-        }
-    }
-    out.extend(remaining);
-    out
-}
+use crate::effects::cards::normalize_order_response;
 
 impl EffectExecutor for ReorderLibraryTopEffect {
     fn execute(
@@ -36,36 +21,9 @@ impl EffectExecutor for ReorderLibraryTopEffect {
             return Ok(EffectOutcome::resolved());
         };
 
-        let mut cards: Vec<_> = snapshots.iter().map(|s| s.object_id).collect();
-        cards.retain(|id| {
-            game.object(*id)
-                .is_some_and(|obj| obj.zone == Zone::Library)
-        });
-        if cards.len() <= 1 {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        // All tagged cards should be in the same library; use their owner.
-        let owners: std::collections::HashSet<_> = cards
-            .iter()
-            .filter_map(|id| game.object(*id).map(|obj| obj.owner))
-            .collect();
-        if owners.len() != 1 {
-            return Ok(EffectOutcome::resolved());
-        }
-        let library_owner = *owners.iter().next().unwrap();
-
-        let Some(player) = game.player(library_owner) else {
-            return Ok(EffectOutcome::resolved());
-        };
-
-        // Preserve the current top-to-bottom order as the default.
-        let mut current_top_to_bottom = Vec::new();
-        for &id in player.library.iter().rev() {
-            if cards.contains(&id) {
-                current_top_to_bottom.push(id);
-            }
-        }
+        let Some((library_owner, current_top_to_bottom)) =
+            crate::effects::cards::capture_retained_library_set(game, snapshots)
+        else { return Ok(EffectOutcome::resolved()); };
         if current_top_to_bottom.len() <= 1 {
             return Ok(EffectOutcome::resolved());
         }

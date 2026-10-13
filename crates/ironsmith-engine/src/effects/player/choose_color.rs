@@ -1,7 +1,7 @@
 //! Choose a color and store it on the source object.
 
 use crate::color::Color;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -61,25 +61,10 @@ impl EffectExecutor for ChooseColorEffect {
             game.set_chosen_color(ctx.source, color);
             return Ok(EffectOutcome::count(1).with_execution_fact(crate::effect::ExecutionFact::ChosenColor(color)));
         }
-        let options: Vec<SelectableOption> = Self::color_options()
-            .iter()
-            .enumerate()
-            .map(|(idx, (_, label))| SelectableOption::new(idx, *label))
-            .collect();
-        let choice_ctx =
-            SelectOptionsContext::new(chooser, Some(ctx.source), "Choose a color", options, 1, 1);
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(chosen) = selected
-            .into_iter()
-            .next()
-            .filter(|idx| *idx < Self::color_options().len())
-        else {
+        let menu = Self::color_options().iter().map(|(color, label)| (*color, label.to_string())).collect::<Vec<_>>();
+        let Some(color) = select_typed_option(game, ctx, chooser, "Choose a color", &menu, SingleChoicePolicy::First)? else {
             return Ok(EffectOutcome::count(0));
         };
-        let (color, _) = Self::color_options()[chosen];
         game.set_chosen_color(ctx.source, color);
         Ok(EffectOutcome::count(1).with_execution_fact(crate::effect::ExecutionFact::ChosenColor(color)))
     }

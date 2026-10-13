@@ -3,9 +3,6 @@
 //! Used by Chrome Mox and Pit of Offerings-style permanents to produce mana
 //! based on the colors of the cards they exiled.
 
-use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outputs,
-};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -38,41 +35,9 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let source_id = ctx.source;
-        let controller = ctx.controller;
-
-        // "Any of the exiled card's/cards' colors": the cards this permanent
-        // imprinted or exiled with its linked ability (CR 607.2a).
-        let colors = linked_exiled_card_colors(game, source_id);
-        if colors.is_empty() {
-            // No linked card, or only colorless ones - can't produce mana.
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let chosen_color = choose_mana_colors(
-            game,
-            ctx,
-            controller,
-            1,
-            true,
-            false,
-            Some(&colors),
-            colors[0],
-        )?
-        .into_iter()
-        .next()
-        .unwrap_or(colors[0]);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let symbol = ManaSymbol::from_color(chosen_color);
-        let mana = credit_mana_symbols_from_context(game, controller, [symbol], ctx)?;
-
-        Ok(mana_added_count_outputs(ctx, controller, mana, 1))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::AuthoredCount, ManaChoiceMenu::AvailableColors)
     }
 
     fn producible_mana_symbols(

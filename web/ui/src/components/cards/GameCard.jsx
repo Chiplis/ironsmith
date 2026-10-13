@@ -5,6 +5,7 @@ import './battlefield-appearance.css';
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
+import BattlefieldGroupBadge from "./BattlefieldGroupBadge";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
 import { useCastTargeting, useCastObjectHovered } from "@/context/DragContext";
@@ -1533,7 +1534,7 @@ export default function GameCard({
         )}
         {useArenaBattlefield ? (
           <MobileArenaCardFace card={resolvedBattlefieldCard} name={displayName} artUrl={artUrl}
-            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} secondary={groupSize > 1 ? numericSecondaryBattlefieldInfo : null} />
+            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} />
         ) : useTokenBattlefield ? (
           <div className="battlefield-token-shell">
             <svg
@@ -1688,11 +1689,7 @@ export default function GameCard({
         ) : showBattlefieldHeaderOverlay ? (
           <div className="battlefield-header">
             <span className="battlefield-header-copy">
-              {groupSize > 1 && (
-                <span className="battlefield-group-badge">
-                  x{groupSize}
-                </span>
-              )}
+              <BattlefieldGroupBadge count={groupSize} />
             </span>
             <span className="flex items-center gap-1">
               {showDebugSimilarityBadge && (

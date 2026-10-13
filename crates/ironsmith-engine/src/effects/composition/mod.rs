@@ -257,3 +257,5 @@ pub(crate) mod captured_selection;
 
 #[cfg(test)]
 mod decomposition_regression_tests;
+
+pub(crate) mod receipt_binding;

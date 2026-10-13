@@ -9,6 +9,17 @@ pub(crate) fn choose_one(
     prompt: &str,
     strict: bool,
 ) -> Result<Option<ObjectId>, ExecutionError> {
+    choose_one_for_player(game, ctx, ctx.controller, candidates, prompt, strict)
+}
+
+pub(crate) fn choose_one_for_player(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    chooser: crate::ids::PlayerId,
+    candidates: &[ObjectId],
+    prompt: &str,
+    strict: bool,
+) -> Result<Option<ObjectId>, ExecutionError> {
     if candidates.is_empty() {
         return Ok(None);
     }
@@ -25,7 +36,7 @@ pub(crate) fn choose_one(
     let selected: Vec<ObjectId> = crate::decisions::make_decision(
         game,
         ctx.decision_maker,
-        ctx.controller,
+        chooser,
         Some(ctx.source),
         spec,
     );

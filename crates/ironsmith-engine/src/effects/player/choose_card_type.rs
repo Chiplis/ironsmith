@@ -1,6 +1,6 @@
 //! Choose a card type and store it on the source object.
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -21,11 +21,6 @@ impl EffectExecutor for ChooseCardTypeEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let display_options = options
-            .iter()
-            .enumerate()
-            .map(|(idx, card_type)| SelectableOption::new(idx, card_type.to_string()))
-            .collect::<Vec<_>>();
         let permanent_type_options = [
             CardType::Artifact,
             CardType::Creature,
@@ -39,21 +34,11 @@ impl EffectExecutor for ChooseCardTypeEffect {
         } else {
             "Choose a card type"
         };
-        let choice_ctx =
-            SelectOptionsContext::new(chooser, Some(ctx.source), prompt, display_options, 1, 1);
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(chosen) = selected
-            .into_iter()
-            .next()
-            .filter(|idx| *idx < options.len())
-        else {
+        let menu = options.iter().map(|value| (*value, value.to_string())).collect::<Vec<_>>();
+        let Some(chosen) = select_typed_option(game, ctx, chooser, prompt, &menu, SingleChoicePolicy::First)? else {
             return Ok(EffectOutcome::count(0));
         };
-
-        game.set_chosen_card_type(ctx.source, options[chosen]);
+        game.set_chosen_card_type(ctx.source, chosen);
         Ok(EffectOutcome::count(1))
     }
 }

@@ -397,6 +397,7 @@ pub fn parse_become_clause(
             } else {
                 Vec::new()
             };
+            let copy_ability_absent_marker = copy_exception.as_ref().and_then(|exception| exception.copy_ability_absent_marker.clone());
             let retain_source_colors = copy_exception
                 .as_ref()
                 .is_some_and(|exception| exception.retain_source_colors);
@@ -448,6 +449,7 @@ pub fn parse_become_clause(
                     .map(|(power, toughness)| (Value::Fixed(power), Value::Fixed(toughness))),
                 copy_exception.and_then(|exception| exception.surface),
                 retain_source_colors,
+                copy_ability_absent_marker,
             ));
         }
         become_grammar::BecomeCopySourceShape::NotCopy => {}

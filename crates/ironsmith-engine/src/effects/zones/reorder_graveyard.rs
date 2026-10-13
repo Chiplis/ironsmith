@@ -26,21 +26,7 @@ impl ReorderGraveyardEffect {
     }
 }
 
-fn normalize_order_response(
-    response: Vec<crate::ids::ObjectId>,
-    original: &[crate::ids::ObjectId],
-) -> Vec<crate::ids::ObjectId> {
-    let mut remaining = original.to_vec();
-    let mut out = Vec::with_capacity(original.len());
-    for id in response {
-        if let Some(pos) = remaining.iter().position(|x| *x == id) {
-            out.push(id);
-            remaining.remove(pos);
-        }
-    }
-    out.extend(remaining);
-    out
-}
+use crate::effects::cards::normalize_order_response;
 
 impl EffectExecutor for ReorderGraveyardEffect {
     fn execute(

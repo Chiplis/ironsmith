@@ -118,3 +118,15 @@ path = "tests/suites/suite_22.rs"
 name = "suite_23"
 path = "tests/suites/suite_23.rs"
 # END GENERATED NATIVE TEST SUITES
+
+[[test]]
+name = "effect_refactoring_wiring"
+path = "tests/effect_refactoring_wiring.rs"
+
+[[test]]
+name = "wymi_complete"
+path = "tests/wymi_complete.rs"
+
+[[test]]
+name = "wymi_regressions"
+path = "tests/wymi_regressions.rs"

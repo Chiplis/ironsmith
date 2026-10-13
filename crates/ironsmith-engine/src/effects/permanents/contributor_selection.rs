@@ -13,11 +13,23 @@ pub(super) fn candidates(
     controller: PlayerId,
     allowed: impl Fn(ObjectId) -> bool,
 ) -> Vec<ObjectId> {
+    candidates_with_source_policy(game, source, controller, false, allowed)
+}
+
+/// Crew/Saddle exclude their own permanent; a spell's contributor cost need
+/// not exclude its source explicitly. All contributors must be present and untapped.
+pub(super) fn candidates_with_source_policy(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    allow_source: bool,
+    allowed: impl Fn(ObjectId) -> bool,
+) -> Vec<ObjectId> {
     game.battlefield
         .iter()
         .copied()
         .filter(|&id| {
-            id != source
+            (allow_source || id != source)
                 && game
                     .object(id)
                     .is_some_and(|object| game.controller_of(object) == controller)
@@ -29,23 +41,44 @@ pub(super) fn candidates(
         .collect()
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum ContributionRequirement { AtLeast(u32), Exactly(usize) }
+
 /// Return the selected contributors and whether their captured contribution
 /// meets the threshold. The caller owns alternative payment and completion.
 pub(super) fn select_contributors(
     game: &GameState,
     ctx: &mut ExecutionContext,
-    mut candidates: Vec<ObjectId>,
+    candidates: Vec<ObjectId>,
     required: u32,
     prompt: &str,
     value: impl Fn(ObjectId) -> i32,
 ) -> Option<(Vec<ObjectId>, bool)> {
-    candidates.sort_by_key(|id| std::cmp::Reverse(value(*id)));
+    select_contributors_with_requirement(game, ctx, candidates,
+        ContributionRequirement::AtLeast(required), prompt, value)
+}
+
+pub(super) fn select_contributors_with_requirement(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    mut candidates: Vec<ObjectId>,
+    requirement: ContributionRequirement,
+    prompt: &str,
+    value: impl Fn(ObjectId) -> i32,
+) -> Option<(Vec<ObjectId>, bool)> {
+    let (minimum, maximum) = match requirement {
+        ContributionRequirement::AtLeast(required) => {
+            candidates.sort_by_key(|id| std::cmp::Reverse(value(*id)));
+            (usize::from(required != 0), candidates.len())
+        }
+        ContributionRequirement::Exactly(count) => (count, count),
+    };
     let spec = crate::decisions::specs::ChooseObjectsSpec::new(
         ctx.source,
         prompt,
         candidates.clone(),
-        if required == 0 { 0 } else { 1 },
-        Some(candidates.len()),
+        minimum,
+        Some(maximum),
     );
     let mut chosen = crate::decisions::make_decision(
         game,
@@ -60,6 +93,17 @@ pub(super) fn select_contributors(
     chosen.retain(|id| candidates.contains(id));
     chosen.sort();
     chosen.dedup();
+    if let ContributionRequirement::Exactly(count) = requirement {
+        // Preserve exact-cost fallback: fill an underspecified answer, but an
+        // overspecified answer does not authorize tapping more contributors.
+        for id in candidates {
+            if chosen.len() >= count { break; }
+            if !chosen.contains(&id) { chosen.push(id); }
+        }
+        let sufficient = chosen.len() == count;
+        return Some((chosen, sufficient));
+    }
+    let ContributionRequirement::AtLeast(required) = requirement else { unreachable!() };
     let mut total: i64 = chosen.iter().map(|id| i64::from(value(*id))).sum();
     for id in candidates {
         if total >= i64::from(required) {
@@ -219,4 +263,24 @@ mod tests {
             vec![payer]
         );
     }
+    #[test]
+    fn exact_contributors_filter_invalid_answers_deduplicate_and_fill_without_overpaying() {
+        struct Answer(Vec<ObjectId>);
+        impl crate::decision::DecisionMaker for Answer {
+            fn decide_objects(&mut self, _: &GameState, _: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> { self.0.clone() }
+        }
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let eligible = vec![ObjectId(1), ObjectId(2), ObjectId(3)];
+        for (answer, expected, sufficient) in [
+            (vec![ObjectId(99), ObjectId(2), ObjectId(2)], vec![ObjectId(2), ObjectId(1)], true),
+            (eligible.clone(), eligible.clone(), false),
+            (vec![], vec![ObjectId(1), ObjectId(2)], true),
+        ] {
+            let mut dm = Answer(answer);
+            let mut ctx = ExecutionContext::new(ObjectId(90), PlayerId(0), &mut dm);
+            assert_eq!(select_contributors_with_requirement(&game, &mut ctx, eligible.clone(),
+                ContributionRequirement::Exactly(2), "Contribute", |_| 50), Some((expected, sufficient)));
+        }
+    }
+
 }

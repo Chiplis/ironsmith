@@ -9,15 +9,13 @@ use crate::effect::{Effect, EffectOutcome, OutcomeValue};
 use crate::effects::CompletedEffectOutputs;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule,
-    execute_library_consult_with_outputs,
+    LibraryBottomOrder, LibraryConsultMode,
 };
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
-use crate::target::PlayerFilter;
 use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 
@@ -53,101 +51,17 @@ impl EffectExecutor for DiscoverEffect {
             |game, ctx| {
                 let player_id = resolve_player_filter(game, &self.player, ctx)?;
                 let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-                let all_tag = TagKey::from("__discover_all");
-                let match_tag = TagKey::from("__discover_match");
-                consultation = Some(execute_library_consult_with_outputs(
-                    game,
-                    ctx,
-                    player_id,
-                    LibraryConsultMode::Exile,
-                    LibraryConsultStopRule::FirstMatch,
-                    Some(&all_tag),
-                    Some(&match_tag),
-                    |card, _| {
-                        if card.is_land() {
-                            return false;
-                        }
-                        // CR 709.4: a split card's mana value is both halves' total.
-                        (crate::filter::object_mana_value_for_filter(card).max(0) as u32) <= count
-                    },
-                )?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                let mut selected_object = None;
-                let mut casted_spell = None;
-                let mut phases = Vec::new();
-                if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
-                    && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
-                    && candidate_obj.zone == Zone::Exile
-                {
-                    let candidate_id = candidate_snapshot.object_id;
-
-                    let cast = super::OfferTaggedCast {
-                        tag: match_tag.clone(), player: PlayerFilter::Specific(player_id), zone: Zone::Exile,
-                        spell_filter: crate::target::ObjectFilter::nonland().with_mana_value(
-                            crate::filter::Comparison::LessThanOrEqual(count as i32)),
-                        source_name: None,
-                    }.execute_child_with_outputs(game, ctx)?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
-                    }
-                    selected_object = cast.outcome.objects().and_then(|objects| objects.first()).copied();
-                    let put_in_hand = selected_object.is_none();
-                    if selected_object.is_some() { casted_spell = Some(cast); }
-                    if put_in_hand
-                        && game
-                            .object(candidate_id)
-                            .is_some_and(|object| object.zone == Zone::Exile)
-                    {
-                        let request = crate::effects::zones::PreparedZoneMove::capture(
-                            game,
-                            candidate_id,
-                            Zone::Exile,
-                            Zone::Hand,
-                            ctx.cause.clone(),
-                            None,
-                        );
-                        phases.push(crate::effects::zones::execute_zone_moves_with_outputs(
-                            game,
-                            ctx,
-                            vec![request],
-                            |game, _ctx, receipts| {
-                                let arrivals = crate::effects::zones::movement_arrivals(
-                                    game,
-                                    candidate_id,
-                                    &receipts[0].1,
-                                );
-                                selected_object = arrivals.into_iter().find(|id| {
-                                    game.object(*id)
-                                        .is_some_and(|object| object.zone == Zone::Hand)
-                                });
-                                Ok(selected_object
-                                    .map(|id| EffectOutcome::with_objects(vec![id]))
-                                    .unwrap_or_else(|| EffectOutcome::count(0)))
-                            },
-                        )?);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                    }
-                }
-                let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
-                let cleanup = crate::effects::execute_effect_with_outputs(
-                    game,
-                    &Effect::put_tagged_remainder_on_library_bottom(
-                        all_tag,
-                        keep_tagged,
-                        LibraryBottomOrder::Random,
-                        PlayerFilter::Specific(player_id),
-                    ),
-                    ctx,
-                )?;
+                let program = super::library_cast_program::FirstMatchCastProgram {
+                    player: player_id, all: "__discover_all".into(), matched: "__discover_match".into(),
+                    limit: count, inclusive: true, source_name: None, fallback_to_hand: true,
+                };
+                let Some(receipt) = program.execute(game, ctx, |_, _, _| Ok(None))?
+                else { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); };
+                consultation = Some(receipt.consultation);
+                let selected_object = receipt.selected;
+                let casted_spell = receipt.cast;
+                let mut phases = receipt.fallback.into_iter().collect::<Vec<_>>();
+                let cleanup = receipt.cleanup;
 
                 let value = if let Some(id) = selected_object {
                     OutcomeValue::Objects(vec![id])

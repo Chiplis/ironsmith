@@ -56,7 +56,7 @@ fn live_comparison_excludes_the_candidate_and_reads_copied_types_and_phasing() {
     assert!(!live(false).matches(game.object(candidate).unwrap(), &ctx, &game));
     assert!(live(true).matches(game.object(candidate).unwrap(), &ctx, &game));
     let values = crate::snapshot::CopiableValues::from_object(game.object(candidate).unwrap());
-    ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(donor), Modification::CopyOf {
+    ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(donor), Modification::CopyOf { retain_original_name: false,
         target_id: candidate, copiable_values: Box::new(values), preserve_source_abilities: false,
         name_override: None, name_override_surface: None, add_supertypes: vec![],
     }, Until::EndOfTurn).execute(&mut game, &mut EffectContext::new_default(donor, A)).unwrap();

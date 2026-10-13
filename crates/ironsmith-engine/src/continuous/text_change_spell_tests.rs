@@ -124,7 +124,7 @@ fn frozen_copy_program_is_not_reloaded_from_a_changed_donor() {
     game.object_mut(donor).unwrap().spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::draw(9)]).into());
     let recipient = spell(&mut game, Default::default());
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(donor, A,
-        vec![recipient], Modification::CopyOf { target_id: donor, copiable_values: Box::new(values),
+        vec![recipient], Modification::CopyOf { retain_original_name: false, target_id: donor, copiable_values: Box::new(values),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,
             add_supertypes: vec![] }));
     rewrite(&mut game, recipient, Until::Forever);
@@ -144,7 +144,7 @@ fn missing_historical_program_evidence_never_becomes_known_absence() {
     values.spell_effect = SpellProgramState::Unavailable;
     let recipient = spell(&mut game, Default::default());
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(donor, A,
-        vec![recipient], Modification::CopyOf { target_id: donor, copiable_values: Box::new(values),
+        vec![recipient], Modification::CopyOf { retain_original_name: false, target_id: donor, copiable_values: Box::new(values),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,
             add_supertypes: vec![] }));
     game.refresh_continuous_state().unwrap();
@@ -194,7 +194,7 @@ fn legacy_copy_fixture() -> (GameState, ObjectId, ContinuousEffectId, CopiableVa
     let copied = spell(&mut game, Default::default());
     game.push_to_stack(entry(copied, red));
     let registered = game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
-        donor, A, vec![copied], Modification::CopyOf { target_id: donor, copiable_values: Box::new(missing),
+        donor, A, vec![copied], Modification::CopyOf { retain_original_name: false, target_id: donor, copiable_values: Box::new(missing),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,
             add_supertypes: vec![] }));
     (game, copied, registered, known)
@@ -203,7 +203,7 @@ fn legacy_copy_fixture() -> (GameState, ObjectId, ContinuousEffectId, CopiableVa
 fn restore_known_program(game: &mut GameState, copied: ObjectId, old_effect: ContinuousEffectId, known: CopiableValues) {
     game.effect_store.continuous_effects.remove_effect(old_effect);
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(copied, A,
-        vec![copied], Modification::CopyOf { target_id: copied, copiable_values: Box::new(known),
+        vec![copied], Modification::CopyOf { retain_original_name: false, target_id: copied, copiable_values: Box::new(known),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,
             add_supertypes: vec![] }));
     game.refresh_continuous_state().unwrap();

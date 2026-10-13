@@ -6686,6 +6686,15 @@ pub fn parse_enter_as_copy_as_enters_line(
                 }
                 None => exception_tokens,
             };
+            let exception_tokens = if exception_tokens.is_some_and(|tokens| {
+                let words = parser_token_word_refs(tokens);
+                let words = words.iter().map(|word| word.replace(['\'', '’'], "")).collect::<Vec<_>>();
+                let words = words.iter().map(String::as_str).collect::<Vec<_>>();
+                matches!(words.as_slice(), ["if", "this", "creature", "was", "embalmed", "the", "token", "has", "no", "mana", "cost", "its", "white", "and", "its", "a", "zombie", "in", "addition", "to", "its", "other", "types"])
+            }) {
+                copy_followups.push(ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics);
+                None
+            } else { exception_tokens };
             if let Some(exception_tokens) = exception_tokens {
                 let exception = keyword_static_lines::parse_copy_exception_tokens(exception_tokens)
                     .ok_or_else(|| {
@@ -6704,9 +6713,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                         let remainder = if remainder[0].is_word("and") {
                             trim_lexed_commas(&remainder[1..])
                         } else {
-                            return Err(CardTextError::ParseError(
-                                "unsupported complete enters-as-copy name exception tail".into(),
-                            ));
+                            remainder
                         };
                         // A name exception must not discard a second exception.
                         // Only the already supported complete characteristic

@@ -1454,6 +1454,8 @@ pub struct ChooseNamedOptionAsEntersSpec {
 pub struct PowerToughnessChoiceOption {
     pub power: i32,
     pub toughness: i32,
+    pub card_types: Option<Vec<crate::types::CardType>>,
+    pub added_subtypes: Vec<crate::types::Subtype>,
     pub abilities: Vec<StaticAbility>,
 }
 
@@ -1462,6 +1464,8 @@ impl PowerToughnessChoiceOption {
         Self {
             power,
             toughness,
+            card_types: None,
+            added_subtypes: Vec::new(),
             abilities: Vec::new(),
         }
     }
@@ -1470,6 +1474,8 @@ impl PowerToughnessChoiceOption {
         Self {
             power,
             toughness,
+            card_types: None,
+            added_subtypes: Vec::new(),
             abilities,
         }
     }

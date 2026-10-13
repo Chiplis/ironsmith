@@ -290,6 +290,7 @@ pub enum CompilerReferenceTag {
     It,
     DelegatedLibraryChooser,
     ChosenName,
+    NotedCardName,
     Chosen,
     VotedWithYou,
     VotedAgainstYou,
@@ -469,6 +470,7 @@ impl CompilerReferenceTag {
             Self::It => "__it__",
             Self::DelegatedLibraryChooser => "__delegated_library_chooser__",
             Self::ChosenName => "__chosen_name__",
+            Self::NotedCardName => "__noted_card_name__",
             Self::Chosen => "chosen",
             Self::VotedWithYou => "voted_with_you",
             Self::VotedAgainstYou => "voted_against_you",
@@ -597,7 +599,7 @@ impl CompilerReferenceTag {
             | Self::PhaseOutSelection
             | Self::OutsideGameOrExileSelected
             | Self::BeheldChosenType => (R::Chosen, D::Object),
-            Self::ChosenName | Self::WhereXCommanderManaValue => (R::Chosen, D::Value),
+            Self::ChosenName | Self::NotedCardName | Self::WhereXCommanderManaValue => (R::Chosen, D::Value),
             Self::ChosenForEachPlayer
             | Self::ChosenDiscardingOpponent
             | Self::DivvyOpponent

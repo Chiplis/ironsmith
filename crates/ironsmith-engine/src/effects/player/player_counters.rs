@@ -52,6 +52,39 @@ impl PlayerCountersEffect {
             .with_provenance(ctx.provenance),
         ))
     }
+
+    /// Shared ordinary instruction boundary. Facades retain their own capability
+    /// declarations and decision-controller reset policy.
+    pub(super) fn execute_selected_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let Some(event) = self.selected_counter_event(game, ctx)? else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                crate::effects::counters::execute_player_counter_placement_with_outputs(
+                    game, ctx, event,
+                )
+            },
+        );
+        // Preserve this adapter's existing neutral result for a suspended child,
+        // including a child that failed after opening its decision. The shared
+        // transaction owns rollback; an ordinary failure still propagates.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        result
+    }
 }
 
 impl EffectExecutor for PlayerCountersEffect {
@@ -100,30 +133,7 @@ impl EffectExecutor for PlayerCountersEffect {
             ));
         }
         game.clear_pending_decision_controllers();
-        let result = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let Some(event) = self.selected_counter_event(game, ctx)? else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
-                crate::effects::counters::execute_player_counter_placement_with_outputs(
-                    game, ctx, event,
-                )
-            },
-        );
-        // Preserve this adapter's existing neutral result for a suspended child,
-        // including a child that failed after opening its decision. The shared
-        // transaction owns rollback; an ordinary failure still propagates.
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        result
+        self.execute_selected_with_outputs(game, ctx)
     }
 }
 

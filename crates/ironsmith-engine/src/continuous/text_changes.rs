@@ -265,7 +265,7 @@ mod tests {
         let receiver = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Receiver")
             .card_types(vec![CardType::Creature]).build(), PlayerId::from_index(0), Zone::Battlefield);
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(id, PlayerId::from_index(0),
-            EffectTarget::Specific(receiver), Modification::CopyOf {
+            EffectTarget::Specific(receiver), Modification::CopyOf { retain_original_name: false,
                 target_id: id, copiable_values: Box::new(values), preserve_source_abilities: false,
                 name_override: None, name_override_surface: None, add_supertypes: vec![],
             }));

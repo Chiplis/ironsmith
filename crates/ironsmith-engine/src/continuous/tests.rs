@@ -514,7 +514,7 @@ fn test_pt_sublayer_ordering() {
 #[test]
 fn test_modification_layer() {
     assert_eq!(
-        Modification::CopyOf {
+        Modification::CopyOf { retain_original_name: false,
             target_id: ObjectId::from_raw(1),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: false,
@@ -713,6 +713,7 @@ fn test_ability_granting_counters() {
 
     // Calculate characteristics
     let mut chars = CalculatedCharacteristics {
+        copy_values: None,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
@@ -781,6 +782,7 @@ fn test_multiple_ability_counters() {
     creature.add_counters(CounterType::Vigilance, 1);
 
     let mut chars = CalculatedCharacteristics {
+        copy_values: None,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
@@ -865,6 +867,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
     let printed_flying = StaticAbility::flying();
     let printed_id = printed_flying.instance_id();
     let mut chars = CalculatedCharacteristics {
+        copy_values: None,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
@@ -1361,7 +1364,7 @@ fn check_copy_cost_layer_filter(exact_cost: bool, fallback: bool) {
     let copied_id = game.create_object_from_card(&copied, alice, Zone::Battlefield);
     let values = crate::snapshot::CopiableValues::from_object(game.object(copied_id).unwrap());
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
-        original_id, alice, EffectTarget::Specific(original_id), Modification::CopyOf {
+        original_id, alice, EffectTarget::Specific(original_id), Modification::CopyOf { retain_original_name: false,
             target_id: copied_id, copiable_values: Box::new(values),
             preserve_source_abilities: false, name_override: None,
             name_override_surface: None, add_supertypes: Vec::new(),
@@ -2076,7 +2079,7 @@ fn complete_modification_schema_round_trip_keeps_payloads_and_control_semantics(
     let values = vec![
         literal.clone(),
         relative.clone(),
-        Model::CopyOf {
+        Model::CopyOf { retain_original_name: false,
             target_id: ObjectId::from_raw(99311),
             copiable_values: Box::new("copy with retained abilities and occurrence IDs".into()),
             preserve_source_abilities: true,
@@ -2207,6 +2210,7 @@ fn complete_modification_schema_propagates_nested_payload_failure() {
 #[cfg(feature = "serialization")]
 fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<String> {
     crate::snapshot::RetainedCopiableValues {
+        copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: "Retained characteristics".into(),
         mana_cost: Some(ManaCost::from_symbols(vec![
             ManaSymbol::Generic(3),
@@ -2261,6 +2265,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
         _ => unreachable!(),
     };
     let native = CopiableValues {
+        copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: copy.name,
         mana_cost: copy.mana_cost,
         compiled_card_text: copy.compiled_card_text,

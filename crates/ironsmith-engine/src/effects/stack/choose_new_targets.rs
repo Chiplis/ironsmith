@@ -8,10 +8,8 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::spells::BecomesTargetedEvent;
-use crate::game_state::{GameState, Target};
+use crate::game_state::GameState;
 use crate::targeting::normalize_targets_for_requirements;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ChooseNewTargetsEffect;
 
@@ -112,40 +110,15 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 return Ok(EffectOutcome::target_invalid());
             };
 
-            if game.stack[stack_idx].targets != new_targets {
-                let old_targets = game.stack[stack_idx].targets.clone();
-                let mut updated_entry = game.stack[stack_idx].clone();
-                updated_entry.targets = new_targets;
-                if !updated_entry.remap_target_distributions(&old_targets) {
-                    if self.may {
-                        continue;
-                    }
-                    return Ok(EffectOutcome::target_invalid());
+            match super::retarget_stack_object::commit_retarget(
+                game, entry.target_id(), new_targets, ctx.provenance,
+            ) {
+                Some((did_change, completion)) => {
+                    changed += i32::from(did_change);
+                    events.extend(completion);
                 }
-                game.stack[stack_idx] = updated_entry;
-                game.refresh_cast_spell_lki_for_stack_index(stack_idx);
-                changed += 1;
-                let final_targets = game.stack[stack_idx].targets.clone();
-                game.drop_pending_stale_becomes_targeted_events(
-                    BecomesTargetedEvent::source_for_stack_entry(&entry),
-                    entry.is_ability,
-                    entry.is_ability.then(|| entry.target_id()),
-                    &final_targets,
-                );
-                // Only targets that are new become the target (CR 115.7);
-                // unchanged ones were targeted when the object was created.
-                // Each distinct new target becomes a target once (CR 115.3).
-                let mut newly_targeted: Vec<Target> = Vec::new();
-                for target in &game.stack[stack_idx].targets {
-                    if old_targets.contains(target) || newly_targeted.contains(target) {
-                        continue;
-                    }
-                    newly_targeted.push(*target);
-                    events.push(TriggerEvent::new_with_provenance(
-                        BecomesTargetedEvent::from_stack_entry(*target, &entry).with_participant_snapshots(game),
-                        ctx.provenance,
-                    ));
-                }
+                None if self.may => continue,
+                None => return Ok(EffectOutcome::target_invalid()),
             }
         }
 

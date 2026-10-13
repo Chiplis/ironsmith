@@ -3770,7 +3770,7 @@ mod tests {
                 id,
                 alice,
                 EffectTarget::Specific(id),
-                Modification::CopyOf {
+                Modification::CopyOf { retain_original_name: false,
                     target_id: donor,
                     copiable_values: Box::new(values),
                     preserve_source_abilities: false,

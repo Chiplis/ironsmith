@@ -52,9 +52,17 @@ impl EffectExecutor for CastTaggedEffect {
                 use crate::alternative_cast::CastingMethod;
                 use crate::effects::helpers::resolve_player_filter;
 
-                let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
+                let Some(snapshot) = ctx.get_tagged(self.tag.as_str()).cloned().or_else(|| {
+                    game.object(ctx.source).and_then(|source| source.cast_tagged_objects.get(&self.tag))
+                        .and_then(|objects| objects.first()).cloned()
+                }) else {
                     return Ok(EffectOutcome::target_invalid());
                 };
+                let named_copy = if self.copy_named_definition {
+                    let definition = game.linked_face_definition_by_name_or_id(Some(&snapshot.name), None)
+                        .ok_or_else(|| ExecutionError::IncompleteEvidence(format!("missing printed definition for noted name {}", snapshot.name)))?;
+                    Some(crate::object::Object::from_card_definition(game.new_object_id(), &definition, ctx.controller, Zone::Command))
+                } else { None };
 
                 let first_draw_reference = ctx
                     .triggering_event
@@ -68,7 +76,7 @@ impl EffectExecutor for CastTaggedEffect {
                     });
                 // This exact draw-time link requires retained LKI. Other tagged
                 // copy owners keep their existing reference-following policy.
-                let retained_copy = if self.as_copy
+                let retained_copy = if named_copy.is_some() { named_copy } else if self.as_copy
                     && game.object(snapshot.object_id).is_none()
                     && (first_draw_reference || snapshot.revealed_cast_definition.is_some())
                 {

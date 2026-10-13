@@ -664,3 +664,25 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
     }
     effects
 }
+
+/// A retained name refers to the printed card, even after the associated
+/// object becomes face down or changes zones. The two optional instructions
+/// have the same observable result as one optional cast of that card's copy.
+pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<EffectAst>> {
+    let [copy, cast] = sentences else { return None; };
+    let copy_words = crate::lexer::parser_token_word_refs(copy.lowered());
+    if copy_words != ["you", "may", "copy", "the", "card", "with", "the", "noted", "name"] { return None; }
+    let cast_words = crate::lexer::parser_token_word_refs(cast.lowered());
+    if cast_words != ["you", "may", "cast", "the", "copy", "without", "paying", "its", "mana", "cost"] { return None; }
+    Some(vec![build_may_cast_tagged_effect(&MayCastTaggedSpec {
+        tag: CompilerReferenceTag::NotedCardName.key(),
+        alternative_cost: None,
+        player: PlayerAst::You,
+        verb: crate::activation_and_restrictions::trigger_subject_filters::MayCastItVerb::Cast,
+        as_copy: true,
+        without_paying_mana_cost: true,
+        copy_instruction_surface: None,
+        predicate: None,
+        cost_reduction: None,
+    })])
+}

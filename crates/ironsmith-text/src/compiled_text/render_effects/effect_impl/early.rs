@@ -7837,7 +7837,9 @@ if filter.zone == Some(Zone::Hand)
             || crate::cards::is_sentence_helper_tag(tag, "searched")
             || crate::cards::is_sentence_helper_tag(tag, "consult_match");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
-        let target = if cast_tagged.as_copy {
+        let target = if cast_tagged.copy_named_definition {
+            "a copy of the card with the noted name".to_string()
+        } else if cast_tagged.as_copy {
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
                 !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
             });

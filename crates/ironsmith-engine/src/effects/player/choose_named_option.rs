@@ -1,6 +1,6 @@
 //! Choose one named option and store it on the source object.
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -27,27 +27,12 @@ impl EffectExecutor for ChooseNamedOptionEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let options = self
-            .options
-            .iter()
-            .enumerate()
-            .map(|(idx, option)| SelectableOption::new(idx, option.clone()))
-            .collect::<Vec<_>>();
-        let choice_ctx =
-            SelectOptionsContext::new(chooser, Some(ctx.source), "Choose one", options, 1, 1);
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(chosen) = selected
-            .into_iter()
-            .next()
-            .filter(|idx| *idx < self.options.len())
-        else {
+        let menu = self.options.iter().map(|value| (value.clone(), value.clone())).collect::<Vec<_>>();
+        let Some(chosen) = select_typed_option(game, ctx, chooser, "Choose one", &menu, SingleChoicePolicy::First)? else {
             return Ok(EffectOutcome::count(0));
         };
-        game.set_chosen_named_option(ctx.source, self.options[chosen].clone());
-        let outcome = self.options[chosen].parse::<i32>().unwrap_or(1);
+        let outcome = chosen.parse::<i32>().unwrap_or(1);
+        game.set_chosen_named_option(ctx.source, chosen);
         Ok(EffectOutcome::count(outcome))
     }
 }

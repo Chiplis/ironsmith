@@ -126,10 +126,10 @@ impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
                 }, ReplacementAction::Redirect { target, which: RedirectWhich::First });
             match scope.mode {
                 ironsmith_core::ReplacementApplyMode::UntilEndOfTurn => {
-                    game.effect_store.replacement_effects.add_until_end_of_turn_effect(replacement);
+                    crate::effects::ApplyReplacementEffect::until_end_of_turn(replacement).execute(game, ctx)?;
                 }
                 ironsmith_core::ReplacementApplyMode::UntilYourNextTurn => {
-                    game.effect_store.replacement_effects.add_until_next_turn_effect(replacement, ctx.controller, game.turn.turn_number);
+                    crate::effects::ApplyReplacementEffect { effect: replacement, mode: scope.mode }.execute(game, ctx)?;
                 }
                 _ => return Err(ExecutionError::InternalError("all-damage redirect requires an explicit bounded duration".into())),
             }
@@ -152,9 +152,7 @@ impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
                 which: RedirectWhich::First,
             },
         );
-        game.effect_store
-            .replacement_effects
-            .add_until_end_of_turn_effect(replacement);
+        crate::effects::ApplyReplacementEffect::until_end_of_turn(replacement).execute(game, ctx)?;
         Ok(EffectOutcome::resolved())
     }
 
@@ -254,45 +252,13 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
                 DamageSourceConstraint::Specific(source)
             }
             RedirectNextTimeDamageSource::Choice => {
-                let mut candidates = Vec::new();
-                candidates.extend(game.stack.iter().map(|entry| entry.object_id));
-                candidates.extend(game.battlefield.iter().copied());
-                candidates.sort_by_key(|id| id.0);
-                candidates.dedup();
-
-                if candidates.is_empty() {
-                    return Ok(EffectOutcome::resolved());
-                }
-
-                let selectable = candidates
-                    .iter()
-                    .copied()
-                    .map(|id| {
-                        let name = game
-                            .object(id)
-                            .map(|object| object.name.to_string())
-                            .unwrap_or_else(|| format!("object {}", id.0));
-                        crate::decisions::context::SelectableObject::new(id, name)
-                    })
-                    .collect::<Vec<_>>();
-                let select_ctx = crate::decisions::context::SelectObjectsContext::new(
-                    ctx.controller,
-                    Some(ctx.source),
-                    "Choose a source",
-                    selectable,
-                    1,
-                    Some(1),
-                );
-                let chosen = ctx
-                    .decision_maker
-                    .decide_objects(game, &select_ctx)
-                    .into_iter()
-                    .find(|id| candidates.contains(id));
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let Some(chosen) = chosen else {
-                    return Ok(EffectOutcome::count(0));
+                use crate::effects::combat::prevention_helpers::{
+                    choose_source_of_your_choice, SourceChoiceSelection,
+                };
+                let chosen = match choose_source_of_your_choice(game, ctx) {
+                    SourceChoiceSelection::Chosen(source) => source,
+                    SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
+                    SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
                 };
                 DamageSourceConstraint::Specific(chosen)
             }
@@ -335,9 +301,7 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             DamageSourceToSpecificTargetMatcher { source: source_constraint, recipient, combat_only: self.combat_only },
             ReplacementAction::Redirect { target: redirect_target, which: RedirectWhich::First });
         if self.all_this_turn {
-            game.effect_store
-                .replacement_effects
-                .add_until_end_of_turn_effect(replacement);
+            crate::effects::ApplyReplacementEffect::until_end_of_turn(replacement).execute(game, ctx)?;
         } else {
             game.effect_store
                 .replacement_effects

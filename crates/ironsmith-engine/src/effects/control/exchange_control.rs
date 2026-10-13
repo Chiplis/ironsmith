@@ -1,10 +1,9 @@
 //! Exchange control effect implementation.
 
-use crate::continuous::{EffectTarget, Modification};
-use crate::effect::{Effect, EffectOutcome, Until};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_single_object_for_effect};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::EffectExecutor;
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -153,22 +152,10 @@ impl EffectExecutor for ExchangeControlEffect {
                 return Ok(EffectOutcome::resolved());
             }
 
-            let effect1 = ApplyContinuousEffect::new(
-                EffectTarget::Specific(perm1_id),
-                Modification::ChangeController(c2),
-                Until::Forever,
-            );
-
-            let effect2 = ApplyContinuousEffect::new(
-                EffectTarget::Specific(perm2_id),
-                Modification::ChangeController(c1),
-                Until::Forever,
-            );
-
-            let outcomes = vec![
-                execute_effect(game, &Effect::new(effect1), ctx)?,
-                execute_effect(game, &Effect::new(effect2), ctx)?,
-            ];
+            let outcomes = crate::effects::continuous::commit_control_assignments(
+                game, ctx, &[(perm1_id, c2), (perm2_id, c1)],
+                crate::effects::continuous::ControlAssignmentPolicy::AllOrNothing,
+            )?;
 
             Ok(EffectOutcome::aggregate(outcomes))
         } else {
@@ -194,6 +181,8 @@ impl EffectExecutor for ExchangeControlEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::Effect;
+    use crate::effects::execute_effect;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};

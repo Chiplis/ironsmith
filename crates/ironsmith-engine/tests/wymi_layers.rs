@@ -3,6 +3,8 @@
 //! audit, not a complete port of all 261 active source tests. Wymi's intermediate
 //! representation is deliberately not reproduced: assertions use real runtime
 //! copy, face-down and merge operations, including copying the result again.
+//! The full indexed source port lives in ironsmith-compiler-runtime/tests/wymi_complete.rs;
+//! fixtures/wymi/README.md records its scope and representation adaptations.
 use ironsmith::EffectContext as ExecutionContext;
 use ironsmith::ability::{Ability, AbilityKind};
 use ironsmith::card::PowerToughness;

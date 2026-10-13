@@ -243,7 +243,7 @@ fn source_cdas_precede_older_color_effects_and_copies_keep_that_order() {
             assert_eq!(color(&game, original), ColorSet::BLUE, "CDA precedes the older ordinary setter");
             let copy = permanent(&mut game, A, ColorSet::RED, Subtype::Shapeshifter);
             let values = CopiableValues::from_object(game.object(original).unwrap());
-            static_effect(&mut game, copy, EffectTarget::Source, Modification::CopyOf {
+            static_effect(&mut game, copy, EffectTarget::Source, Modification::CopyOf { retain_original_name: false,
                 target_id: original, copiable_values: Box::new(values), preserve_source_abilities: false,
                 name_override: None, name_override_surface: None, add_supertypes: vec![],
             });

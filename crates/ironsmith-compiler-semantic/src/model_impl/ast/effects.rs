@@ -2918,6 +2918,7 @@ impl EffectAst {
         set_base_power_toughness: Option<(Value, Value)>,
         copy_exception_surface: Option<String>,
         retain_source_colors: bool,
+        copy_ability_absent_marker: Option<String>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2940,6 +2941,7 @@ impl EffectAst {
                 set_base_power_toughness,
                 copy_exception_surface,
                 retain_source_colors,
+                copy_ability_absent_marker,
             }),
         )
     }

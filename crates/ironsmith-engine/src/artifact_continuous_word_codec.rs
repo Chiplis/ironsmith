@@ -180,6 +180,9 @@ fn encode_runtime_modification(modification: RuntimeModification)
         RuntimeModification::RemoveAllAbilities => W::RemoveAllAbilities,
         RuntimeModification::RemoveThisAbility => W::RemoveThisAbility,
         RuntimeModification::RetainSourceColors => W::RetainSourceColors,
+        RuntimeModification::ClearCopyManaCost => W::ClearCopyManaCost,
+        RuntimeModification::RetainSourceName => W::RetainSourceName,
+        RuntimeModification::CopyAbilityAbsent(marker) => W::CopyAbilityAbsent(marker.clone()),
         RuntimeModification::SetAuraAttachmentFilter(filter) => W::SetAuraAttachmentFilter(filter),
         RuntimeModification::ModifyPower { .. } | RuntimeModification::ModifyToughness { .. } => {
             return Err(unsupported("single-axis runtime P/T modification has no exact compiled variant"));
@@ -350,7 +353,7 @@ mod tests {
 
     #[test]
     fn native_frozen_copy_and_explicit_acquisition_state_are_reported_as_holds() {
-        let frozen = ApplyContinuousEffect::new(EffectTarget::Source, Modification::CopyOf {
+        let frozen = ApplyContinuousEffect::new(EffectTarget::Source, Modification::CopyOf { retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(55),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: true, name_override: None, name_override_surface: None,

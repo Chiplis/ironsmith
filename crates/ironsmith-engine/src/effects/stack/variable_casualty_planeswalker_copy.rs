@@ -3,49 +3,28 @@
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::snapshot::ObjectSnapshot;
-use crate::types::{CardType, Supertype};
+use crate::types::Supertype;
+#[cfg(test)]
+use crate::types::CardType;
 
 pub type VariableCasualtyPlaneswalkerCopyEffect =
     ironsmith_core::VariableCasualtyPlaneswalkerCopyEffect;
 
-/// The creature sacrificed for the casualty cost while the spell was cast
-/// (CR 702.153a: the sacrifice is an additional cost, 601.2f-h). Spell-cost
-/// sacrifices are recorded under a typed optional-cost receipt binding on the spell.
-fn casualty_sacrificed_creature<'a>(
-    game: &'a GameState,
-    ctx: &'a ExecutionContext,
-    cost_ref: &crate::cost::OptionalCostRef,
-) -> Option<&'a ObjectSnapshot> {
-    let receipt = ironsmith_core::tag::optional_cost_sacrifice_receipt(cost_ref);
-    let from_tags =
-        |tags: &'a std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>| {
-            tags.get(&receipt)?
-                .iter()
-                .find(|snapshot| snapshot.card_types.contains(&CardType::Creature))
-        };
-    from_tags(&ctx.tagged_objects).or_else(|| {
-        game.object(ctx.source)
-            .and_then(|spell| from_tags(&spell.cast_tagged_objects))
-            .or_else(|| {
-                game.turn_store
-                    .cast_spell_lki
-                    .get(&ctx.source)
-                    .and_then(|lki| from_tags(&lki.0.cast_tagged_objects))
-            })
-    })
-}
-
 impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
     fn canonical_program(&self) -> Option<crate::effect::Effect> {
+        const POWER: crate::effect::EffectId = crate::effect::EffectId(0xFFFF_FD02);
         Some(crate::effect::Effect::new(
-            crate::effects::CopySpellEffect::single(crate::target::ChooseSpec::Source)
-                .removed_supertype(Supertype::Legendary)
-                .with_set_base_loyalty(crate::effect::Value::PowerOf(Box::new(
-                    crate::target::ChooseSpec::tagged(
-                        ironsmith_core::tag::optional_cost_sacrifice_receipt(&self.cost_ref),
-                    ),
-                ))),
+            crate::effects::composition::receipt_binding::WithOptionalCostPower {
+                cost_ref: self.cost_ref.clone(),
+                result: POWER,
+                body: crate::effect::Effect::new(
+                    crate::effects::CopySpellEffect::single(crate::target::ChooseSpec::Source)
+                        .removed_supertype(Supertype::Legendary)
+                        .with_set_base_loyalty(crate::effect::Value::EffectValue(POWER)),
+                ),
+            },
         ))
     }
 
@@ -54,17 +33,7 @@ impl EffectExecutor for VariableCasualtyPlaneswalkerCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // The copy's starting loyalty is the sacrificed creature's power as it
-        // last existed on the battlefield.
-        let Some(sacrificed) = casualty_sacrificed_creature(game, ctx, &self.cost_ref) else {
-            return Ok(EffectOutcome::impossible());
-        };
-        let loyalty = sacrificed.power.unwrap_or(0).max(0) as u32;
-
-        crate::effects::CopySpellEffect::single(crate::target::ChooseSpec::Source)
-            .removed_supertype(Supertype::Legendary)
-            .with_set_base_loyalty(loyalty)
-            .execute(game, ctx)
+        self.canonical_program().expect("receipt-bound copy program").0.execute(game, ctx)
     }
 }
 
@@ -231,4 +200,35 @@ mod tests {
         let second = crate::object::Object::spell_copy_of(&copy, game.new_object_id(), player);
         assert_eq!(second.base_loyalty, Some(7));
     }
+    #[test]
+    fn canonical_and_direct_copy_bind_the_same_printed_receipt_and_restore_x() {
+        for canonical in [false, true] {
+            for live_receipt in [false, true] {
+                let mut game = crate::tests::test_helpers::setup_two_player_game();
+                let player = PlayerId(0);
+                let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Receipt copy")
+                    .card_types(vec![CardType::Planeswalker]).supertypes(vec![Supertype::Legendary]).build(), player, Zone::Stack);
+                game.stack.push(StackEntry::new(source, player));
+                let creature = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Payment")
+                    .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(7, 7)).build(), player, Zone::Battlefield);
+                let receipt = ObjectSnapshot::from_object(game.object(creature).unwrap(), &game);
+                let reference = crate::cost::OptionalCostRef::with_discriminator(ironsmith_core::OptionalCostKind::Casualty, "printed-1");
+                let key = ironsmith_core::tag::optional_cost_sacrifice_receipt(&reference);
+                let effect = VariableCasualtyPlaneswalkerCopyEffect::new().with_cost_ref(reference);
+                let mut ctx = ExecutionContext::new_default(source, player).with_x(42);
+                ctx.store_outcome(crate::effect::EffectId(0xFFFF_FD02), EffectOutcome::count(99));
+                let missing = if canonical { effect.canonical_program().unwrap().0.execute(&mut game, &mut ctx) }
+                    else { effect.execute(&mut game, &mut ctx) }.unwrap();
+                assert!(missing.objects().is_none());
+                if live_receipt { game.object_mut(source).unwrap().cast_tagged_objects.insert(key, vec![receipt]); }
+                else { ctx.set_tagged_objects(key, vec![receipt]); }
+                let copied = if canonical { effect.canonical_program().unwrap().0.execute(&mut game, &mut ctx) }
+                    else { effect.execute(&mut game, &mut ctx) }.unwrap();
+                assert_eq!(game.object(copied.objects().unwrap()[0]).unwrap().base_loyalty, Some(7));
+                assert_eq!(ctx.x_value, Some(42));
+                assert_eq!(ctx.get_outcome(crate::effect::EffectId(0xFFFF_FD02)).unwrap().count_or_zero(), 99);
+            }
+        }
+    }
+
 }

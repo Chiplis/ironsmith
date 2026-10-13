@@ -1046,7 +1046,7 @@ mod emerge {
         let mut dm = SelectFirstDecisionMaker;
         ironsmith::effects::ApplyContinuousEffect::new(
             ironsmith::continuous::EffectTarget::Specific(small),
-            ironsmith::continuous::Modification::CopyOf {
+            ironsmith::continuous::Modification::CopyOf { retain_original_name: false,
                 target_id: big,
                 copiable_values: Box::new(copiable),
                 preserve_source_abilities: false,

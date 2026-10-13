@@ -1,12 +1,8 @@
 //! Add mana of any color effect implementation.
 
-use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outputs,
-};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
@@ -66,42 +62,9 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-
-        if amount == 0 {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-
-        let colors = choose_mana_colors(
-            game,
-            ctx,
-            player_id,
-            amount,
-            false,
-            self.distinct_colors,
-            self.available_colors.as_deref(),
-            Color::Green,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let symbols = colors
-            .into_iter()
-            .map(ManaSymbol::from_color)
-            .collect::<Vec<_>>();
-        let symbols = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-
-        Ok(mana_added_count_outputs(
-            ctx,
-            player_id,
-            symbols,
-            amount as i32,
-        ))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::AuthoredCount, if self.available_colors.is_none() { ManaChoiceMenu::AnyColor } else { ManaChoiceMenu::AvailableColors })
     }
 
     fn producible_mana_symbols(

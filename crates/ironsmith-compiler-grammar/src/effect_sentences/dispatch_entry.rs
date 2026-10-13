@@ -2181,6 +2181,9 @@ fn into_exact_single_conditional(mut parsed: Vec<EffectAst>) -> Option<EffectAst
 pub(super) fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::copy_cast_procedure::noted_name_copy_cast(&sentences) {
+        return Ok(effects);
+    }
     fn bind_definite_player_damage_to_carried_participant(
         carried_context: CarryContext,
         sentence_tokens: &[OwnedLexToken],
@@ -4396,6 +4399,7 @@ fn push_plain_iterated_copy_of_it(effects: &mut Vec<EffectAst>) {
         None,
         None,
         false,
+        None,
     ));
 }
 

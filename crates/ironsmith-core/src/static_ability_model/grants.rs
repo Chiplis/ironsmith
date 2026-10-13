@@ -1112,6 +1112,9 @@ pub enum EnterAsCopyFollowup {
     /// CR 707.9b): the copy keeps the entering object's own colors. Applied as
     /// the copy's copiable values are set, not as a later effect.
     RetainOwnColors,
+    /// Apply the embalm copy exceptions only if the entering token was embalmed.
+    RetainEmbalmCharacteristics,
+
 }
 
 /// One conditional counter batch for an enter-as-copy replacement.

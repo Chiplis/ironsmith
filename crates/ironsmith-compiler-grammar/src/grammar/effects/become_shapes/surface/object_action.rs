@@ -170,6 +170,20 @@ pub fn parse_become_copy_exception_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomeCopyExceptionShape> {
     let tokens = trim_lexed_commas(tokens);
+    // CR 707.9f: test the would-be copy, before granting this ability.
+    if let Some(index) = tokens.iter().position(|token| token.as_word() == Some("if")) {
+        let predicate = parser_token_word_refs(&tokens[index..]);
+        let missing = match predicate.as_slice() {
+            ["if", "it", "doesn't" | "doesnt", "have", missing @ ..]
+            | ["if", "it", "does", "not", "have", missing @ ..] => missing,
+            _ => return None,
+        };
+        if missing.len() != 1 { return None; }
+        let mut shape = parse_become_copy_exception_shape(&tokens[..index])?;
+        if shape.granted_ability_tokens.is_none() { return None; }
+        shape.copy_ability_absent_marker = Some(missing[0].to_string());
+        return Some(shape);
+    }
     // "it doesn't copy that creature's color [and <more exceptions>]"
     // (Vesuvan Doppelganger, CR 707.9b): the copy keeps its own colors.
     if let Some((_, rest)) = primitives::strip_lexed_prefix_phrases(

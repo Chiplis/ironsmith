@@ -135,19 +135,22 @@ pub(crate) fn choose_mana_colors(
         return Ok(vec![*color; count as usize]);
     }
 
+    // A single-color menu asks for one color; the planned witness above still
+    // describes the full production, and normalization below repeats it.
+    let prompt_count = if same_color { 1 } else { count };
     let spec = if let Some(colors) = effective_available.as_deref() {
         if colors.is_empty() {
             return Ok(vec![fallback; count as usize]);
         }
         if distinct_colors && !same_color {
-            ManaColorsSpec::restricted_different_colors(ctx.source, count, colors.to_vec())
+            ManaColorsSpec::restricted_different_colors(ctx.source, prompt_count, colors.to_vec())
         } else {
-            ManaColorsSpec::restricted(ctx.source, count, same_color, colors.to_vec())
+            ManaColorsSpec::restricted(ctx.source, prompt_count, same_color, colors.to_vec())
         }
     } else if distinct_colors && !same_color {
         ManaColorsSpec::different_colors(ctx.source, count)
     } else {
-        ManaColorsSpec::any_color(ctx.source, count, same_color)
+        ManaColorsSpec::any_color(ctx.source, prompt_count, same_color)
     };
 
     let mut chosen = make_decision(
@@ -395,21 +398,6 @@ fn commit_mana_result(
             "mana commit requires a flattened replacement result".into(),
         )),
     }
-}
-
-pub(crate) fn credit_repeated_mana_symbol_from_context(
-    game: &mut GameState,
-    player_id: PlayerId,
-    symbol: ManaSymbol,
-    count: u32,
-    ctx: &mut ExecutionContext,
-) -> Result<ManaCreditReceipt, crate::effects::ExecutionError> {
-    credit_mana_symbols_from_context(
-        game,
-        player_id,
-        std::iter::repeat_n(symbol, count as usize),
-        ctx,
-    )
 }
 
 /// Choose one or more mana symbols through the decision system with stable

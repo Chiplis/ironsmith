@@ -1013,7 +1013,7 @@ impl CardDefinitionBuilder {
             )
             .set_colors(crate::color::ColorSet::WHITE)
             .added_subtype(crate::types::Subtype::Zombie)
-            .without_mana_cost(),
+            .without_mana_cost().created_by(ironsmith_core::effect::TokenCreationMethod::Embalm),
         );
 
         self.with_ability(crate::ability::Ability {

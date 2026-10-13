@@ -192,7 +192,8 @@ pub(crate) fn rewrite_runtime_modification_words(
         }
         RuntimeModification::ChangeControllerToEffectController
         | RuntimeModification::RemoveAllAbilities | RuntimeModification::RemoveThisAbility
-        | RuntimeModification::RetainSourceColors => {}
+        | RuntimeModification::RetainSourceColors | RuntimeModification::ClearCopyManaCost | RuntimeModification::RetainSourceName
+        | RuntimeModification::CopyAbilityAbsent(_) => {}
     }
     // Name overrides, display-only copy-exception text, preserve flags, source
     // references and supertype exceptions remain verbatim through cloning.
@@ -267,7 +268,7 @@ mod tests {
             ])),
             ..Default::default()
         };
-        let original = Modification::CopyOf {
+        let original = Modification::CopyOf { retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(21), copiable_values: Box::new(values.clone()),
             preserve_source_abilities: true, name_override: Some("Black Knight".into()),
             name_override_surface: None, add_supertypes: vec![ironsmith_core::Supertype::Legendary],
@@ -281,7 +282,7 @@ mod tests {
         assert_eq!(name_override.as_deref(), Some("Black Knight"));
         let crate::snapshot::SpellProgramState::Present(program) = &copiable_values.spell_effect else { unreachable!() };
         assert_eq!(program[0].downcast_ref::<DrawCardsEffect>().unwrap().count, Value::Count(black()));
-        let unavailable = Modification::CopyOf {
+        let unavailable = Modification::CopyOf { retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(22),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,

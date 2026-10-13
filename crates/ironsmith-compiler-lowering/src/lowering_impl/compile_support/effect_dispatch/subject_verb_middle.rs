@@ -311,7 +311,6 @@ pub(super) fn compile_create_token_with_mods_action(
     if attached_to.is_some() {
         effect = effect.suppress_aura_attachment_choice();
     }
-    let mut effect = Effect::new(effect);
     let resolved_dynamic_pt = dynamic_power_toughness
         .as_ref()
         .map(|(power, toughness)| {
@@ -323,12 +322,14 @@ pub(super) fn compile_create_token_with_mods_action(
             ))
         })
         .transpose()?;
+    effect.dynamic_power_toughness = resolved_dynamic_pt;
+    let mut effect = Effect::new(effect);
     let resolved_attached_to = attached_to
         .as_ref()
         .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
         .transpose()?;
     let needs_created_tag =
-        ctx.auto_tag_object_targets || attached_to.is_some() || resolved_dynamic_pt.is_some();
+        ctx.auto_tag_object_targets || attached_to.is_some();
     let mut created_tag: Option<TagKey> = None;
     if needs_created_tag {
         let tag = super::reserved_or_fresh_result_tag(ctx, "created");
@@ -340,28 +341,6 @@ pub(super) fn compile_create_token_with_mods_action(
     let mut compiled = subject.resolution_prelude();
     compiled.extend(value_target_prelude);
     compiled.push(effect);
-    if let Some((power, toughness)) = resolved_dynamic_pt {
-        let Some(created_tag) = created_tag.clone() else {
-            return Err(CardTextError::InvariantViolation(
-                "dynamic token pt requires created token tag to be present".to_string(),
-            ));
-        };
-        compiled.extend(
-            compile_effect_for_target(
-                &TargetAst::Tagged(crate::tag::TagRef::of(created_tag.clone()), None),
-                ctx,
-                |spec| {
-                    Effect::set_base_power_toughness(
-                        power.clone(),
-                        toughness.clone(),
-                        spec,
-                        Until::Forever,
-                    )
-                },
-            )?
-            .0,
-        );
-    }
     if let Some((target_spec, target_choices)) = resolved_attached_to {
         for choice in target_choices {
             push_choice(&mut choices, choice);
@@ -3826,7 +3805,6 @@ pub(super) fn compile_subject_verb_middle(
             if attached_to.is_some() {
                 effect = effect.suppress_aura_attachment_choice();
             }
-            let mut effect = Effect::new(effect);
             let resolved_dynamic_pt = dynamic_power_toughness
                 .as_ref()
                 .map(|(power, toughness)| {
@@ -3838,13 +3816,13 @@ pub(super) fn compile_subject_verb_middle(
                     ))
                 })
                 .transpose()?;
+            effect.dynamic_power_toughness = resolved_dynamic_pt;
+            let mut effect = Effect::new(effect);
             let resolved_attached_to = attached_to
                 .as_ref()
                 .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
                 .transpose()?;
-            let needs_created_tag = ctx.auto_tag_object_targets
-                || attached_to.is_some()
-                || resolved_dynamic_pt.is_some();
+            let needs_created_tag = ctx.auto_tag_object_targets || attached_to.is_some();
             let mut created_tag: Option<TagKey> = None;
             if needs_created_tag {
                 let tag = super::reserved_or_fresh_result_tag(ctx, "created");
@@ -3855,28 +3833,6 @@ pub(super) fn compile_subject_verb_middle(
 
             let mut compiled = subject.resolution_prelude();
             compiled.push(effect);
-            if let Some((power, toughness)) = resolved_dynamic_pt {
-                let Some(created_tag) = created_tag.clone() else {
-                    return Err(CardTextError::InvariantViolation(
-                        "dynamic token pt requires created token tag to be present".to_string(),
-                    ));
-                };
-                compiled.extend(
-                    compile_effect_for_target(
-                        &TargetAst::Tagged(crate::tag::TagRef::of(created_tag.clone()), None),
-                        ctx,
-                        |spec| {
-                            Effect::set_base_power_toughness(
-                                power.clone(),
-                                toughness.clone(),
-                                spec,
-                                Until::Forever,
-                            )
-                        },
-                    )?
-                    .0,
-                );
-            }
             if let Some((target_spec, target_choices)) = resolved_attached_to {
                 for choice in target_choices {
                     push_choice(&mut choices, choice);

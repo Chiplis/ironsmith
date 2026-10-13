@@ -821,3 +821,23 @@ fn simultaneous_ticket_counters_stop_and_replay_after_each_recipient() {
     }
 }
 
+
+#[test]
+fn fixed_kind_counter_adapters_keep_zero_and_unsigned_amount_range() {
+    for count in [crate::effect::Value::Fixed(0), crate::effect::Value::Add(
+        Box::new(crate::effect::Value::Fixed(i32::MAX)), Box::new(crate::effect::Value::Fixed(1)))] {
+        let expected = if matches!(count, crate::effect::Value::Fixed(0)) { 0 } else { 2_147_483_648 };
+        for (kind, effect) in [
+            (CounterType::Energy, Box::new(EnergyCountersEffect::you(count.clone())) as Box<dyn EffectExecutor>),
+            (CounterType::Experience, Box::new(ExperienceCountersEffect::you(count.clone()))),
+            (CounterType::Poison, Box::new(PoisonCountersEffect::you(count.clone()))),
+        ] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let player = PlayerId(0);
+            let source = game.new_object_id();
+            effect.execute(&mut game, &mut ExecutionContext::new_default(source, player)).unwrap();
+            assert_eq!(game.player(player).unwrap().counter_count(kind), expected);
+            assert!(!effect.supports_simultaneous_player_action());
+        }
+    }
+}

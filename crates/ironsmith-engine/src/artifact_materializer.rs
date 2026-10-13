@@ -935,6 +935,9 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             wire::WireRuntimeModification::RemoveThisAbility => {
                 crate::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            wire::WireRuntimeModification::ClearCopyManaCost => crate::effects::continuous::RuntimeModification::ClearCopyManaCost,
+            wire::WireRuntimeModification::RetainSourceName => crate::effects::continuous::RuntimeModification::RetainSourceName,
+            wire::WireRuntimeModification::CopyAbilityAbsent(marker) => crate::effects::continuous::RuntimeModification::CopyAbilityAbsent(marker.clone()),
             wire::WireRuntimeModification::RetainSourceColors => {
                 crate::effects::continuous::RuntimeModification::RetainSourceColors
             }
@@ -1718,7 +1721,7 @@ pub fn encode_runtime_effect(
 
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
-            token, text_roles, count, controller, controller_target, use_source_chosen_color,
+            token, text_roles, dynamic_power_toughness, count, controller, controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
             enters_attacking, attack_target_mode, enters_blocking,
@@ -1727,7 +1730,7 @@ pub fn encode_runtime_effect(
             next_end_step_player, link_source_exiled_this_resolution,
         } = payload.clone();
         let converted = ironsmith_core::CreateTokenEffect {
-            token: encode_runtime_definition(token)?, text_roles, count, controller,
+            token: encode_runtime_definition(token)?, text_roles, dynamic_power_toughness, count, controller,
             controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
@@ -1860,17 +1863,19 @@ pub fn restore_runtime_ability(
 /// Encode every copy characteristic and executable ability model.
 pub fn encode_runtime_copy_values(
     values: crate::snapshot::CopiableValues,
-) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>, RuntimePayloadEncodingError>
+) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect, wire::WireCost>, RuntimePayloadEncodingError>
 {
     crate::snapshot::RetainedCopiableValues::from(values).try_map_abilities(encode_runtime_ability)?
-        .try_map_effects(encode_runtime_effect)
+        .try_map_effects(encode_runtime_effect)?
+        .try_map_costs(encode_runtime_cost)
 }
 
 pub fn restore_runtime_copy_values(
-    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>,
+    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect, wire::WireCost>,
 ) -> Result<crate::snapshot::CopiableValues, ArtifactMaterializationError> {
     values
         .try_map_abilities(restore_runtime_ability)?
+        .try_map_costs(runtime_cost_from_core_model)?
         .try_map_effects(materialize_effect)
         .map(Into::into)
 }

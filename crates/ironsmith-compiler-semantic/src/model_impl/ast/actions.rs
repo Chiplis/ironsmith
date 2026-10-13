@@ -1797,6 +1797,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 set_base_power_toughness,
                 copy_exception_surface,
                 retain_source_colors,
+                copy_ability_absent_marker,
             }) => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -1816,6 +1817,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("set_base_power_toughness", set_base_power_toughness)
                 .field("copy_exception_surface", copy_exception_surface)
                 .field("retain_source_colors", retain_source_colors)
+                .field("copy_ability_absent_marker", copy_ability_absent_marker)
                 .finish(),
             Self::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,

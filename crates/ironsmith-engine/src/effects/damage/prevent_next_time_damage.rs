@@ -14,7 +14,6 @@ use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
 use crate::events::traits::ReplacementMatcher as _;
-use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
@@ -179,54 +178,19 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             }
             choice @ (PreventNextTimeDamageSource::Choice
             | PreventNextTimeDamageSource::ChoiceMatching(_)) => {
-                // Choose from a pragmatic union of likely "sources": stack objects + permanents.
-                // This is not perfect MTG coverage, but it captures the primary gameplay cases.
-                let mut candidates = Vec::new();
-                candidates.extend(game.stack.iter().map(|e| e.object_id));
-                candidates.extend(game.battlefield.iter().copied());
-                candidates.sort_by_key(|id| id.0);
-                candidates.dedup();
-                if let PreventNextTimeDamageSource::ChoiceMatching(filter) = choice {
-                    let filter_ctx = ctx.filter_context(game);
-                    candidates.retain(|id| {
-                        game.object(*id)
-                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-                    });
-                }
-
-                if candidates.is_empty() {
-                    return Ok(EffectOutcome::resolved());
-                }
-
-                let selectable = candidates
-                    .iter()
-                    .copied()
-                    .map(|id| {
-                        let name = game
-                            .object(id)
-                            .map(|o| o.name.to_string())
-                            .unwrap_or_else(|| format!("object {}", id.0));
-                        crate::decisions::context::SelectableObject::new(id, name)
-                    })
-                    .collect::<Vec<_>>();
-                let select_ctx = crate::decisions::context::SelectObjectsContext::new(
-                    ctx.controller,
-                    Some(ctx.source),
-                    "Choose a source",
-                    selectable,
-                    1,
-                    Some(1),
-                );
-                let chosen = ctx
-                    .decision_maker
-                    .decide_objects(game, &select_ctx)
-                    .into_iter()
-                    .find(|id| candidates.contains(id));
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let Some(chosen) = chosen else {
-                    return Ok(EffectOutcome::count(0));
+                use crate::effects::combat::prevention_helpers::{
+                    choose_source_of_your_choice, choose_source_of_your_choice_matching_filter,
+                    SourceChoiceSelection,
+                };
+                let selection = match choice {
+                    PreventNextTimeDamageSource::ChoiceMatching(filter) =>
+                        choose_source_of_your_choice_matching_filter(game, ctx, filter),
+                    _ => choose_source_of_your_choice(game, ctx),
+                };
+                let chosen = match selection {
+                    SourceChoiceSelection::Chosen(source) => source,
+                    SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
+                    SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
                 };
                 chosen_source = Some(chosen);
                 match choice {
@@ -561,4 +525,29 @@ mod tests {
         assert_eq!(second_damage, 3);
         assert!(!second_prevented);
     }
+    #[test]
+    fn source_choice_empty_and_pending_do_not_register_and_replay_registers_once() {
+        struct Pause(bool);
+        impl crate::decision::DecisionMaker for Pause {
+            fn decide_objects(&mut self, _: &GameState, _: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+                self.0 = true; vec![]
+            }
+            fn awaiting_choice(&self) -> bool { self.0 }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let source = game.new_object_id();
+        let effect = PreventNextTimeDamageEffect::new(PreventNextTimeDamageSource::Choice, PreventNextTimeDamageTarget::AnyTarget);
+        effect.execute(&mut game, &mut ExecutionContext::new_default(source, PlayerId(0))).unwrap();
+        assert!(game.effect_store.replacement_effects.effects().is_empty());
+        game.battlefield.push(source);
+        let mut dm = Pause(false);
+        let mut ctx = ExecutionContext::new(source, PlayerId(0), &mut dm);
+        let output = effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.decision_maker.awaiting_choice());
+        assert_eq!(output.count_or_zero(), 0);
+        assert!(game.effect_store.replacement_effects.effects().is_empty());
+        effect.execute(&mut game, &mut ExecutionContext::new_default(source, PlayerId(0))).unwrap();
+        assert_eq!(game.effect_store.replacement_effects.effects().len(), 1);
+    }
+
 }

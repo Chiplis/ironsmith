@@ -176,6 +176,11 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         }),
         // "If this creature would die": put into a graveyard from the
         // battlefield (CR 700.4).
+        ["leave", "the", "battlefield"] => Some(ReplacedEventSpec::ZoneChange {
+            object: object_subject(header, subject)?,
+            from: Some(Zone::Battlefield),
+            to: None,
+        }),
         ["die"] => Some(ReplacedEventSpec::ZoneChange {
             object: object_subject(header, subject)?,
             from: Some(Zone::Battlefield),

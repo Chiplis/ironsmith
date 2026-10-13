@@ -89,24 +89,14 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
         let first_overlay = current_text_box_overlay(game, first, entry)?;
         let second_overlay = current_text_box_overlay(game, second, entry)?;
 
-        game.effect_store.continuous_effects.add_effect(
+        super::register_resolved_continuous_batch(game, [
             crate::continuous::ContinuousEffect::from_resolution(
-                ctx.source,
-                ctx.controller,
-                vec![first],
-                Modification::SetTextBox(second_overlay),
-            )
-            .until(self.duration.clone()),
-        );
-        game.effect_store.continuous_effects.add_effect(
+                ctx.source, ctx.controller, vec![first], Modification::SetTextBox(second_overlay),
+            ).until(self.duration.clone()),
             crate::continuous::ContinuousEffect::from_resolution(
-                ctx.source,
-                ctx.controller,
-                vec![second],
-                Modification::SetTextBox(first_overlay),
-            )
-            .until(self.duration.clone()),
-        );
+                ctx.source, ctx.controller, vec![second], Modification::SetTextBox(first_overlay),
+            ).until(self.duration.clone()),
+        ]);
 
         Ok(EffectOutcome::resolved())
     }
@@ -234,6 +224,23 @@ mod tests {
             second,
             crate::static_abilities::StaticAbilityId::Flying
         ));
+    }
+
+    #[test]
+    fn invalid_text_exchange_never_registers_one_side() {
+        for same in [false, true] {
+            let mut game = setup_game();
+            let player = PlayerId(0);
+            let first = create_creature_from_definition(&mut game, &vanilla_creature_definition("Creature", 700_201), player);
+            let second = if same { first } else { create_exchange_source(&mut game, player) };
+            let mut ctx = ExecutionContext::new_default(first, player);
+            let count = game.effect_store.continuous_effects.effects().len();
+            let mut effect = ExchangeTextBoxesEffect::new(ChooseSpec::SpecificObject(second));
+            effect.include_source = true;
+            let output = effect.execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(output.status, crate::effect::OutcomeStatus::TargetInvalid);
+            assert_eq!(game.effect_store.continuous_effects.effects().len(), count);
+        }
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

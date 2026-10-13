@@ -60,7 +60,7 @@ fn copied_forest_text_changes_to_island_without_copying_old_rule_mana_or_losing_
         .card_types(vec![CardType::Artifact]).build(), alice, Zone::Battlefield);
     let values = crate::snapshot::CopiableValues::from_object(game.object(donor).unwrap());
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(donor, alice,
-        EffectTarget::Specific(recipient), Modification::CopyOf {
+        EffectTarget::Specific(recipient), Modification::CopyOf { retain_original_name: false,
             target_id: donor, copiable_values: Box::new(values), preserve_source_abilities: false,
             name_override: None, name_override_surface: None, add_supertypes: vec![],
         }));

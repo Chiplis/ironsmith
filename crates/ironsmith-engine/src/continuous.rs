@@ -577,6 +577,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     // === Layer 1: Copy ===
     /// Become a copy of another object
     CopyOf {
+        #[cfg_attr(feature = "serialization", serde(default))]
+        retain_original_name: bool,
         target_id: ObjectId,
         /// Copiable values are determined once, when the copy effect begins.
         /// Later changes to the source do not change the copy (CR 707.2).
@@ -790,6 +792,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 target_id,
                 copiable_values,
                 preserve_source_abilities,
+                retain_original_name,
                 name_override,
                 name_override_surface,
                 add_supertypes,
@@ -797,6 +800,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 target_id,
                 copiable_values: Box::new(copy(*copiable_values)?),
                 preserve_source_abilities,
+                retain_original_name,
                 name_override,
                 name_override_surface,
                 add_supertypes,
@@ -2110,6 +2114,7 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
+    pub(crate) copy_values: Option<Box<CopiableValues>>,
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
@@ -2208,7 +2213,7 @@ fn add_pt_checked(
     }
 }
 
-fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
+pub(crate) fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
     (subtype.is_land_subtype() && card_types.contains(&CardType::Land))
         || (subtype.is_creature_type()
             && (card_types.contains(&CardType::Creature)
@@ -2475,12 +2480,13 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
+        copy_values: Some(Box::new(CopiableValues::from_object(object))),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
         linked_face_mana_value: object.linked_face_mana_value(),
-        compiled_card_text: object.compiled_card_text.clone(),
-        ability_labels: object.ability_labels.clone(),
+        compiled_card_text: split_combined.map_or_else(|| object.compiled_card_text.clone(), |combined| format!("{}\n{}", object.compiled_card_text, combined.other_half_compiled_text).into()),
+        ability_labels: split_combined.map_or_else(|| object.ability_labels.clone(), |combined| object.ability_labels.iter().chain(combined.other_half_ability_labels.iter()).cloned().collect()),
         base_power: object.base_power.as_ref().map(|p| p.base_value()),
         base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         power: object.base_power.as_ref().map(|p| p.base_value()),
@@ -2495,7 +2501,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         ),
         world_supertype_since: supertypes.contains(&Supertype::World).then_some(0),
         supertypes,
-        colors: object.colors(),
+        colors: split_combined.map_or_else(|| object.copiable_colors(), |combined| object.copiable_colors().union(combined.other_half_colors)),
         loyalty: object.base_loyalty,
         defense: object.base_defense,
         abilities: abilities.clone().into(),
@@ -2611,6 +2617,12 @@ fn replace_rules_text_abilities(
     }
 }
 
+fn selected_copy_face(values: &CopiableValues, flipped: bool) -> &CopiableValues {
+    if flipped && values.copy_face_layout == crate::card::LinkedFaceLayout::Flip {
+        values.other_copy_face.as_deref().unwrap_or(values)
+    } else { values }
+}
+
 fn copy_characteristics_from_copiable_values(
     values: &CopiableValues,
     chars: &mut CalculatedCharacteristics,
@@ -2620,6 +2632,7 @@ fn copy_characteristics_from_copiable_values(
     add_supertypes: &[Supertype],
     origin: Option<AbilityEffectOrigin>,
 ) {
+    chars.copy_values = Some(Box::new(values.clone()));
     chars.name = values.name.clone().into();
     chars.alternate_name = None;
     chars.mana_cost = values.mana_cost.clone();
@@ -2654,6 +2667,10 @@ fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics)
     let Some(state) = object.face_down_cast_state.as_ref() else {
         return;
     };
+    if let Some(values) = &state.custom_copiable_values {
+        copy_characteristics_from_copiable_values(values, chars, false, &None, &None, &[], None);
+        return;
+    }
     let disguise_ward = state.disguise_ward;
     let mut overlay = object.clone();
     overlay.end_face_down_cast_overlay();
@@ -3626,6 +3643,7 @@ pub(crate) fn copiable_values_with_effects(
     // Flip status isn't copied (CR 707.2, 710.2). Start from the normal
     // half, then apply the donor's copy exceptions and face-down overlay.
     let unflipped = (game.is_flipped(object_id)
+        && object.copied_face_values.is_none()
         && object.linked_face_layout == crate::card::LinkedFaceLayout::Flip)
         .then(|| game.linked_face_definition_by_name_or_id(
             object.other_face_name.as_deref(), object.other_face))
@@ -3636,6 +3654,34 @@ pub(crate) fn copiable_values_with_effects(
             normal
         });
     let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object));
+    if game.is_flipped(object_id) {
+        if let Some(values) = &object.copied_face_values {
+            copy_characteristics_from_copiable_values(values, &mut chars, false, &None, &None, &[], None);
+        }
+    }
+    if let Some(values) = chars.copy_values.as_mut() {
+        if values.other_copy_face.is_none()
+            && matches!(object.linked_face_layout, crate::card::LinkedFaceLayout::Flip | crate::card::LinkedFaceLayout::Split)
+        {
+            let normal = unflipped.as_ref().unwrap_or(object);
+            if let Some(other) = game.linked_face_definition_by_name_or_id(normal.other_face_name.as_deref(), normal.other_face) {
+                values.copy_face_layout = normal.linked_face_layout;
+                let other = Object::from_card_definition(crate::ids::ObjectId::from_raw(0), &other, normal.owner, normal.zone);
+                let mut other_values = CopiableValues::from_object(&other);
+                if let Some(merged) = game.merged_permanent(object.stable_id) {
+                    // The top component contributes the alternate face; every
+                    // other component still contributes its abilities (730.2).
+                    for component in merged.components.iter().skip(1).filter(|component| !component.face_down) {
+                        std::sync::Arc::make_mut(&mut other_values.abilities).extend(component.object.abilities.iter().cloned());
+                        other_values.ability_labels.extend(component.object.ability_labels.iter().cloned());
+                        other_values.alternative_casts.extend(component.object.alternative_casts.iter().cloned());
+                        other_values.optional_costs.extend(component.object.optional_costs.iter().cloned());
+                    }
+                }
+                values.other_copy_face = Some(Box::new(other_values));
+            }
+        }
+    }
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
     let layer_effects: Vec<_> = effects
         .iter()
@@ -3731,7 +3777,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, object);
+            apply_text_box_modification_to_chars(effect, &mut chars, unflipped.as_ref().unwrap_or(object), false);
             calc_guard.update(&chars);
         }
     }
@@ -3868,7 +3914,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, object);
+            apply_text_box_modification_to_chars(effect, &mut chars, object, game.is_flipped(object.id));
             calc_guard.update(&chars);
         }
 
@@ -3886,26 +3932,33 @@ fn apply_text_box_modification_to_chars(
     effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
     object: &Object,
+    flipped: bool,
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
         Modification::CopyOf {
             copiable_values,
             preserve_source_abilities,
+            retain_original_name,
             name_override,
             name_override_surface,
             add_supertypes,
             ..
         } => {
+            let retained_name = if *retain_original_name { Some(chars.name.to_string()) } else { name_override.clone() };
+            let retained_other_name = chars.copy_values.as_ref().and_then(|values| values.other_copy_face.as_ref()).map(|face| face.name.clone()).unwrap_or_else(|| chars.name.to_string());
             copy_characteristics_from_copiable_values(
-                copiable_values,
+                selected_copy_face(copiable_values, flipped),
                 chars,
                 *preserve_source_abilities,
-                name_override,
+                &retained_name,
                 name_override_surface,
                 add_supertypes,
                 Some(effect.into()),
             );
+            if *retain_original_name {
+                if let Some(other) = chars.copy_values.as_mut().and_then(|values| values.other_copy_face.as_mut()) { other.name = retained_other_name; }
+            }
         }
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
@@ -6038,20 +6091,26 @@ fn apply_modification_to_chars(
         Modification::CopyOf {
             copiable_values,
             preserve_source_abilities,
+            retain_original_name,
             name_override,
             name_override_surface,
             add_supertypes,
             ..
         } => {
+            let retained_name = if *retain_original_name { Some(chars.name.to_string()) } else { name_override.clone() };
+            let retained_other_name = chars.copy_values.as_ref().and_then(|values| values.other_copy_face.as_ref()).map(|face| face.name.clone()).unwrap_or_else(|| chars.name.to_string());
             copy_characteristics_from_copiable_values(
-                copiable_values,
+                selected_copy_face(copiable_values, game.is_flipped(object.id)),
                 chars,
                 *preserve_source_abilities,
-                name_override,
+                &retained_name,
                 name_override_surface,
                 add_supertypes,
                 Some(effect.into()),
             );
+            if *retain_original_name {
+                if let Some(other) = chars.copy_values.as_mut().and_then(|values| values.other_copy_face.as_mut()) { other.name = retained_other_name; }
+            }
         }
 
         // Layer 2: Control

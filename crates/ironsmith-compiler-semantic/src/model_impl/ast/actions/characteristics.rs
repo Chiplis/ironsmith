@@ -133,6 +133,7 @@ pub enum CharacteristicActionAst {
         copy_exception_surface: Option<String>,
         /// "except it doesn't copy that creature's color" (CR 707.9b).
         retain_source_colors: bool,
+        copy_ability_absent_marker: Option<String>,
     },
     SetLifeTotal {
         amount: Value,

@@ -257,17 +257,48 @@ fn resolve_fixed_target(
     Err(ExecutionError::InvalidTarget)
 }
 
-fn push_becomes_targeted_event(
-    game: &GameState,
-    events: &mut Vec<TriggerEvent>,
-    target: Target,
-    entry: &crate::game_state::StackEntry,
+/// Commit a validated assignment to the exact spell or ability. Distribution
+/// remapping is prepared on a clone, so failure never publishes a partial write.
+/// `None` means the entry disappeared or its distribution could not be remapped.
+pub(super) fn commit_retarget(
+    game: &mut GameState,
+    identity: crate::ids::ObjectId,
+    targets: Vec<Target>,
     provenance: crate::provenance::ProvNodeId,
-) {
-    events.push(TriggerEvent::new_with_provenance(
-        BecomesTargetedEvent::from_stack_entry(target, entry).with_participant_snapshots(game),
-        provenance,
-    ));
+) -> Option<(bool, Vec<TriggerEvent>)> {
+    let index = game.stack.iter().position(|entry| entry.target_id() == identity)?;
+    let entry = game.stack[index].clone();
+    if entry.targets == targets {
+        return Some((false, Vec::new()));
+    }
+    let mut updated = entry.clone();
+    updated.targets = targets;
+    if !updated.remap_target_distributions(&entry.targets) {
+        return None;
+    }
+    let final_targets = updated.targets.clone();
+    game.stack[index] = updated;
+    game.refresh_cast_spell_lki_for_stack_index(index);
+    game.drop_pending_stale_becomes_targeted_events(
+        BecomesTargetedEvent::source_for_stack_entry(&entry),
+        entry.is_ability,
+        entry.is_ability.then(|| entry.target_id()),
+        &final_targets,
+    );
+    let mut new_targets = Vec::new();
+    let mut events = Vec::new();
+    for target in final_targets {
+        if entry.targets.contains(&target) || new_targets.contains(&target) {
+            continue;
+        }
+        new_targets.push(target);
+        events.push(TriggerEvent::new_with_provenance(
+            BecomesTargetedEvent::from_stack_entry(target, &entry)
+                .with_participant_snapshots(game),
+            provenance,
+        ));
+    }
+    Some((true, events))
 }
 
 fn resolve_retarget_objects(
@@ -459,38 +490,11 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         continue;
                     }
 
-                    if game.stack[stack_idx].targets != new_targets {
-                        let old_targets = game.stack[stack_idx].targets.clone();
-                        let mut updated_entry = game.stack[stack_idx].clone();
-                        updated_entry.targets = new_targets;
-                        if !updated_entry.remap_target_distributions(&old_targets) {
-                            continue;
-                        }
-                        game.stack[stack_idx] = updated_entry;
-                        game.refresh_cast_spell_lki_for_stack_index(stack_idx);
-                        changed += 1;
-                        let final_targets = game.stack[stack_idx].targets.clone();
-                        game.drop_pending_stale_becomes_targeted_events(
-                            BecomesTargetedEvent::source_for_stack_entry(&entry),
-                            entry.is_ability,
-                            entry.is_ability.then(|| entry.target_id()),
-                            &final_targets,
-                        );
-                        // Each new target becomes a target once (CR 115.3,
-                        // 115.7); unchanged ones were targeted already.
-                        let mut newly_targeted: Vec<Target> = Vec::new();
-                        for target in &game.stack[stack_idx].targets {
-                            if !old_targets.contains(target) && !newly_targeted.contains(target) {
-                                newly_targeted.push(*target);
-                                push_becomes_targeted_event(
-                                    game,
-                                    &mut events,
-                                    *target,
-                                    &entry,
-                                    ctx.provenance,
-                                );
-                            }
-                        }
+                    if let Some((did_change, completion)) =
+                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
+                    {
+                        changed += i32::from(did_change);
+                        events.extend(completion);
                     }
                 }
                 RetargetMode::OneToFixed(spec) => {
@@ -580,35 +584,13 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         selected
                     };
 
-                    if game.stack[stack_idx]
-                        .targets
-                        .get(chosen_idx)
-                        .is_some_and(|target| *target != fixed_target)
+                    let mut new_targets = entry.targets.clone();
+                    new_targets[chosen_idx] = fixed_target;
+                    if let Some((did_change, completion)) =
+                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
                     {
-                        let old_targets = game.stack[stack_idx].targets.clone();
-                        let mut updated_entry = game.stack[stack_idx].clone();
-                        updated_entry.targets[chosen_idx] = fixed_target;
-                        if updated_entry.remap_target_distributions(&old_targets) {
-                            game.stack[stack_idx] = updated_entry;
-                            game.refresh_cast_spell_lki_for_stack_index(stack_idx);
-                            changed += 1;
-                            let final_targets = game.stack[stack_idx].targets.clone();
-                            game.drop_pending_stale_becomes_targeted_events(
-                                BecomesTargetedEvent::source_for_stack_entry(&entry),
-                                entry.is_ability,
-                                entry.is_ability.then(|| entry.target_id()),
-                                &final_targets,
-                            );
-                            if !old_targets.contains(&fixed_target) {
-                            push_becomes_targeted_event(
-                                game,
-                                &mut events,
-                                fixed_target,
-                                &entry,
-                                ctx.provenance,
-                            );
-                            }
-                        }
+                        changed += i32::from(did_change);
+                        events.extend(completion);
                     }
                 }
             }
@@ -705,4 +687,57 @@ mod tests {
                 })
         }));
     }
+    #[test]
+    fn shared_commit_deduplicates_events_and_leaves_unchanged_targets_silent() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let source = game.new_object_id();
+        game.stack.push(StackEntry::new(source, a).with_targets(vec![Target::Player(a), Target::Player(a)]));
+        let provenance = ExecutionContext::new_default(source, a).provenance;
+        let (changed, events) = commit_retarget(&mut game, source, vec![Target::Player(b), Target::Player(b)], provenance).unwrap();
+        assert!(changed);
+        assert_eq!(events.len(), 1);
+        let (changed, events) = commit_retarget(&mut game, source, vec![Target::Player(b), Target::Player(b)], provenance).unwrap();
+        assert!(!changed);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn shared_commit_preserves_the_original_on_bad_division_and_missing_identity() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId(0);
+        let source = game.new_object_id();
+        game.stack.push(StackEntry::new(source, a).with_targets(vec![Target::Player(a)])
+            .with_target_distributions(vec![crate::game_state::TargetDistribution {
+                spec: ChooseSpec::target_player(), range: 0..2, allocations: vec![(Target::Player(a), 3)],
+            }]));
+        let provenance = ExecutionContext::new_default(source, a).provenance;
+        assert!(commit_retarget(&mut game, source, vec![Target::Player(PlayerId(1))], provenance).is_none());
+        assert_eq!(game.stack[0].targets, vec![Target::Player(a)]);
+        assert_eq!(game.stack[0].target_distributions[0].allocations, vec![(Target::Player(a), 3)]);
+        let absent = game.new_object_id();
+        assert!(commit_retarget(&mut game, absent, vec![], provenance).is_none());
+    }
+
+    #[test]
+    fn shared_commit_uses_ability_identity_when_the_source_has_multiple_entries() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = PlayerId(0);
+        let source = game.new_object_id();
+        let first = game.new_object_id();
+        let second = game.new_object_id();
+        for identity in [first, second] {
+            let mut entry = StackEntry::new(source, a).with_targets(vec![Target::Player(a)]);
+            entry.is_ability = true;
+            entry.ability_id = Some(identity);
+            game.stack.push(entry);
+        }
+        let provenance = ExecutionContext::new_default(source, a).provenance;
+        let (_, events) = commit_retarget(&mut game, second, vec![Target::Player(PlayerId(1))], provenance).unwrap();
+        assert_eq!(game.stack[0].targets, vec![Target::Player(a)]);
+        assert_eq!(game.stack[1].targets, vec![Target::Player(PlayerId(1))]);
+        assert_eq!(events.len(), 1);
+    }
+
 }

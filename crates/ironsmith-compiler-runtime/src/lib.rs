@@ -180,6 +180,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             compiler::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 ironsmith::effects::continuous::RuntimeModification::RemoveThisAbility
             }
+            compiler::effects::continuous::RuntimeModification::ClearCopyManaCost => ironsmith::effects::continuous::RuntimeModification::ClearCopyManaCost,
+            compiler::effects::continuous::RuntimeModification::RetainSourceName => ironsmith::effects::continuous::RuntimeModification::RetainSourceName,
+            compiler::effects::continuous::RuntimeModification::CopyAbilityAbsent(marker) => ironsmith::effects::continuous::RuntimeModification::CopyAbilityAbsent(marker.clone()),
             compiler::effects::continuous::RuntimeModification::RetainSourceColors => {
                 ironsmith::effects::continuous::RuntimeModification::RetainSourceColors
             }
@@ -2169,7 +2172,7 @@ mod retained_copy_text_payload_tests {
                     ironsmith::Zone::Battlefield,
                 );
                 let modification = if copy_effect {
-                    ironsmith::continuous::Modification::CopyOf {
+                    ironsmith::continuous::Modification::CopyOf { retain_original_name: false,
                         target_id: source,
                         copiable_values: Box::new(if restored {
                             restored_copy.clone()
@@ -2947,7 +2950,7 @@ mod retained_copy_defense_payload_tests {
                     .card_types(vec![ironsmith::types::CardType::Artifact]).build();
                 let source = game.create_object_from_definition(&blank, alice, ironsmith::Zone::Battlefield);
                 game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-                    source, alice, vec![source], ironsmith::continuous::Modification::CopyOf {
+                    source, alice, vec![source], ironsmith::continuous::Modification::CopyOf { retain_original_name: false,
                         target_id: base, copiable_values: Box::new(restored), preserve_source_abilities: false,
                         name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
                     },

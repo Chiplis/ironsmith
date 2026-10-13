@@ -343,6 +343,9 @@ impl EnterBattlefieldEvent {
                     object.color_override = Some(colors);
                 }
             }
+            if self.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics) {
+                object.apply_embalm_copy_exception();
+            }
             if let Some(name) = &self.copy_name_override {
                 object.name = name.clone().into();
             }
@@ -406,7 +409,7 @@ impl EnterBattlefieldEvent {
                 .then_some(prospective.turn.turn_number).unwrap_or(u32::MAX);
             let effect = crate::continuous::ContinuousEffect::new(self.object, controller,
                 crate::continuous::EffectTarget::Specific(self.object),
-                crate::continuous::Modification::CopyOf {
+                crate::continuous::Modification::CopyOf { retain_original_name: false,
                     target_id: copy_source, copiable_values: Box::new(values),
                     preserve_source_abilities: false, name_override: None,
                     name_override_surface: None, add_supertypes: Vec::new(),
@@ -457,11 +460,13 @@ impl EnterBattlefieldEvent {
             if let Some(option) = &choices.chosen_named_option {
                 prospective.set_chosen_named_option(self.object, option.clone());
             }
-            for (power, toughness, granted_abilities) in &choices.power_toughness_choices {
+            for option in &choices.power_toughness_choices {
                 if let Some(object) = prospective.object_mut(self.object) {
-                    object.base_power = Some(crate::card::PtValue::Fixed(*power));
-                    object.base_toughness = Some(crate::card::PtValue::Fixed(*toughness));
-                    for granted in granted_abilities {
+                    object.base_power = Some(crate::card::PtValue::Fixed(option.power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(option.toughness));
+                    if let Some(types) = &option.card_types { object.card_types = types.clone().into(); }
+                    for subtype in &option.added_subtypes { if !object.subtypes.contains(subtype) { object.subtypes.push(*subtype); } }
+                    for granted in &option.abilities {
                         let ability = Ability::static_ability(granted.clone());
                         object.abilities_mut().push(ability);
                     }

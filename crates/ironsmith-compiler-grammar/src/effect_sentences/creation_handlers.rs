@@ -1711,7 +1711,7 @@ pub fn parse_create(
     if let Some(named) = creation_grammar::parse_named_token_clause_tokens(named_token_tokens) {
         let named_words = token_word_refs(&named_token_tokens[named.name.clone()]);
         if !named_words.is_empty() {
-            let authored_name = render_token_slice(&named_token_tokens[named.name.clone()])
+            let authored_name = crate::lexer::render_literal_token_slice(&named_token_tokens[named.name.clone()])
                 .trim()
                 .to_string();
             if named_token_tokens[named.name.clone()]

@@ -1101,6 +1101,12 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
     {
         blueprint.insert_str(token_end, &format!(" of {characteristic}"));
     }
+    if let Some((power, toughness)) = &create.dynamic_power_toughness {
+        let mut token = create.token.clone();
+        token.card.power_toughness = None;
+        blueprint = describe_token_blueprint_with_name_role(&token, ability_presentation, create.text_roles.as_ref());
+        blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
+    }
     blueprint
 }
 

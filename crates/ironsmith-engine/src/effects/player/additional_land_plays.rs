@@ -35,14 +35,10 @@ impl EffectExecutor for AdditionalLandPlaysEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        game.add_restriction_effect(
-            Restriction::additional_land_plays(PlayerFilter::Specific(player), count),
+        crate::effects::restrictions::ResolvedRestrictions::new(
+            vec![Restriction::additional_land_plays(PlayerFilter::Specific(player), count)],
             self.duration.clone(),
-            ctx.source,
-            ctx.controller,
-            None,
-        );
-        game.update_cant_effects();
+        ).apply(game, ctx);
         Ok(EffectOutcome::resolved())
     }
 }

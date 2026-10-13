@@ -87,9 +87,7 @@ impl EffectExecutor for ReplaceNextDamageToTargetEffect {
             DamageToExactTargetMatcher { target },
             ReplacementAction::Instead(self.replacement_effects.clone()),
         );
-        game.effect_store
-            .replacement_effects
-            .add_one_shot_effect(replacement);
+        crate::effects::ApplyReplacementEffect::one_shot(replacement).execute(game, ctx)?;
         Ok(EffectOutcome::resolved())
     }
 

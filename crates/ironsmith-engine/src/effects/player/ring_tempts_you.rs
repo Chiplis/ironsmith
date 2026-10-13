@@ -1,10 +1,8 @@
 //! The Ring tempts you effect implementation.
 
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{normalize_object_selection, resolve_player_filter};
+use crate::effects::helpers::{resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -50,40 +48,28 @@ impl EffectExecutor for RingTemptsYouEffect {
                 .collect::<Vec<_>>();
             candidates.sort_unstable();
 
-            let mut chosen_bearer = None;
-            if !candidates.is_empty() {
-                let chosen = if candidates.len() == 1 {
-                    candidates[0]
-                } else {
-                    let selection = make_decision(
-                        game,
-                        ctx.decision_maker,
-                        player_id,
-                        Some(ctx.source),
-                        ChooseObjectsSpec::new(
-                            ctx.source,
-                            "Choose your Ring-bearer",
-                            candidates.clone(),
-                            1,
-                            Some(1),
-                        ),
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::default());
-                    }
-                    let normalized = normalize_object_selection(selection, &candidates, 1);
-                    *normalized.first().ok_or_else(|| {
-                        ExecutionError::Impossible("missing Ring-bearer choice".to_string())
-                    })?
-                };
-                game.set_ring_bearer(player_id, chosen);
-                chosen_bearer = game.object(chosen).map(|object| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    )
-                });
-            }
+            let chosen = crate::effects::composition::captured_selection::choose_one_for_player(
+                game, ctx, player_id, &candidates, "Choose your Ring-bearer", false,
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::default()); }
+            complete_ring_designation(game, ctx, player_id, chosen)
+        })
+    }
+}
 
+/// Designation follows the captured choice, after the rules owner has incremented
+/// temptation. Even an empty choice completes the keyword action.
+fn complete_ring_designation(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: crate::ids::PlayerId,
+    chosen: Option<crate::ids::ObjectId>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let chosen_bearer = chosen.and_then(|chosen| {
+        game.set_ring_bearer(player_id, chosen);
+        game.object(chosen).map(|object|
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    });
             let mut event =
                 KeywordActionEvent::new(KeywordActionKind::RingTemptsYou, player_id, ctx.source, 1);
             if let Some(snapshot) = chosen_bearer {
@@ -93,9 +79,8 @@ impl EffectExecutor for RingTemptsYouEffect {
                 );
             }
             crate::effects::composition::complete_keyword_action(game, ctx, event)
-        })
-    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -170,6 +155,29 @@ mod tests {
         assert_eq!(keyword.action, KeywordActionKind::RingTemptsYou);
         assert_eq!(keyword.player, alice);
     }
+    #[test]
+    fn another_player_chooses_their_own_bearer_and_owns_the_completion() {
+        struct OtherPlayer;
+        impl DecisionMaker for OtherPlayer {
+            fn decide_objects(&mut self, _: &GameState, prompt: &SelectObjectsContext) -> Vec<ObjectId> {
+                assert_eq!(prompt.player, PlayerId(1));
+                vec![prompt.candidates[1].id]
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        make_creature(&mut game, PlayerId(1), "First");
+        let second = make_creature(&mut game, PlayerId(1), "Second");
+        let source = game.new_object_id();
+        let mut dm = OtherPlayer;
+        let mut ctx = ExecutionContext::new(source, PlayerId(0), &mut dm);
+        let output = RingTemptsYouEffect::new(PlayerFilter::Specific(PlayerId(1))).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.current_ring_bearer(PlayerId(1)), Some(second));
+        assert_eq!(game.ring_temptations(PlayerId(0)), 0);
+        let event = output.events[0].downcast::<KeywordActionEvent>().unwrap();
+        assert_eq!(event.player, PlayerId(1));
+        assert_eq!(event.object_tags[ironsmith_core::tag::RING_BEARER_CHOSEN_TAG][0].object_id, second);
+    }
+
 }
 
 #[cfg(test)]

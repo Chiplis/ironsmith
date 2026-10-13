@@ -5142,6 +5142,9 @@ pub struct CreateTokenEffect<D> {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub text_roles: Option<crate::TokenTextRoles>,
+    /// Evaluated once at creation; these become the token's copiable base values.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub dynamic_power_toughness: Option<(Value, Value)>,
     pub count: Value,
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
@@ -5187,6 +5190,9 @@ impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
         // absent historical evidence byte-identical to the old field order.
         if self.text_roles.is_some() {
             debug.field("text_roles", &self.text_roles);
+        }
+        if self.dynamic_power_toughness.is_some() {
+            debug.field("dynamic_power_toughness", &self.dynamic_power_toughness);
         }
         debug
             .field("count", &self.count)
@@ -5238,6 +5244,7 @@ impl<D> CreateTokenEffect<D> {
         Self {
             token,
             text_roles: None,
+            dynamic_power_toughness: None,
             count,
             controller,
             controller_target,
@@ -5437,9 +5444,16 @@ impl TokenCopyReferenceSurface {
     }
 }
 
+/// The keyword action that created a token. This is history, not a copiable characteristic.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TokenCreationMethod { Embalm, Eternalize }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CreateTokenCopyEffect<A> {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub creation_method: Option<TokenCreationMethod>,
     pub target: ChooseSpec,
     pub count: Value,
     pub controller: PlayerFilter,
@@ -5495,8 +5509,14 @@ pub struct CreateTokenCopyEffect<A> {
 }
 
 impl<A> CreateTokenCopyEffect<A> {
+    pub fn created_by(mut self, method: TokenCreationMethod) -> Self {
+        self.creation_method = Some(method);
+        self
+    }
+
     pub fn new(target: ChooseSpec, count: impl Into<Value>, controller: PlayerFilter) -> Self {
         Self {
+            creation_method: None,
             target,
             count: count.into(),
             controller,

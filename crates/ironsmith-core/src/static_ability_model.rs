@@ -594,6 +594,10 @@ impl AbilityLossMode {
 pub struct PowerToughnessChoiceOption<T, E, C, Cond, ICond = Condition> {
     pub power: i32,
     pub toughness: i32,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub card_types: Option<Vec<crate::types::CardType>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub added_subtypes: Vec<crate::types::Subtype>,
     pub abilities: Vec<StaticAbility<T, E, C, Cond, ICond>>,
 }
 
@@ -602,6 +606,8 @@ impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
         Self {
             power,
             toughness,
+            card_types: None,
+            added_subtypes: Vec::new(),
             abilities: Vec::new(),
         }
     }
@@ -614,6 +620,8 @@ impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
         Self {
             power,
             toughness,
+            card_types: None,
+            added_subtypes: Vec::new(),
             abilities,
         }
     }
@@ -2842,6 +2850,8 @@ where
                         Ok(PowerToughnessChoiceOption {
                             power: option.power,
                             toughness: option.toughness,
+                            card_types: option.card_types,
+                            added_subtypes: option.added_subtypes,
                             abilities: option
                                 .abilities
                                 .into_iter()

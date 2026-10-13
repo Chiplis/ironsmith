@@ -14,13 +14,32 @@ impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        game.add_restriction_effect(
-            Restriction::lose_unspent_mana(self.player.clone(), self.color),
+        let mut registration = crate::effects::restrictions::ResolvedRestrictions::new(
+            vec![Restriction::lose_unspent_mana(self.player.clone(), self.color)],
             Until::EndOfTurn,
-            ctx.source,
-            ctx.controller,
-            ctx.iteration.iterated_player,
         );
+        registration.iterated_player = ctx.iteration.iterated_player;
+        registration.register(game, ctx);
         Ok(EffectOutcome::resolved())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn retained_mana_keeps_its_iterated_player_after_the_binding_changes() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let a = crate::ids::PlayerId(0);
+        let b = crate::ids::PlayerId(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, a);
+        ctx.iteration.iterated_player = Some(b);
+        RetainManaUntilEndOfTurnEffect::new(crate::target::PlayerFilter::IteratedPlayer)
+            .execute(&mut game, &mut ctx).unwrap();
+        ctx.iteration.iterated_player = Some(a);
+        game.update_cant_effects();
+        assert!(game.effect_store.cant_effects.retained_mana_scopes(b).unwrap().contains(&None));
+        assert!(game.effect_store.cant_effects.retained_mana_scopes(a).is_none());
     }
 }

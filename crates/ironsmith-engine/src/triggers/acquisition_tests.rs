@@ -160,7 +160,7 @@ fn layer_one_copy_keeps_frozen_definition_after_donor_changes_and_leaves() {
     let receiver = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Receiving host")
         .card_types(vec![crate::types::CardType::Enchantment]).build(), PlayerId::from_index(0), Zone::Battlefield);
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
-        donor, PlayerId::from_index(0), vec![receiver], Modification::CopyOf {
+        donor, PlayerId::from_index(0), vec![receiver], Modification::CopyOf { retain_original_name: false,
             target_id: donor, copiable_values: Box::new(values), preserve_source_abilities: false,
             name_override: None, name_override_surface: None, add_supertypes: vec![],
         },

@@ -1,6 +1,8 @@
 //! Choose a creature type and store it on the source object.
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -64,31 +66,11 @@ impl ChooseCreatureTypeEffect {
             return Ok(None);
         }
 
-        let options: Vec<SelectableOption> = subtype_options
-            .iter()
-            .enumerate()
-            .map(|(idx, subtype)| SelectableOption::new(idx, subtype.to_string()))
-            .collect();
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            format!(
-                "{}choose a {}",
-                if self.secretly { "Secretly " } else { "" },
-                self.family.type_phrase()
-            ),
-            options,
-            1,
-            1,
-        );
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(None);
-        }
-        Ok(selected
-            .into_iter()
-            .next()
-            .and_then(|idx| subtype_options.get(idx).copied()))
+        let menu = subtype_options.iter().map(|value| (*value, value.to_string())).collect::<Vec<_>>();
+        select_typed_option(game, ctx, chooser, &format!("{}choose a {}",
+            if self.secretly { "Secretly " } else { "" }, self.family.type_phrase()),
+            &menu, SingleChoicePolicy::First)
+
     }
 }
 

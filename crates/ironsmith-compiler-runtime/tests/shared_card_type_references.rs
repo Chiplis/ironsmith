@@ -359,7 +359,7 @@ fn amareth_copied_entry_types_and_empty_library_use_exact_known_evidence() {
         let model = card(&mut game, B, Zone::Battlefield, "Land model", vec![CardType::Land]);
         let entrant = amareth_entry(&mut game);
         let values = ironsmith::snapshot::CopiableValues::from_object(game.object(model).unwrap());
-        ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(entrant), Modification::CopyOf {
+        ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(entrant), Modification::CopyOf { retain_original_name: false,
             target_id: model, copiable_values: Box::new(values), preserve_source_abilities: false,
             name_override: None, name_override_surface: None, add_supertypes: vec![],
         }, Until::EndOfTurn).execute(&mut game, &mut EffectContext::new_default(entrant, A)).unwrap();

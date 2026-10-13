@@ -3773,17 +3773,27 @@ fn parse_pt_choice_characteristic_options(
         };
         idx += 1;
 
-        if !matches!(
-            words.get(idx).copied(),
-            Some("creature" | "permanent" | "object")
-        ) {
+        let mut card_types = Vec::new();
+        let mut added_subtypes = Vec::new();
+        while let Some(word) = words.get(idx) {
+            if let Some(card_type) = parse_card_type(word) {
+                card_types.push(card_type);
+            } else if let Some(subtype) = parse_subtype_word(word) {
+                added_subtypes.push(subtype);
+            } else if matches!(*word, "permanent" | "object") {
+                idx += 1;
+                break;
+            } else {
+                break;
+            }
+            idx += 1;
+        }
+        if card_types.is_empty() && added_subtypes.is_empty()
+            && !matches!(words.get(idx.wrapping_sub(1)), Some(&"permanent" | &"object")) {
             return Err(CardTextError::ParseError(format!(
-                "unsupported power/toughness choice descriptor after '{}' (clause: '{}')",
-                pt_word,
-                clause_words.join(" ")
+                "unsupported power/toughness choice descriptor after '{pt_word}'"
             )));
         }
-        idx += 1;
 
         let mut abilities = Vec::new();
         if words.get(idx).copied() == Some("with") {
@@ -3798,13 +3808,17 @@ fn parse_pt_choice_characteristic_options(
             {
                 idx += 1;
             }
-            abilities =
-                parse_pt_choice_keyword_abilities(&words[ability_start..idx], clause_words)?;
+            let ability_words = words[ability_start..idx]
+                .strip_suffix(&["in", "addition", "to", "its", "other", "types"])
+                .unwrap_or(&words[ability_start..idx]);
+            abilities = parse_pt_choice_keyword_abilities(ability_words, clause_words)?;
         }
 
-        options.push(PowerToughnessChoiceOption::with_abilities(
+        options.push(PowerToughnessChoiceOption {
             power, toughness, abilities,
-        ));
+            card_types: (!card_types.is_empty()).then_some(card_types),
+            added_subtypes,
+        });
     }
 
     Ok(options)
@@ -3837,7 +3851,12 @@ fn render_pt_choice_characteristic_options(options: &[PowerToughnessChoiceOption
     let rendered = options
         .iter()
         .map(|option| {
-            let mut text = format!("a {}/{} creature", option.power, option.toughness);
+            let mut types = option.added_subtypes.iter().map(ToString::to_string).collect::<Vec<_>>();
+            if let Some(card_types) = &option.card_types {
+                types.extend(card_types.iter().map(|ty| ty.to_string().to_ascii_lowercase()));
+            }
+            if types.is_empty() { types.push("creature".into()); }
+            let mut text = format!("a {}/{} {}", option.power, option.toughness, types.join(" "));
             if !option.abilities.is_empty() {
                 let abilities = option
                     .abilities

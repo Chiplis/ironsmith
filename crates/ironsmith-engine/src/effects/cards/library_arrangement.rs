@@ -3,6 +3,50 @@
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 
+/// Capture exact retained identities still present in one library, in its
+/// current top-to-bottom order. Stable card identities never rebind this set.
+pub(crate) fn capture_retained_library_set(
+    game: &GameState,
+    snapshots: &[crate::snapshot::ObjectSnapshot],
+) -> Option<(PlayerId, Vec<ObjectId>)> {
+    let cards = snapshots
+        .iter()
+        .filter_map(|snapshot| game.object(snapshot.object_id))
+        .filter(|object| object.zone == crate::zone::Zone::Library)
+        .collect::<Vec<_>>();
+    let owner = cards.first()?.owner;
+    if cards.iter().any(|object| object.owner != owner) {
+        return None;
+    }
+    let ordered = game
+        .player(owner)?
+        .library
+        .iter()
+        .rev()
+        .copied()
+        .filter(|id| cards.iter().any(|object| object.id == *id))
+        .collect::<Vec<_>>();
+    (!ordered.is_empty()).then_some((owner, ordered))
+}
+
+/// Keep each available identity once, then append omissions in original order.
+/// This normalizes permutations without changing the zone's orientation.
+pub(crate) fn normalize_order_response<T: Copy + PartialEq>(
+    response: Vec<T>,
+    original: &[T],
+) -> Vec<T> {
+    let mut remaining = original.to_vec();
+    let mut ordered = Vec::with_capacity(original.len());
+    for id in response {
+        if let Some(index) = remaining.iter().position(|candidate| *candidate == id) {
+            ordered.push(id);
+            remaining.remove(index);
+        }
+    }
+    ordered.extend(remaining);
+    ordered
+}
+
 /// Both ordered partitions are top-to-bottom. Cards that have left this
 /// library are excluded; all other cards retain their relative order.
 pub(crate) fn arrange_library_cards(
@@ -89,16 +133,7 @@ pub(crate) fn order_library_cards_top_to_bottom(
     let prompt =
         crate::decisions::context::OrderContext::new(chooser, Some(ctx.source), description, items);
     let answer = ctx.decision_maker.decide_order(game, &prompt);
-    let mut remaining = cards.to_vec();
-    let mut ordered = Vec::with_capacity(cards.len());
-    for id in answer {
-        if let Some(index) = remaining.iter().position(|candidate| *candidate == id) {
-            ordered.push(id);
-            remaining.remove(index);
-        }
-    }
-    ordered.extend(remaining);
-    ordered
+    normalize_order_response(answer, cards)
 }
 
 pub(crate) fn execute_library_instruction_atomically<'a>(
@@ -110,4 +145,32 @@ pub(crate) fn execute_library_instruction_atomically<'a>(
     ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
     crate::effects::composition::execute_compound(game, ctx, body)
+}
+
+#[cfg(test)]
+mod retained_set_tests {
+    use super::*;
+    use crate::{card::CardBuilder, ids::CardId, snapshot::ObjectSnapshot, types::CardType, zone::Zone};
+    #[test]
+    fn capture_uses_exact_current_ids_one_owner_and_current_order() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let card = CardBuilder::new(CardId::new(), "Retained card").card_types(vec![CardType::Sorcery]).build();
+        let a = game.create_object_from_card(&card, PlayerId(0), Zone::Library);
+        let b = game.create_object_from_card(&card, PlayerId(0), Zone::Library);
+        let other = game.create_object_from_card(&card, PlayerId(1), Zone::Library);
+        let snap = |id| ObjectSnapshot::from_object(game.object(id).unwrap(), &game);
+        let retained = vec![snap(a), snap(b), snap(a)];
+        assert_eq!(capture_retained_library_set(&game, &retained), Some((PlayerId(0), vec![b, a])));
+        assert!(capture_retained_library_set(&game, &[snap(a), snap(other)]).is_none());
+        let departed = game.move_object_by_effect(a, Zone::Hand).unwrap();
+        let returned = game.move_object_by_effect(departed, Zone::Library).unwrap();
+        assert_ne!(returned, a);
+        assert_eq!(capture_retained_library_set(&game, &retained), Some((PlayerId(0), vec![b])));
+    }
+    #[test]
+    fn permutation_discards_foreign_and_duplicate_answers_and_appends_omissions() {
+        assert_eq!(normalize_order_response(vec![3, 3, 99, 1], &[1, 2, 3]), vec![3, 1, 2]);
+        assert_eq!(normalize_order_response(Vec::<u32>::new(), &[1, 2, 3]), vec![1, 2, 3]);
+        assert!(normalize_order_response(vec![1], &[]).is_empty());
+    }
 }

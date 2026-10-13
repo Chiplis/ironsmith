@@ -1,9 +1,9 @@
 //! Grant abilities to all matching creatures effect implementation.
 
 use crate::continuous::{EffectSourceType, EffectTarget, Modification};
-use crate::effect::{Effect, EffectOutcome, Until};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effect::{EffectOutcome, Until};
+use crate::effects::EffectExecutor;
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilter;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -85,21 +85,12 @@ impl EffectExecutor for GrantAbilitiesAllEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let mut outcomes = Vec::new();
-        for ability in &self.abilities {
-            let apply = ApplyContinuousEffect::new(
-                EffectTarget::Filter(self.filter.clone()),
-                Modification::AddAbility(ability.clone()),
-                self.duration.clone(),
-            )
-            .with_source_type(EffectSourceType::Resolution {
-                locked_targets: locked_targets.clone(),
-            });
-
-            outcomes.push(execute_effect(game, &Effect::new(apply), ctx)?);
-        }
-
-        Ok(EffectOutcome::aggregate(outcomes))
+        crate::effects::continuous::apply_captured_modifications(
+            game, ctx, EffectTarget::Filter(self.filter.clone()),
+            Some(EffectSourceType::Resolution { locked_targets }),
+            self.abilities.iter().cloned().map(Modification::AddAbility).collect(),
+            self.duration.clone(),
+        )
     }
 }
 
@@ -248,4 +239,22 @@ mod tests {
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("GrantAbilitiesAllEffect"));
     }
+    #[test]
+    fn grants_keep_the_captured_set_when_the_first_ability_changes_filter_membership() {
+        let mut game = setup_game();
+        let player = PlayerId(0);
+        let target = create_creature(&mut game, "Initially ground creature", player);
+        let mut ctx = ExecutionContext::new_default(target, player);
+        GrantAbilitiesAllEffect::new(ObjectFilter::creature().without_static_ability(crate::static_abilities::StaticAbilityId::Flying),
+            vec![StaticAbility::flying(), StaticAbility::vigilance()], Until::EndOfTurn)
+            .execute(&mut game, &mut ctx).unwrap();
+        let abilities = game.current_abilities(target).unwrap();
+        let ids = abilities.iter().filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(ability) => Some(ability.id()), _ => None,
+        }).collect::<Vec<_>>();
+        assert!(ids.contains(&crate::static_abilities::StaticAbilityId::Flying));
+        assert!(ids.contains(&crate::static_abilities::StaticAbilityId::Vigilance));
+        assert_eq!(ctx.created_continuous_effects.len(), 2);
+    }
+
 }

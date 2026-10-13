@@ -2905,7 +2905,7 @@ impl CardDefinitionBuilder {
             crate::effects::CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
                 .set_colors(ColorSet::WHITE)
                 .added_subtype(Subtype::Zombie)
-                .without_mana_cost(),
+                .without_mana_cost().created_by(ironsmith_core::effect::TokenCreationMethod::Embalm),
         );
 
         self.with_ability(Ability {

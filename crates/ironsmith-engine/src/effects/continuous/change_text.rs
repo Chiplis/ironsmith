@@ -1,6 +1,7 @@
 //! Resolution-time word choices, followed by a real layer-three substitution.
 use crate::continuous::{ContinuousEffect, Modification};
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -28,18 +29,9 @@ fn word_label(word: TextWord) -> String {
 fn choose_index(game: &GameState, ctx: &mut ExecutionContext, prompt: &str, labels: Vec<String>)
     -> Result<Option<usize>, ExecutionError>
 {
-    let length = labels.len();
-    let options = labels.into_iter().enumerate().map(|(index, label)| SelectableOption::new(index, label)).collect();
-    let choice = SelectOptionsContext::new(ctx.controller, Some(ctx.source), prompt, options, 1, 1);
-    let selected = ctx.decision_maker.decide_options(game, &choice);
-    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
-    let [index] = selected.as_slice() else {
-        return Err(ExecutionError::InternalError("text change requires exactly one word choice".into()));
-    };
-    if *index >= length {
-        return Err(ExecutionError::InternalError("text change choice is outside its declared vocabulary".into()));
-    }
-    Ok(Some(*index))
+    use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
+    let options = labels.into_iter().enumerate().collect::<Vec<_>>();
+    select_typed_option(game, ctx, ctx.controller, prompt, &options, SingleChoicePolicy::Strict)
 }
 
 impl EffectExecutor for ChangeTextEffect {
@@ -80,9 +72,9 @@ impl EffectExecutor for ChangeTextEffect {
         // when its source word is absent because a later copy may introduce it.
         if from == to { return Ok(EffectOutcome::with_objects(objects)); }
         let change = TextChange::new(from, to).map_err(|error| ExecutionError::InternalError(error.to_string()))?;
-        let id = game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
-            ctx.source, ctx.controller, objects.clone(), Modification::RewriteText(change)).until(self.duration.clone()));
-        ctx.created_continuous_effects.push(id);
+        let ids = super::register_resolved_continuous_batch(game, [ContinuousEffect::from_resolution(
+            ctx.source, ctx.controller, objects.clone(), Modification::RewriteText(change)).until(self.duration.clone())]);
+        ctx.created_continuous_effects.extend(ids);
         Ok(EffectOutcome::with_objects(objects))
     }
 
@@ -183,7 +175,7 @@ mod tests {
             StaticAbility::protection(ProtectionFrom::Color(ColorSet::BLUE))));
         let values = crate::snapshot::CopiableValues::from_object(game.object(donor).unwrap());
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(donor, A, vec![target],
-            Modification::CopyOf { target_id: donor, copiable_values: Box::new(values),
+            Modification::CopyOf { retain_original_name: false, target_id: donor, copiable_values: Box::new(values),
                 preserve_source_abilities: false, name_override: None, name_override_surface: None,
                 add_supertypes: Vec::new() }));
         game.refresh_continuous_state().unwrap();

@@ -1,6 +1,5 @@
 //! Double a player's unspent mana.
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outputs};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -56,12 +55,9 @@ impl EffectExecutor for DoubleManaPoolEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let (player_id, symbols) = self
-            .mana_production()
-            .expect("mana production descriptor")
-            .resolve_exact(game, ctx)?;
-        let mana = credit_mana_symbols_from_context(game, player_id, symbols, ctx)?;
-        Ok(mana_added_value_outputs(ctx, player_id, mana))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::Symbols, ManaChoiceMenu::AvailableColors)
     }
 }
 

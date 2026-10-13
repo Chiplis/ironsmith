@@ -1,6 +1,6 @@
 //! Choose a land type and store it on the source object.
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -39,11 +39,6 @@ impl EffectExecutor for ChooseLandTypeEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let options = subtype_options
-            .iter()
-            .enumerate()
-            .map(|(idx, subtype)| SelectableOption::new(idx, subtype.to_string()))
-            .collect::<Vec<_>>();
         let prompt = if self.exclude_basic {
             "Choose a nonbasic land type"
         } else if self.basic_only {
@@ -51,21 +46,11 @@ impl EffectExecutor for ChooseLandTypeEffect {
         } else {
             "Choose a land type"
         };
-        let choice_ctx =
-            SelectOptionsContext::new(chooser, Some(ctx.source), prompt, options, 1, 1);
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(chosen) = selected
-            .into_iter()
-            .next()
-            .filter(|idx| *idx < subtype_options.len())
-        else {
+        let menu = subtype_options.iter().map(|value| (*value, value.to_string())).collect::<Vec<_>>();
+        let Some(chosen) = select_typed_option(game, ctx, chooser, prompt, &menu, SingleChoicePolicy::First)? else {
             return Ok(EffectOutcome::count(0));
         };
-
-        game.set_chosen_land_type(ctx.source, subtype_options[chosen]);
+        game.set_chosen_land_type(ctx.source, chosen);
         Ok(EffectOutcome::count(1))
     }
 }

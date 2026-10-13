@@ -11,8 +11,6 @@
 //! - tap them as part of paying the cost
 
 use crate::color::ColorSet;
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -34,24 +32,11 @@ fn conspire_candidates(game: &GameState, controller: PlayerId, source: ObjectId)
         return Vec::new();
     }
 
-    game.battlefield
-        .iter()
-        .copied()
-        .filter(|&id| {
-            let Some(obj) = game.object(id) else {
-                return false;
-            };
-            if !game.current_is_creature(id)
-                || game.controller_of(obj) != controller
-                || game.is_tapped(id)
-            {
-                return false;
-            }
-
-            let creature_colors = game.current_colors(id).unwrap_or_else(|| obj.colors());
-            !source_colors.intersection(creature_colors).is_empty()
-        })
-        .collect()
+    super::contributor_selection::candidates_with_source_policy(game, source, controller, true, |id| {
+        let creature_colors = game.current_colors(id)
+            .or_else(|| game.object(id).map(|object| object.colors())).unwrap_or_default();
+        !source_colors.intersection(creature_colors).is_empty()
+    })
 }
 
 impl EffectExecutor for ConspireCostEffect {
@@ -82,37 +67,15 @@ impl EffectExecutor for ConspireCostEffect {
             ));
         }
 
-        let spec = ChooseObjectsSpec::new(
-            source,
-            "Choose two untapped creatures to conspire",
-            candidates.clone(),
-            2,
-            Some(2),
-        );
-        let mut chosen = make_decision(game, ctx.decision_maker, controller, Some(source), spec);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        chosen.sort();
-        chosen.dedup();
-
-        if chosen.len() < 2 {
-            for candidate in candidates {
-                if chosen.len() >= 2 {
-                    break;
-                }
-                if !chosen.contains(&candidate) {
-                    chosen.push(candidate);
-                }
-            }
-        }
-
-        if chosen.len() != 2 {
-            return Err(ExecutionError::Impossible(
-                "Conspire requires exactly two untapped creatures".to_string(),
-            ));
+        let Some((chosen, sufficient)) = super::contributor_selection::select_contributors_with_requirement(
+            game, ctx, candidates,
+            super::contributor_selection::ContributionRequirement::Exactly(2),
+            "Choose two untapped creatures to conspire", |_| 1,
+        ) else {
+            return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        };
+        if !sufficient {
+            return Err(ExecutionError::Impossible("Conspire requires exactly two untapped creatures".into()));
         }
 
         let taps = super::tap::tap_cost_objects_with_outputs(game, ctx, &chosen)?;

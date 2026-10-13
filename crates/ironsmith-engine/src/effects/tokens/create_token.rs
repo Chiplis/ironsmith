@@ -219,16 +219,18 @@ fn prepare_token_proposal(
     }
     let base_count = resolve_value(game, &effect.count, ctx)?.max(0) as u32;
     let mut resolved_token = effect.token.clone();
-    if effect.use_source_chosen_color
-        && let Some(color) = game.chosen_color(ctx.source)
-    {
+    if let Some((power, toughness)) = &effect.dynamic_power_toughness {
+        resolved_token.card.power_toughness = Some(crate::card::PowerToughness::fixed(
+            resolve_value(game, power, ctx)?, resolve_value(game, toughness, ctx)?,
+        ));
+    }
+    if effect.use_source_chosen_color {
+        let color = game.chosen_color(ctx.source).ok_or_else(|| ExecutionError::IncompleteEvidence("token creation requires the source's chosen color".into()))?;
         resolved_token.card.color_indicator = Some(crate::color::ColorSet::from(color));
     }
-    if effect.use_source_chosen_creature_type
-        && let Some(subtype) = game.chosen_creature_type(ctx.source)
-        && !resolved_token.card.subtypes.contains(&subtype)
-    {
-        resolved_token.card.subtypes.push(subtype);
+    if effect.use_source_chosen_creature_type {
+        let subtype = game.chosen_creature_type(ctx.source).ok_or_else(|| ExecutionError::IncompleteEvidence("token creation requires the source's chosen creature type".into()))?;
+        if !resolved_token.card.subtypes.contains(&subtype) { resolved_token.card.subtypes.push(subtype); }
     }
     if effect
         .text_roles

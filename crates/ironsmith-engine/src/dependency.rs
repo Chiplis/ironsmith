@@ -3483,6 +3483,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
@@ -3550,6 +3551,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
@@ -3683,6 +3685,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
@@ -3869,6 +3872,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
@@ -4108,6 +4112,7 @@ mod tests {
 
     fn chars_for(object: &crate::object::Object) -> CalculatedCharacteristics {
         CalculatedCharacteristics {
+            copy_values: None,
             alternate_name: object.split_other_half_name().map(str::to_string),
             name: object.name.clone(),
             mana_cost: object.mana_cost_owned(),

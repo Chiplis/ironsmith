@@ -47,6 +47,9 @@ pub enum RuntimeModification {
     /// that creature's color" (CR 707.9b). With a copy, this is a layer-1
     /// exception; on its own it resolves to a layer-5 color set.
     RetainSourceColors,
+    ClearCopyManaCost,
+    RetainSourceName,
+    CopyAbilityAbsent(String),
     /// Set the Aura attachment restriction while this effect applies.
     SetAuraAttachmentFilter(crate::object::AuraAttachmentFilter),
     /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
@@ -324,12 +327,66 @@ fn resolve_set_pt_modification(
     }
 }
 
+fn is_copy_characteristic_exception(modification: &Modification) -> bool {
+    matches!(modification, Modification::AddCardTypes(_) | Modification::SetCardTypes(_)
+        | Modification::RemoveCardTypes(_) | Modification::AddSubtypes(_)
+        | Modification::SetSubtypes(_) | Modification::RemoveSubtypes(_)
+        | Modification::RemoveAllSubtypesOfFamily(_) | Modification::RemoveAllCreatureTypes
+        | Modification::AddSupertypes(_) | Modification::RemoveSupertypes(_)
+        | Modification::SetColors(_) | Modification::AddColors(_) | Modification::MakeColorless)
+}
+
+/// Characteristics specified as exceptions to a copy are part of its layer-1
+/// values, including when another object copies the result (CR 707.9b/d).
+fn apply_copy_characteristic_exceptions(values: &mut crate::snapshot::CopiableValues, modifications: &[Modification]) {
+    crate::static_abilities::exclude_cdas_from_copy(&mut values.abilities, &mut values.ability_labels,
+        false,
+        modifications.iter().any(|m| matches!(m, Modification::SetColors(_) | Modification::MakeColorless)),
+        modifications.iter().any(|m| matches!(m, Modification::SetCardTypes(_) | Modification::SetSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature) | Modification::RemoveAllCreatureTypes)));
+    for modification in modifications {
+        match modification {
+            Modification::SetColors(colors) => values.colors = *colors,
+            Modification::AddColors(colors) => values.colors = values.colors.union(*colors),
+            Modification::MakeColorless => values.colors = crate::color::ColorSet::COLORLESS,
+            Modification::AddCardTypes(types) => { for ty in types { if !values.card_types.contains(ty) { values.card_types.push(*ty); } } },
+            Modification::SetCardTypes(types) | Modification::RemoveCardTypes(types) => {
+                let mut card_types = values.card_types.clone().into();
+                let mut subtypes = values.subtypes.clone().into();
+                if matches!(modification, Modification::SetCardTypes(_)) {
+                    crate::continuous::replace_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, types);
+                } else {
+                    crate::continuous::remove_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, types);
+                }
+                values.card_types = card_types.to_vec(); values.subtypes = subtypes.to_vec();
+            },
+            Modification::AddSubtypes(types) => { for ty in types { if !values.subtypes.contains(ty) { values.subtypes.push(*ty); } } },
+            Modification::SetSubtypes(types) => {
+                let mut subtypes = values.subtypes.clone().into();
+                crate::continuous::replace_subtypes_for_set(&mut subtypes, types);
+                values.subtypes = subtypes.to_vec();
+            },
+            Modification::RemoveSubtypes(types) => values.subtypes.retain(|ty| !types.contains(ty)),
+            Modification::RemoveAllSubtypesOfFamily(family) => values.subtypes.retain(|ty| !ty.belongs_to_family(*family)),
+            Modification::RemoveAllCreatureTypes => values.subtypes.retain(|ty| !ty.is_creature_type()),
+            Modification::AddSupertypes(types) => { for ty in types { if !values.supertypes.contains(ty) { values.supertypes.push(*ty); } } },
+            Modification::RemoveSupertypes(types) => values.supertypes.retain(|ty| !types.contains(ty)),
+            _ => unreachable!("only characteristic copy exceptions are collected"),
+        }
+    }
+    values.subtypes.retain(|subtype| crate::continuous::card_types_support_subtype(&values.card_types, *subtype));
+
+}
+
 fn resolve_runtime_modification(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     modification: &RuntimeModification,
     copy_pt_exception: Option<(i32, i32)>,
     copy_color_exception: Option<crate::color::ColorSet>,
+    copy_characteristic_exceptions: &[Modification],
+    clear_copy_mana_cost: bool,
+    copy_ability_absent_marker: Option<&str>,
 ) -> Result<Modification, ExecutionError> {
     match modification {
         RuntimeModification::ChangeControllerToEffectController => {
@@ -445,33 +502,42 @@ fn resolve_runtime_modification(
                 )
                 .ok_or(ExecutionError::InvalidTarget)?
             };
+            let apply_exceptions = |values: &mut crate::snapshot::CopiableValues| {
             if let Some(colors) = copy_color_exception {
                 crate::static_abilities::exclude_cdas_from_copy(
-                    &mut copiable_values.abilities,
-                    &mut copiable_values.ability_labels,
+                    &mut values.abilities,
+                    &mut values.ability_labels,
                     false, true, false,
                 );
-                copiable_values.colors = colors;
+                values.colors = colors;
             }
             if let Some((power, toughness)) = copy_pt_exception {
                 crate::static_abilities::exclude_pt_cdas_from_copy(
-                    &mut copiable_values.abilities,
-                    &mut copiable_values.ability_labels,
+                    &mut values.abilities,
+                    &mut values.ability_labels,
                 );
-                copiable_values.power = Some(power);
-                copiable_values.toughness = Some(toughness);
+                values.power = Some(power);
+                values.toughness = Some(toughness);
             }
-            if let RuntimeModification::CopyOfWithAbilities { abilities, .. } = modification {
-                let old_len = copiable_values.abilities.len();
-                copiable_values
+            apply_copy_characteristic_exceptions(values, copy_characteristic_exceptions);
+            if clear_copy_mana_cost { values.mana_cost = None; }
+            if let RuntimeModification::CopyOfWithAbilities { abilities, .. } = modification
+                && copy_ability_absent_marker.is_none_or(|marker| !crate::filter::copy_abilities_have_marker(&values.abilities, marker)) {
+                let old_len = values.abilities.len();
+                values
                     .ability_labels
                     .resize(old_len, String::new());
-                std::sync::Arc::make_mut(&mut copiable_values.abilities)
+                std::sync::Arc::make_mut(&mut values.abilities)
                     .extend(abilities.iter().cloned());
-                copiable_values
+                values
                     .ability_labels
                     .resize(old_len + abilities.len(), String::new());
             }
+                if let Some(name) = name_override { values.name = name.clone(); }
+                for supertype in add_supertypes { if !values.supertypes.contains(supertype) { values.supertypes.push(*supertype); } }
+            };
+            apply_exceptions(&mut copiable_values);
+            if let Some(other) = copiable_values.other_copy_face.as_mut() { apply_exceptions(other); }
             let mut preserve_all = *preserve_source_abilities;
             if *preserve_source_abilities {
                 // "This ability" refers to the resolving ability, not every
@@ -498,7 +564,7 @@ fn resolve_runtime_modification(
                     preserve_all = false;
                 }
             }
-            Ok(Modification::CopyOf {
+            Ok(Modification::CopyOf { retain_original_name: false,
                 target_id: source_id,
                 copiable_values: Box::new(copiable_values),
                 preserve_source_abilities: preserve_all,
@@ -541,6 +607,9 @@ fn resolve_runtime_modification(
         RuntimeModification::SetAuraAttachmentFilter(filter) => {
             Ok(Modification::SetAuraAttachmentFilter(filter.clone().into()))
         }
+        RuntimeModification::CopyAbilityAbsent(_) => Err(ExecutionError::InternalError("conditional copy ability requires a copy instruction".into())),
+        RuntimeModification::RetainSourceName => Err(ExecutionError::InternalError("name retention requires a copy instruction".into())),
+        RuntimeModification::ClearCopyManaCost => Err(ExecutionError::InternalError("mana-cost copy exception requires a copy instruction".into())),
         RuntimeModification::RetainSourceColors => Ok(Modification::SetColors(
             game.current_colors(ctx.source).unwrap_or_default(),
         )),
@@ -1187,6 +1256,15 @@ fn acquire_continuous_action(
         matches!(modification, RuntimeModification::CopyOf { .. }
             | RuntimeModification::CopyOfWithAbilities { .. })
     });
+    let copy_characteristic_exceptions = if has_runtime_copy {
+        let exceptions = mods.iter().filter(|m| is_copy_characteristic_exception(m)).cloned().collect::<Vec<_>>();
+        mods.retain(|m| !is_copy_characteristic_exception(m));
+        exceptions
+    } else { Vec::new() };
+    let clear_copy_mana_cost = has_runtime_copy && definition.runtime_modifications.iter()
+        .any(|m| matches!(m, RuntimeModification::ClearCopyManaCost));
+    let retain_original_name = has_runtime_copy && definition.runtime_modifications.iter().any(|modification| matches!(modification, RuntimeModification::RetainSourceName));
+    let copy_ability_absent_marker = definition.runtime_modifications.iter().find_map(|modification| match modification { RuntimeModification::CopyAbilityAbsent(marker) => Some(marker.as_str()), _ => None });
     let mut copy_pt_exception = None;
     if has_runtime_copy && definition.resolve_set_pt_values_at_resolution {
         for modification in &mods {
@@ -1206,6 +1284,9 @@ fn acquire_continuous_action(
         .any(|m| matches!(m, RuntimeModification::RetainSourceColors)))
         .then(|| game.current_colors(ctx.source).unwrap_or_default());
     for runtime_modification in &definition.runtime_modifications {
+        if has_runtime_copy && matches!(runtime_modification, RuntimeModification::CopyAbilityAbsent(_)) { continue; }
+        if retain_original_name && matches!(runtime_modification, RuntimeModification::RetainSourceName) { continue; }
+        if clear_copy_mana_cost && matches!(runtime_modification, RuntimeModification::ClearCopyManaCost) { continue; }
         if copy_color_exception.is_some()
             && matches!(runtime_modification, RuntimeModification::RetainSourceColors) {
             continue;
@@ -1216,7 +1297,13 @@ fn acquire_continuous_action(
             runtime_modification,
             copy_pt_exception,
             copy_color_exception,
+            &copy_characteristic_exceptions,
+            clear_copy_mana_cost,
+            copy_ability_absent_marker,
         )?);
+    }
+    if retain_original_name {
+        for modification in &mut mods { if let Modification::CopyOf { retain_original_name, .. } = modification { *retain_original_name = true; } }
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
     let effect_group =
@@ -1352,6 +1439,122 @@ impl AcquiredContinuousAction {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ControlAssignmentPolicy {
+    AllOrNothing,
+    Independent,
+}
+
+/// Prepare every captured controller assignment before registering any of
+/// them, then reconcile the complete layer result once. This is a coordinated
+/// commit, not a sequence of independently observable controller changes.
+pub(crate) fn commit_control_assignments(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    assignments: &[(ObjectId, PlayerId)],
+    policy: ControlAssignmentPolicy,
+) -> Result<Vec<EffectOutcome>, ExecutionError> {
+    crate::effects::composition::execute_transaction(game, ctx, Vec::new, |game, ctx| {
+        if matches!(policy, ControlAssignmentPolicy::AllOrNothing)
+            && assignments.iter().any(|(object, player)| {
+                game.object(*object)
+                    .is_none_or(|object| object.zone != Zone::Battlefield)
+                    || game
+                        .player(*player)
+                        .is_none_or(|player| !player.is_in_game())
+            })
+        {
+            return Ok(vec![EffectOutcome::target_invalid()]);
+        }
+        let mut prepared = Vec::new();
+        for (object, controller) in assignments {
+            let definition = ApplyContinuousEffect::new(
+                EffectTarget::Specific(*object),
+                Modification::ChangeController(*controller),
+                Until::Forever,
+            );
+            prepared.push(acquire_continuous_action(&definition, game, ctx)?.prepare(
+                &definition,
+                game,
+                ctx,
+            )?);
+        }
+        let mut completions = Vec::new();
+        for action in prepared {
+            match action {
+                PreparedContinuousAction::Terminal(outcome) => {
+                    completions.push((outcome, Vec::new()))
+                }
+                PreparedContinuousAction::Register {
+                    effects,
+                    affected_objects,
+                } => {
+                    let active = effects.iter().any(|effect| {
+                        crate::continuous::continuous_effect_duration_and_condition_are_active(
+                            effect, game,
+                        )
+                    });
+                    ctx.created_continuous_effects
+                        .extend(register_resolved_continuous_batch(game, effects));
+                    completions.push((
+                        EffectOutcome::resolved(),
+                        if active { affected_objects } else { Vec::new() },
+                    ));
+                }
+            }
+        }
+        game.refresh_continuous_state()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        Ok(completions
+            .into_iter()
+            .map(|(outcome, affected)| {
+                if affected.is_empty() {
+                    outcome
+                } else {
+                    outcome.with_affected_objects_from_game(game, affected)
+                }
+            })
+            .collect())
+    })
+}
+
+/// Apply a captured list with a separate resolution instruction/timestamp for
+/// each grant. Later grants cannot reselect recipients or reread donor abilities.
+pub(crate) fn apply_captured_modifications(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    target: EffectTarget,
+    source_type: Option<EffectSourceType>,
+    modifications: Vec<Modification>,
+    duration: Until,
+) -> Result<EffectOutcome, ExecutionError> {
+    let effects = modifications
+        .into_iter()
+        .map(|modification| {
+            let mut apply =
+                ApplyContinuousEffect::new(target.clone(), modification, duration.clone());
+            if let Some(source_type) = &source_type {
+                apply = apply.with_source_type(source_type.clone());
+            }
+            crate::effect::Effect::new(apply)
+        })
+        .collect();
+    crate::effects::SequenceEffect::new(effects).execute(game, ctx)
+}
+
+/// Register already captured modifications without discovery or refresh between
+/// writes. Exchange callers must capture *both* sides before entering this owner.
+/// The caller decides whether IDs belong in its instruction output context.
+pub(crate) fn register_resolved_continuous_batch(
+    game: &mut GameState,
+    effects: impl IntoIterator<Item = ContinuousEffect>,
+) -> Vec<crate::continuous::ContinuousEffectId> {
+    effects
+        .into_iter()
+        .map(|effect| game.effect_store.continuous_effects.add_effect(effect))
+        .collect()
+}
+
 /// Registration owns timestamps, created-effect IDs, activity observation,
 /// continuous-state refresh and the instruction's affected-object result.
 fn publish_continuous_action(
@@ -1367,8 +1570,7 @@ fn publish_continuous_action(
     while let Some(effect) = next(game, ctx)? {
         registered_active_modification |=
             crate::continuous::continuous_effect_duration_and_condition_are_active(&effect, game);
-        let id = game.effect_store.continuous_effects.add_effect(effect);
-        ctx.created_continuous_effects.push(id);
+        ctx.created_continuous_effects.extend(register_resolved_continuous_batch(game, [effect]));
     }
 
     game.refresh_continuous_state()
@@ -1954,6 +2156,52 @@ mod tests {
                 .name,
             "Battlefield Form"
         );
+    }
+
+    #[test]
+    fn all_or_nothing_control_batch_rejects_a_departed_participant_before_any_write() {
+        let mut game = setup_game();
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let first = create_creature(&mut game, "Still here", a);
+        let second = create_creature(&mut game, "Departed", b);
+        game.move_object_by_effect(second, Zone::Hand).unwrap();
+        let mut ctx = ExecutionContext::new_default(first, a);
+        let count = game.effect_store.continuous_effects.effects().len();
+        let output = commit_control_assignments(&mut game, &mut ctx, &[(first, b), (second, a)],
+            ControlAssignmentPolicy::AllOrNothing).unwrap();
+        assert_eq!(output[0].status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert_eq!(game.current_controller(first), Some(a));
+        assert_eq!(game.effect_store.continuous_effects.effects().len(), count);
+        assert!(ctx.created_continuous_effects.is_empty());
+    }
+
+    #[test]
+    fn coordinated_control_assignments_publish_each_transition_once_with_prechange_snapshots() {
+        let mut game = setup_game();
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let first = create_creature(&mut game, "First control subject", a);
+        let second = create_creature(&mut game, "Second control subject", b);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, a);
+        game.establish_control_transition_boundary().unwrap();
+        let start = game.effect_store.pending_trigger_events.len();
+        let results = commit_control_assignments(&mut game, &mut ctx, &[(first, b), (second, a)], ControlAssignmentPolicy::AllOrNothing).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(game.current_controller(first), Some(b));
+        assert_eq!(game.current_controller(second), Some(a));
+        let events = game.remove_pending_trigger_events_matching_from(start,
+            |event| event.kind() == crate::events::EventKind::ControlChanged);
+        assert_eq!(events.len(), 2);
+        for event in events {
+            let event = event.downcast::<crate::events::ControlChangedEvent>().unwrap();
+            let old = if event.permanent == first { a } else { b };
+            assert_eq!(event.previous_controller, old);
+            assert_eq!(event.previous_snapshot.as_ref().unwrap().controller, old);
+            assert_eq!(event.snapshot.as_ref().unwrap().controller, event.new_controller);
+        }
+        assert_eq!(ctx.created_continuous_effects.len(), 2);
     }
 
     #[test]

@@ -9,8 +9,8 @@ use crate::zone::Zone;
 pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 
 use super::runtime_helpers::{
-    EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
-    complete_effect_driven_cast_with_outputs, effect_driven_cast_options_for_card_in_context,
+    EffectDrivenCastOption, EffectDrivenCastPayment,
+    effect_driven_cast_options_for_card_in_context,
 };
 
 fn runtime_payment(
@@ -99,6 +99,7 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 // included), open the chosen card publicly before the answer is
                 // replayed, then read its options on the opened card (see
                 // `game_state::hidden_hand_choices`).
+                let mut prompt = None;
                 if self.zone == Zone::Hand
                     && object_ids_in_zone(game, zone_owner_id, self.zone)
                         .into_iter()
@@ -175,54 +176,17 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                         ));
                     }
 
-                    let should_cast = {
-                        let choice_ctx = crate::decisions::context::BooleanContext::new(
-                            player_id,
-                            Some(ctx.source),
-                            "Cast a spell without paying its mana cost?".to_string(),
-                        );
-                        ctx.decision_maker.decide_boolean(game, &choice_ctx)
-                    };
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    if !should_cast {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                }
-
-                let Some(option) = super::runtime_helpers::choose_effect_driven_cast_option(
-                    game, ctx, player_id, options,
-                ) else {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
+                    prompt = Some(crate::decisions::context::BooleanContext::new(
+                        player_id, Some(ctx.source), "Cast a spell without paying its mana cost?".to_string(),
                     ));
                 }
-
-                let Some(result) =
-                    cast_effect_driven_spell_with_payment(game, ctx, player_id, &option, payment)?
-                else {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::impossible(),
-                    ));
-                };
-
-                complete_effect_driven_cast_with_outputs(
-                    EffectOutcome::with_objects(vec![result.new_id]),
-                    game,
-                    result,
-                    player_id,
-                    ctx.provenance,
-                )
+                super::resolved_cast_offer::ResolvedCastOffer {
+                    player: player_id,
+                    candidates: super::resolved_cast_offer::CastOfferCandidates::Resolved(options),
+                    prompt,
+                    payment,
+                    failed_cast: EffectOutcome::impossible(),
+                }.execute(game, ctx)
             },
         )
     }

@@ -1,12 +1,7 @@
 //! Add one mana of a color found among objects matching a filter.
 
-use super::add_mana_of_colors_among::{colors_among_filter, colors_among_for_execution};
-use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outputs,
-};
-use crate::color::Color;
+use super::add_mana_of_colors_among::{colors_among_filter};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -42,45 +37,9 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
-        let colors = symbols
-            .iter()
-            .filter_map(|symbol| color_for_symbol(*symbol))
-            .collect::<Vec<_>>();
-        let Some(default_color) = colors.first().copied() else {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        };
-
-        let chosen = choose_mana_colors(
-            game,
-            ctx,
-            player_id,
-            1,
-            false,
-            false,
-            Some(&colors),
-            default_color,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        let Some(color) = chosen.into_iter().next() else {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        };
-        let symbols = credit_mana_symbols_from_context(
-            game,
-            player_id,
-            vec![ManaSymbol::from_color(color)],
-            ctx,
-        )?;
-        Ok(mana_added_count_outputs(ctx, player_id, symbols, 1))
+        use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        execute_production(self.mana_production().expect("mana production descriptor"),
+            game, ctx, ManaOutputProjection::AuthoredCount, ManaChoiceMenu::AvailableColors)
     }
 
     fn producible_mana_symbols(
@@ -94,22 +53,11 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
     }
 }
 
-fn color_for_symbol(symbol: ManaSymbol) -> Option<Color> {
-    match symbol {
-        ManaSymbol::White => Some(Color::White),
-        ManaSymbol::Blue => Some(Color::Blue),
-        ManaSymbol::Black => Some(Color::Black),
-        ManaSymbol::Red => Some(Color::Red),
-        ManaSymbol::Green => Some(Color::Green),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
-    use crate::color::ColorSet;
+    use crate::color::{Color, ColorSet};
     use crate::ids::CardId;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::{CardType, Supertype};

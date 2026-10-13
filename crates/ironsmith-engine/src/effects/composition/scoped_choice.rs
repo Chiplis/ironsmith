@@ -5,6 +5,51 @@ use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 
+/// Invalid answers either reject the instruction or produce no selection.
+/// Neither policy falls through to a later index in a malformed answer.
+#[derive(Clone, Copy)]
+pub(crate) enum SingleChoicePolicy {
+    Strict,
+    First,
+}
+
+pub(crate) fn select_typed_option<T: Clone>(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    chooser: PlayerId,
+    prompt: &str,
+    options: &[(T, String)],
+    policy: SingleChoicePolicy,
+) -> Result<Option<T>, ExecutionError> {
+    let menu = SelectOptionsContext::new(
+        chooser,
+        Some(ctx.source),
+        prompt,
+        options
+            .iter()
+            .enumerate()
+            .map(|(i, (_, label))| SelectableOption::new(i, label.clone()))
+            .collect(),
+        1,
+        1,
+    );
+    let selected = ctx.decision_maker.decide_options(game, &menu);
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+    if matches!(policy, SingleChoicePolicy::Strict)
+        && (selected.len() != 1 || selected[0] >= options.len())
+    {
+        return Err(ExecutionError::InternalError(
+            "invalid single-option selection".into(),
+        ));
+    }
+    Ok(selected
+        .first()
+        .and_then(|index| options.get(*index))
+        .map(|(value, _)| value.clone()))
+}
+
 /// A local typed choice. The continuation constructs ordinary effects from the
 /// selected values. Replaying a suspended child replays the whole choice; no
 /// persistent chosen-color/type state or global result slot is installed.
@@ -23,6 +68,15 @@ pub(crate) fn execute_choice_program<T: Clone>(
         ctx,
         || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
+            if strict_single && maximum == 1 {
+                let Some(value) = select_typed_option(game, ctx, chooser, prompt, options, SingleChoicePolicy::Strict)? else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                };
+                return match body(vec![value])? {
+                    Some(effect) => effect.0.execute_child_with_outputs(game, ctx),
+                    None => Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+                };
+            }
             let choice = SelectOptionsContext::new(
                 chooser,
                 Some(ctx.source),
@@ -199,6 +253,35 @@ mod payment_tests {
                 choose_bounded_payment_amount(&game, &mut ctx, player, min, available, "Pay"),
                 expected
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod selection_policy_tests {
+    use super::*;
+    struct Answer(Vec<usize>, bool);
+    impl crate::decision::DecisionMaker for Answer {
+        fn decide_options(&mut self, _: &GameState, _: &SelectOptionsContext) -> Vec<usize> { self.0.clone() }
+        fn awaiting_choice(&self) -> bool { self.1 }
+    }
+    #[test]
+    fn typed_selection_keeps_strict_first_empty_and_pending_contracts_distinct() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        for (answer, pending, first, strict_error) in [
+            (vec![1], false, Some(20), false),
+            (vec![99, 0], false, None, true),
+            (vec![0, 1], false, Some(10), true),
+            (vec![], false, None, true),
+            (vec![0], true, None, false),
+        ] {
+            for policy in [SingleChoicePolicy::First, SingleChoicePolicy::Strict] {
+                let mut dm = Answer(answer.clone(), pending);
+                let mut ctx = ExecutionContext::new(crate::ids::ObjectId(99), PlayerId(0), &mut dm);
+                let result = select_typed_option(&game, &mut ctx, PlayerId(1), "Choose", &[(10, "ten".into()), (20, "twenty".into())], policy);
+                if matches!(policy, SingleChoicePolicy::Strict) && strict_error { assert!(result.is_err()); }
+                else { assert_eq!(result.unwrap(), first); }
+            }
         }
     }
 }

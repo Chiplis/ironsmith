@@ -7,7 +7,6 @@
   .arena-permanent-art { position: absolute; inset: 2px; overflow: hidden; }
   .arena-permanent-art > img { width: 100%; height: 100%; object-fit: cover; }
   .arena-permanent-stat { position: absolute; right: 0; bottom: 0; min-width: 20px; padding: 0 3px; border: 1px solid #c2c7c7; border-radius: 4px 0 0 0; background: #d9dfdf; color: #12171c; font: 700 clamp(10px, calc(var(--bf-card-height, 90px) * .19), 16px)/1.05 Georgia, serif; text-align: center; }
-  .arena-permanent-counter { position: absolute; right: 0; top: 13px; min-width: 13px; height: 13px; border-radius: 50%; background: #3261a0; border: 1px solid #abc5eb; color: white; font: 700 10px/12px Georgia, serif; text-align: center; }
   .arena-permanent[data-kind="land"] { border-width: 1px; border-radius: 2px; }
   .arena-permanent[data-kind="planeswalker"] { left: 17%; right: 17%; border-radius: 13px 13px 3px 3px; }
   .arena-permanent[data-kind="planeswalker"] .arena-permanent-stat,
@@ -66,7 +65,11 @@
   border-radius: 48% 48% 4px 4px;
 }
 
-.battlefield-grouped-card .arena-permanent-name { padding-right: 18px; }
+.arena-permanent > .battlefield-group-badge {
+  position: absolute;
+  right: 0;
+  top: calc(var(--arena-name-height) + 2px);
+}
 
 .battlefield-artwork-card { --mana-strip-height: clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px); }
 /* Add a footer below the original art tile instead of taking height from it. */

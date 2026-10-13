@@ -4,6 +4,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
+#[cfg(test)]
 use crate::zone::Zone;
 pub use ironsmith_core::RearrangeLookedCardsInLibraryEffect;
 
@@ -81,41 +82,9 @@ impl EffectExecutor for RearrangeLookedCardsInLibraryEffect {
             return Ok(EffectOutcome::resolved());
         };
 
-        let mut cards: Vec<ObjectId> = snapshots
-            .iter()
-            .map(|snapshot| snapshot.object_id)
-            .collect();
-        cards.retain(|id| {
-            game.object(*id)
-                .is_some_and(|obj| obj.zone == Zone::Library)
-        });
-        if cards.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let owners: std::collections::HashSet<_> = cards
-            .iter()
-            .filter_map(|id| game.object(*id).map(|obj| obj.owner))
-            .collect();
-        if owners.len() != 1 {
-            return Ok(EffectOutcome::resolved());
-        }
-        let library_owner = *owners.iter().next().expect("owner exists");
-
-        let Some(player) = game.player(library_owner) else {
-            return Ok(EffectOutcome::resolved());
-        };
-
-        let current_top_to_bottom: Vec<ObjectId> = player
-            .library
-            .iter()
-            .rev()
-            .copied()
-            .filter(|id| cards.contains(id))
-            .collect();
-        if current_top_to_bottom.is_empty() {
-            return Ok(EffectOutcome::resolved());
-        }
+        let Some((library_owner, current_top_to_bottom)) =
+            super::capture_retained_library_set(game, snapshots)
+        else { return Ok(EffectOutcome::resolved()); };
 
         let (min, max) =
             compute_choice_bounds(self.count, ctx.x_value, current_top_to_bottom.len());

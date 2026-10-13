@@ -168,6 +168,8 @@ impl AddChosenCreatureTypeForFilter {
 }
 
 impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
+    fn is_characteristic_defining_subtype_family(&self) -> bool { self.filter.is_source_only() }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AddChosenCreatureType
     }

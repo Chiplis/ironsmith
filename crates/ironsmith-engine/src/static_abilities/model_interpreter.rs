@@ -1788,16 +1788,13 @@ impl StaticAbilityModelInterpreter {
                 options
                     .iter()
                     .map(|option| {
-                        super::PowerToughnessChoiceOption::with_abilities(
-                            option.power,
-                            option.toughness,
-                            option
-                                .abilities
-                                .iter()
-                                .cloned()
-                                .map(StaticAbility::from_model)
-                                .collect(),
-                        )
+                        super::PowerToughnessChoiceOption {
+                            power: option.power,
+                            toughness: option.toughness,
+                            card_types: option.card_types.clone(),
+                            added_subtypes: option.added_subtypes.clone(),
+                            abilities: option.abilities.iter().cloned().map(StaticAbility::from_model).collect(),
+                        }
                     })
                     .collect(),
                 display.clone(),
@@ -3606,16 +3603,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 options: options
                     .iter()
                     .map(|option| {
-                        super::PowerToughnessChoiceOption::with_abilities(
-                            option.power,
-                            option.toughness,
-                            option
-                                .abilities
-                                .iter()
-                                .cloned()
-                                .map(StaticAbility::from_model)
-                                .collect(),
-                        )
+                        super::PowerToughnessChoiceOption {
+                            power: option.power,
+                            toughness: option.toughness,
+                            card_types: option.card_types.clone(),
+                            added_subtypes: option.added_subtypes.clone(),
+                            abilities: option.abilities.iter().cloned().map(StaticAbility::from_model).collect(),
+                        }
                     })
                     .collect(),
             }),

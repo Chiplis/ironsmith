@@ -1,7 +1,7 @@
-//! Read-only resolution of the shared mana instruction vocabulary.
+//! Shared mana descriptors for read-only planning and instruction execution.
 //!
-//! Choices are data here. The caller must select an admissible output and run
-//! the pending event through replacement processing before crediting mana.
+//! Execution chooses from the resolved descriptor and credits through the
+//! replacement-aware owner while preserving each facade's result policy.
 use crate::color::Color;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -25,6 +25,103 @@ pub(crate) enum ResolvedManaOutput {
 pub(crate) struct ResolvedManaProduction {
     pub player: PlayerId,
     pub output: ResolvedManaOutput,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ManaOutputProjection {
+    Symbols,
+    AuthoredCount,
+    CreditedCount,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ManaChoiceMenu {
+    AnyColor,
+    AvailableColors,
+    Types,
+}
+
+/// One execution pipeline for the same descriptor used by payment planning.
+/// Only the legacy menu and result projection remain facade policies.
+pub(crate) fn execute_production(
+    production: ManaProduction<'_>,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    projection: ManaOutputProjection,
+    menu: ManaChoiceMenu,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    use super::choice_helpers::*;
+    let resolved = production.resolve(game, ctx)?;
+    let symbols = match resolved.output {
+        ResolvedManaOutput::Exact(symbols) => symbols,
+        ResolvedManaOutput::Choice {
+            available,
+            count,
+            same_type,
+            distinct,
+        } => {
+            if matches!(menu, ManaChoiceMenu::Types) {
+                choose_mana_symbols(
+                    game,
+                    ctx,
+                    resolved.player,
+                    count,
+                    same_type,
+                    &available,
+                    available.first().copied().unwrap_or(ManaSymbol::Colorless),
+                )?
+            } else {
+                let colors = available
+                    .iter()
+                    .filter_map(|symbol| match symbol {
+                        ManaSymbol::White => Some(Color::White),
+                        ManaSymbol::Blue => Some(Color::Blue),
+                        ManaSymbol::Black => Some(Color::Black),
+                        ManaSymbol::Red => Some(Color::Red),
+                        ManaSymbol::Green => Some(Color::Green),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let unrestricted = matches!(menu, ManaChoiceMenu::AnyColor);
+                choose_mana_colors(
+                    game,
+                    ctx,
+                    resolved.player,
+                    count,
+                    same_type,
+                    distinct,
+                    (!unrestricted).then_some(colors.as_slice()),
+                    if unrestricted {
+                        Color::Green
+                    } else {
+                        colors.first().copied().unwrap_or(Color::Green)
+                    },
+                )?
+                .into_iter()
+                .map(ManaSymbol::from_color)
+                .collect()
+            }
+        }
+    };
+    if (ctx.decision_maker.awaiting_choice() || symbols.is_empty())
+        && !matches!(projection, ManaOutputProjection::Symbols)
+    {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            crate::effect::EffectOutcome::count(0),
+        ));
+    }
+    let authored_count = symbols.len() as i32;
+    let receipt = credit_mana_symbols_from_context(game, resolved.player, symbols, ctx)?;
+    Ok(match projection {
+        ManaOutputProjection::Symbols => mana_added_value_outputs(ctx, resolved.player, receipt),
+        ManaOutputProjection::AuthoredCount => {
+            mana_added_count_outputs(ctx, resolved.player, receipt, authored_count)
+        }
+        ManaOutputProjection::CreditedCount => {
+            let count = receipt.mana_count();
+            mana_added_count_outputs(ctx, resolved.player, receipt, count)
+        }
+    })
 }
 
 impl ResolvedManaOutput {
@@ -125,21 +222,6 @@ impl ResolvedManaOutput {
 }
 
 impl ManaProduction<'_> {
-    /// Execute a production known by its native executor to contain no choice.
-    pub(crate) fn resolve_exact(
-        self,
-        game: &GameState,
-        ctx: &ExecutionContext,
-    ) -> Result<(PlayerId, Vec<ManaSymbol>), ExecutionError> {
-        let resolved = self.resolve(game, ctx)?;
-        match resolved.output {
-            ResolvedManaOutput::Exact(symbols) => Ok((resolved.player, symbols)),
-            ResolvedManaOutput::Choice { .. } => Err(ExecutionError::InternalError(
-                "choice-bearing mana instruction used as exact production".into(),
-            )),
-        }
-    }
-
     /// Resolve against the state at this instruction, never a stale pre-payment
     /// snapshot. This method does not resolve choices, emit events or mutate the
     /// game. Errors remain errors rather than becoming zero-mana estimates.
@@ -272,6 +354,9 @@ impl ManaProduction<'_> {
                     is_allowed_symbol,
                 };
                 let count = amount(value)?;
+                if count == 0 {
+                    return Ok(ResolvedManaProduction { player: recipient, output: Exact(Vec::new()) });
+                }
                 let available = match source {
                     super::ManaTypeSource::MatchingLandsCouldProduce => {
                         collect_available_mana_symbols(game, ctx, filter)
@@ -436,4 +521,24 @@ mod tests {
         assert!(possible.alternatives(3).is_none());
         assert_eq!(possible.alternatives(4).unwrap().len(), 4);
     }
+    #[test]
+    fn same_color_executor_accepts_a_full_amount_payment_witness() {
+        struct Planned;
+        impl crate::decision::DecisionMaker for Planned {
+            fn planned_mana_output(&mut self, _: &GameState, choice: &crate::mana_payment::ManaProductionChoice)
+                -> Result<Option<Vec<ManaSymbol>>, String> {
+                assert_eq!(choice.count, 3);
+                assert!(choice.same_type);
+                Ok(Some(vec![ManaSymbol::Blue; 3]))
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let source = game.new_object_id();
+        let mut dm = Planned;
+        let mut ctx = ExecutionContext::new(source, PlayerId(0), &mut dm);
+        let output = crate::effects::execute_effect(&mut game, &Effect::add_mana_of_any_one_color(3), &mut ctx).unwrap();
+        assert_eq!(output.value, crate::effect::OutcomeValue::Count(3));
+        assert_eq!(game.player(PlayerId(0)).unwrap().mana_pool.blue, 3);
+    }
+
 }

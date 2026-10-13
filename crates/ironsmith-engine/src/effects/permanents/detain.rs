@@ -38,6 +38,7 @@ impl EffectExecutor for DetainEffect {
         };
 
         let mut count = 0_i32;
+        let mut restrictions = Vec::new();
         for object_id in objects {
             let Some(object) = game.object(object_id) else {
                 continue;
@@ -47,24 +48,13 @@ impl EffectExecutor for DetainEffect {
             }
 
             let filter = ObjectFilter::specific(object_id);
-            game.add_restriction_effect(
-                Restriction::attack_or_block(filter.clone()),
-                Until::YourNextTurn,
-                ctx.source,
-                ctx.controller,
-                None,
-            );
-            game.add_restriction_effect(
-                Restriction::activate_abilities_of(filter),
-                Until::YourNextTurn,
-                ctx.source,
-                ctx.controller,
-                None,
-            );
+            restrictions.push(Restriction::attack_or_block(filter.clone()));
+            restrictions.push(Restriction::activate_abilities_of(filter));
             count += 1;
         }
 
-        game.update_cant_effects();
+        crate::effects::restrictions::ResolvedRestrictions::new(restrictions, Until::YourNextTurn)
+            .apply(game, ctx);
         Ok(EffectOutcome::count(count))
     }
 
@@ -151,14 +141,16 @@ mod tests {
 
         game.turn.active_player = bob;
         game.turn.turn_number = 2;
-        game.update_cant_effects();
+        crate::effects::restrictions::ResolvedRestrictions::new(restrictions, Until::YourNextTurn)
+            .apply(game, ctx);
         assert!(!game.can_attack(creature));
         assert!(!game.can_block(creature));
         assert!(!game.can_activate_abilities_of(creature));
 
         game.turn.active_player = alice;
         game.turn.turn_number = 3;
-        game.update_cant_effects();
+        crate::effects::restrictions::ResolvedRestrictions::new(restrictions, Until::YourNextTurn)
+            .apply(game, ctx);
         assert!(game.can_attack(creature));
         assert!(game.can_block(creature));
         assert!(game.can_activate_abilities_of(creature));

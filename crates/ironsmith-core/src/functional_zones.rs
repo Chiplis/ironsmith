@@ -64,6 +64,7 @@ impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond> {
     /// An unconditional source-only definition of every subtype in a family.
     pub fn is_characteristic_defining_subtype_family(&self) -> bool {
         matches!(&self.payload, StaticAbilityPayload::AddAllSubtypesOfFamily { filter, .. }
+            | StaticAbilityPayload::AddChosenCreatureType { filter, .. }
             if filter.is_source_only())
     }
 

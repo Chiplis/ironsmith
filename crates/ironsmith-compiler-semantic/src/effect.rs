@@ -2414,6 +2414,7 @@ impl Effect {
         alternative_cost: Option<crate::cost::TotalCost>,
     ) -> Self {
         Self::new(crate::effects::CastTaggedEffect {
+            copy_named_definition: tag.as_str() == crate::tag::CompilerReferenceTag::NotedCardName.as_str(),
             tag,
             player,
             allow_land,

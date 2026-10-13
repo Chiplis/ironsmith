@@ -3,7 +3,7 @@
 use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
+use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
@@ -36,7 +36,7 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
         }
 
         let abilities = expand_sacrificed_land_type_landwalks(&self.abilities, ctx);
-        let mut outcomes = Vec::new();
+        let mut modifications = Vec::new();
         if let Some(source) = &self.activated_from {
             let source_id = resolve_single_object_for_effect(game, ctx, source)?;
             game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
@@ -45,23 +45,12 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
             let copied = game.current_abilities(source_id).unwrap_or_default()
                 .into_iter().filter(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
                 .collect::<Vec<_>>();
-            for ability in copied {
-                let apply = ApplyContinuousEffect::new(
-                    EffectTarget::Specific(target_id), Modification::AddAbilityGeneric(ability), self.duration.clone(),
-                );
-                outcomes.push(execute_effect(game, &Effect::new(apply), ctx)?);
-            }
+            modifications.extend(copied.into_iter().map(Modification::AddAbilityGeneric));
         }
-        for ability in &abilities {
-            let apply = ApplyContinuousEffect::new(
-                EffectTarget::Specific(target_id),
-                Modification::AddAbility(ability.clone()),
-                self.duration.clone(),
-            );
-            outcomes.push(execute_effect(game, &Effect::new(apply), ctx)?);
-        }
-
-        Ok(EffectOutcome::aggregate(outcomes))
+        modifications.extend(abilities.into_iter().map(Modification::AddAbility));
+        crate::effects::continuous::apply_captured_modifications(
+            game, ctx, EffectTarget::Specific(target_id), None, modifications, self.duration.clone(),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

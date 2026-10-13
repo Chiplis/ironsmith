@@ -1,16 +1,16 @@
 import { landManaColors, LAND_MANA_COLORS } from '@/lib/land-mana-colors';
 import LoadingCardArt from './LoadingCardArt';
+import BattlefieldGroupBadge from './BattlefieldGroupBadge';
 import { cardArtCropUrl } from '@/lib/card-image-variants';
 import { cardArtColors } from '@/lib/card-art-colors';
 import { arenaFrameColor, arenaPermanentKind } from '@/lib/mobile-arena';
 
-export default function MobileArenaCardFace({ card, name, artUrl, pending, primary, secondary }) {
+export default function MobileArenaCardFace({ card, name, artUrl, pending, primary }) {
   const kind = arenaPermanentKind(card);
   const manaColors = landManaColors(card);
   const statKind = kind === 'planeswalker' ? 'loyalty' : kind === 'battle' ? 'defense' : null;
   const liveCounter = statKind && (card.counters || []).find?.(counter => String(counter.kind).toLowerCase() === statKind);
   const statistic = statKind ? { label: card[statKind] ?? liveCounter?.amount ?? 0, title: statKind } : primary;
-  const extraCounter = secondary && !(statKind && Number(secondary.label) === Number(statistic.label)) ? secondary : null;
   const token = Boolean(card.is_token || card.token);
   const chapters = [...new Set(String(card.oracle_text || '').match(/^(?:I|II|III|IV|V|VI)(?=\s*[—,])/gm) || [])];
   return <div className="arena-permanent" data-kind={kind} data-mana-strip={manaColors.length ? "true" : undefined} data-token={token || undefined}
@@ -29,7 +29,7 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
       data-modified={kind === 'creature' && card.pt_modified_by_effect === true ? 'true' : undefined}
       title={kind === 'creature' && card.summoning_sick ? 'Summoning sickness' : statistic.title}
       aria-label={kind === 'creature' && card.summoning_sick ? `${statistic.title || 'Power/toughness'} — summoning sickness` : statistic.title}>{statistic.label}</span>}
-    {extraCounter && <span className="arena-permanent-counter" aria-label={extraCounter.title}>{extraCounter.label}</span>}
+    <BattlefieldGroupBadge count={card.count} />
     {kind === 'saga' && chapters.length > 0 && <span className="arena-saga-chapters" aria-label="Saga chapters">{chapters.map(chapter => <span key={chapter} style={{display:'block'}}>{chapter}</span>)}</span>}
     {manaColors.length > 0 && <div className="arena-land-mana-strip" aria-label={`Produces ${manaColors.map(color => LAND_MANA_COLORS[color].name.toLowerCase()).join(', ')} mana`}>
       {manaColors.map(color => <span key={color} data-mana-color={color} aria-label={LAND_MANA_COLORS[color].name} style={{backgroundColor: LAND_MANA_COLORS[color].background}} />)}

@@ -255,6 +255,24 @@ fn build_token_copy_object(
         ));
     }
 
+    // Copy exceptions apply to each copiable face, not just the face initially
+    // displayed by the token (CR 707.9b, 709.5b, 710.2).
+    if let Some(other) = token.copied_face_values.as_ref()
+        .and_then(|values| values.other_copy_face.as_deref()).cloned()
+    {
+        let mut other_object = token.clone();
+        other_object.copy_copiable_values_from_values(&other);
+        let other_token = build_token_copy_object(
+            effect, id, controller_id, Some(&other_object), None,
+            resolved_target_id, half_power, half_toughness,
+            resolved_base_power_toughness, static_abilities_to_grant,
+        )?;
+        let mut values = crate::snapshot::CopiableValues::from_object(&token);
+        values.other_copy_face = Some(Box::new(crate::snapshot::CopiableValues::from_object(&other_token)));
+        token.copied_face_values = Some(Box::new(values));
+    } else if token.copied_face_values.is_some() {
+        token.copied_face_values = Some(Box::new(crate::snapshot::CopiableValues::from_object(&token)));
+    }
     Ok(token)
 }
 
@@ -739,6 +757,7 @@ fn commit_token_copy_original(
         let id = game.new_object_id();
         let mut token = Object::token_copy_of(&token_preview, id, controller_id);
         token.zone = Zone::Command;
+        token.token_creation_method = effect.creation_method;
         let token_is_creature = token.is_creature();
         game.commit_token_resource_slot()?;
         game.add_object(token);

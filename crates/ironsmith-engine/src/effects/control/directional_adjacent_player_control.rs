@@ -1,11 +1,10 @@
 //! Directional adjacent-player control choice implementation.
 
-use crate::continuous::{EffectTarget, Modification};
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{Effect, EffectOutcome, Until};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effect::EffectOutcome;
+use crate::effects::EffectExecutor;
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -139,21 +138,13 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
             chosen.push((*chooser, selected));
         }
 
-        let mut outcomes = Vec::new();
-        for (new_controller, object_id) in chosen {
-            let pending_start = game.effect_store.pending_trigger_events.len();
-            let apply = ApplyContinuousEffect::new(
-                EffectTarget::Specific(object_id),
-                Modification::ChangeController(new_controller),
-                Until::Forever,
-            );
-            let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
-            outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
-                |event| event.kind() == crate::events::EventKind::ControlChanged));
-            outcomes.push(outcome);
-        }
-
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        let assignments = chosen.into_iter().map(|(controller, object)| (object, controller)).collect::<Vec<_>>();
+        let pending_start = game.effect_store.pending_trigger_events.len();
+        let outcomes = crate::effects::continuous::commit_control_assignments(game, ctx, &assignments, crate::effects::continuous::ControlAssignmentPolicy::Independent)?;
+        let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
+        outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
+            |event| event.kind() == crate::events::EventKind::ControlChanged));
+        Ok(outcome)
     }
 }
 

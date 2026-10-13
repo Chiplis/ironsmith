@@ -224,6 +224,7 @@ const SHAPES: &[Shape] = &[
     permanent_types_among_graveyard,
     graveyard_size_threshold,
     mana_values_among_your_graveyard,
+    distinct_mana_values_exiled_with_source,
     cards_exiled_with_source,
     you_have_less_life_than_opponent,
     you_committed_crime_this_turn,
@@ -873,6 +874,23 @@ fn mana_values_among_your_graveyard(words: &[&str]) -> Option<PredicateAst> {
         .in_zone(Zone::Graveyard)
         .owned_by(PlayerFilter::You);
     Some(at_least(Value::DistinctManaValues(cards), count))
+}
+
+/// Distinct mana values among the source's linked exiled cards.
+fn distinct_mana_values_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
+    let ["cards", "with", count, "or", "more", "different", "mana", "values", "are", "exiled", "with", "this", source @ ..] = words else {
+        return None;
+    };
+    match source {
+        [] => {},
+        [noun] if SOURCE_NOUNS.contains(noun) => {},
+        _ => return None,
+    }
+    let filter = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .match_tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject);
+    Some(at_least(Value::DistinctManaValues(filter), number(count)?))
 }
 
 /// "there are four or more creature cards exiled with this artifact" (Negative
