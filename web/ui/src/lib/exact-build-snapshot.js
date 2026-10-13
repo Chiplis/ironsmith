@@ -74,6 +74,16 @@ export async function validateExactSnapshot(snapshot, buildId) {
   await validateExactSnapshotHeader(snapshot);
   if (await snapshotDigest(snapshot.memory) !== snapshot.memoryHash) throw new Error('Exact snapshot integrity mismatch');
 }
+// Standard wasm-bindgen packages do not expose the instance-image bindings.
+// Keep native savepoints and verified transcript replay available in those builds.
+export function createAvailableExactBuildSnapshotRuntime({ exports, bindings }) {
+  const { exactSnapshotBuildId, exactSnapshotLayout, replaceEngineInstance, attachExactBuildGame } = bindings;
+  if (typeof exactSnapshotBuildId !== 'string' || !exactSnapshotBuildId
+      || !Array.isArray(exactSnapshotLayout?.globals) || !Array.isArray(exactSnapshotLayout?.tables)
+      || typeof replaceEngineInstance !== 'function' || typeof attachExactBuildGame !== 'function') return null;
+  return createExactBuildSnapshotRuntime({ exports, layout: exactSnapshotLayout, buildId: exactSnapshotBuildId,
+    replace: replaceEngineInstance, attach: attachExactBuildGame });
+}
 export function createExactBuildSnapshotRuntime({ exports: initial, layout, buildId, replace, attach }) {
   let exports = initial;
   const initialFunctions = layout.tables.filter(table => table.kind === 'function').map(({ name }) => {
@@ -128,6 +138,7 @@ export function createExactBuildSnapshotRuntime({ exports: initial, layout, buil
     return attach(snapshot.pointer);
   };
   return {
+    buildId,
     get exports() { return exports; },
     async capture(game, recovery) {
       return sealExactSnapshot(copyInstance(game, { recovery }));

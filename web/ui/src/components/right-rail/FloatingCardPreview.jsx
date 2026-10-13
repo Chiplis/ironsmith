@@ -180,7 +180,24 @@ function battlefieldPreviewLayout(rect, size, source) {
   };
 }
 
+function fullCardsHud() {
+  return document.querySelector('.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]') != null;
+}
+
+// The stack frame grows down to whatever sits under the stack column: the
+// local mana row in the compact HUD, the local player bar with full cards
+// (whose mana is a vertical rail beside the column instead).
+function stackFrameFloor() {
+  const table = document.querySelector('.table-shell[data-focused-hud="true"]');
+  if (!table) return null;
+  const bounds = table.querySelector(fullCardsHud() ? '.table-shared-player-header' : '.local-player-mana-dock')
+    ?.getBoundingClientRect();
+  return bounds?.width > 0 ? bounds : null;
+}
+
 // Desktop keeps the top entry exposed and overlays the rest of its reserved rail.
+// With full cards the frame stands beside the bounded stack column instead,
+// top-aligned with it, so opening an entry's details never moves the frame.
 // Compact layouts retain the adjacent preview with the normal hover height budget.
 function stackAnchoredPreviewPosition(anchorRect, size) {
   if (!anchorRect || typeof window === "undefined") return null;
@@ -188,14 +205,27 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
   const rail = window.innerWidth >= 1024
     ? document.querySelector('[data-my-zone] .my-zone-stack-rail') : null;
   const railBounds = rail?.getBoundingClientRect();
+  if (railBounds?.width > 0 && fullCardsHud()) {
+    const top = Math.max(margin, railBounds.top);
+    // Stop above whatever is highest underneath: the phase track (hidden
+    // during some decisions), the hand's cards, or the player bar.
+    const phaseTop = document.querySelector('.table-shell[data-focused-hud="true"] .phase-track-group')
+      ?.getBoundingClientRect().top;
+    const handTop = [...document.querySelectorAll('.hand-card')]
+      .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0)
+      .reduce((highest, rect) => Math.min(highest, rect.top), Infinity);
+    const bottom = Math.min(stackFrameFloor()?.top ?? window.innerHeight, phaseTop || Infinity, handTop) - margin;
+    return { left: Math.round(railBounds.right + 12), top: Math.round(top), right: 'auto',
+      maxHeight: `${Math.max(0, Math.floor(bottom - top))}px` };
+  }
   if (railBounds?.width > 0) {
     const topEntry = rail.querySelector('.stack-timeline-entry:not([data-leaving="true"])');
     const entryBounds = topEntry?.getBoundingClientRect();
     const minimumTop = Math.max(margin, (entryBounds?.bottom ?? anchorRect.bottom) + 4);
-    const manaBounds = document.querySelector('.local-player-mana-dock')?.getBoundingClientRect();
-    const bottom = manaBounds?.width > 0 ? manaBounds.top - 8 : window.innerHeight - margin;
+    const floorBounds = stackFrameFloor();
+    const bottom = floorBounds ? floorBounds.top - 8 : window.innerHeight - margin;
     const maximumHeight = Math.max(0, Math.min(bottom - minimumTop, railBounds.width * 88 / 63));
-    const top = manaBounds?.width > 0 ? bottom - Math.min(size.height, maximumHeight) : minimumTop;
+    const top = floorBounds ? bottom - Math.min(size.height, maximumHeight) : minimumTop;
     return { left: Math.round(railBounds.left), top: Math.round(top), right: 'auto',
       maxHeight: `${Math.floor(maximumHeight)}px` };
   }
@@ -586,10 +616,10 @@ export default function FloatingCardPreview({
         || (lookStackPreview ? document.querySelector('[data-my-zone] .my-zone-stack-rail')?.getBoundingClientRect() : null);
       const topEntry = document.querySelector('[data-my-zone] .my-zone-stack-rail .stack-timeline-entry:not([data-leaving="true"])')?.getBoundingClientRect();
       const table = document.querySelector('.table-shell[data-focused-hud="true"]');
-      const mana = table?.querySelector('.local-player-mana-dock')?.getBoundingClientRect();
+      const floor = stackFrameFloor();
       const rail = table?.querySelector('.my-zone-stack-rail')?.getBoundingClientRect();
-      if (mana?.width && rail?.width && topEntry) {
-        const width = Math.max(0, Math.min(rail.width, (mana.top - 12 - topEntry.bottom) * 63 / 88));
+      if (floor && rail?.width && topEntry) {
+        const width = Math.max(0, Math.min(rail.width, (floor.top - 12 - topEntry.bottom) * 63 / 88));
         const nextWidth = `${Math.max(0, Math.floor(width) - 1)}px`;
         if (table.style.getPropertyValue('--stack-inspector-width') !== nextWidth) table.style.setProperty('--stack-inspector-width', nextWidth);
       }
