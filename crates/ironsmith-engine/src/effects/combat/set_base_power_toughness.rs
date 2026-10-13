@@ -1,9 +1,10 @@
 //! Set base power/toughness effect implementation.
 
-use crate::continuous::{EffectTarget, Modification, PtSublayer};
-use crate::effect::{Effect, EffectOutcome, Value};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
+use crate::continuous::EffectTarget;
+use crate::effect::{Effect, EffectOutcome};
+use crate::effects::EffectExecutor;
+use crate::effects::continuous::ResolvedPowerToughness;
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -18,8 +19,7 @@ impl EffectExecutor for SetBasePowerToughnessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let base_power = resolve_value(game, &self.power, ctx)?;
-        let base_toughness = resolve_value(game, &self.toughness, ctx)?;
+        let values = ResolvedPowerToughness::resolve(game, ctx, &self.power, &self.toughness)?;
 
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
@@ -29,15 +29,7 @@ impl EffectExecutor for SetBasePowerToughnessEffect {
         // An undated resolution effect still belongs in layer 7b. Rewriting
         // the object's copiable base fields would make later copies inherit
         // this assignment and would order it incorrectly against copy effects.
-        let apply = ApplyContinuousEffect::new(
-            EffectTarget::Specific(target_id),
-            Modification::SetPowerToughness {
-                power: Value::Fixed(base_power),
-                toughness: Value::Fixed(base_toughness),
-                sublayer: PtSublayer::Setting,
-            },
-            self.duration.clone(),
-        );
+        let apply = values.setting(EffectTarget::Specific(target_id), self.duration.clone());
         execute_effect(game, &Effect::new(apply), ctx)
     }
 

@@ -26,18 +26,26 @@ impl EffectExecutor for ChooseFriendsOrFoesEffect {
             .filter(|player| player.is_in_game())
             .map(|player| (player.id, player.name.to_string()))
             .collect::<Vec<_>>();
+        let Some(choices) =
+            crate::effects::composition::scoped_choice::collect_choices_before_commit(
+                game,
+                ctx,
+                players,
+                |game, ctx, (player, name)| {
+                    let prompt = BooleanContext::new(
+                        chooser,
+                        Some(ctx.source),
+                        format!("Choose {name} as a friend? (Otherwise {name} is a foe.)"),
+                    );
+                    Ok((player, ctx.decision_maker.decide_boolean(game, &prompt)))
+                },
+            )?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
         let mut friends = Vec::new();
         let mut foes = Vec::new();
-        for (player, name) in players {
-            let prompt = BooleanContext::new(
-                chooser,
-                Some(ctx.source),
-                format!("Choose {name} as a friend? (Otherwise {name} is a foe.)"),
-            );
-            let friend = ctx.decision_maker.decide_boolean(game, &prompt);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+        for (player, friend) in choices {
             if friend {
                 friends.push(player);
             } else {

@@ -24,10 +24,10 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::effects::player::grant_by_spec::next_turn_number_for_player;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{DerivedAlternativeCastRuntimeExt, GrantDuration, Grantable};
+#[cfg(test)]
 use crate::grant_registry::GrantSource;
 use crate::target::ChooseSpec;
 pub type GrantEffect = ironsmith_core::GrantEffect<Grantable, GrantDuration>;
@@ -82,30 +82,12 @@ impl EffectExecutor for GrantEffect {
             .execute_child(game, ctx);
         }
 
-        // Calculate expiration
-        let expires = match self.duration {
-            GrantDuration::UntilEndOfTurn => game.turn.turn_number,
-            GrantDuration::Forever | GrantDuration::UntilYourNextTurn => u32::MAX,
-            GrantDuration::UntilYourNextTurnEnd => {
-                next_turn_number_for_player(game, ctx.controller)
-            }
-        };
-
-        let source_id = ctx.source;
-        let grant_source = match self.duration {
-            GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(
-                source_id,
-                ctx.controller,
-                game.turn.turn_number,
-            ),
-            GrantDuration::UntilYourNextTurnEnd => {
-                GrantSource::until_player_next_turn_end(source_id, ctx.controller, expires)
-            }
-            GrantDuration::UntilEndOfTurn | GrantDuration::Forever => GrantSource::Effect {
-                source_id,
-                expires_end_of_turn: expires,
-            },
-        };
+        let grant_source = crate::effects::player::grant_by_spec::grant_duration_source(
+            self.duration,
+            game,
+            ctx.source,
+            ctx.controller,
+        );
 
         match &self.grantable {
             Grantable::Ability(ability) => {

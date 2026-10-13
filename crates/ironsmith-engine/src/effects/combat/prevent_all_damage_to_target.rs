@@ -67,9 +67,15 @@ impl PreventAllDamageToTargetEffect {
         let objects = match resolve_objects_from_spec(game, &self.target, ctx) {
             Ok(objects) => objects,
             Err(ExecutionError::InvalidTarget)
-                if self.target.count().min == 0 && ctx.targets.is_empty() => Vec::new(),
+                if self.target.count().min == 0 && ctx.targets.is_empty() =>
+            {
+                Vec::new()
+            }
             Err(ExecutionError::InvalidTarget | ExecutionError::UnresolvableValue(_))
-                if can_protect_player => Vec::new(),
+                if can_protect_player =>
+            {
+                Vec::new()
+            }
             Err(error) => return Err(error),
         };
         let players = if can_protect_player
@@ -81,10 +87,15 @@ impl PreventAllDamageToTargetEffect {
                 Err(ExecutionError::InvalidTarget) if !objects.is_empty() => Vec::new(),
                 Err(error) => return Err(error),
             }
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         if objects.is_empty() && players.is_empty() {
-            return if self.target.count().min == 0 { Ok(EffectOutcome::count(0)) }
-                else { Err(ExecutionError::InvalidTarget) };
+            return if self.target.count().min == 0 {
+                Ok(EffectOutcome::count(0))
+            } else {
+                Err(ExecutionError::InvalidTarget)
+            };
         }
         let mut filter = self.damage_filter.clone();
         if self.source_color_of_your_choice {
@@ -95,31 +106,49 @@ impl PreventAllDamageToTargetEffect {
                     "chosen-color prevention cannot overwrite a fixed color restriction".into(),
                 ));
             }
-            use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-            let options = crate::color::Color::ALL.iter().enumerate()
-                .map(|(index, color)| SelectableOption::new(index, color.name()))
-                .collect();
-            let choice = SelectOptionsContext::new(
-                ctx.controller, Some(ctx.source), "Choose a color", options, 1, 1,
-            );
-            let selected = ctx.decision_maker.decide_options(game, &choice);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let [index] = selected.as_slice() else {
-                return Err(ExecutionError::UnresolvableValue("prevention requires one color".into()));
+            use crate::effects::composition::scoped_choice::{
+                SingleChoicePolicy, select_typed_option,
             };
-            let color = crate::color::Color::ALL.get(*index).copied().ok_or_else(|| {
-                ExecutionError::UnresolvableValue("invalid prevention color choice".into())
-            })?;
+            let options = crate::color::Color::ALL
+                .iter()
+                .map(|color| (*color, color.name().to_string()))
+                .collect::<Vec<_>>();
+            let Some(color) = select_typed_option(
+                game,
+                ctx,
+                ctx.controller,
+                "Choose a color",
+                &options,
+                SingleChoicePolicy::StrictMessages {
+                    arity: "prevention requires one color",
+                    index: "invalid prevention color choice",
+                },
+            )?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
             filter.from_colors = Some(vec![color]);
         }
-        for protected in objects.into_iter().map(crate::prevention::PreventionTarget::Permanent)
-            .chain(players.into_iter().map(crate::prevention::PreventionTarget::Player))
+        for protected in objects
+            .into_iter()
+            .map(crate::prevention::PreventionTarget::Permanent)
+            .chain(
+                players
+                    .into_iter()
+                    .map(crate::prevention::PreventionTarget::Player),
+            )
         {
-            register_prevention_shield(game, ctx, protected, None, self.duration.clone(),
-                filter.clone(), self.follow_up_effects.clone(), ctx.targets.clone(),
-                ctx.target_assignments.clone());
+            register_prevention_shield(
+                game,
+                ctx,
+                protected,
+                None,
+                self.duration.clone(),
+                filter.clone(),
+                self.follow_up_effects.clone(),
+                ctx.targets.clone(),
+                ctx.target_assignments.clone(),
+            );
         }
         Ok(EffectOutcome::resolved())
     }
@@ -137,9 +166,9 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(
-            game, ctx, |game, ctx| self.execute_bound(game, ctx),
-        )
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+            self.execute_bound(game, ctx)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

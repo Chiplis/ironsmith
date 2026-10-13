@@ -38,6 +38,23 @@ pub type RegenerateEffect = ironsmith_core::RegenerateEffect<crate::effect::Effe
 /// let effect = RegenerateEffect::source(Until::EndOfTurn);
 /// ```
 impl EffectExecutor for RegenerateEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        // The subject is bound to an exact incarnation at shield registration.
+        let follow_up =
+            bind_regeneration_follow_up(&self.follow_up_effects, self.follow_up_player.clone());
+        for effect in regeneration_body(
+            ChooseSpec::Source,
+            &follow_up,
+            !self.follow_up_effects.is_empty(),
+        ) {
+            visitor(&effect);
+        }
+    }
+
+    fn visit_resolution_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {
+        // Shield payloads run only when destruction is replaced.
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -59,16 +76,16 @@ impl EffectExecutor for RegenerateEffect {
 
         // "that player" in a follow-up is fixed now, from this resolution's
         // targets and choices; the shield's program runs without them.
-        let follow_up_effects = match &self.follow_up_player {
-            Some(filter) if !self.follow_up_effects.is_empty() => {
-                let player = crate::effects::helpers::resolve_player_filter(game, filter, ctx)?;
-                vec![Effect::for_players(
-                    crate::target::PlayerFilter::Specific(player),
-                    self.follow_up_effects.clone(),
-                )]
-            }
-            _ => self.follow_up_effects.clone(),
-        };
+        let player = self
+            .follow_up_player
+            .as_ref()
+            .filter(|_| !self.follow_up_effects.is_empty())
+            .map(|filter| {
+                crate::effects::helpers::resolve_player_filter(game, filter, ctx)
+                    .map(crate::target::PlayerFilter::Specific)
+            })
+            .transpose()?;
+        let follow_up_effects = bind_regeneration_follow_up(&self.follow_up_effects, player);
 
         let mut outcomes = Vec::new();
         for target_id in targets {
@@ -88,20 +105,11 @@ impl EffectExecutor for RegenerateEffect {
             // Follow-ups run in the replacement program with the shield's
             // controller and source; a reflexive "when it regenerates this
             // way" trigger keys off the damage removal's result id.
-            let clear_damage = Effect::clear_damage(ChooseSpec::SpecificObject(target_id));
-            let clear_damage = if self.follow_up_effects.is_empty() {
-                clear_damage
-            } else {
-                Effect::with_id(RegenerateEffect::SHIELD_USED_ID.0, clear_damage)
-            };
-            let mut replacement_effects = vec![
-                Effect::tap(ChooseSpec::SpecificObject(target_id)).tag(TagKey::from("__it__")),
-                clear_damage,
-                Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
-                    ChooseSpec::SpecificObject(target_id),
-                )),
-            ];
-            replacement_effects.extend(follow_up_effects.iter().cloned());
+            let replacement_effects = regeneration_body(
+                ChooseSpec::SpecificObject(target_id),
+                &follow_up_effects,
+                !self.follow_up_effects.is_empty(),
+            );
 
             let matcher = RegenerationShieldMatcher::new(target_id);
             let replacement_effect = ReplacementEffect::with_matcher(
@@ -127,5 +135,71 @@ impl EffectExecutor for RegenerateEffect {
 
     fn target_description(&self) -> &'static str {
         "creature to regenerate"
+    }
+}
+
+fn regeneration_body(target: ChooseSpec, follow_up: &[Effect], record_use: bool) -> Vec<Effect> {
+    let clear = Effect::clear_damage(target.clone());
+    let clear = if record_use {
+        Effect::with_id(RegenerateEffect::SHIELD_USED_ID.0, clear)
+    } else {
+        clear
+    };
+    let mut effects = vec![
+        Effect::tap(target.clone()).tag(TagKey::from("__it__")),
+        clear,
+        Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(target)),
+    ];
+    effects.extend_from_slice(follow_up);
+    effects
+}
+
+#[cfg(test)]
+mod composition_tests {
+    use super::*;
+
+    #[test]
+    fn regeneration_payload_is_visible_but_not_executed_at_registration() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Subject")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let subject = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let mut effect =
+            RegenerateEffect::new(ChooseSpec::SpecificObject(subject), Until::EndOfTurn);
+        effect.follow_up_effects = vec![Effect::draw(1)];
+        let mut structural = 0;
+        effect.visit_child_effects(&mut |_| structural += 1);
+        assert_eq!(structural, 4);
+        let mut immediate = 0;
+        effect.visit_resolution_child_effects(&mut |_| immediate += 1);
+        assert_eq!(immediate, 0);
+        game.create_object_from_card(&card, player, Zone::Library);
+        let before = game.player(player).unwrap().hand.len();
+        let mut ctx = ExecutionContext::new_default(subject, player);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.is_tapped(subject));
+        assert_eq!(game.player(player).unwrap().hand.len(), before);
+        let destroy = Effect::destroy(ChooseSpec::SpecificObject(subject));
+        crate::effects::execute_effect(&mut game, &destroy, &mut ctx).unwrap();
+        assert_eq!(game.object(subject).unwrap().zone, Zone::Battlefield);
+        assert!(game.is_tapped(subject));
+        assert_eq!(game.player(player).unwrap().hand.len(), before + 1);
+        crate::effects::execute_effect(&mut game, &destroy, &mut ctx).unwrap();
+        assert!(
+            game.object(subject).is_none(),
+            "the shield is consumed exactly once"
+        );
+    }
+}
+
+fn bind_regeneration_follow_up(
+    effects: &[Effect],
+    player: Option<crate::target::PlayerFilter>,
+) -> Vec<Effect> {
+    match player {
+        Some(player) if !effects.is_empty() => vec![Effect::for_players(player, effects.to_vec())],
+        _ => effects.to_vec(),
     }
 }

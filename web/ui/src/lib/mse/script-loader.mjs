@@ -13,6 +13,14 @@ export class MseScriptLoader {
     }
     return this.parsed.get(path.key);
   }
+  // Reader::handle(Scriptable<T>): an explicit prefix selects expression mode;
+  // otherwise braces interpolate the scalar's literal text.
+  async compileScriptable(source, location = {}) {
+    source = String(source);
+    return source.startsWith('script:')
+      ? this.compile(source.slice(7), { ...location, stringMode: false })
+      : this.compile(source, { ...location, stringMode: true });
+  }
   async compile(source, location = {}) {
     return this.expand(parseMseScript(source, location), []);
   }

@@ -48,7 +48,9 @@ impl EffectExecutor for PutStickerEffect {
                 .object(object_id)
                 .map(|object| ObjectSnapshot::from_object(object, game));
             let name_fact = if self.action == KeywordActionKind::NameSticker {
-                use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+                use crate::effects::composition::scoped_choice::{
+                    SingleChoicePolicy, select_typed_option,
+                };
                 let Some(object) = game.object(object_id) else {
                     return Ok(EffectOutcome::impossible());
                 };
@@ -60,26 +62,18 @@ impl EffectExecutor for PutStickerEffect {
                 if available.is_empty() {
                     return Ok(EffectOutcome::impossible());
                 }
-                let options = available
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (_, name))| SelectableOption::new(i, name.clone()))
-                    .collect();
-                let choice = SelectOptionsContext::new(
+                let selected = select_typed_option(
+                    game,
+                    ctx,
                     ctx.controller,
-                    Some(ctx.source),
                     "Choose a name sticker",
-                    options,
-                    1,
-                    1,
-                );
-                let selected = ctx.decision_maker.decide_options(game, &choice);
+                    &available,
+                    SingleChoicePolicy::First,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
-                let Some((sticker_id, _)) =
-                    selected.first().and_then(|index| available.get(*index))
-                else {
+                let Some(sticker_id) = selected else {
                     return Ok(EffectOutcome::impossible());
                 };
                 let name = game.current_name(object_id).unwrap_or_default();
@@ -89,7 +83,7 @@ impl EffectExecutor for PutStickerEffect {
                     .count();
                 let positions = (0..=word_count)
                     .map(|i| {
-                        SelectableOption::new(
+                        (
                             i,
                             if i == 0 {
                                 "At the beginning".to_string()
@@ -98,36 +92,31 @@ impl EffectExecutor for PutStickerEffect {
                             },
                         )
                     })
-                    .collect();
-                let choice = SelectOptionsContext::new(
+                    .collect::<Vec<_>>();
+                let selected = select_typed_option(
+                    game,
+                    ctx,
                     controller,
-                    Some(ctx.source),
                     "Choose the name sticker's position",
-                    positions,
-                    1,
-                    1,
-                );
-                let selected = ctx.decision_maker.decide_options(game, &choice);
+                    &positions,
+                    SingleChoicePolicy::First,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
-                let Some(position) = selected
-                    .first()
-                    .copied()
-                    .filter(|position| *position <= word_count)
-                else {
+                let Some(position) = selected else {
                     return Ok(EffectOutcome::impossible());
                 };
                 let Some(name) = game.apply_available_name_sticker(
                     ctx.controller,
                     object_id,
-                    *sticker_id,
+                    sticker_id,
                     position,
                 ) else {
                     return Ok(EffectOutcome::impossible());
                 };
                 Some(crate::effect::ExecutionFact::AppliedNameSticker {
-                    sticker_id: *sticker_id,
+                    sticker_id: sticker_id,
                     name,
                 })
             } else {

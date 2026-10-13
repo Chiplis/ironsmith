@@ -14,8 +14,10 @@ test('text painter preserves grouped text, but justified lines draw separate cha
   const b=setup(); await paintTextLayout(b.ctx,{...layout,lines:[{...layout.lines[0],justifying:true}]},b.fonts);
   assert.deepEqual(b.calls.slice(2,-1),[{text:'A',x:5,y:8,scale:0.5},{text:'B',x:10,y:8,scale:0.5}]);
 });
-test('unsupported drawing fails before changing the canvas', async () => {
+test('font preparation failures happen before changing the canvas', async () => {
   const a=setup();
-  await assert.rejects(()=>paintTextLayout(a.ctx,{...layout,measurement:{runs:[run,{...run,font:{underline:true}}]}},a.fonts),{code:'text-drawing'});
+  const prepare=a.fonts.prepare;
+  a.fonts.prepare=async font=>{if(font.name==='Missing')throw Object.assign(new Error('Missing font'),{code:'font-missing'});return prepare(font);};
+  await assert.rejects(()=>paintTextLayout(a.ctx,{...layout,measurement:{runs:[run,{...run,font:{name:'Missing'}}]}},a.fonts),{code:'font-missing'});
   assert.deepEqual(a.calls,[]);
 });

@@ -163,70 +163,53 @@ impl EffectExecutor for AttachObjectsEffect {
             // Collect every choice before mutating attachments. An interactive
             // decision maker can therefore pause on any one Aura and safely
             // replay earlier choices without partially applying the effect.
-            let mut assignments = Vec::new();
-            for object_id in object_ids {
-                let candidate_ids = crate::effects::helpers::preview_object_ids_for_choose_spec(
+            let Some(assignments) =
+                crate::effects::composition::scoped_choice::collect_choices_before_commit(
                     game,
-                    &self.target,
                     ctx,
-                )
-                .unwrap_or_default();
-                let candidates = candidate_ids
-                    .into_iter()
-                    .filter(|candidate_id| {
-                        attachment_can_attach_to_target(
-                            game,
-                            object_id,
-                            AttachmentTarget::Object(*candidate_id),
-                        )
-                    })
-                    .filter_map(|candidate_id| {
-                        game.object(candidate_id).map(|object| {
-                            crate::decisions::context::SelectableObject::new(
-                                candidate_id,
-                                object.name.clone(),
+                    object_ids,
+                    |game, ctx, object_id| {
+                        let candidate_ids =
+                            crate::effects::helpers::preview_object_ids_for_choose_spec(
+                                game,
+                                &self.target,
+                                ctx,
                             )
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if candidates.is_empty() {
-                    continue;
-                }
+                            .unwrap_or_default();
+                        let candidates = candidate_ids
+                            .into_iter()
+                            .filter(|candidate_id| {
+                                attachment_can_attach_to_target(
+                                    game,
+                                    object_id,
+                                    AttachmentTarget::Object(*candidate_id),
+                                )
+                            })
+                            .filter(|id| game.object(*id).is_some())
+                            .collect::<Vec<_>>();
+                        if candidates.is_empty() {
+                            return Ok(None);
+                        }
 
-                let attachment_name = game
-                    .object(object_id)
-                    .map(|object| object.name.to_string())
-                    .unwrap_or_else(|| "attachment".to_string());
-                let choice = crate::decisions::context::SelectObjectsContext::new(
-                    ctx.controller,
-                    Some(ctx.source),
-                    format!("Choose what to attach {attachment_name} to"),
-                    candidates,
-                    1,
-                    Some(1),
-                )
-                .require_explicit_choice();
-                let chosen = ctx
-                    .decision_maker
-                    .decide_objects(game, &choice)
-                    .into_iter()
-                    .next();
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let Some(target_id) = chosen.filter(|chosen_id| {
-                    choice
-                        .candidates
-                        .iter()
-                        .any(|candidate| candidate.legal && candidate.id == *chosen_id)
-                }) else {
-                    continue;
-                };
-                assignments.push((object_id, AttachmentTarget::Object(target_id)));
-            }
+                        let attachment_name = game
+                            .object(object_id)
+                            .map(|object| object.name.to_string())
+                            .unwrap_or_else(|| "attachment".to_string());
+                        let chosen = crate::effects::composition::captured_selection::choose_captured_object(game, ctx, ctx.controller, &candidates,
+                    &format!("Choose what to attach {attachment_name} to"),
+                    crate::effects::composition::captured_selection::CapturedChoicePolicy::EXPLICIT_FIRST)?;
+                        Ok(
+                            chosen
+                                .map(|target_id| (object_id, AttachmentTarget::Object(target_id))),
+                        )
+                    },
+                )?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
 
             let mut attached_count = 0i32;
-            for (object_id, target) in assignments {
+            for (object_id, target) in assignments.into_iter().flatten() {
                 if attach_battlefield_object_to_target(game, object_id, target) {
                     choose_color_as_becomes_attached(game, ctx, object_id, target);
                     attached_count += 1;

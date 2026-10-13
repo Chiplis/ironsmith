@@ -54,59 +54,36 @@ impl EffectExecutor for AttachToEffect {
                         && !crate::targeting::has_protection_from_source(game, *id, ctx.source)
                 })
                 .collect::<Vec<_>>();
-            let id = match candidates.as_slice() {
-                [] => return Ok(EffectOutcome::resolved()),
-                [id] => *id,
-                _ => {
-                    let chooser = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
-                    let choice = crate::decisions::context::SelectObjectsContext::new(
-                        chooser,
-                        Some(ctx.source),
-                        "Choose which permanent to attach this to",
-                        candidates
-                            .iter()
-                            .filter_map(|id| {
-                                game.object(*id).map(|object| {
-                                    crate::decisions::context::SelectableObject::new(
-                                        *id,
-                                        object.name.clone(),
-                                    )
-                                })
-                            })
-                            .collect(),
-                        1,
-                        Some(1),
-                    )
-                    .require_explicit_choice();
-                    let chosen = ctx.decision_maker.decide_objects(game, &choice);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::resolved());
-                    }
-                    let Some(id) = chosen.first().filter(|id| candidates.contains(id)) else {
-                        return Ok(EffectOutcome::resolved());
-                    };
-                    *id
-                }
+            use crate::effects::composition::captured_selection::{
+                CapturedChoicePolicy, choose_captured_object,
+            };
+            let chooser = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
+            let Some(id) = choose_captured_object(
+                game,
+                ctx,
+                chooser,
+                &candidates,
+                "Choose which permanent to attach this to",
+                CapturedChoicePolicy {
+                    skip_singleton: true,
+                    ..CapturedChoicePolicy::EXPLICIT_FIRST
+                },
+            )?
+            else {
+                return Ok(EffectOutcome::resolved());
             };
             crate::effects::ResolvedTarget::Object(id)
         } else {
             resolve_single_target_from_spec(game, &self.target, ctx)?
         };
 
-        match target {
-            crate::effects::ResolvedTarget::Object(id) => {
-                let target = AttachmentTarget::Object(id);
-                if attach_battlefield_object_to_target(game, ctx.source, target) {
-                    choose_color_as_becomes_attached(game, ctx, ctx.source, target);
-                }
-            }
-            crate::effects::ResolvedTarget::Player(id) => {
-                let target = AttachmentTarget::Player(id);
-                if attach_battlefield_object_to_target(game, ctx.source, target) {
-                    choose_color_as_becomes_attached(game, ctx, ctx.source, target);
-                }
-            }
-        }
+        complete_resolved_attachment(
+            game,
+            ctx,
+            ctx.source,
+            target,
+            AttachmentChoicePolicy::ChooseColor,
+        );
 
         Ok(EffectOutcome::resolved())
     }
@@ -117,6 +94,31 @@ impl EffectExecutor for AttachToEffect {
 
     fn target_description(&self) -> &'static str {
         "target to attach to"
+    }
+}
+
+/// A resolved attachment operation; callers retain their selection/guard policy.
+#[derive(Clone, Copy)]
+pub(super) enum AttachmentChoicePolicy {
+    ChooseColor,
+    NoChoice,
+}
+
+pub(super) fn complete_resolved_attachment(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    source: crate::ids::ObjectId,
+    target: crate::effects::ResolvedTarget,
+    choice: AttachmentChoicePolicy,
+) {
+    let target = match target {
+        crate::effects::ResolvedTarget::Object(id) => AttachmentTarget::Object(id),
+        crate::effects::ResolvedTarget::Player(id) => AttachmentTarget::Player(id),
+    };
+    if attach_battlefield_object_to_target(game, source, target)
+        && matches!(choice, AttachmentChoicePolicy::ChooseColor)
+    {
+        choose_color_as_becomes_attached(game, ctx, source, target);
     }
 }
 

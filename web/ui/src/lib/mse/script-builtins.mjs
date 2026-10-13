@@ -1,4 +1,6 @@
 import { MseError } from './document.mjs';
+import {formatMseDateTime} from './date-format.mjs';
+import {MseDateTime} from './script-values.mjs';
 import { sortMseText } from './sort-text.mjs';
 import { regexBuiltins } from './regex-builtins.mjs';
 import { collectionBuiltins, setLength } from './collection-builtins.mjs';
@@ -27,6 +29,17 @@ function convertedNumber(value, integer = false) {
   return number(value, integer);
 }
 
+function formatValue(value,format){
+  if(force(value) instanceof MseDateTime)return formatMseDateTime(force(value),format);
+  const spec=format.replaceAll('%','');
+  const fixed=/^(?:\.(\d+))?f$/.exec(spec);
+  if(fixed)return number(value).toFixed(Number(fixed[1]??6));
+  if(spec==='x'||spec==='X'){const output=number(value,true).toString(16);return spec==='X'?output.toUpperCase():output;}
+  if(spec==='s')return text(value);
+  if(spec==='d'||spec==='i')return String(number(value,true));
+  throw new MseError('script-format',`Unsupported format ${format}`);
+}
+
 export function coreBuiltins({ spellcheck, spellcheckEnabled } = {}) {
   const builtins = {
     process_english_hints: scope => processEnglishHints(text(input(scope))),
@@ -41,16 +54,11 @@ export function coreBuiltins({ spellcheck, spellcheckEnabled } = {}) {
       return null;
     },
     type_name: scope => typeName(input(scope)),
+    format: scope=>formatValue(input(scope),text(scope.get('format'))),
     to_string: delay(scope => {
       const value = input(scope), format = optional(scope, 'format', null);
       if (typeof format !== 'string') return text(value);
-      const spec = format.replaceAll('%', '');
-      const fixed = /^(?:\.(\d+))?f$/.exec(spec);
-      if (fixed) return number(value).toFixed(Number(fixed[1] ?? 6));
-      if (spec === 'x' || spec === 'X') { const output = number(value, true).toString(16); return spec === 'X' ? output.toUpperCase() : output; }
-      if (spec === 's') return text(value);
-      if (spec === 'd' || spec === 'i') return String(number(value, true));
-      throw new MseError('script-format', `Unsupported format ${format}`);
+      return formatValue(value,format);
     }),
     to_code: scope => code(input(scope)),
     to_color: delay(scope => color(input(scope))),

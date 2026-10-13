@@ -1,6 +1,6 @@
 //! Scry and fateseal effect implementation.
 
-use crate::decisions::{ScrySpec, ask_choose_one, make_decision};
+use crate::decisions::ask_choose_one;
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
@@ -111,18 +111,9 @@ fn choose_scry_arrangement(
             observation,
         });
     }
-    let spec = ScrySpec::new(ctx.source, top_cards_top_to_bottom.clone());
-    let bottom_cards_top_to_bottom: Vec<ObjectId> = make_decision(
-        game,
-        &mut ctx.decision_maker,
-        viewer_id,
-        Some(ctx.source),
-        spec,
-    )
-    .into_iter()
-    .filter(|card| top_cards_top_to_bottom.contains(card))
-    .collect();
-    if ctx.decision_maker.awaiting_choice() {
+    let Some(bottom_cards_top_to_bottom) = super::choose_library_bottom_partition(
+        game, ctx, viewer_id, &top_cards_top_to_bottom,
+    ) else {
         return Ok(ScryArrangement {
             player_id: subject_id,
             total_looked: 0,
@@ -130,7 +121,7 @@ fn choose_scry_arrangement(
             bottom_cards_top_to_bottom: Vec::new(),
             observation,
         });
-    }
+    };
 
     let kept_on_top: Vec<ObjectId> = top_cards_top_to_bottom
         .iter()
@@ -474,24 +465,15 @@ impl EffectExecutor for EachPlayerScryEffect {
                     ));
                 }
 
-                let mut arrangements = Vec::new();
-                for player_id in players {
-                    // CR 701.22d: each player scries even with an empty library.
-                    arrangements.push(choose_scry_arrangement(
-                        game,
-                        ctx,
-                        player_id,
-                        player_id,
-                        count,
-                        "Scry",
-                        &mut retained_children,
-                    )?);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                }
+                let Some(arrangements) = crate::effects::composition::scoped_choice::collect_choices_before_commit(
+                    game, ctx, players, |game, ctx, player_id| {
+                        // Each player scries even with an empty library.
+                        choose_scry_arrangement(game, ctx, player_id, player_id, count,
+                            "Scry", &mut retained_children)
+                    },
+                )? else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                };
 
                 for arrangement in &arrangements {
                     apply_scry_arrangement(game, arrangement);

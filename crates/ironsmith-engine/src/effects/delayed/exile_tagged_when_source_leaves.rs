@@ -30,7 +30,16 @@ impl ExileTaggedWhenSourceLeavesEffect {
     }
 }
 
+fn exile_body(subject: ChooseSpec) -> Effect {
+    Effect::move_to_zone(subject, Zone::Exile, true)
+}
+
 impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&exile_body(ChooseSpec::Tagged(self.tag.clone())));
+    }
+    fn visit_resolution_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -45,15 +54,12 @@ impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
         for snapshot in tagged {
             let delayed = DelayedTriggerTemplate::new(
                 Trigger::this_leaves_battlefield(),
-                vec![Effect::move_to_zone(
-                    ChooseSpec::SpecificObject(snapshot.object_id),
-                    Zone::Exile,
-                    true,
-                )],
+                vec![exile_body(ChooseSpec::SpecificObject(snapshot.object_id))],
                 true,
                 controller_id,
-            ).with_linked_exile_owner(ctx.linked_exile_owner.clone())
-                .with_source_number_owner(ctx.source_number_owner.clone());
+            )
+            .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+            .with_source_number_owner(ctx.source_number_owner.clone());
             scheduled += queue_delayed_from_template(
                 game,
                 DelayedWatcherIdentity::combined(vec![ctx.source]),

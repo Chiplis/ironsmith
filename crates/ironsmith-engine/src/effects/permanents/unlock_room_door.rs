@@ -1,4 +1,4 @@
-use crate::decisions::{SelectOptionsContext, SelectableOption};
+use crate::decisions::SelectableOption;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter_as_chooser;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
@@ -31,10 +31,8 @@ impl EffectExecutor for UnlockRoomDoorEffect {
                         && self.room_filter.matches(object, &filter_ctx, game)
                         && (game.room_has_locked_door(*object_id)
                             || (self.allow_lock
-                                && !crate::special_actions::unlocked_room_doors(
-                                    game, *object_id,
-                                )
-                                .is_empty()))
+                                && !crate::special_actions::unlocked_room_doors(game, *object_id)
+                                    .is_empty()))
                 })
             })
             .collect::<Vec<_>>();
@@ -42,33 +40,25 @@ impl EffectExecutor for UnlockRoomDoorEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let options = candidates
-            .iter()
-            .enumerate()
-            .map(|(index, object_id)| {
+        use crate::effects::composition::scoped_choice::{
+            SingleChoicePolicy, select_typed_menu, select_typed_option,
+        };
+        let Some(room_id) = select_typed_menu(
+            game,
+            ctx.decision_maker,
+            chooser,
+            ctx.source,
+            "Choose a Room with a locked door",
+            &candidates,
+            SingleChoicePolicy::First,
+            |index, object_id| {
                 let name = game
                     .object(*object_id)
                     .map(|object| object.name.to_string())
                     .unwrap_or_else(|| "Room".to_string());
                 SelectableOption::new(index, name).with_object(*object_id)
-            })
-            .collect();
-        let choice_ctx = SelectOptionsContext::new(
-            chooser,
-            Some(ctx.source),
-            "Choose a Room with a locked door",
-            options,
-            1,
-            1,
-        );
-        let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(room_id) = selected
-            .into_iter()
-            .next()
-            .and_then(|index| candidates.get(index).copied())
+            },
+        )?
         else {
             return Ok(EffectOutcome::count(0));
         };
@@ -91,8 +81,7 @@ impl EffectExecutor for UnlockRoomDoorEffect {
         let (door, lock) = if doors.len() > 1 {
             let door_options = doors
                 .iter()
-                .enumerate()
-                .map(|(index, (door, lock))| {
+                .map(|(door, lock)| {
                     let name = crate::special_actions::room_door_name(game, room_id, *door)
                         .unwrap_or_else(|| "Door".to_string());
                     let name = match (self.allow_lock, lock) {
@@ -100,31 +89,26 @@ impl EffectExecutor for UnlockRoomDoorEffect {
                         (true, false) => format!("Unlock {name}"),
                         (true, true) => format!("Lock {name}"),
                     };
-                    SelectableOption::new(index, name)
+                    ((*door, *lock), name)
                 })
-                .collect();
+                .collect::<Vec<_>>();
             let prompt = if self.allow_lock {
                 "Choose a door to lock or unlock"
             } else {
                 "Choose a door to unlock"
             };
-            let door_ctx = SelectOptionsContext::new(
+            let Some(door) = select_typed_option(
+                game,
+                ctx,
                 chooser,
-                Some(ctx.source),
                 prompt,
-                door_options,
-                1,
-                1,
-            );
-            let selected = ctx.decision_maker.decide_options(game, &door_ctx);
-            if ctx.decision_maker.awaiting_choice() {
+                &door_options,
+                SingleChoicePolicy::FirstOrDefault,
+            )?
+            else {
                 return Ok(EffectOutcome::count(0));
-            }
-            selected
-                .into_iter()
-                .next()
-                .and_then(|index| doors.get(index).copied())
-                .unwrap_or(first_door)
+            };
+            door
         } else {
             first_door
         };
@@ -132,8 +116,9 @@ impl EffectExecutor for UnlockRoomDoorEffect {
             if !crate::special_actions::apply_room_door_lock(game, room_id, door) {
                 return Ok(EffectOutcome::count(0));
             }
-            return Ok(EffectOutcome::with_objects(vec![room_id])
-                .with_affected_objects(vec![room_id]));
+            return Ok(
+                EffectOutcome::with_objects(vec![room_id]).with_affected_objects(vec![room_id])
+            );
         }
         let Some(events) =
             crate::special_actions::unlock_room_door_with_events(game, chooser, room_id, door)
@@ -153,9 +138,9 @@ impl EffectExecutor for UnlockRoomDoorEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{KeywordActionEvent, KeywordActionKind};
     use crate::card::LinkedFaceLayout;
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
     use crate::ids::{CardId, PlayerId};
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::{CardType, Subtype};
@@ -203,7 +188,8 @@ mod tests {
         ));
         assert!(game.is_room_fully_unlocked(room_id));
 
-        let effect = UnlockRoomDoorEffect::new(PlayerFilter::You, room_filter()).with_allow_lock(true);
+        let effect =
+            UnlockRoomDoorEffect::new(PlayerFilter::You, room_filter()).with_allow_lock(true);
         let mut ctx = ExecutionContext::new_default(room_id, alice);
         // Doors offered: no locked door, then the unlocked Current and
         // Linked doors; the first choice locks the current half.
@@ -215,7 +201,9 @@ mod tests {
         // Now the locked door is offered first: unlocking it fully unlocks
         // the Room again.
         let mut ctx = ExecutionContext::new_default(room_id, alice);
-        effect.execute(&mut game, &mut ctx).expect("unlock resolves");
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("unlock resolves");
         assert!(game.is_room_fully_unlocked(room_id));
     }
 

@@ -81,7 +81,7 @@ fn restore_source_binding(ctx: &mut ExecutionContext, previous: SourceBinding) {
     ctx.source_snapshot = previous.1;
 }
 
-pub(super) fn with_source_binding<T>(
+pub(crate) fn with_source_binding<T>(
     ctx: &mut ExecutionContext,
     binding: &SourceBinding,
     f: impl FnOnce(&mut ExecutionContext) -> T,
@@ -89,6 +89,25 @@ pub(super) fn with_source_binding<T>(
     let previous = enter_source_binding(ctx, binding);
     let result = f(ctx);
     restore_source_binding(ctx, previous);
+    result
+}
+
+/// Temporarily select the acting player. Cause changes are opt-in: payment
+/// attribution keeps its enclosing cause, while winner programs rebind it.
+pub(crate) fn with_actor_binding<T>(
+    ctx: &mut ExecutionContext,
+    controller: crate::ids::PlayerId,
+    cause: Option<crate::events::cause::EventCause>,
+    run: impl FnOnce(&mut ExecutionContext) -> T,
+) -> T {
+    let previous_controller = ctx.controller;
+    let previous_cause = cause.map(|cause| std::mem::replace(&mut ctx.cause, cause));
+    ctx.controller = controller;
+    let result = run(ctx);
+    ctx.controller = previous_controller;
+    if let Some(cause) = previous_cause {
+        ctx.cause = cause;
+    }
     result
 }
 

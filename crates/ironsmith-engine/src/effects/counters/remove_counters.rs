@@ -1649,3 +1649,21 @@ mod wide_bounded_counter_request_tests {
     #[test] fn wide_actual_prior_total_removes_all_available_counters() {check(false);}
     #[test] fn wide_actual_prior_total_moves_all_available_counters() {check(true);}
 }
+
+/// Common execution shell for selected removals. Pending decisions take
+/// precedence over errors, matching the public removal adapters' contract.
+/// Selection, cost admission and simultaneous preparation remain with callers.
+pub(super) fn execute_selected_removal_transaction<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    body: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>)
+        -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let neutral = || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(neutral());
+    }
+    game.clear_pending_decision_controllers();
+    let result = crate::effects::composition::execute_transaction(game, ctx, neutral, body);
+    if ctx.decision_maker.awaiting_choice() { Ok(neutral()) } else { result }
+}

@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HoverArtOverlay from '../right-rail/HoverArtOverlay';
 import { GameContext } from '@/context/GameContext.shared';
+import MseCardFrame from './MseCardFrame';
 
 // Lay out the composition at inspector size. Only its finished presentation
 // scales with the battlefield slot, including pixel-sized icons and borders.
@@ -43,7 +44,8 @@ export default function MiniatureCardFrame({ card, imageUrl }) {
       width: WIDTH, height: HEIGHT,
       transform: `scale(${scale})`, visibility: scale > 0 ? 'visible' : 'hidden',
     }}>
-      <MiniatureComposition snapshot={snapshot} imageUrl={imageUrl} />
+      <MseCardFrame snapshot={snapshot} imageUrl={imageUrl} style={card.mse_style}
+        fallback={<MiniatureComposition snapshot={snapshot} imageUrl={imageUrl} />} />
     </div>
   </div>;
 }

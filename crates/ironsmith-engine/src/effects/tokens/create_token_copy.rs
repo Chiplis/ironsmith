@@ -3,7 +3,7 @@
 use crate::ability::Ability;
 use crate::card::PtValue;
 use crate::combat_state::AttackTarget;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
@@ -93,10 +93,9 @@ pub(super) fn choose_attack_target(
         .player(player_id)
         .map(|player| player.name.to_string())
         .unwrap_or_else(|| "that player".to_string());
-    let options: Vec<SelectableOption> = targets
+    let options: Vec<_> = targets
         .iter()
-        .enumerate()
-        .map(|(index, target)| {
+        .map(|target| {
             let description = match target {
                 AttackTarget::Player(_) => format!("Attack {player_name}"),
                 AttackTarget::Planeswalker(planeswalker_id) => {
@@ -115,27 +114,18 @@ pub(super) fn choose_attack_target(
                 }
                 AttackTarget::Nothing { .. } => "Attack nothing".to_string(),
             };
-            SelectableOption::new(index, description)
+            (target.clone(), description)
         })
         .collect();
-    let choice_ctx = SelectOptionsContext::new(
+    select_typed_option(
+        game,
+        ctx,
         ctx.controller,
-        Some(ctx.source),
-        format!("Choose attack target for token copy attacking {player_name}"),
-        options,
-        1,
-        1,
-    );
-    let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
-    if ctx.decision_maker.awaiting_choice() {
-        return None;
-    }
-    chosen
-        .first()
-        .copied()
-        .filter(|selected| *selected < targets.len())
-        .and_then(|index| targets.get(index))
-        .cloned()
+        &format!("Choose attack target for token copy attacking {player_name}"),
+        &options,
+        SingleChoicePolicy::First,
+    )
+    .expect("first-option policy cannot fail")
 }
 
 fn ability_is_soulbond_pairing(ability: &Ability) -> bool {

@@ -4,7 +4,7 @@ import { alignmentOffset } from './alignment.mjs';
 
 export const cssColor = value => { const [r,g,b,a] = value?.channels || [0,0,0,255]; return `rgba(${r},${g},${b},${a/255})`; };
 export function requirePlainFont(font) {
-  if (font.underline || font.strikethrough || font.stroke_radius || font.stroke_blur
+  if (font.stroke_radius || font.stroke_blur
     || ((font.shadow_displacement_x || font.shadow_displacement_y || font.shadow_blur) && font.shadow_color?.channels[3])) {
     throw new MseError('text-drawing', 'Decorated font drawing is not implemented yet');
   }

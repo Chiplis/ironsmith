@@ -18,7 +18,7 @@ export async function loadSymbolFont(store, name) {
 async function compile(store, name) {
   const record = await store.expandRecord((await store.package(name)).document);
   const loader = new MseScriptLoader(store);
-  const program = entry => entry ? loader.compile(entry.text(), { ...entry.location, stringMode: true }) : null;
+  const program = entry => entry ? loader.compileScriptable(entry.text(), entry.location) : null;
   const value = (record, key, fallback) => record.last(key) ? record.text(key) : fallback;
   const imageSize = number(value(record, 'image font size', 12));
   const symbols = [];

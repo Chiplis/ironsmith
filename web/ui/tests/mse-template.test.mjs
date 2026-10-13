@@ -47,6 +47,26 @@ card style:
 };
 const store = () => new MsePackageStore({ readText: async path => { if (!(path.key in files)) throw new Error(path.key); return files[path.key]; } });
 
+test('field script errors preserve values, report diagnostics, and allow other fields to update', async () => {
+  const sources={
+    'recovery.mse-game/game': 'card field:\n\ttype: text\n\tname: bad\n\tdefault: "retained"\n\tscript: if input == "fixed" then input else missing_variable\ncard field:\n\ttype: text\n\tname: good\n\tdefault: "updated"\n',
+    'recovery.mse-style/style': 'game: recovery\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async path=>sources[path.key]}),'recovery.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(text(context.field('card','bad')),'retained');
+    assert.equal(text(context.field('card','good')),'updated');
+    assert.equal(context.diagnostics.length,1);
+    assert.equal(context.diagnostics[0].field,'card.bad');
+    assert.equal(context.diagnostics[0].code,'script-variable');
+    context.setField('card','bad','fixed');
+    assert.equal(text(context.field('card','bad')),'fixed');
+    context.runtime.maxSteps=0;
+    assert.throws(()=>{context.setField('card','bad','again');context.field('card','bad');},{code:'script-budget'});
+  }
+});
+
 test('game and stylesheet scripts drive supplied/default fields and cross-field geometry', async () => {
   const template = await loadMseTemplate(store(), 'example.mse-style');
   const context = new MseTemplateContext(template, { card: { name: 'Live' } }).initialize();
@@ -241,7 +261,7 @@ card style:
   assert.equal(context.property('text','left'), 20);
   assert.equal(context.runtime.run('card_style.name.layout.lines.0.width'), 15);
   context.setField('card','name','ABCDE');
-  assert.throws(() => force(context.property('name','content_width')), { code:'script-member' });
+  assert.equal(context.property('name','content_width'),0); // Default metrics until preparation replaces them.
   await context.prepareTextLayouts(fonts,null);
   assert.equal(context.property('text','left'), 35);
   await assert.rejects(() => context.prepareTextLayouts(fonts, null, { maxPasses: 1 }), { code: 'layout-convergence' });
@@ -383,4 +403,146 @@ test('render layouts skip inactive fields without hiding errors in active fields
   assert.throws(()=>context.layout(),{code:'script-member'});
   context.setField('card','overlay','on');
   assert.throws(()=>context.layout({visibleOnly:true}),{code:'script-member'});
+});
+
+
+test('stable geometry converges when an empty run changes only its internal shrink factor',async()=>{
+  const template=await loadMseTemplate(store(),'example.mse-style');
+  const context=new MseTemplateContext(template).initialize();
+  let scale=1;
+  context.layoutTaggedText=async()=>({width:0,height:0,scale:scale*=0.9,lines:[{start:0,end:0,endOrSoft:0,positions:[0],width:0,top:0,height:0,break:'no'}]});
+  const result=await context.prepareTextLayouts({},null,{maxPasses:3});
+  assert.equal(result.passes,2);
+});
+
+test('omitted field styles retain native invisible geometry and empty content metrics',async()=>{
+  const fixture={...files,'example.mse-style/style':'game: example\ncard dpi: 300\ncard style:\n\tname:\n\t\tleft: 0\n\t\ttop: 0\n\t\twidth: {100-card_style.text.content_width}\n\t\theight: {stylesheet.card_dpi/10}\n'};
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
+  const context=new MseTemplateContext(template).initialize();
+  assert.equal(context.property('text','width'),0);assert.equal(context.property('text','left'),1000000);
+  assert.equal(context.property('text','content_width'),0);assert.equal(context.fieldVisible('text'),false);
+  assert.equal(context.property('name','width'),100);assert.equal(context.property('name','height'),30);
+  assert.equal(context.runtime.run('set.stylesheet.card_dpi'),300);
+});
+
+
+test('explicit script dimensions determine native automatic edges even when evaluating to zero',async()=>{
+  const fixture={...files,'example.mse-style/style':`game: example
+card style:
+	name:
+		right: 100
+		width: script: 20 + 2
+		bottom: 50
+		height: script: 0
+`};
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
+  const context=new MseTemplateContext(template).initialize();
+  assert.equal(context.property('name','width'),22);
+  assert.equal(context.property('name','left'),78);
+  assert.equal(context.property('name','height'),0);
+  assert.equal(context.property('name','top'),50);
+});
+
+test('ordered field evaluation reads stored peers and updates edited dependencies without rerunning unrelated scripts',async()=>{
+  const fixture={...files,'example.mse-game/game':`card field:
+\ttype: text
+\tname: a
+\tinitial: 0
+\tdefault: to_string(to_int(card.b)+1)
+card field:
+\ttype: text
+\tname: b
+\tinitial: 0
+\tdefault: to_string(to_int(card.a)+1)
+card field:
+\ttype: text
+\tname: unchanged
+\tinitial: X
+\tscript: input + "!"
+`,'example.mse-style/style':'game: example\n'};
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
+  const context=new MseTemplateContext(template,{fieldUpdateMode:'ordered'}).initialize();
+  assert.equal(text(context.field('card','a')),'1');assert.equal(text(context.field('card','b')),'2');
+  assert.equal(text(context.field('card','unchanged')),'X!');
+  context.setField('card','a','10');
+  assert.equal(text(context.field('card','a')),'10');assert.equal(text(context.field('card','b')),'11');
+  assert.equal(text(context.field('card','unchanged')),'X!');
+  context.invalidate();assert.equal(text(context.field('card','b')),'11');
+});
+
+test('ordered fields refresh measured-layout dependencies without rerunning unrelated normalizers',async()=>{
+  const fixture={...files,'example.mse-game/game':`card field:
+\ttype: text
+\tname: name
+card field:
+\ttype: text
+\tname: measured
+\tdefault: to_string(card_style.name.content_width)
+card field:
+\ttype: text
+\tname: untouched
+\tinitial: X
+\tscript: input + "!"
+`,'example.mse-style/style':`game: example
+card style:
+\tname:
+\t\tleft: 0
+\t\ttop: 0
+\t\twidth: 100
+\t\theight: 20
+\t\tfont:
+\t\t\tname: Example
+\t\t\tsize: 10
+`};
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
+  const context=new MseTemplateContext(template,{fieldUpdateMode:'ordered',card:{name:'AB'}}).initialize();
+  const fonts={prepare:async()=>({measure:s=>({width:s.length*5,height:10}),lineHeight:()=>10})};
+  assert.equal(text(context.field('card','measured')),'0');
+  await context.prepareTextLayouts(fonts,null);
+  assert.equal(text(context.field('card','measured')),'10');
+  context.setField('card','name','ABCD');
+  await context.prepareTextLayouts(fonts,null);
+  assert.equal(text(context.field('card','measured')),'20');
+  assert.equal(text(context.field('card','untouched')),'X!');
+});
+
+test('text-dependent image dimensions retry after measurement but persistent errors remain visible',async()=>{
+  const fixture={...files,
+    'example.mse-game/game':'card field:\n\ttype: text\n\tname: name\ncard field:\n\ttype: choice\n\tname: stripe\n\tchoice: stripe\n',
+    'example.mse-style/style':'game: example\ncard style:\n\tname:\n\t\tleft: 0\n\t\ttop: 0\n\t\twidth: 100\n\t\theight: 20\n\tstripe:\n\t\tleft: 0\n\t\ttop: 0\n\t\twidth: 100\n\t\theight: 20\n'};
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>fixture[p.key]}),'example.mse-style');
+  const fonts={prepare:async()=>({measure:s=>({width:s.length*5,height:10}),lineHeight:()=>10})};
+  for(const persistent of [false,true]){
+    const context=new MseTemplateContext(template,{fieldUpdateMode:'ordered',card:{name:'AB'}}).initialize();let attempts=0;
+    context.measureChoiceImage=async()=>{
+      attempts++;
+      if(persistent||context.property('name','content_width')===0)throw Object.assign(new Error('Invalid generated dimensions'),{code:'image-size'});
+      return {width:10,height:2,lines:[],scale:1,image:null};
+    };
+    if(persistent)await assert.rejects(context.prepareTextLayouts(fonts,null),{code:'image-size'});
+    else{await context.prepareTextLayouts(fonts,null);assert.equal(context.textMeasurements.get('card.stripe').result.width,10);}
+    assert.ok(attempts>=2);
+  }
+});
+
+test('sliders retain native choice strings through defaults, scripts, supplied values and edits', async () => {
+  const sources={
+    'sliders.mse-game/game': 'card field:\n\ttype: text\n\tname: branch\n\tdefault: if styling.opacity == 100 then "number" else if styling.opacity == "100" then "text" else "other"\ncard field:\n\ttype: text\n\tname: scaled\n\tdefault: to_string(to_int(2.55 * styling.opacity))\n',
+    'sliders.mse-style/style': 'game: sliders\nstyling field:\n\ttype: slider\n\tname: opacity\n\tinitial: 100\nstyling field:\n\ttype: slider\n\tname: scripted\n\tdefault: 12\n\tscript: if input == "12" then 24 else 99\nstyling field:\n\ttype: slider\n\tname: range\n\tminimum: 7\n\tmaximum: 3\n\tincrement: 2\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async path=>sources[path.key]}),'sliders.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(force(context.field('styling','opacity')),'100');
+    assert.equal(force(context.field('card','branch')),'text');
+    assert.equal(force(context.field('card','scaled')),'254');
+    assert.equal(force(context.field('styling','scripted')),'24');
+    assert.equal(force(context.field('styling','range')),'3');
+    assert.deepEqual(template.definitions.styling.get('range').choices.map(choice=>choice.name),['3','5','7']);
+    const supplied=new MseTemplateContext(template,{fieldUpdateMode,styling:{opacity:100}}).initialize();
+    assert.equal(force(supplied.field('card','branch')),'text');
+    supplied.setField('styling','opacity',80);
+    assert.equal(force(supplied.field('styling','opacity')),'80');
+    assert.equal(force(supplied.field('card','branch')),'other');
+  }
 });

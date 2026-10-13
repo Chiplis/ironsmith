@@ -1,9 +1,10 @@
 //! Modify power/toughness effect implementation.
 
-use crate::continuous::{EffectTarget, Modification};
+use crate::continuous::EffectTarget;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
+use crate::effects::EffectExecutor;
+use crate::effects::continuous::ResolvedPowerToughness;
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -36,16 +37,19 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let power_mod = resolve_value(game, &self.power, ctx)?;
-        let toughness_mod = resolve_value(game, &self.toughness, ctx)?;
+        let values = ResolvedPowerToughness::resolve(game, ctx, &self.power, &self.toughness)?;
 
         let target_id = match resolve_single_object_for_effect(game, ctx, &self.target) {
             Ok(selected) => selected,
             Err(ExecutionError::InvalidTarget)
                 if !self.target.is_target()
                     && matches!(self.target.base(), ChooseSpec::Object(_))
-                    && ctx.targets.iter().any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_))) =>
-                return Ok(EffectOutcome::target_invalid()),
+                    && ctx.targets.iter().any(|target| {
+                        matches!(target, crate::effects::ResolvedTarget::Object(_))
+                    }) =>
+            {
+                return Ok(EffectOutcome::target_invalid());
+            }
             Err(error) => return Err(error),
         };
 
@@ -59,14 +63,7 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         }
 
         // Register the continuous effect via the shared primitive.
-        let apply = ApplyContinuousEffect::new(
-            EffectTarget::Specific(target_id),
-            Modification::ModifyPowerToughness {
-                power: power_mod,
-                toughness: toughness_mod,
-            },
-            self.duration.clone(),
-        );
+        let apply = values.additive(EffectTarget::Specific(target_id), self.duration.clone());
 
         execute_effect(game, &Effect::new(apply), ctx)
     }
@@ -281,5 +278,44 @@ mod tests {
         let effect = ModifyPowerToughnessEffect::pump(ChooseSpec::creature(), 3, Until::EndOfTurn);
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("ModifyPowerToughnessEffect"));
+    }
+    #[test]
+    fn frozen_resolution_bonus_stays_distinct_from_base_setting_and_counters() {
+        let mut game = setup_game();
+        let player = PlayerId(0);
+        let creature = create_creature(&mut game, "Creature", 2, 2, player);
+        let source = game.new_object_id();
+        let target = ChooseSpec::SpecificObject(creature);
+        let mut ctx = ExecutionContext::new_default(source, player).with_x(3);
+        ModifyPowerToughnessEffect::new(target.clone(), Value::X, Value::X, Until::EndOfTurn)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        // A newer setting is still below the older additive bonus in layer 7.
+        crate::effects::SetBasePowerToughnessEffect::new(target.clone(), 4, 4, Until::EndOfTurn)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        let registrations = game.effect_store.continuous_effects.effects_sorted().len();
+        crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            target,
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert_eq!(
+            game.effect_store.continuous_effects.effects_sorted().len(),
+            registrations
+        );
+        // Later X changes must not turn the resolving bonus into a live value.
+        ctx.x_value = Some(9);
+        assert_eq!(game.current_power(creature), Some(8));
+        assert_eq!(game.current_toughness(creature), Some(8));
+        assert_eq!(
+            game.object(creature)
+                .unwrap()
+                .counters
+                .get(&crate::object::CounterType::PlusOnePlusOne),
+            Some(&1)
+        );
     }
 }

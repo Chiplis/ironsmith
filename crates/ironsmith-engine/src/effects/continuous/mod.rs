@@ -18,3 +18,6 @@ pub(crate) use apply_continuous::materialize_duration_predicate;
 pub(crate) use apply_continuous::register_resolved_continuous_batch;
 pub(crate) use apply_continuous::apply_captured_modifications;
 pub(crate) use apply_continuous::{commit_control_assignments, ControlAssignmentPolicy};
+
+mod resolved_power_toughness;
+pub(crate) use resolved_power_toughness::ResolvedPowerToughness;

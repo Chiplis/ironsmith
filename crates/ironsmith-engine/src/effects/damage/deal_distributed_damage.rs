@@ -85,14 +85,12 @@ impl DealDistributedDamageEffect {
             })
         });
 
-        let original_source = ctx.source;
-        let original_source_snapshot = ctx.source_snapshot.clone();
-        ctx.source = damage_source;
-        ctx.source_snapshot = source_snapshot;
-        let outcome = body(game, ctx);
-        ctx.source = original_source;
-        ctx.source_snapshot = original_source_snapshot;
-        outcome.map(Some)
+        crate::effects::composition::execute_with_source::with_source_binding(
+            ctx,
+            &(damage_source, source_snapshot),
+            |ctx| body(game, ctx),
+        )
+        .map(Some)
     }
 
     fn resolve_distribution_inputs(
@@ -321,8 +319,13 @@ impl EffectExecutor for DealDistributedDamageEffect {
     fn supports_replacement_draw_continuation(&self) -> bool { true }
 
     fn prepare_replacement_draw_continuation_with_outputs(
-        &self, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
     }
 

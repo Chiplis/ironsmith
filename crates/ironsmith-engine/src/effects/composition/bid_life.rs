@@ -16,30 +16,11 @@ pub type BidLifeEffect = ironsmith_core::BidLifeEffect<Effect>;
 pub use ironsmith_core::LifeBidStart;
 
 fn active_players_in_turn_order(game: &GameState, start: PlayerId) -> Vec<PlayerId> {
-    let mut players: Vec<PlayerId> = game
-        .turn_store
-        .turn_order
-        .iter()
-        .copied()
-        .filter(|&player_id| {
-            game.player(player_id)
-                .is_some_and(|player| player.is_in_game())
-        })
-        .collect();
-
-    if !players.contains(&start) {
-        players = game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game())
-            .map(|player| player.id)
-            .collect();
-    }
-
-    if let Some(start_pos) = players.iter().position(|&player_id| player_id == start) {
-        players.rotate_left(start_pos);
-    }
-    players
+    super::player_order::active_players_from(
+        game,
+        start,
+        super::player_order::PlayerOrderBasis::TurnWithSeatingFallback,
+    )
 }
 
 impl crate::effects::EffectExecutor for BidLifeEffect {
@@ -141,17 +122,18 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
                     ));
                 }
 
-                let saved_controller = ctx.controller;
-                let saved_cause = ctx.cause.clone();
-                ctx.controller = high_bidder;
-                ctx.cause = EventCause::from_effect(ctx.source, high_bidder);
-                let winner_result = super::sequence::execute_ordered_children_with_outputs(
-                    game,
+                let winner_result = super::execute_with_source::with_actor_binding(
                     ctx,
-                    &self.winner_effects,
+                    high_bidder,
+                    Some(EventCause::from_effect(ctx.source, high_bidder)),
+                    |ctx| {
+                        super::sequence::execute_ordered_children_with_outputs(
+                            game,
+                            ctx,
+                            &self.winner_effects,
+                        )
+                    },
                 );
-                ctx.controller = saved_controller;
-                ctx.cause = saved_cause;
                 outcomes.extend(winner_result?);
 
                 Ok(CompletedEffectOutputs::from_children(

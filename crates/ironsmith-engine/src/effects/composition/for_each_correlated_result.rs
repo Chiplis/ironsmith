@@ -90,115 +90,124 @@ impl EffectExecutor for ForEachObjectCorrelatedResultEffect {
                     .collect::<Vec<_>>();
 
                 let it_tag = TagKey::from("__it__");
-                let original_it = ctx.tagged_objects.remove(&it_tag);
-                let original_result = ctx.tagged_objects.remove(&self.result_tag);
-                let original_source_binding = ctx.tagged_objects.remove(&self.source_binding_tag);
-                let original_result_binding = ctx.tagged_objects.remove(&self.result_binding_tag);
+                // The exported tag is captured after __it__ is removed, including
+                // the historical alias behavior when these names coincide.
+                let original_result = if self.result_tag == it_tag {
+                    None
+                } else {
+                    ctx.get_tagged_all(&self.result_tag).cloned()
+                };
 
                 let mut all_results = Vec::<ObjectSnapshot>::new();
                 let mut pairs = Vec::<(ObjectSnapshot, ObjectSnapshot)>::new();
                 let mut outcomes = Vec::new();
 
-                let execution = (|| {
-                    // Complete every producer iteration first. This preserves the
-                    // sentence-level timing of "create ... . Each of those ...".
-                    for source_id in matching {
-                        let Some(source) = game.object(source_id) else {
-                            continue;
-                        };
-                        let source_snapshot = ObjectSnapshot::from_object(source, game);
-                        ctx.set_tagged_objects(it_tag.clone(), vec![source_snapshot.clone()]);
-                        ctx.tagged_objects.remove(&self.result_tag);
+                let execution = ctx.with_object_tags(
+                    [
+                        it_tag.clone(),
+                        self.result_tag.clone(),
+                        self.source_binding_tag.clone(),
+                        self.result_binding_tag.clone(),
+                    ],
+                    |ctx| {
+                        // Complete every producer iteration first. This preserves the
+                        // sentence-level timing of "create ... . Each of those ...".
+                        for source_id in matching {
+                            let Some(source) = game.object(source_id) else {
+                                continue;
+                            };
+                            let source_snapshot = ObjectSnapshot::from_object(source, game);
+                            ctx.set_tagged_objects(it_tag.clone(), vec![source_snapshot.clone()]);
+                            ctx.tagged_objects.remove(&self.result_tag);
 
-                        ctx.with_temp_iterated_object(Some(source_id), |ctx| {
-                            ctx.with_temp_iterated_player(Some(source_snapshot.controller), |ctx| {
-                                outcomes.extend(
-                                    super::sequence::execute_ordered_children_with_outputs(
-                                        game,
-                                        ctx,
-                                        &self.producer_effects,
-                                    )?,
-                                );
-                                Ok::<(), ExecutionError>(())
-                            })
-                        })?;
+                            ctx.with_temp_iterated_object(Some(source_id), |ctx| {
+                                ctx.with_temp_iterated_player(
+                                    Some(source_snapshot.controller),
+                                    |ctx| {
+                                        outcomes.extend(
+                                            super::sequence::execute_ordered_children_with_outputs(
+                                                game,
+                                                ctx,
+                                                &self.producer_effects,
+                                            )?,
+                                        );
+                                        Ok::<(), ExecutionError>(())
+                                    },
+                                )
+                            })?;
 
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(CompletedEffectOutputs::aggregate_only(
+                                    EffectOutcome::count(0),
+                                ));
+                            }
 
-                        let iteration_results = ctx
-                            .get_tagged_all(&self.result_tag)
-                            .cloned()
-                            .unwrap_or_default();
-                        if let Some(first_result) = iteration_results.first() {
-                            // One source consumes at most one produced result. If a
-                            // replacement creates extras, the distinct-pair contract
-                            // still never reuses a source object.
-                            pairs.push((source_snapshot, first_result.clone()));
-                        }
-                        for snapshot in iteration_results {
-                            if !all_results
-                                .iter()
-                                .any(|existing| existing.object_id == snapshot.object_id)
-                            {
-                                all_results.push(snapshot);
+                            let iteration_results = ctx
+                                .get_tagged_all(&self.result_tag)
+                                .cloned()
+                                .unwrap_or_default();
+                            if let Some(first_result) = iteration_results.first() {
+                                // One source consumes at most one produced result. If a
+                                // replacement creates extras, the distinct-pair contract
+                                // still never reuses a source object.
+                                pairs.push((source_snapshot, first_result.clone()));
+                            }
+                            for snapshot in iteration_results {
+                                if !all_results
+                                    .iter()
+                                    .any(|existing| existing.object_id == snapshot.object_id)
+                                {
+                                    all_results.push(snapshot);
+                                }
                             }
                         }
-                    }
 
-                    ctx.set_tagged_objects(self.result_tag.clone(), all_results.clone());
+                        ctx.set_tagged_objects(self.result_tag.clone(), all_results.clone());
 
-                    // Consumers run only after production is complete, with explicit
-                    // one-object bindings for both sides of each retained pair.
-                    for (source_snapshot, result_snapshot) in &pairs {
-                        ctx.set_tagged_objects(
-                            self.source_binding_tag.clone(),
-                            vec![source_snapshot.clone()],
-                        );
-                        ctx.set_tagged_objects(
-                            self.result_binding_tag.clone(),
-                            vec![result_snapshot.clone()],
-                        );
-                        ctx.set_tagged_objects(it_tag.clone(), vec![result_snapshot.clone()]);
-                        ctx.with_temp_iterated_object(Some(result_snapshot.object_id), |ctx| {
-                            ctx.with_temp_iterated_player(Some(result_snapshot.controller), |ctx| {
-                                outcomes.extend(
+                        // Consumers run only after production is complete, with explicit
+                        // one-object bindings for both sides of each retained pair.
+                        for (source_snapshot, result_snapshot) in &pairs {
+                            ctx.set_tagged_objects(
+                                self.source_binding_tag.clone(),
+                                vec![source_snapshot.clone()],
+                            );
+                            ctx.set_tagged_objects(
+                                self.result_binding_tag.clone(),
+                                vec![result_snapshot.clone()],
+                            );
+                            ctx.set_tagged_objects(it_tag.clone(), vec![result_snapshot.clone()]);
+                            ctx.with_temp_iterated_object(
+                                Some(result_snapshot.object_id),
+                                |ctx| {
+                                    ctx.with_temp_iterated_player(
+                                        Some(result_snapshot.controller),
+                                        |ctx| {
+                                            outcomes.extend(
                                     super::sequence::execute_ordered_children_with_outputs(
                                         game,
                                         ctx,
                                         &self.consumer_effects,
                                     )?,
                                 );
-                                Ok::<(), ExecutionError>(())
-                            })
-                        })?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
+                                            Ok::<(), ExecutionError>(())
+                                        },
+                                    )
+                                },
+                            )?;
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(CompletedEffectOutputs::aggregate_only(
+                                    EffectOutcome::count(0),
+                                ));
+                            }
                         }
-                    }
 
-                    Ok(CompletedEffectOutputs::from_children(
-                        outcomes,
-                        EffectOutcome::aggregate_summing_counts,
-                    ))
-                })();
+                        Ok(CompletedEffectOutputs::from_children(
+                            outcomes,
+                            EffectOutcome::aggregate_summing_counts,
+                        ))
+                    },
+                );
 
-                restore_tag(ctx, it_tag, original_it);
-                restore_tag(
-                    ctx,
-                    self.source_binding_tag.clone(),
-                    original_source_binding,
-                );
-                restore_tag(
-                    ctx,
-                    self.result_binding_tag.clone(),
-                    original_result_binding,
-                );
                 if execution.is_err() {
                     restore_tag(ctx, self.result_tag.clone(), original_result);
                 } else {

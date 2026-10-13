@@ -1,4 +1,4 @@
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::decisions::context::SelectableOption;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter_to_list;
@@ -40,37 +40,26 @@ impl EffectExecutor for ChooseSpellCastHistoryEffect {
         let chosen = if candidates.len() == 1 {
             candidates[0].clone()
         } else {
-            let options = candidates
-                .iter()
-                .enumerate()
-                .map(|(idx, snapshot)| {
+            let Some(chosen) = super::scoped_choice::select_typed_menu(
+                game,
+                ctx.decision_maker,
+                chooser,
+                ctx.source,
+                &self.description,
+                &candidates,
+                super::scoped_choice::SingleChoicePolicy::First,
+                |idx, snapshot| {
                     let description = snapshot
                         .cast_order_this_turn
                         .map(|order| format!("{} (cast #{order})", snapshot.name))
                         .unwrap_or_else(|| snapshot.name.to_string());
                     SelectableOption::new(idx, description).with_object(snapshot.object_id)
-                })
-                .collect::<Vec<_>>();
-            let choice_ctx = SelectOptionsContext::new(
-                chooser,
-                Some(ctx.source),
-                self.description.clone(),
-                options,
-                1,
-                1,
-            );
-            let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let Some(chosen_idx) = selected
-                .into_iter()
-                .next()
-                .filter(|idx| *idx < candidates.len())
+                },
+            )?
             else {
                 return Ok(EffectOutcome::count(0));
             };
-            candidates[chosen_idx].clone()
+            chosen
         };
 
         ctx.set_tagged_objects(self.tag.clone(), vec![chosen]);

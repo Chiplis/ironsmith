@@ -52,12 +52,8 @@ impl EffectExecutor for UmbraArmorEffect {
                         ));
                     }
                 }
-                let Some(receipt) = crate::events::processing::process_destroy_scoped(
-                    game,
-                    self.aura,
-                    Some(ctx.source),
-                    ctx,
-                    None,
+                let Some(destroyed) = crate::effects::zones::execute_resolved_destroy_with_outputs(
+                    game, ctx, self.aura,
                 )?
                 else {
                     return Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
@@ -65,12 +61,6 @@ impl EffectExecutor for UmbraArmorEffect {
                         children,
                     ));
                 };
-                let destroyed = crate::events::processing::finish_destroy_receipts_with_outputs(
-                    game,
-                    ctx,
-                    EffectOutcome::resolved(),
-                    vec![receipt],
-                )?;
                 let summary = destroyed.outcome.summary_projection();
                 children.push(destroyed);
                 Ok(crate::effects::CompletedEffectOutputs::with_primary_result(

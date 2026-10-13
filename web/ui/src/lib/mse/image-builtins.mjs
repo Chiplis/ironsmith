@@ -17,6 +17,12 @@ export function imageBuiltins(owner) {
   const image = (scope, key) => mseImage(scope.get(key), owner);
   const builtins = {
     to_image: input,
+    add_bleed_edge: scope=>new MseImage('bleed',{
+      image:input(scope),
+      horizontal:scope.has('horizontal_size')?number(scope.get('horizontal_size')):-1,
+      vertical:scope.has('vertical_size')?number(scope.get('vertical_size')):-1,
+      background:color(scope.has('background_color')?scope.get('background_color'):null).channels,
+    }),
     nine_slice_image: scope => new MseImage('nine-slice', {
       image: input(scope), width: number(scope.get('width'),true), height: number(scope.get('height'),true),
       ...Object.fromEntries(['left','right','top','bottom'].map(key=>[key,scope.has(key)?number(scope.get(key),true):0])),
@@ -62,6 +68,11 @@ export function imageBuiltins(owner) {
       widen: scope.has('widen') ? boolean(scope.get('widen')) : true,
       background: color(scope.has('background_color') ? scope.get('background_color') : null).channels,
     }),
+    set_combine: scope => {
+      const mode=text(scope.get('combine'));
+      if(mode!=='default')combineChannel(mode);
+      return new MseImage('set-combine',{image:input(scope),mode});
+    },
     combine_blend: scope => {
       const mode = text(scope.get('combine'));
       combineChannel(mode);
@@ -78,7 +89,10 @@ export function imageBuiltins(owner) {
       return new MseImage('recolor', parameters);
     },
     fill_image: scope => new MseImage('fill', { image: input(scope), color: color(scope.get('color')).channels }),
+    brighten_image: scope => new MseImage('brighten', { image: input(scope), amount: number(scope.get('amount')) }),
+    saturate: scope => new MseImage('saturate', { image: input(scope), amount: number(scope.get('amount')) }),
     invert_image: scope => new MseImage('invert', { image: input(scope) }),
+    visibility_mask: scope => new MseImage('visibility-mask', { image: input(scope), threshold: scope.has('threshold') ? number(scope.get('threshold'),true) : 254, radius: scope.has('radius') ? number(scope.get('radius'),true) : 1 }),
     set_alpha: scope => new MseImage('alpha', { image: input(scope), alpha: number(scope.get('alpha')) }),
     set_mask: scope => new MseImage('mask', { image: image(scope, 'image'), mask: image(scope, 'mask') }),
     flip_horizontal: scope => new MseImage('flip-horizontal', { image: input(scope) }),
@@ -87,6 +101,7 @@ export function imageBuiltins(owner) {
     masked_blend: scope => new MseImage('masked-blend', { light: image(scope, 'light'), dark: image(scope, 'dark'), mask: image(scope, 'mask') }),
     linear_blend: scope => new MseImage('linear-blend', { image1: image(scope, 'image1'), image2: image(scope, 'image2'), ...Object.fromEntries(['x1', 'y1', 'x2', 'y2'].map(key => [key, number(scope.get(key))])) }),
   };
+  builtins.saturate_image = builtins.saturate;
   builtins.crop_image = builtins.crop;
   builtins.enlarge_image = builtins.enlarge;
   builtins.add_drop_shadow = builtins.drop_shadow;

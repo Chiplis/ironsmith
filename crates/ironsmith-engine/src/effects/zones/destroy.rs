@@ -1193,3 +1193,29 @@ mod deferred_destroy_owner_contract_tests {
     #[test] fn additional_destroy_root_pending_replay() { check(2,2); }
     #[test] fn additional_destroy_root_object_binding() { check(2,3); }
 }
+
+/// Complete destruction of an already-authorized exact incarnation, retaining
+/// the replacement payload's no-receipt projection and decision scope.
+pub(crate) fn execute_resolved_destroy_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object: crate::ids::ObjectId,
+) -> Result<Option<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let Some(receipt) = crate::events::processing::process_destroy_scoped(
+        game,
+        object,
+        Some(ctx.source),
+        ctx,
+        None,
+    )?
+    else {
+        return Ok(None);
+    };
+    crate::events::processing::finish_destroy_receipts_with_outputs(
+        game,
+        ctx,
+        EffectOutcome::resolved(),
+        vec![receipt],
+    )
+    .map(Some)
+}

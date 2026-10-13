@@ -2,7 +2,6 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -53,16 +52,16 @@ impl EffectExecutor for SkipTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if !ctx.claim_shared_team_structure_operation(game, player_id, "skip_turn") {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        // Mark the player to skip their next turn
-        let turn_player = game.team_turn_representative(player_id);
-        game.turn_store.skip_next_turn.insert(turn_player);
-
-        Ok(EffectOutcome::resolved())
+        super::skip_scheduled::execute_schedule_operation(
+            game,
+            ctx,
+            &self.player,
+            "skip_turn",
+            super::skip_scheduled::ScheduleOperation::Skip {
+                kind: ironsmith_core::ScheduledSkipKind::Turn,
+                count: 1,
+            },
+        )
     }
 }
 

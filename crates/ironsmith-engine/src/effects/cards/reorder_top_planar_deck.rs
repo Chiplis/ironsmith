@@ -1,24 +1,30 @@
 //! Look at and reorder the top of a planar deck.
 
 #[cfg(test)]
+use crate::decisions::context::SelectObjectsContext;
+use crate::decisions::context::SelectableObject;
+#[cfg(test)]
 use crate::decisions::context::ViewCardsContext;
-use crate::decisions::context::{SelectObjectsContext, SelectableObject};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_as_chooser};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::ids::ObjectId;
 use crate::zone::Zone;
 pub use ironsmith_core::ReorderTopPlanarDeckEffect;
 
+#[cfg(test)]
 fn normalize_single_selection(
     selected: Vec<ObjectId>,
     candidates_top_to_bottom: &[ObjectId],
 ) -> Option<ObjectId> {
-    selected
-        .into_iter()
-        .find(|id| candidates_top_to_bottom.contains(id))
-        .or_else(|| candidates_top_to_bottom.first().copied())
+    crate::effects::composition::captured_selection::select_captured_answer(
+        candidates_top_to_bottom,
+        &selected,
+        crate::effects::composition::captured_selection::ObjectAnswerPolicy::FirstValidOrDefault,
+    )
+    .expect("fallback selection cannot fail")
 }
 
 impl EffectExecutor for ReorderTopPlanarDeckEffect {
@@ -94,21 +100,29 @@ impl EffectExecutor for ReorderTopPlanarDeckEffect {
                         |_| EffectOutcome::count(0),
                     ));
                 }
-                let selection_context = SelectObjectsContext::new(
+                use crate::effects::composition::captured_selection::{
+                    CapturedChoicePolicy, ObjectAnswerPolicy, ObjectChoiceTransport,
+                    choose_captured_object,
+                };
+                let chosen = choose_captured_object(
+                    game,
+                    ctx,
                     chooser,
-                    Some(ctx.source),
+                    &top_to_bottom,
                     "Choose a card to put on the bottom of your planar deck",
-                    candidates,
-                    1,
-                    Some(1),
-                );
-                let selected = ctx.decision_maker.decide_objects(game, &selection_context);
+                    CapturedChoicePolicy {
+                        skip_singleton: false,
+                        prompt_empty: false,
+                        transport: ObjectChoiceTransport::Direct { explicit: false },
+                        answer: ObjectAnswerPolicy::FirstValidOrDefault,
+                    },
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
                 }
-                let Some(chosen) = normalize_single_selection(selected, &top_to_bottom) else {
+                let Some(chosen) = chosen else {
                     return Ok(crate::effects::CompletedEffectOutputs::from_children(
                         [observation],
                         |_| EffectOutcome::count(0),

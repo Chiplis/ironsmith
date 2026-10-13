@@ -40,6 +40,7 @@ pub(crate) use continuation::{
 mod become_plotted;
 pub use become_plotted::BecomePlottedEffect;
 mod destroy;
+pub(crate) use destroy::execute_resolved_destroy_with_outputs;
 mod destroy_no_regen;
 mod exchange_zones;
 mod exile;

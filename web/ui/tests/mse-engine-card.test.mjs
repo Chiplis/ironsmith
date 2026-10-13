@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {engineCardToMse,engineRulesToMse} from '../src/lib/mse/engine-card.mjs';
+test('explicit colors and indicators override mismatched costs without changing default frame inference',()=>{
+  const back=engineCardToMse({type_line:'Creature',color_indicator:['U','B']}).card;
+  assert.equal(back.indicator,'blue, black, multicolor');assert.equal(back.card_color,'blue, black, multicolor');
+  assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{2}{R}',colors:[]}).card.card_color,'colorless');
+  assert.equal(engineCardToMse({type_line:'Artifact Creature',mana_cost:'{R}',colors:['U']}).card.card_color,'blue, artifact');
+  assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{W/U}',colors:['W','U']}).card.card_color,undefined);
+  assert.equal(engineCardToMse({type_line:'Basic Land — Forest',colors:[],color_identity:['G']}).card.card_color,undefined);
+  assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',colors:['R'],characteristic_signature:'colors: blue\nother: test'}).card.card_color,'blue');
+  assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',characteristic_signature:'colors:-\nother: test'}).card.card_color,'colorless');
+  assert.equal(engineCardToMse({type_line:'Creature',color_identity:['U']}).card.card_color,undefined);
+});
+test('face indicators stay separate and native overrides remain authoritative',()=>{
+  const snapshot={color_indicator:['W'],card_faces:[{color_indicator:['U']},{color_indicator:['R']}]};
+  const both=engineCardToMse(snapshot).card;
+  assert.equal(both.indicator,'blue');assert.equal(both.indicator_2,'red');
+  assert.equal(engineCardToMse(snapshot,{faceIndex:1,nativeCard:{indicator:'green'}}).card.indicator,'green');
+  assert.throws(()=>engineCardToMse({colors:['purple']}),{code:'engine-colors'});
+});
 test('engine snapshots map current stats and preserve symbol and literal text boundaries',()=>{
   const source={id:7,name:'Trial',mana_cost:'{2}{W/U}{B/P}',type_line:'Legendary Creature — Wizard',oracle_text:'{T}: Add {U}. <b> is literal.',power_toughness:'3/4',power:'5',rarity:'mythic'};
   const result=engineCardToMse(source);
@@ -19,4 +37,42 @@ test('multiple faces retain separate rules, and explicit active-face selection u
   assert.equal(active.card.name,'Display name');assert.equal(active.card.rule_text,'Updated <sym>U</sym>.');assert.equal(active.card.name_2,undefined);
   assert.throws(()=>engineCardToMse(snapshot,{faceIndex:2}),{code:'engine-face'});
   assert.equal(engineRulesToMse('Pay {2/W}.\nThen draw.'),'Pay <sym>2/W</sym>.\nThen draw.');
+});
+
+test('planeswalker costs use paragraph slots while preserving static abilities and symbol markup',()=>{
+  const card=engineCardToMse({type_line:'Legendary Planeswalker — Tester',oracle_text:'Flying\n+1: Add {U}.\n0: Draw a card.\n−X: Deal X damage.\nYou may activate abilities twice.'}).card;
+  assert.equal(card.rule_text,'Flying\nAdd <sym>U</sym>.\nDraw a card.\nDeal X damage.\nYou may activate abilities twice.');
+  assert.equal(card.loyalty_cost_1,undefined);
+  assert.equal(card.loyalty_cost_2,'+1');assert.equal(card.loyalty_cost_3,'0');assert.equal(card.loyalty_cost_4,'-X');
+  assert.equal(card.level_1_text,'Flying');assert.equal(card.level_2_text,'Add <sym>U</sym>.');
+  assert.equal(engineCardToMse({type_line:'Creature',oracle_text:'0: Draw a card.'}).card.rule_text,'0: Draw a card.');
+});
+
+test('planeswalker face costs use native eight-slot offsets and explicit selection resets slots',()=>{
+  const snapshot={card_faces:[{type_line:'Planeswalker',oracle_text:'+1: First.'},{type_line:'Planeswalker',oracle_text:'−2: Second.'}]};
+  const both=engineCardToMse(snapshot).card;
+  assert.equal(both.loyalty_cost_1,'+1');assert.equal(both.loyalty_cost_9,'-2');assert.equal(both.rule_text_2,'Second.');
+  assert.equal(both.level_9_text,'Second.');
+  const selected=engineCardToMse(snapshot,{faceIndex:1,nativeCard:{loyalty_cost_1:'-3'}}).card;
+  assert.equal(selected.loyalty_cost_1,'-3');assert.equal(selected.loyalty_cost_9,undefined);
+});
+
+test('Saga grouped chapters map labels to ability boxes without duplicating their text',()=>{
+  const rules='(Add a lore counter.)\nI, II — Add {U}.\nIII — Draw a card.\nThen discard a card.';
+  const result=engineCardToMse({type_line:'Enchantment — Saga',oracle_text:rules});
+  assert.equal(result.card.chapter_text,'(Add a lore counter.)');
+  assert.equal(result.card.level_1_text,'Add <sym>U</sym>.');
+  assert.equal(result.card.level_2_text,'Draw a card.\nThen discard a card.');
+  assert.equal(result.styling.chapter_textboxes,'two');assert.equal(result.styling.snap_chapter_to_box,'1,1,2');
+  assert.equal(result.card.rule_text,engineRulesToMse(rules));
+  assert.equal(engineCardToMse({type_line:'Enchantment — Saga',oracle_text:rules},{styling:{chapter_textboxes:'three'}}).styling.chapter_textboxes,'three');
+});
+
+test('Saga adaptation preserves face offsets, explicit selection, and non-Saga text',()=>{
+  const snapshot={card_faces:[{type_line:'Creature',oracle_text:'First.'},{type_line:'Enchantment — Saga',oracle_text:'I — One.\nII — Two.'}]};
+  const both=engineCardToMse(snapshot);
+  assert.equal(both.card.level_9_text,'One.');assert.equal(both.styling.snap_chapter_to_box_2,'1,2');
+  const selected=engineCardToMse(snapshot,{faceIndex:1});assert.equal(selected.card.level_1_text,'One.');
+  assert.equal(engineCardToMse({type_line:'Instant',oracle_text:'I — One.'}).card.level_1_text,undefined);
+  assert.throws(()=>engineCardToMse({type_line:'Enchantment — Saga',oracle_text:'I, III — One.'}),{code:'engine-saga'});
 });

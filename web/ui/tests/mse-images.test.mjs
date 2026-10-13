@@ -202,3 +202,39 @@ test('flip_image selects either axis without modifying cached asset pixels',asyn
   assert.deepEqual([...vertical.data].filter((_,i)=>i%4===3),[64,0,255,128]);
   assert.deepEqual([...source.data].filter((_,i)=>i%4===0),[1,2,3,4]);
 });
+
+test('saturation uses native fixed-point rounding, preserves alpha, and supports both aliases',async()=>{
+  const source=raster(1,[30,100,200,128]);
+  const renderer=new MseImageRenderer({loadAsset:async()=>source});
+  for(const [amount,rgb] of [[0,[30,100,200]],[-1,[110,110,110]],[-0.5,[70,105,155]],[0.5,[0,90,255]],[1,[0,0,255]]]){
+    for(const name of ['saturate','saturate_image']){
+      const result=await renderer.render(vm().run(`${name}("frame.png",amount:${amount})`));
+      assert.deepEqual([...result.data],[...rgb,128]);
+    }
+  }
+  assert.deepEqual([...source.data],[30,100,200,128]);
+});
+
+
+test('integer image parameters truncate calculated host numbers before allocating pixels',async()=>{
+  const runtime=vm();
+  runtime.scope.set('calculated_width',21.557333333333332);
+  runtime.scope.set('calculated_height',21.45889101338432);
+  const graph=runtime.run('crop("a",width:calculated_width,height:calculated_height,offset_x:0,offset_y:0)');
+  assert.equal(graph.parameters.width,21);assert.equal(graph.parameters.height,21);
+  const renderer=new MseImageRenderer({loadAsset:async()=>raster(1,[10,20,30,255])});
+  const result=await renderer.render(graph);
+  assert.equal(result.width,21);assert.equal(result.height,21);
+  assert.deepEqual([...result.data.slice(0,4)],[10,20,30,255]);
+});
+
+
+test('brightness clamps strength, truncates native channel arithmetic, and preserves transparent RGB',async()=>{
+  const source=raster(2,[11,99,201,0, 255,0,128,177]);
+  const renderer=new MseImageRenderer({loadAsset:async()=>source});
+  for(const [amount,expected] of [[-2,[0,0,0,0,0,0,0,177]],[-0.5,[5,49,100,0,127,0,64,177]],[0,[11,99,201,0,255,0,128,177]],[0.5,[133,177,228,0,255,127,191,177]],[2,[255,255,255,0,255,255,255,177]]]){
+    const result=await renderer.render(vm().run(`brighten_image("frame.png",amount:${amount})`));
+    assert.deepEqual([...result.data],expected);
+  }
+  assert.deepEqual([...source.data],[11,99,201,0,255,0,128,177]);
+});

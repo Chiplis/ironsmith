@@ -5,7 +5,7 @@
 //! their revealed card has greater mana value.
 
 use crate::decisions::{
-    ChoiceSpec, DisplayOption, ScrySpec, context::ViewCardsContext, make_decision,
+    ChoiceSpec, DisplayOption, context::ViewCardsContext, make_decision,
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -138,24 +138,6 @@ fn card_mana_value(game: &GameState, card: Option<ObjectId>) -> Option<u32> {
     })
 }
 
-fn should_put_revealed_card_on_bottom(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    player: PlayerId,
-    card: ObjectId,
-) -> bool {
-    let spec = ScrySpec::new(ctx.source, vec![card]);
-    let to_bottom: Vec<ObjectId> = make_decision(
-        game,
-        &mut ctx.decision_maker,
-        player,
-        Some(ctx.source),
-        spec,
-    );
-
-    to_bottom.contains(&card)
-}
-
 fn move_revealed_cards_to_bottom(game: &mut GameState, cards_to_bottom: &[(PlayerId, ObjectId)]) {
     for (player, card) in cards_to_bottom {
         super::arrange_library_cards(game, *player, &[], &[*card], "clash card put on bottom");
@@ -259,29 +241,20 @@ impl EffectExecutor for ClashEffect {
                     }
                 });
 
-                let mut cards_to_bottom = Vec::new();
-                for player in clashing_players_in_apnap_order(game, ctx.controller, opponent) {
-                    let card = if player == ctx.controller {
-                        controller_card
-                    } else {
-                        opponent_card
-                    };
-                    let Some(card) = card else {
-                        continue;
-                    };
-                    if should_put_revealed_card_on_bottom(game, ctx, player, card) {
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                                EffectOutcome::count(0),
-                            ));
-                        }
-                        cards_to_bottom.push((player, card));
-                    } else if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                }
+                let participants = clashing_players_in_apnap_order(game, ctx.controller, opponent)
+                    .into_iter().filter_map(|player| {
+                        let card = if player == ctx.controller { controller_card } else { opponent_card };
+                        card.map(|card| (player, card))
+                    }).collect::<Vec<_>>();
+                let Some(bottom_choices) = crate::effects::composition::scoped_choice::collect_choices_before_commit(
+                    game, ctx, participants, |game, ctx, (player, card)| {
+                        let chosen = super::choose_library_bottom_partition(game, ctx, player, &[card]);
+                        Ok(chosen.filter(|cards| cards.contains(&card)).map(|_| (player, card)))
+                    },
+                )? else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                };
+                let cards_to_bottom = bottom_choices.into_iter().flatten().collect::<Vec<_>>();
 
                 move_revealed_cards_to_bottom(game, &cards_to_bottom);
 
@@ -615,5 +588,81 @@ mod tests {
             !EffectPredicate::Value(Comparison::GreaterThan(0)).evaluate_outcome(&outcome),
             "the typed clash-win predicate must be false when the opponent wins"
         );
+    }
+    struct PausePartition {
+        calls: usize,
+        pause_at: usize,
+        pending: bool,
+    }
+    impl DecisionMaker for PausePartition {
+        fn decide_partition(
+            &mut self,
+            _: &GameState,
+            context: &crate::decisions::context::PartitionContext,
+        ) -> Vec<ObjectId> {
+            self.calls += 1;
+            self.pending = self.calls == self.pause_at;
+            context.cards.iter().map(|(id, _)| *id).collect()
+        }
+        fn awaiting_choice(&self) -> bool {
+            self.pending
+        }
+    }
+
+    #[test]
+    fn suspended_multiplayer_library_choices_commit_only_after_all_players_and_replay_once() {
+        for (scry, pause_at) in [(false, 1), (false, 2), (true, 1), (true, 2)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId(0);
+            let bob = PlayerId(1);
+            add_library_card(&mut game, alice, "A bottom", 1);
+            let a = add_library_card(&mut game, alice, "A top", 5);
+            add_library_card(&mut game, bob, "B bottom", 1);
+            let b = add_library_card(&mut game, bob, "B top", 2);
+            let before = [
+                game.player(alice).unwrap().library.clone(),
+                game.player(bob).unwrap().library.clone(),
+            ];
+            let source = game.new_object_id();
+            let effect = if scry {
+                crate::effect::Effect::new(crate::effects::EachPlayerScryEffect::new(
+                    1,
+                    crate::target::PlayerFilter::Any,
+                ))
+            } else {
+                crate::effect::Effect::new(ClashEffect::against_any_opponent())
+            };
+            let mut dm = PausePartition {
+                calls: 0,
+                pause_at,
+                pending: false,
+            };
+            {
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+                let output = effect.0.execute_with_outputs(&mut game, &mut ctx).unwrap();
+                assert_eq!(output.outcome.value, crate::effect::OutcomeValue::Count(0));
+                assert!(output.outcome.events.is_empty());
+            }
+            assert_eq!(game.player(alice).unwrap().library, before[0]);
+            assert_eq!(game.player(bob).unwrap().library, before[1]);
+            dm.pause_at = usize::MAX;
+            dm.pending = false;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let output = effect.0.execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(
+                output.value,
+                crate::effect::OutcomeValue::Count(if scry { 2 } else { 1 })
+            );
+            assert_eq!(game.player(alice).unwrap().library.first(), Some(&a));
+            assert_eq!(game.player(bob).unwrap().library.first(), Some(&b));
+            assert_eq!(
+                output
+                    .events
+                    .iter()
+                    .filter(|event| event.downcast::<KeywordActionEvent>().is_some())
+                    .count(),
+                2
+            );
+        }
     }
 }

@@ -57,26 +57,9 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        game.clear_pending_decision_controllers();
-        let result = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| execute_up_to_any_counter_removal(self, game, ctx),
-        );
-        // The shared transaction restores the action; keep this adapter's
-        // existing neutral suspension policy even if the child failed.
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        result
+        super::remove_counters::execute_selected_removal_transaction(game, ctx, |game, ctx| {
+            execute_up_to_any_counter_removal(self, game, ctx)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

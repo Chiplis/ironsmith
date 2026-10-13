@@ -196,3 +196,16 @@ impl SimultaneousEffectCompletion for ObservedOriginalCompletion {
         )
     }
 }
+
+/// Optionally replace the aggregate summary without dropping observations,
+/// facts, or the exact original instruction result. None preserves both results.
+pub(crate) fn project_outcome_summary(
+    mut outcome: crate::effect::EffectOutcome,
+    project: impl FnOnce(&crate::effect::EffectOutcome) -> Option<crate::effect::EffectOutcome>,
+) -> crate::effect::EffectOutcome {
+    if let Some(summary) = project(&outcome) {
+        outcome.status = summary.status;
+        outcome.value = summary.value;
+    }
+    outcome
+}

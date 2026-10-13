@@ -9,7 +9,8 @@ import {createBrowserSymbolRenderer} from './browser-symbols.mjs';
 // Resource providers are owned by the caller so multiple card surfaces can
 // share registered fonts and decoded assets without disposing one another.
 export class MseCardRenderer{
-  constructor({store,fonts,imageRenderer,createCanvas=(w,h)=>new OffscreenCanvas(w,h),loadCardImage}={}){
+  constructor({store,fonts,imageRenderer,createCanvas=(w,h)=>new OffscreenCanvas(w,h),loadCardImage,fieldUpdateMode='lazy'}={}){
+    this.fieldUpdateMode=fieldUpdateMode;
     this.store=store;this.fonts=fonts;this.createCanvas=createCanvas;this.loadCardImage=loadCardImage;
     this.images=imageRenderer??new MseImageRenderer({loadAsset:createMseImageLoader(store),renderSymbol:createBrowserSymbolRenderer({store})});
     this.templates=new Map();this.targets=new WeakMap();this.disposed=false;
@@ -30,7 +31,7 @@ export class MseCardRenderer{
     this.check(signal);
     const template=await this.template(style);this.check(signal);
     const values=snapshot===undefined?context:engineCardToMse(snapshot,adapter);
-    const card=new MseTemplateContext(template,{...values,spellcheckEnabled:false}).initialize();
+    const card=new MseTemplateContext(template,{fieldUpdateMode:this.fieldUpdateMode,...values,spellcheckEnabled:false}).initialize();
     return this.renderContext(card,{signal,onFieldDrawn});
   }
   async renderContext(context,{signal,onFieldDrawn}={}){
@@ -43,7 +44,7 @@ export class MseCardRenderer{
       onFieldDrawn:async info=>{this.check(signal);if(onFieldDrawn)await onFieldDrawn(info);},
     });
     this.check(signal);
-    return {...result,canvas,context};
+    return {...result,canvas,context,diagnostics:[...context.diagnostics]};
   }
   async renderTo(target,request,options={}){
     this.check(options.signal);

@@ -174,3 +174,36 @@ mod retained_set_tests {
         assert!(normalize_order_response(vec![1], &[]).is_empty());
     }
 }
+
+/// Choose the bottom partition of already captured cards. This neither opens
+/// hidden information nor moves cards nor emits a scry/other keyword event.
+/// Callers own disclosure, ordering of each partition, and the commit boundary.
+pub(crate) fn choose_library_bottom_partition(
+    game: &GameState,
+    ctx: &mut crate::effects::ExecutionContext,
+    chooser: PlayerId,
+    cards: &[ObjectId],
+) -> Option<Vec<ObjectId>> {
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    if cards.is_empty() {
+        return Some(Vec::new());
+    }
+    let selected: Vec<ObjectId> = crate::decisions::make_decision(
+        game,
+        &mut ctx.decision_maker,
+        chooser,
+        Some(ctx.source),
+        crate::decisions::ScrySpec::new(ctx.source, cards.to_vec()),
+    );
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    Some(
+        selected
+            .into_iter()
+            .filter(|card| cards.contains(card))
+            .collect(),
+    )
+}

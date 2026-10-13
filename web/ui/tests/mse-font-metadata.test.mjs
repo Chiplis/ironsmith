@@ -28,3 +28,13 @@ test('font metadata rejects truncated tables and invalid formats',()=>{
   const unknown=fixture();unknown[0]=42;
   assert.throws(()=>readFontMetadata(unknown),{code:'font-format'});
 });
+
+test('font decoration metrics retain signed positions and design-unit thicknesses',()=>{
+  const tables=[['name',fixture().subarray(28)],['head',new Uint8Array(20)],['post',new Uint8Array(12)],['OS/2',new Uint8Array(30)]];
+  const head=new DataView(tables[1][1].buffer),post=new DataView(tables[2][1].buffer),os2=new DataView(tables[3][1].buffer);
+  head.setUint16(18,2048);post.setInt16(8,-200);post.setInt16(10,80);os2.setInt16(26,90);os2.setInt16(28,600);
+  const bytes=new Uint8Array(76+tables.reduce((n,[,t])=>n+t.length,0)),view=new DataView(bytes.buffer);
+  view.setUint32(0,0x10000);view.setUint16(4,4);let offset=76;
+  tables.forEach(([tag,data],i)=>{const at=12+i*16;bytes.set([...tag].map(c=>c.charCodeAt(0)),at);view.setUint32(at+8,offset);view.setUint32(at+12,data.length);bytes.set(data,offset);offset+=data.length;});
+  assert.deepEqual(readFontMetadata(bytes).decoration,{unitsPerEm:2048,underlinePosition:-200,underlineThickness:80,strikeThickness:90,strikePosition:600});
+});

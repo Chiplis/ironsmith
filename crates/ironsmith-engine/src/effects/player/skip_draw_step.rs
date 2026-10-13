@@ -2,9 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::game_state::Step;
 use crate::target::PlayerFilter;
 
@@ -33,12 +33,16 @@ impl EffectExecutor for SkipDrawStepEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if !ctx.claim_shared_team_structure_operation(game, player_id, "skip_draw_step") {
-            return Ok(EffectOutcome::resolved());
-        }
-        game.skip_next_step(player_id, Step::Draw);
-        Ok(EffectOutcome::resolved())
+        super::skip_scheduled::execute_schedule_operation(
+            game,
+            ctx,
+            &self.player,
+            "skip_draw_step",
+            super::skip_scheduled::ScheduleOperation::Skip {
+                kind: ironsmith_core::ScheduledSkipKind::DrawStep,
+                count: 1,
+            },
+        )
     }
 }
 

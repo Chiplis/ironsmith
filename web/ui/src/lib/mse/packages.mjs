@@ -8,7 +8,7 @@ const entrypoints = new Map([
 
 // MSE relative references are rooted at the owning package, even when they
 // occur inside a file in a subdirectory. Cross-package paths start with '/'.
-export function resolveMsePath(reference, owner) {
+export function resolveMsePath(reference, owner, {allowEmptyFile=false}={}) {
   const path = String(reference).replaceAll('\\', '/').replace(/^\/+/, '/');
   let packageName = owner;
   let file = path;
@@ -32,7 +32,7 @@ export function resolveMsePath(reference, owner) {
       parts.push(part);
     }
   }
-  if (!parts.length) throw new MseError('invalid-path', `Missing file in ${path}`);
+  if (!parts.length&&!allowEmptyFile) throw new MseError('invalid-path', `Missing file in ${path}`);
   return { package: packageName, file: parts.join('/'), key: `${packageName}/${parts.join('/')}` };
 }
 
@@ -136,7 +136,9 @@ export class MsePackageStore {
   exists(reference) {
     if (!String(reference).startsWith('/')) throw new MseError('package-path', "No package name specified; use '/package/filename'");
     if (!this.files) throw new MseError('package-index', 'A complete package file index is required for exists_in_package');
-    const path = resolveMsePath(reference);
+    // PackageManager::existsInPackage accepts an empty filename. contains("")
+    // then returns false; actual file loading still requires a nonempty path.
+    const path = resolveMsePath(reference,undefined,{allowEmptyFile:true});
     if (!this.installedPackages.has(path.package)) throw new MseError('package-missing', `Package ${path.package} is not installed`);
     return this.files.has(path.key);
   }

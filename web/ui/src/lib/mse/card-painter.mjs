@@ -1,3 +1,4 @@
+import { paintChoiceLabel } from './choice-painter.mjs';
 import { MseError } from './document.mjs';
 import { text, force } from './script-values.mjs';
 import { paintTextLayout } from './text-painter.mjs';
@@ -36,10 +37,15 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
       // field's combine mode applies only to its mask-generated bitmap.
       const supportsCombine=['choice','boolean','multiple choice'].includes(type)||(type==='color'&&get('mask',null));
       let combine=supportsCombine?text(get('combine','normal')):'normal';
+      if(['choice','boolean','multiple choice'].includes(type)){
+        const imageMode=context.textMeasurements.get(`${group}.${name}`)?.result?.combine;
+        if(imageMode&&imageMode!=='default')combine=imageMode;
+      }
       if(combine===''||combine==='default')combine='normal';
       combineChannel(combine);
       const layer=combine==='normal'?null:createCanvas(width,height);
       const ctx=layer?layer.getContext('2d'):base;
+      let label=null;
       ctx.save();
       try{
         ctx.translate(left,top);
@@ -53,8 +59,11 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
           let image;
           if(['choice','boolean','multiple choice'].includes(type)){
             const style=text(get('render_style','text'));
-            if(style.includes('text'))throw new MseError('card-choice-text','Choice label drawing is not implemented yet');
-            image=context.textMeasurements.get(`${group}.${name}`)?.result?.image;
+            const value=text(context.field(group,name));
+            if(value&&!style.includes('hidden')){
+              image=style.includes('image')?context.textMeasurements.get(`${group}.${name}`)?.result?.image:null;
+              if(style.includes('text'))label={value,font:context.font(name,group),options:{width:w,height:h,alignment:text(get('alignment','stretch')),withImage:style.includes('image'),imageWidth:image?.width??null}};
+            }
             const maskValue=get('mask',null);
             if(image && maskValue!==null && maskValue!==''){
               const mask=resizeRaster(await renderer.render(mseImage(maskValue,context.template.name),{width:image.width,height:image.height}),image.width,image.height,renderer.maxPixels);
@@ -114,6 +123,13 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
         }
       }finally{ctx.restore();}
       if(layer)drawCombinedLayer(base,layer,combine,createCanvas);
+      // Native combine modes affect the choice image, not its label.
+      if(label){
+        base.save();
+        try{base.translate(left,top);if(angle%360)base.rotate(-(angle%360)*Math.PI/180);
+          await paintChoiceLabel(base,label.value,label.font,fonts,label.options);
+        }finally{base.restore();}
+      }
       if(onFieldDrawn)await onFieldDrawn({group,name,surface});
     }catch(error){error.field=`${group}.${name}`;throw error;}
   }

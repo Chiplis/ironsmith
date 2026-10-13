@@ -65,8 +65,13 @@ class Lexer {
       } else if (/\d/.test(char)) {
         let value = this.take();
         while (/[\d.]/.test(this.source[this.offset] || ' ')) value += this.take();
-        if (!/^\d+(\.\d*)?$/.test(value)) this.error(`Invalid number ${value}`);
-        add({ type: 'number', value: Number(value), real: value.includes('.'), location });
+        // Native tokenization consumes every digit/dot, then ignores ToDouble's
+        // return value. wxString retains a successfully parsed prefix even if
+        // trailing dots remain (27.5.0 becomes 27.5); overflow leaves its zero
+        // initialized output untouched.
+        const real = value.includes('.');
+        const parsed = real ? Number.parseFloat(value) : Number(value);
+        add({ type: 'number', value: real && !Number.isFinite(parsed) ? 0 : parsed, real, location });
       } else if ('+-*/!.@%^&:=<>;,()[]{}'.includes(char)) {
         let value = this.take();
         if ([':=', '==', '!=', '<=', '>=', '->'].includes(value + this.source[this.offset])) value += this.take();

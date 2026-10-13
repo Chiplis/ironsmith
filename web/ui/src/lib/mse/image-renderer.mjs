@@ -1,3 +1,5 @@
+import { visibilityRaster } from './image-visibility.mjs';
+import { bleedRaster } from './image-bleed.mjs';
 import { insertRaster, composePixel } from './image-insert.mjs';
 import { nineSliceRaster } from './image-nine-slice.mjs';
 import { strokeRaster } from './image-stroke.mjs';
@@ -54,6 +56,9 @@ export class MseImageRenderer {
     const first = p.image || p.light || p.image1;
     if (!first) throw new MseError('image-operation', `Unsupported image operation ${image.operation}`);
     const raster = await render(first), data = raster.data;
+    if (image.operation === 'set-combine') return raster;
+    if (image.operation === 'bleed') return bleedRaster(raster,p,this.maxPixels);
+    if (image.operation === 'visibility-mask') return visibilityRaster(raster,p.threshold,p.radius,this.maxPixels);
     if (image.operation === 'nine-slice') return nineSliceRaster(raster,p,this.maxPixels);
     if (image.operation === 'drop-shadow') return dropShadowRaster(raster, p);
     if (image.operation === 'stroke') {
@@ -83,6 +88,25 @@ export class MseImageRenderer {
         const weights = [data[i] - low, data[i + 1] - low, data[i + 2] - low, low];
         const total = Math.max(255, weights.reduce((a, b) => a + b, 0));
         for (let channel = 0; channel < 3; channel++) data[i + channel] = byte(weights.reduce((sum, weight, index) => sum + weight * colors[index][channel], 0) / total);
+      }
+    } else if (image.operation === 'brighten') {
+      if (!Number.isFinite(p.amount)) throw new MseError('image-brightness','Brightness amount must be finite');
+      const amount=Math.max(-1,Math.min(1,p.amount));
+      if (Math.abs(amount)>=1e-8) for(let i=0;i<data.length;i+=4) for(let c=0;c<3;c++)
+        data[i+c]=Math.trunc(amount>0?255*amount+data[i+c]*(1-amount):data[i+c]*(1+amount));
+    } else if (image.operation === 'saturate') {
+      // gfx/image_effects.cpp uses fixed-point integer arithmetic, including
+      // truncation toward zero and byte wrapping in the desaturation branch.
+      const factor = Math.trunc(256 * p.amount);
+      if (!Number.isFinite(factor) || Math.abs(factor) * 765 + 768 * 255 > 2147483647)
+        throw new MseError('image-saturation', 'Saturation amount exceeds native integer arithmetic range');
+      if (factor) for (let i = 0; i < data.length; i += 4) {
+        const channels = [data[i], data[i + 1], data[i + 2]], sum = channels.reduce((a,b)=>a+b,0);
+        for (let c = 0; c < 3; c++) {
+          if (factor === 256) data[i+c] = 3 * channels[c] > sum ? 255 : 0;
+          else if (factor > 0) data[i+c] = byte((768 * channels[c] - factor * sum) / (768 - 3 * factor));
+          else data[i+c] = ((Math.trunc(((768 + 3 * factor) * channels[c] - factor * sum) / 768) % 256) + 256) % 256;
+        }
       }
     } else if (['fill', 'invert', 'alpha'].includes(image.operation)) {
       for (let i = 0; i < data.length; i += 4) {

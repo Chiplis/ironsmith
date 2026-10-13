@@ -5,25 +5,19 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::filter::player_filter_matches_game;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::player_filter_matches_game;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 pub use ironsmith_core::{KeepGreatestManaValuePlayersEffect, TagPlayersEffect};
 
 /// In-game players in APNAP order (CR 101.4).
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
-    let active = game.turn.active_player;
-    let mut players = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game())
-        .map(|player| player.id)
-        .collect::<Vec<_>>();
-    if let Some(start) = players.iter().position(|player| *player == active) {
-        players.rotate_left(start);
-    }
-    players
+    crate::effects::composition::player_order::active_players_from(
+        game,
+        game.turn.active_player,
+        crate::effects::composition::player_order::PlayerOrderBasis::Seating,
+    )
 }
 
 impl EffectExecutor for TagPlayersEffect {
@@ -68,23 +62,17 @@ impl EffectExecutor for KeepGreatestManaValuePlayersEffect {
             .unwrap_or_default();
         // Each contender's card from this round; a contender who exiled no
         // card has none to compare.
-        let values = contenders
-            .iter()
-            .map(|player| {
+        let kept = crate::effects::composition::captured_selection::retain_extrema_by_key(
+            contenders,
+            |player| {
                 cards
                     .iter()
                     .filter(|card| card.owner == *player)
                     .map(|card| card.mana_value())
                     .max()
-            })
-            .collect::<Vec<_>>();
-        let greatest = values.iter().flatten().copied().max();
-        let kept = contenders
-            .iter()
-            .zip(&values)
-            .filter(|(_, value)| greatest.is_some() && **value == greatest)
-            .map(|(player, _)| *player)
-            .collect::<Vec<_>>();
+            },
+            true,
+        );
         let count = kept.len();
         ctx.set_tagged_players(self.players_tag.clone(), kept);
         ctx.clear_object_tag(self.objects_tag.as_str());
@@ -135,7 +123,13 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("narrow contenders");
         assert_eq!(outcome.as_count(), Some(2), "Alice and Bob are tied");
-        assert_eq!(ctx.tagged_players.get("contenders"), Some(&vec![alice, bob]));
-        assert!(ctx.get_tagged_all("round").is_none(), "the next round starts empty");
+        assert_eq!(
+            ctx.tagged_players.get("contenders"),
+            Some(&vec![alice, bob])
+        );
+        assert!(
+            ctx.get_tagged_all("round").is_none(),
+            "the next round starts empty"
+        );
     }
 }

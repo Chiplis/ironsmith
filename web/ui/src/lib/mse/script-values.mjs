@@ -1,5 +1,16 @@
 import { MseError } from './document.mjs';
 
+export class MseDateTime {
+  constructor(value) {
+    const parsed=value instanceof MseDateTime?new Date(value.milliseconds):value instanceof Date?value:new Date(value);
+    if(!Number.isFinite(parsed.getTime()))throw new MseError('script-date','Invalid date value');
+    this.milliseconds=parsed.getTime();
+  }
+  toString(){
+    const d=new Date(this.milliseconds),pad=n=>String(n).padStart(2,'0');
+    return `${String(d.getFullYear()).padStart(4,'0')}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+}
 export class MseReal { constructor(value) { this.value = value; } }
 export class MseImage { constructor(operation, parameters = {}) { this.operation = operation; this.parameters = parameters; } }
 function sameImageData(a, b) {
@@ -62,6 +73,7 @@ export function typeName(value) {
   value = unwrap(value);
   if (value === null) return 'nil';
   if (value instanceof MseDelayedError) return 'error';
+  if (value instanceof MseDateTime) return 'date';
   if (value instanceof MseReal) return 'double';
   if (value instanceof MseImage) return 'image';
   if (value instanceof MseCard) return 'card';
@@ -77,7 +89,7 @@ export function number(value, integer = false) {
   if (value instanceof MseKeywordParameter) return number(value.value, integer);
   if (value === null) return 0;
   if (value instanceof MseReal) return integer ? Math.trunc(value.value) : value.value;
-  if (typeof value === 'number') return value;
+  if (typeof value === 'number') return integer ? Math.trunc(value) : value;
   if (typeof value === 'string' && (integer ? /^[+-]?\d+$/ : /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i).test(value.trim())) return Number(value);
   return conversion(value, integer ? 'integer' : 'double');
 }
@@ -93,6 +105,7 @@ export function text(value) {
   value = force(value);
   if (value instanceof MseKeywordParameter) return value.tagged();
   if (value === null) return '';
+  if (value instanceof MseDateTime) return value.toString();
   if (['string', 'number', 'boolean'].includes(typeof value)) return String(value);
   if (value instanceof MseReal) return String(value.value);
   if (value instanceof MseColor) {
@@ -122,7 +135,9 @@ export function equal(left, right) {
   if ((typeof left === 'number' || left instanceof MseReal) && (typeof right === 'number' || right instanceof MseReal)) return Math.abs(number(left) - number(right)) < 1e-14 || number(left) === number(right);
   if (left instanceof MseColor && right instanceof MseColor) return left.channels.every((n, i) => n === right.channels[i]);
   if (left instanceof MseFunction || right instanceof MseFunction) return false;
-  return text(left) === text(right);
+  // ScriptValue::compareAs uses toCode(), so strings retain their quotes.
+  // Numeric-looking choice/slider strings must not compare equal to numbers.
+  return code(left) === code(right);
 }
 export function member(object, key) {
   object = unwrap(object);
@@ -145,6 +160,8 @@ export function member(object, key) {
   return missingMember(key);
 }
 export function fromHost(value) {
+  if (value instanceof MseDateTime) return value;
+  if (value instanceof Date) return new MseDateTime(value);
   if (value === null || ['string', 'boolean'].includes(typeof value)) return value;
   if (typeof value === 'number') return Number.isInteger(value) ? value : new MseReal(value);
   if (Array.isArray(value)) return new MseCollection(value.map(fromHost));

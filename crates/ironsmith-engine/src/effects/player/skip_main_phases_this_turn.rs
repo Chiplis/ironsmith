@@ -1,9 +1,10 @@
 //! Skip each remaining main phase this turn.
 
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, Phase};
+use crate::game_state::GameState;
+#[cfg(test)]
+use crate::game_state::Phase;
 use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,24 +24,13 @@ impl EffectExecutor for SkipMainPhasesThisTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if game.is_active_player(player_id)
-            && matches!(
-                game.turn.phase,
-                Phase::Beginning | Phase::FirstMain | Phase::Combat
-            )
-            && ctx.claim_shared_team_structure_operation(
-                game,
-                player_id,
-                "skip_main_phases_this_turn",
-            )
-        {
-            let turn_player = game.team_turn_representative(player_id);
-            game.turn_store
-                .skip_current_turn_main_phases
-                .insert(turn_player);
-        }
-        Ok(EffectOutcome::resolved())
+        super::skip_scheduled::execute_schedule_operation(
+            game,
+            ctx,
+            &self.player,
+            "skip_main_phases_this_turn",
+            super::skip_scheduled::ScheduleOperation::MainPhasesThisTurn,
+        )
     }
 }
 

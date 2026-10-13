@@ -2,7 +2,6 @@
 //! "For each player, choose friend or foe"). See
 //! [`ironsmith_core::ChoosePlayerOptionEffect`].
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter_to_list;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
@@ -11,23 +10,7 @@ use crate::ids::PlayerId;
 
 pub use ironsmith_core::{ChoosePlayerOptionEffect, PlayerOptionChooser, player_option_choice_tag};
 
-/// Position of `player` in turn order starting with the active player
-/// (CR 101.4: choices are made in APNAP order).
-fn apnap_position(game: &GameState, player: PlayerId) -> usize {
-    let order = &game.turn_store.turn_order;
-    let Some(active) = order
-        .iter()
-        .position(|candidate| *candidate == game.turn.active_player)
-    else {
-        return player.0 as usize;
-    };
-    order
-        .iter()
-        .position(|candidate| *candidate == player)
-        .map_or(usize::MAX, |index| {
-            (index + order.len() - active) % order.len()
-        })
-}
+use super::player_order::apnap_position;
 
 impl EffectExecutor for ChoosePlayerOptionEffect {
     fn execute(
@@ -50,49 +33,48 @@ impl EffectExecutor for ChoosePlayerOptionEffect {
                 participants.sort_by_key(|player| apnap_position(game, *player));
                 participants.dedup();
 
-                let display_options = self
+                let options = self
                     .options
                     .iter()
                     .enumerate()
-                    .map(|(index, option)| SelectableOption::new(index, option.clone()))
+                    .map(|(i, name)| (i, name.clone()))
                     .collect::<Vec<_>>();
-                let mut chosen_by_option: Vec<Vec<PlayerId>> =
-                    vec![Vec::new(); self.options.len()];
-                for participant in participants {
-                    let chooser = match self.chooser {
-                        PlayerOptionChooser::Participant => participant,
-                        PlayerOptionChooser::Controller => ctx.controller,
-                    };
-                    let description = match self.chooser {
-                        PlayerOptionChooser::Participant => "Choose one".to_string(),
-                        PlayerOptionChooser::Controller => {
-                            let name = game
-                                .player(participant)
-                                .map(|player| player.name.to_string())
-                                .unwrap_or_else(|| "that player".to_string());
-                            format!("Choose one for {name}")
-                        }
-                    };
-                    let choice_ctx = SelectOptionsContext::new(
-                        chooser,
-                        Some(ctx.source),
-                        description,
-                        display_options.clone(),
-                        1,
-                        1,
-                    );
-                    let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    // A missing answer keeps the first option, as a forced
-                    // single choice would.
-                    let index = selected
-                        .into_iter()
-                        .next()
-                        .filter(|index| *index < self.options.len())
-                        .unwrap_or(0);
-                    if let Some(players) = chosen_by_option.get_mut(index) {
+                let Some(choices) = super::scoped_choice::collect_choices_before_commit(
+                    game,
+                    ctx,
+                    participants,
+                    |game, ctx, participant| {
+                        let chooser = match self.chooser {
+                            PlayerOptionChooser::Participant => participant,
+                            PlayerOptionChooser::Controller => ctx.controller,
+                        };
+                        let description = match self.chooser {
+                            PlayerOptionChooser::Participant => "Choose one".to_string(),
+                            PlayerOptionChooser::Controller => {
+                                let name = game
+                                    .player(participant)
+                                    .map(|player| player.name.to_string())
+                                    .unwrap_or_else(|| "that player".to_string());
+                                format!("Choose one for {name}")
+                            }
+                        };
+                        let index = super::scoped_choice::select_typed_option(
+                            game,
+                            ctx,
+                            chooser,
+                            &description,
+                            &options,
+                            super::scoped_choice::SingleChoicePolicy::FirstOrDefault,
+                        )?;
+                        Ok((participant, index))
+                    },
+                )?
+                else {
+                    return Ok(EffectOutcome::count(0));
+                };
+                let mut chosen_by_option: Vec<Vec<PlayerId>> = vec![Vec::new(); self.options.len()];
+                for (participant, index) in choices {
+                    if let Some(players) = index.and_then(|i| chosen_by_option.get_mut(i)) {
                         players.push(participant);
                     }
                 }

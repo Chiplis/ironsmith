@@ -45,21 +45,11 @@ fn vote_chooser(game: &GameState, voter: PlayerId) -> PlayerId {
 }
 
 fn active_players_in_vote_order(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
-    let mut players: Vec<PlayerId> = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game())
-        .map(|player| player.id)
-        .collect();
-
-    if let Some(controller_pos) = players
-        .iter()
-        .position(|&player_id| player_id == controller)
-    {
-        players.rotate_left(controller_pos);
-    }
-
-    players
+    super::player_order::active_players_from(
+        game,
+        controller,
+        super::player_order::PlayerOrderBasis::Seating,
+    )
 }
 
 fn build_display_options(effect: &VoteEffect) -> Vec<DisplayOption> {

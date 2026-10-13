@@ -1,6 +1,5 @@
 //! Venture into a dungeon by starting or advancing dungeon progress.
 
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::dungeon::{
     ActiveDungeonProgress, first_room_name, next_room_names, venture_dungeon_names,
 };
@@ -43,21 +42,17 @@ fn choose_named_option(
     prompt: &str,
     options: &[String],
 ) -> Result<Option<String>, ExecutionError> {
-    let selectable = options
-        .iter()
-        .enumerate()
-        .map(|(idx, option)| SelectableOption::new(idx, option.clone()))
-        .collect::<Vec<_>>();
-    let choice_ctx = SelectOptionsContext::new(chooser, Some(ctx.source), prompt, selectable, 1, 1);
-    let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(None);
-    }
-    Ok(selected
-        .into_iter()
-        .next()
-        .filter(|idx| *idx < options.len())
-        .map(|idx| options[idx].clone()))
+    crate::effects::composition::scoped_choice::select_typed_option(
+        game,
+        ctx,
+        chooser,
+        prompt,
+        &options
+            .iter()
+            .map(|name| (name.clone(), name.clone()))
+            .collect::<Vec<_>>(),
+        crate::effects::composition::scoped_choice::SingleChoicePolicy::First,
+    )
 }
 
 /// Synthetic source id for the room abilities of the dungeon `player` owns.

@@ -23,7 +23,7 @@ export async function compileFontDefinition(record, loader, { symbol = false } =
   for (const [key, fallback] of Object.entries(symbol ? symbolDefaults : defaults)) {
     const entry = record?.last(key);
     values[key] = convert(key, fixed.has(key) && entry ? entry.text() : fallback);
-    if (entry && !fixed.has(key)) programs.set(key, await loader.compile(entry.text(), { ...entry.location, stringMode: true }));
+    if (entry && !fixed.has(key)) programs.set(key, await loader.compileScriptable(entry.text(), entry.location));
   }
   return { programs, values, symbol };
 }
@@ -43,6 +43,7 @@ export function resolveFontFace(font, { bold = false, italic = false, fromTag = 
   let name = family || font.name;
   bold ||= font.bold;
   italic ||= font.italic;
+  if(font.code)return {name:'Courier New',bold,italic:false};
   if (!fromTag && italic && font.italic_name) {
     name = font.italic_name;
     italic = false;

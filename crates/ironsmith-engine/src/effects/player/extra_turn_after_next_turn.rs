@@ -2,7 +2,6 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub use ironsmith_core::ExtraTurnAfterNextTurnEffect;
@@ -14,23 +13,13 @@ impl EffectExecutor for ExtraTurnAfterNextTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let selected_player = resolve_player_filter(game, &self.player, ctx)?;
-        if !ctx.claim_shared_team_structure_operation(
+        super::skip_scheduled::execute_schedule_operation(
             game,
-            selected_player,
+            ctx,
+            &self.player,
             "extra_turn_after_next_turn",
-        ) {
-            return Ok(EffectOutcome::resolved());
-        }
-        // CR 500.7: the extra turn is added directly after that player's next
-        // turn; it isn't a triggered ability, so it can't be countered and
-        // doesn't depend on that turn having an end step.
-        let player_id = game.team_turn_representative(selected_player);
-        game.turn_store
-            .extra_turns_after_next_turn
-            .push((player_id, game.turn.turn_number));
-
-        Ok(EffectOutcome::resolved())
+            super::skip_scheduled::ScheduleOperation::ExtraTurnAfterNextTurn,
+        )
     }
 }
 

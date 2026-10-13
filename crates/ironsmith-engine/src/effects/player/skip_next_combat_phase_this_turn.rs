@@ -2,9 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::game_state::Phase;
 use crate::target::PlayerFilter;
 
@@ -33,23 +33,13 @@ impl EffectExecutor for SkipNextCombatPhaseThisTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        // This effect is scoped to the current turn only. If that player is not the
-        // active player or combat has already passed, there is no combat phase left
-        // for them this turn in the current turn model.
-        let before_combat = matches!(game.turn.phase, Phase::Beginning | Phase::FirstMain);
-        if game.is_active_player(player_id)
-            && before_combat
-            && ctx.claim_shared_team_structure_operation(
-                game,
-                player_id,
-                "skip_next_combat_phase_this_turn",
-            )
-        {
-            let turn_player = game.team_turn_representative(player_id);
-            game.turn_store.skip_next_combat_phases.insert(turn_player);
-        }
-        Ok(EffectOutcome::resolved())
+        super::skip_scheduled::execute_schedule_operation(
+            game,
+            ctx,
+            &self.player,
+            "skip_next_combat_phase_this_turn",
+            super::skip_scheduled::ScheduleOperation::NextCombatThisTurn,
+        )
     }
 }
 

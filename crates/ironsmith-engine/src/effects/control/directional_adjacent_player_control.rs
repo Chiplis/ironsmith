@@ -1,7 +1,5 @@
 //! Directional adjacent-player control choice implementation.
 
-use crate::decisions::make_decision;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -97,53 +95,75 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+        game.establish_control_transition_boundary()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let direction = chosen_direction(game, ctx.source, self)?;
         let ordered_players = players_in_direction(game, ctx.controller, direction);
         if ordered_players.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
 
-        let mut chosen = Vec::new();
-        for chooser in &ordered_players {
-            let Some(adjacent) = adjacent_player(&ordered_players, *chooser) else {
-                continue;
-            };
-            let candidates = matching_adjacent_objects(game, ctx, &self.filter, adjacent);
-            if candidates.is_empty() {
-                continue;
-            }
-            // Every matching object is collected before any control changes,
-            // so the exchange is simultaneous around the table.
-            if self.all_matching {
-                chosen.extend(candidates.into_iter().map(|object| (*chooser, object)));
-                continue;
-            }
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose a controlled object in the chosen direction".to_string(),
-                candidates.clone(),
-                1,
-                Some(1),
-            );
-            let mut selected =
-                make_decision(game, ctx.decision_maker, *chooser, Some(ctx.source), spec);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let selected = selected
-                .pop()
-                .filter(|object_id| candidates.contains(object_id))
-                .unwrap_or(candidates[0]);
-            chosen.push((*chooser, selected));
-        }
+        let Some(chosen) =
+            crate::effects::composition::scoped_choice::collect_choices_before_commit(
+                game,
+                ctx,
+                ordered_players.iter().copied(),
+                |game, ctx, chooser| {
+                    let Some(adjacent) = adjacent_player(&ordered_players, chooser) else {
+                        return Ok(Vec::new());
+                    };
+                    let candidates = matching_adjacent_objects(game, ctx, &self.filter, adjacent);
+                    if self.all_matching {
+                        return Ok(candidates
+                            .into_iter()
+                            .map(|object| (chooser, object))
+                            .collect());
+                    }
+                    use crate::effects::composition::captured_selection::{
+                        CapturedChoicePolicy, ObjectAnswerPolicy, ObjectChoiceTransport,
+                        choose_captured_object,
+                    };
+                    let selected = choose_captured_object(
+                        game,
+                        ctx,
+                        chooser,
+                        &candidates,
+                        "Choose a controlled object in the chosen direction",
+                        CapturedChoicePolicy {
+                            skip_singleton: false,
+                            prompt_empty: false,
+                            transport: ObjectChoiceTransport::DecisionSpec,
+                            answer: ObjectAnswerPolicy::LastOrDefault,
+                        },
+                    )?;
+                    Ok(selected
+                        .into_iter()
+                        .map(|object| (chooser, object))
+                        .collect::<Vec<_>>())
+                },
+            )?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+        let chosen = chosen.into_iter().flatten();
 
-        let assignments = chosen.into_iter().map(|(controller, object)| (object, controller)).collect::<Vec<_>>();
+        let assignments = chosen
+            .into_iter()
+            .map(|(controller, object)| (object, controller))
+            .collect::<Vec<_>>();
         let pending_start = game.effect_store.pending_trigger_events.len();
-        let outcomes = crate::effects::continuous::commit_control_assignments(game, ctx, &assignments, crate::effects::continuous::ControlAssignmentPolicy::Independent)?;
+        let outcomes = crate::effects::continuous::commit_control_assignments(
+            game,
+            ctx,
+            &assignments,
+            crate::effects::continuous::ControlAssignmentPolicy::Independent,
+        )?;
         let mut outcome = EffectOutcome::aggregate_summing_counts(outcomes);
-        outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
-            |event| event.kind() == crate::events::EventKind::ControlChanged));
+        outcome.events.extend(
+            game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                event.kind() == crate::events::EventKind::ControlChanged
+            }),
+        );
         Ok(outcome)
     }
 }

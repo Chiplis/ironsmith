@@ -1,4 +1,5 @@
-import { cssColor, requirePlainFont, prepareSymbolDrawing } from './symbol-painter.mjs';
+import { prepareFontDrawing } from './font-painter.mjs';
+import { cssColor, prepareSymbolDrawing } from './symbol-painter.mjs';
 
 // Drawing consumes the same source-indexed runs and positions as measurement.
 // Unsupported effects fail before drawing so callers cannot mistake a partial
@@ -11,8 +12,7 @@ export async function paintTextLayout(ctx, layout, fonts, { x = 0, y = 0, showSo
       continue;
     }
     const font = run.font;
-    requirePlainFont(font);
-    prepared.set(run, await fonts.prepare(font, { fromTag: run.fromTag }));
+    prepared.set(run, await prepareFontDrawing(font, fonts, { fromTag: run.fromTag }));
   }
   ctx.save();
   try {

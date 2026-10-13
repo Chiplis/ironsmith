@@ -147,3 +147,9 @@ test('host evaluations have independent budgets while nested callbacks share the
   assert.equal(nested.depth,0);
   assert.equal(nested.run('2+2'),4);
 });
+
+test('equality preserves native scalar types rather than comparing display text', () => {
+  const vm=new MseRuntime({builtins:coreBuiltins()});
+  for(const expression of ['"100" == 100','100 == "100"','"true" == true','"false" == false','"1.5" == 1.5','["100"] == [100]'])assert.equal(vm.run(expression),false,expression);
+  for(const expression of ['100 == 100.0','"100" == "100"','true == true','[1] == [1.0]'])assert.equal(vm.run(expression),true,expression);
+});

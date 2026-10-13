@@ -274,13 +274,11 @@ impl ExecuteCapturedDamage for DealDamageBySourcesEffect {
             } else {
                 recipients.clone()
             };
-            let old_source = ctx.source;
-            let old_snapshot = ctx.source_snapshot.clone();
-            ctx.source = source;
-            ctx.source_snapshot = snapshot.clone();
-            let amount = crate::effects::helpers::resolve_value(game, &self.amount, ctx);
-            ctx.source = old_source;
-            ctx.source_snapshot = old_snapshot;
+            let amount = crate::effects::composition::execute_with_source::with_source_binding(
+                ctx,
+                &(source, snapshot.clone()),
+                |ctx| crate::effects::helpers::resolve_value(game, &self.amount, ctx),
+            );
             let amount = amount?.max(0) as u32;
             if amount > 0 {
                 for recipient in &source_recipients {
@@ -2751,47 +2749,87 @@ mod retained_damage_draw_boundary_tests {
     fn damage_and_consequence_draw_tails_stop_before_the_draw_and_later_assignment_programs() {
         for consequence in [false, true] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 30);
-            let [alice, bob, charlie] = [PlayerId::from_index(0), PlayerId::from_index(1), PlayerId::from_index(2)];
-            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Retained draw witness").build();
+            let [alice, bob, charlie] = [
+                PlayerId::from_index(0),
+                PlayerId::from_index(1),
+                PlayerId::from_index(2),
+            ];
+            let card =
+                crate::card::CardBuilder::new(crate::ids::CardId::new(), "Retained draw witness")
+                    .build();
             let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
             game.create_object_from_card(&card, bob, Zone::Library);
             let effects = vec![Effect::gain_life(2), Effect::draw(1), Effect::gain_life(4)];
             let replacement = if consequence {
-                ReplacementEffect::with_matcher(source, bob, crate::events::WouldLoseLifeMatcher::you(),
-                    ReplacementAction::Additionally(effects))
+                ReplacementEffect::with_matcher(
+                    source,
+                    bob,
+                    crate::events::WouldLoseLifeMatcher::you(),
+                    ReplacementAction::Additionally(effects),
+                )
             } else {
-                ReplacementEffect::with_matcher(source, bob,
-                    crate::events::damage::matchers::DamageToPlayerMatcher::new(PlayerFilter::Specific(bob)),
-                    ReplacementAction::Additionally(effects))
+                ReplacementEffect::with_matcher(
+                    source,
+                    bob,
+                    crate::events::damage::matchers::DamageToPlayerMatcher::new(
+                        PlayerFilter::Specific(bob),
+                    ),
+                    ReplacementAction::Additionally(effects),
+                )
             };
-            game.effect_store.replacement_effects.add_one_shot_effect(replacement);
-            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
-                source, alice,
-                crate::events::damage::matchers::DamageToPlayerMatcher::new(PlayerFilter::Specific(charlie)),
-                ReplacementAction::Additionally(vec![Effect::gain_life(8)]),
-            ));
+            game.effect_store
+                .replacement_effects
+                .add_one_shot_effect(replacement);
+            game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    crate::events::damage::matchers::DamageToPlayerMatcher::new(
+                        PlayerFilter::Specific(charlie),
+                    ),
+                    ReplacementAction::Additionally(vec![Effect::gain_life(8)]),
+                ),
+            );
             let mut ctx = ExecutionContext::new_default(source, alice);
             let effect = crate::effects::DealDamageToRecipientsEffect {
                 amount: crate::Value::Fixed(1),
-                recipients: vec![ChooseSpec::SpecificPlayer(bob), ChooseSpec::SpecificPlayer(charlie)],
+                recipients: vec![
+                    ChooseSpec::SpecificPlayer(bob),
+                    ChooseSpec::SpecificPlayer(charlie),
+                ],
             };
-            let boundary = effect.prepare_replacement_draw_continuation_with_outputs(
-                &mut game, &mut ctx,
-            ).unwrap();
+            let boundary = effect
+                .prepare_replacement_draw_continuation_with_outputs(&mut game, &mut ctx)
+                .unwrap();
             assert!(boundary.completion.is_some());
             assert_eq!(game.player(bob).unwrap().life, 31);
             assert_eq!(game.player(charlie).unwrap().life, 29);
-            assert_eq!(game.player(alice).unwrap().life, 30, "later assignment program cannot overtake the draw");
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                30,
+                "later assignment program cannot overtake the draw"
+            );
             assert_eq!(game.player(bob).unwrap().hand.len(), 0);
             let completed = crate::effects::composition::complete_committed_original_with_outputs(
                 &mut game, &mut ctx, boundary,
-            ).unwrap();
-            assert_eq!(game.player(bob).unwrap().life, 35, "the prefix runs only once");
+            )
+            .unwrap();
+            assert_eq!(
+                game.player(bob).unwrap().life,
+                35,
+                "the prefix runs only once"
+            );
             assert_eq!(game.player(alice).unwrap().life, 38);
             assert_eq!(game.player(bob).unwrap().hand.len(), 1);
             assert_eq!(completed.outcome.count_or_zero(), 2);
             assert_eq!(completed.outcome.events_of_type::<DamageEvent>().count(), 2);
-            assert_eq!(completed.outcome.events_of_type::<crate::events::CardsDrawnEvent>().count(), 1);
+            assert_eq!(
+                completed
+                    .outcome
+                    .events_of_type::<crate::events::CardsDrawnEvent>()
+                    .count(),
+                1
+            );
             assert!(completed.projections_complete);
         }
     }
@@ -2808,50 +2846,108 @@ mod original_damage_replacement_draw_tests {
     #[test]
     fn original_instead_draw_is_inert_during_sealing_and_retained_during_native_completion() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 30);
-        let [alice, bob, charlie] = [PlayerId::from_index(0), PlayerId::from_index(1), PlayerId::from_index(2)];
-        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Original replacement witness").build();
+        let [alice, bob, charlie] = [
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+            PlayerId::from_index(2),
+        ];
+        let card = crate::card::CardBuilder::new(
+            crate::ids::CardId::new(),
+            "Original replacement witness",
+        )
+        .build();
         let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.create_object_from_card(&card, bob, Zone::Library);
-        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
-            source, bob,
-            crate::events::damage::matchers::DamageToPlayerMatcher::new(PlayerFilter::Specific(bob)),
-            ReplacementAction::Instead(vec![Effect::gain_life(2), Effect::draw(1), Effect::gain_life(4)]),
-        ));
-        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
-            source, alice,
-            crate::events::damage::matchers::DamageToPlayerMatcher::new(PlayerFilter::Specific(charlie)),
-            ReplacementAction::Additionally(vec![Effect::gain_life(8)]),
-        ));
+        game.effect_store
+            .replacement_effects
+            .add_one_shot_effect(ReplacementEffect::with_matcher(
+                source,
+                bob,
+                crate::events::damage::matchers::DamageToPlayerMatcher::new(
+                    PlayerFilter::Specific(bob),
+                ),
+                ReplacementAction::Instead(vec![
+                    Effect::gain_life(2),
+                    Effect::draw(1),
+                    Effect::gain_life(4),
+                ]),
+            ));
+        game.effect_store
+            .replacement_effects
+            .add_one_shot_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::new(
+                    PlayerFilter::Specific(charlie),
+                ),
+                ReplacementAction::Additionally(vec![Effect::gain_life(8)]),
+            ));
         let effect = crate::effects::DealDamageToRecipientsEffect {
             amount: crate::Value::Fixed(1),
-            recipients: vec![ChooseSpec::SpecificPlayer(bob), ChooseSpec::SpecificPlayer(charlie)],
+            recipients: vec![
+                ChooseSpec::SpecificPlayer(bob),
+                ChooseSpec::SpecificPlayer(charlie),
+            ],
         };
         let mut selecting = game.clone();
         let mut selecting_ctx = ExecutionContext::new_default(source, alice);
-        let mut proposal = effect.prepare_simultaneous_player_action(&selecting, &mut selecting_ctx).unwrap();
-        proposal.prepare_selection(&mut selecting, &mut selecting_ctx).unwrap();
-        proposal.prepare_original(&mut selecting, &mut selecting_ctx).unwrap();
-        proposal.seal_original(&mut selecting, &mut selecting_ctx).unwrap();
-        assert_eq!(selecting.player(bob).unwrap().life, 30, "sealing cannot execute even a non-draw prefix");
+        let mut proposal = effect
+            .prepare_simultaneous_player_action(&selecting, &mut selecting_ctx)
+            .unwrap();
+        proposal
+            .prepare_selection(&mut selecting, &mut selecting_ctx)
+            .unwrap();
+        proposal
+            .prepare_original(&mut selecting, &mut selecting_ctx)
+            .unwrap();
+        proposal
+            .seal_original(&mut selecting, &mut selecting_ctx)
+            .unwrap();
+        assert_eq!(
+            selecting.player(bob).unwrap().life,
+            30,
+            "sealing cannot execute even a non-draw prefix"
+        );
         assert_eq!(selecting.player(charlie).unwrap().life, 30);
         assert!(selecting.player(bob).unwrap().hand.is_empty());
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        let boundary = effect.prepare_replacement_draw_continuation_with_outputs(&mut game, &mut ctx).unwrap();
+        let boundary = effect
+            .prepare_replacement_draw_continuation_with_outputs(&mut game, &mut ctx)
+            .unwrap();
         assert!(boundary.completion.is_some());
         assert_eq!(game.player(bob).unwrap().life, 32);
-        assert_eq!(game.player(charlie).unwrap().life, 29, "other simultaneous original commits before the draw");
-        assert_eq!(game.player(alice).unwrap().life, 30, "Added programs wait for the retained original replacement");
+        assert_eq!(
+            game.player(charlie).unwrap().life,
+            29,
+            "other simultaneous original commits before the draw"
+        );
+        assert_eq!(
+            game.player(alice).unwrap().life,
+            30,
+            "Added programs wait for the retained original replacement"
+        );
         assert!(game.player(bob).unwrap().hand.is_empty());
         let completed = crate::effects::composition::complete_committed_original_with_outputs(
             &mut game, &mut ctx, boundary,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(game.player(bob).unwrap().life, 36);
         assert_eq!(game.player(alice).unwrap().life, 38);
         assert_eq!(game.player(bob).unwrap().hand.len(), 1);
-        assert_eq!(completed.outcome.count_or_zero(), 1, "the replaced damage assignment contributes no damage");
+        assert_eq!(
+            completed.outcome.count_or_zero(),
+            1,
+            "the replaced damage assignment contributes no damage"
+        );
         assert_eq!(completed.outcome.events_of_type::<DamageEvent>().count(), 1);
-        assert_eq!(completed.outcome.events_of_type::<crate::events::CardsDrawnEvent>().count(), 1);
+        assert_eq!(
+            completed
+                .outcome
+                .events_of_type::<crate::events::CardsDrawnEvent>()
+                .count(),
+            1
+        );
         assert!(completed.projections_complete);
     }
 }

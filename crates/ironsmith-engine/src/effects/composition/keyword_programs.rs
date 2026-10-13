@@ -1,6 +1,6 @@
 //! Executable keyword programs, separate from completion event emission.
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, EffectExecutor, ExecutionContext, ExecutionError};
+use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 
@@ -73,44 +73,19 @@ fn commit_keyword_program(
             let source_snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                 .or_else(|| fallback_source_snapshot.clone());
             let payments = forage_payments(false);
-            let options: Vec<_> = payments
-                .iter()
-                .enumerate()
-                .filter(|(_, effect)| {
-                    effect
-                        .0
-                        .can_execute_as_cost(game, ctx.source, ctx.controller)
-                        .is_ok()
-                })
-                .map(|(index, _)| {
-                    (
-                        if index == 0 {
-                            "Exile three cards from your graveyard"
-                        } else {
-                            "Sacrifice a Food"
-                        }
-                        .to_string(),
-                        index,
-                    )
-                })
-                .collect();
-            if options.is_empty() {
-                return Err(ExecutionError::Impossible("cannot forage".into()));
-            }
-            let choice = crate::decisions::ask_choose_one(
+            let outcome = super::payable_choice::execute_payable_choice(
                 game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                ctx.source,
-                &options,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            let index = choice.unwrap_or(options[0].1);
-            let outcome = crate::effects::execute_effect_with_outputs(game, &payments[index], ctx)?;
+                ctx,
+                &payments,
+                |index| {
+                    if index == 0 {
+                        "Exile three cards from your graveyard"
+                    } else {
+                        "Sacrifice a Food"
+                    }.to_string()
+                },
+                "cannot forage",
+            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(outcome);
             }

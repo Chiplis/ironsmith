@@ -157,31 +157,36 @@ fn bind_restriction_target_players(
     game: &GameState,
 ) -> ObjectFilter {
     let mut resolved = filter.clone();
-    for player in [&mut resolved.controller, &mut resolved.owner] {
-        if let Some(
-            reference @ (crate::target::PlayerFilter::Target(_)
-            | crate::target::PlayerFilter::AliasedTarget(_)),
-        ) = player
-            && let Ok(id) = crate::effects::helpers::resolve_player_filter(game, reference, ctx)
-        {
-            *reference = crate::target::PlayerFilter::Specific(id);
-        }
-    }
-    // CR 608.2h: a number a resolving instruction reads ("power less than or
-    // or equal to that number", Rumbling Ruin) is determined once, as the
-    // instruction resolves; the affected objects' own power stays live.
-    for comparison in [
-        &mut resolved.power,
-        &mut resolved.toughness,
-        &mut resolved.mana_value,
-    ] {
-        freeze_resolution_comparison(comparison, ctx, game);
-    }
-    resolved.any_of = resolved
-        .any_of
-        .iter()
-        .map(|branch| bind_restriction_target_players(branch, ctx, game))
-        .collect();
+    crate::effects::player_reference_binding::walk_filter_references(
+        &mut resolved,
+        crate::effects::player_reference_binding::PlayerReferenceFields::ControllerOwner,
+        &mut |reference| {
+            if matches!(
+                reference,
+                crate::target::PlayerFilter::Target(_)
+                    | crate::target::PlayerFilter::AliasedTarget(_)
+            ) && let Ok(id) =
+                crate::effects::helpers::resolve_player_filter(game, reference, ctx)
+            {
+                *reference = crate::target::PlayerFilter::Specific(id);
+            }
+            Ok::<_, std::convert::Infallible>(())
+        },
+        &mut |resolved| {
+            // CR 608.2h: a number a resolving instruction reads ("power less than or
+            // or equal to that number", Rumbling Ruin) is determined once, as the
+            // instruction resolves; the affected objects' own power stays live.
+            for comparison in [
+                &mut resolved.power,
+                &mut resolved.toughness,
+                &mut resolved.mana_value,
+            ] {
+                freeze_resolution_comparison(comparison, ctx, game);
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
     resolved
 }
 

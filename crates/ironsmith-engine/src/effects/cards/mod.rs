@@ -107,3 +107,5 @@ pub(crate) use draw_cards::{
 mod search_result_program;
 
 pub(crate) use library_arrangement::{capture_retained_library_set, normalize_order_response};
+
+pub(crate) use library_arrangement::choose_library_bottom_partition;

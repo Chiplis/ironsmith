@@ -1,8 +1,5 @@
 //! For each counter kind on target, choose put or remove one.
 
-use crate::decisions::context::{
-    SelectObjectsContext, SelectableObject,
-};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{EffectExecutor, PutCountersEffect, RemoveCountersEffect};
@@ -105,16 +102,21 @@ impl ForEachCounterKindPutOrRemoveEffect {
             }
         }
         if requests.is_empty() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
         let children = super::execute_counter_batch_with_outputs(game, ctx, requests)?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        Ok(crate::effects::CompletedEffectOutputs::from_children(children,EffectOutcome::aggregate_summing_counts))
+        Ok(crate::effects::CompletedEffectOutputs::from_children(
+            children,
+            EffectOutcome::aggregate_summing_counts,
+        ))
     }
-
-
 }
 
 impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
@@ -213,40 +215,18 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                         let target_id = if self.choose_target_per_kind {
                             let candidates = target_group
                                 .iter()
-                                .filter_map(|target_id| {
-                                    game.object(*target_id).map(|object| {
-                                        SelectableObject::new(*target_id, object.name.clone())
-                                    })
-                                })
+                                .copied()
+                                .filter(|id| game.object(*id).is_some())
                                 .collect::<Vec<_>>();
-                            let choice = SelectObjectsContext::new(
-                                ctx.controller,
-                                Some(ctx.source),
-                                format!(
-                                    "Choose an object to receive a {} counter",
-                                    Self::counter_label(counter_type)
-                                ),
-                                candidates,
-                                1,
-                                Some(1),
-                            )
-                            .require_explicit_choice();
-                            let selected = ctx
-                                .decision_maker
-                                .decide_objects(game, &choice)
-                                .into_iter()
-                                .next();
+                            let selected = crate::effects::composition::captured_selection::choose_captured_object(game, ctx, ctx.controller, &candidates,
+                                &format!("Choose an object to receive a {} counter", Self::counter_label(counter_type)),
+                                crate::effects::composition::captured_selection::CapturedChoicePolicy { prompt_empty: true, ..crate::effects::composition::captured_selection::CapturedChoicePolicy::EXPLICIT_FIRST })?;
                             if ctx.decision_maker.awaiting_choice() {
                                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                                     EffectOutcome::count(0),
                                 ));
                             }
-                            let Some(target_id) = selected.filter(|selected| {
-                                choice
-                                    .candidates
-                                    .iter()
-                                    .any(|candidate| candidate.legal && candidate.id == *selected)
-                            }) else {
+                            let Some(target_id) = selected else {
                                 continue;
                             };
                             target_id

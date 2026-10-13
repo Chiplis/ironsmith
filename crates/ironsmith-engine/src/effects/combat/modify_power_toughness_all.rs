@@ -1,9 +1,9 @@
 //! Modify power/toughness for all creatures effect implementation.
 
-use crate::continuous::{EffectSourceType, EffectTarget, Modification};
+use crate::continuous::{EffectSourceType, EffectTarget};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
-use crate::effects::helpers::resolve_value;
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
+use crate::effects::EffectExecutor;
+use crate::effects::continuous::ResolvedPowerToughness;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -101,8 +101,7 @@ impl EffectExecutor for ModifyPowerToughnessAllEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let power_mod = resolve_value(game, &self.power, ctx)?;
-        let toughness_mod = resolve_value(game, &self.toughness, ctx)?;
+        let values = ResolvedPowerToughness::resolve(game, ctx, &self.power, &self.toughness)?;
 
         // Per MTG Rule 611.2c, effects from resolving spells/abilities lock their
         // targets at resolution time. We capture which objects match the filter NOW,
@@ -118,15 +117,12 @@ impl EffectExecutor for ModifyPowerToughnessAllEffect {
             .collect();
 
         // Register a continuous effect with locked targets (Resolution source type).
-        let apply = ApplyContinuousEffect::new(
-            EffectTarget::Filter(self.filter.clone()),
-            Modification::ModifyPowerToughness {
-                power: power_mod,
-                toughness: toughness_mod,
-            },
-            self.duration.clone(),
-        )
-        .with_source_type(EffectSourceType::Resolution { locked_targets });
+        let apply = values
+            .additive(
+                EffectTarget::Filter(self.filter.clone()),
+                self.duration.clone(),
+            )
+            .with_source_type(EffectSourceType::Resolution { locked_targets });
 
         execute_effect(game, &Effect::new(apply), ctx)
     }

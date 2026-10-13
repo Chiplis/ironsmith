@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseMseScript as parse } from '../src/lib/mse/script-parser.mjs';
 
+test('native real literals retain numeric prefixes and zero on overflow', () => {
+  for (const [source, expected] of [['27.5.0', 27.5], ['12..3', 12], ['0.5...', 0.5], ['9'.repeat(400) + '.0', 0]]) {
+    const ast = parse(source);
+    assert.equal(ast.type, 'literal');
+    assert.equal(ast.real, true);
+    assert.equal(ast.value, expected);
+  }
+  assert.equal(parse('27.5.0 + 1').left.value, 27.5);
+  assert.equal(parse('[27.5].0').key.value, '0');
+});
+
 test('MSE arithmetic and boolean precedence is preserved', () => {
   const power = parse('3^3^3');
   assert.equal(power.right.operator, '^');

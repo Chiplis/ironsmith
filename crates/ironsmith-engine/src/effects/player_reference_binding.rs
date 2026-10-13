@@ -28,17 +28,92 @@ pub(crate) fn bind_filter_player_references(
     ctx: &ExecutionContext,
 ) -> ObjectFilter {
     let mut bound = filter.clone();
-    for player in [&mut bound.controller, &mut bound.owner].into_iter().flatten() {
-        if binds_at_resolution(player)
-            && let Ok(id) = crate::effects::helpers::resolve_player_filter(game, player, ctx)
+    walk_filter_references(
+        &mut bound,
+        PlayerReferenceFields::ControllerOwner,
+        &mut |player| {
+            if binds_at_resolution(player)
+                && let Ok(id) = crate::effects::helpers::resolve_player_filter(game, player, ctx)
+            {
+                *player = PlayerFilter::Specific(id);
+            }
+            Ok::<_, std::convert::Infallible>(())
+        },
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    bound
+}
+
+/// Deliberately bounded field sets: different stored effects freeze different
+/// facets. Selecting a wider set is a semantic change, not a traversal cleanup.
+#[derive(Clone, Copy)]
+pub(crate) enum PlayerReferenceFields {
+    ControllerOwner,
+    SpellFacets,
+    AllAuthored,
+}
+
+pub(crate) fn walk_filter_references<E>(
+    filter: &mut ObjectFilter,
+    fields: PlayerReferenceFields,
+    bind: &mut impl FnMut(&mut PlayerFilter) -> Result<(), E>,
+    finish: &mut impl FnMut(&mut ObjectFilter) -> Result<(), E>,
+) -> Result<(), E> {
+    for player in [&mut filter.controller, &mut filter.owner]
+        .into_iter()
+        .flatten()
+    {
+        bind(player)?;
+    }
+    if !matches!(fields, PlayerReferenceFields::ControllerOwner) {
+        for player in [
+            &mut filter.cast_by,
+            &mut filter.targets_player,
+            &mut filter.targets_only_player,
+        ]
+        .into_iter()
+        .flatten()
         {
-            *player = PlayerFilter::Specific(id);
+            bind(player)?;
         }
     }
-    bound.any_of = bound
-        .any_of
-        .iter()
-        .map(|branch| bind_filter_player_references(branch, game, ctx))
-        .collect();
-    bound
+    if matches!(fields, PlayerReferenceFields::AllAuthored) {
+        if let Some(player) = &mut filter.entered_battlefield_controller {
+            bind(player)?;
+        }
+        if let Some(constraint) = &mut filter.counters_put_on_this_turn {
+            bind(&mut constraint.source_controller)?;
+        }
+        if let Some(player) = &mut filter.attached_to_player {
+            bind(player)?;
+        }
+        if let Some(filter) = &mut filter.attached_to_object {
+            walk_filter_references(filter, fields, bind, finish)?;
+        }
+    }
+    for branch in &mut filter.any_of {
+        walk_filter_references(branch, fields, bind, finish)?;
+    }
+    finish(filter)
+}
+
+pub(crate) fn walk_player_reference_wrappers(
+    filter: &mut PlayerFilter,
+    bind: &mut impl FnMut(&mut PlayerFilter),
+) {
+    bind(filter);
+    match filter {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::LostLifeThisTurn { base }
+        | PlayerFilter::OpponentOf(base)
+        | PlayerFilter::PlayerToLeftOf(base)
+        | PlayerFilter::MaxSpeed { base, .. } => walk_player_reference_wrappers(base, bind),
+        PlayerFilter::Excluding { base, excluded } => {
+            walk_player_reference_wrappers(base, bind);
+            walk_player_reference_wrappers(excluded, bind);
+        }
+        _ => {}
+    }
 }

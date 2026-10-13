@@ -11,6 +11,11 @@ use crate::ids::PlayerId;
 pub(crate) enum SingleChoicePolicy {
     Strict,
     First,
+    FirstOrDefault,
+    StrictMessages {
+        arity: &'static str,
+        index: &'static str,
+    },
 }
 
 pub(crate) fn select_typed_option<T: Clone>(
@@ -21,33 +26,72 @@ pub(crate) fn select_typed_option<T: Clone>(
     options: &[(T, String)],
     policy: SingleChoicePolicy,
 ) -> Result<Option<T>, ExecutionError> {
+    select_typed_menu(
+        game,
+        ctx.decision_maker,
+        chooser,
+        ctx.source,
+        prompt,
+        options,
+        policy,
+        |i, (_, label)| SelectableOption::new(i, label.clone()),
+    )
+    .map(|selection| selection.map(|(value, _)| value))
+}
+
+/// Values and display metadata stay paired. Pending answers never select a
+/// default; forced-choice fallbacks apply only to completed malformed answers.
+pub(crate) fn select_typed_menu<T: Clone>(
+    game: &GameState,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+    chooser: PlayerId,
+    source: crate::ids::ObjectId,
+    prompt: &str,
+    values: &[T],
+    policy: SingleChoicePolicy,
+    display: impl Fn(usize, &T) -> SelectableOption,
+) -> Result<Option<T>, ExecutionError> {
     let menu = SelectOptionsContext::new(
         chooser,
-        Some(ctx.source),
+        Some(source),
         prompt,
-        options
+        values
             .iter()
             .enumerate()
-            .map(|(i, (_, label))| SelectableOption::new(i, label.clone()))
+            .map(|(i, value)| display(i, value))
             .collect(),
         1,
         1,
     );
-    let selected = ctx.decision_maker.decide_options(game, &menu);
-    if ctx.decision_maker.awaiting_choice() {
+    let selected = decision_maker.decide_options(game, &menu);
+    if decision_maker.awaiting_choice() {
         return Ok(None);
     }
-    if matches!(policy, SingleChoicePolicy::Strict)
-        && (selected.len() != 1 || selected[0] >= options.len())
-    {
-        return Err(ExecutionError::InternalError(
-            "invalid single-option selection".into(),
-        ));
+    match policy {
+        SingleChoicePolicy::Strict if selected.len() != 1 || selected[0] >= values.len() => {
+            return Err(ExecutionError::InternalError(
+                "invalid single-option selection".into(),
+            ));
+        }
+        SingleChoicePolicy::StrictMessages { arity, index } => {
+            if selected.len() != 1 {
+                return Err(ExecutionError::UnresolvableValue(arity.into()));
+            }
+            if selected[0] >= values.len() {
+                return Err(ExecutionError::UnresolvableValue(index.into()));
+            }
+        }
+        _ => {}
     }
     Ok(selected
         .first()
-        .and_then(|index| options.get(*index))
-        .map(|(value, _)| value.clone()))
+        .and_then(|index| values.get(*index))
+        .or_else(|| {
+            matches!(policy, SingleChoicePolicy::FirstOrDefault)
+                .then(|| values.first())
+                .flatten()
+        })
+        .cloned())
 }
 
 /// A local typed choice. The continuation constructs ordinary effects from the
@@ -69,12 +113,24 @@ pub(crate) fn execute_choice_program<T: Clone>(
         || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
             if strict_single && maximum == 1 {
-                let Some(value) = select_typed_option(game, ctx, chooser, prompt, options, SingleChoicePolicy::Strict)? else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                let Some(value) = select_typed_option(
+                    game,
+                    ctx,
+                    chooser,
+                    prompt,
+                    options,
+                    SingleChoicePolicy::Strict,
+                )?
+                else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 };
                 return match body(vec![value])? {
                     Some(effect) => effect.0.execute_child_with_outputs(game, ctx),
-                    None => Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+                    None => Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    )),
                 };
             }
             let choice = SelectOptionsContext::new(
@@ -262,8 +318,12 @@ mod selection_policy_tests {
     use super::*;
     struct Answer(Vec<usize>, bool);
     impl crate::decision::DecisionMaker for Answer {
-        fn decide_options(&mut self, _: &GameState, _: &SelectOptionsContext) -> Vec<usize> { self.0.clone() }
-        fn awaiting_choice(&self) -> bool { self.1 }
+        fn decide_options(&mut self, _: &GameState, _: &SelectOptionsContext) -> Vec<usize> {
+            self.0.clone()
+        }
+        fn awaiting_choice(&self) -> bool {
+            self.1
+        }
     }
     #[test]
     fn typed_selection_keeps_strict_first_empty_and_pending_contracts_distinct() {
@@ -278,10 +338,78 @@ mod selection_policy_tests {
             for policy in [SingleChoicePolicy::First, SingleChoicePolicy::Strict] {
                 let mut dm = Answer(answer.clone(), pending);
                 let mut ctx = ExecutionContext::new(crate::ids::ObjectId(99), PlayerId(0), &mut dm);
-                let result = select_typed_option(&game, &mut ctx, PlayerId(1), "Choose", &[(10, "ten".into()), (20, "twenty".into())], policy);
-                if matches!(policy, SingleChoicePolicy::Strict) && strict_error { assert!(result.is_err()); }
-                else { assert_eq!(result.unwrap(), first); }
+                let result = select_typed_option(
+                    &game,
+                    &mut ctx,
+                    PlayerId(1),
+                    "Choose",
+                    &[(10, "ten".into()), (20, "twenty".into())],
+                    policy,
+                );
+                if matches!(policy, SingleChoicePolicy::Strict) && strict_error {
+                    assert!(result.is_err());
+                } else {
+                    assert_eq!(result.unwrap(), first);
+                }
             }
         }
+    }
+}
+
+/// Collect a captured participant set's choices before the caller commits any
+/// resulting actions. The caller supplies order and keeps the transaction that
+/// rolls back private/public observations on suspension or failure. Selection
+/// callbacks may open information, but must not apply the selected actions.
+pub(crate) fn collect_choices_before_commit<T, R>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    participants: impl IntoIterator<Item = T>,
+    mut choose: impl FnMut(&mut GameState, &mut ExecutionContext, T) -> Result<R, ExecutionError>,
+) -> Result<Option<Vec<R>>, ExecutionError> {
+    let mut choices = Vec::new();
+    for participant in participants {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let choice = choose(game, ctx, participant)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        choices.push(choice);
+    }
+    Ok(Some(choices))
+}
+
+#[cfg(test)]
+mod collected_choice_tests {
+    use super::*;
+    #[test]
+    fn failed_later_choice_never_exposes_an_incomplete_commit_plan() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let mut ctx = ExecutionContext::new_default(crate::ids::ObjectId(100), PlayerId(0));
+        let mut visited = Vec::new();
+        let result =
+            collect_choices_before_commit(&mut game, &mut ctx, [0, 1, 2], |_, _, participant| {
+                visited.push(participant);
+                if participant == 1 {
+                    return Err(ExecutionError::Impossible("choice failed".into()));
+                }
+                Ok(participant)
+            });
+        assert!(result.is_err());
+        assert_eq!(visited, vec![0, 1]);
+        let empty: Vec<u8> = vec![];
+        assert_eq!(
+            collect_choices_before_commit(
+                &mut game,
+                &mut ctx,
+                empty,
+                |_, _, _| -> Result<u8, ExecutionError> {
+                    panic!("empty participant set must not prompt")
+                }
+            )
+            .unwrap(),
+            Some(vec![])
+        );
     }
 }

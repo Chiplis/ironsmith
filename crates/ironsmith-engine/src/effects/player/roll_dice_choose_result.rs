@@ -1,5 +1,5 @@
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, ExecutionFact};
+use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -90,7 +90,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                 let options = rolls
                     .iter()
                     .enumerate()
-                    .map(|(idx, roll)| SelectableOption::new(idx, roll.result.to_string()))
+                    .map(|(idx, roll)| (idx, roll.result.to_string()))
                     .collect::<Vec<_>>();
                 // "Roll two d20 and ignore the lower roll": the higher roll is
                 // the result; nothing is chosen (CR 706.1).
@@ -100,28 +100,23 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     .max_by_key(|(_, roll)| roll.result)
                     .map(|(idx, _)| idx)
                     .unwrap_or(0);
-                let choice_ctx = SelectOptionsContext::new(
-                    player,
-                    Some(ctx.source),
-                    "Choose one result",
-                    options,
-                    1,
-                    1,
-                );
                 let chosen_idx = if self.ignore_lower {
                     highest_idx
                 } else {
-                    let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
-                    if ctx.decision_maker.awaiting_choice() {
+                    let Some(index) = select_typed_option(
+                        game,
+                        ctx,
+                        player,
+                        "Choose one result",
+                        &options,
+                        SingleChoicePolicy::FirstOrDefault,
+                    )?
+                    else {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::count(0),
                         ));
-                    }
-                    selected
-                        .into_iter()
-                        .next()
-                        .filter(|idx| *idx < rolls.len())
-                        .unwrap_or(0)
+                    };
+                    index
                 };
                 let chosen = rolls[chosen_idx];
                 let other = rolls

@@ -372,14 +372,12 @@ impl CostExecutableEffect for EmitKeywordActionEffect {
         reason: crate::costs::PaymentReason,
     ) -> Result<(), crate::effects::CostValidationError> {
         if self.action == KeywordActionKind::Forage
-            && !forage_payments(reason == crate::costs::PaymentReason::CastSpell)
-                .iter()
-                .any(|effect| {
-                    effect
-                        .0
-                        .can_execute_as_cost(game, source, controller)
-                        .is_ok()
-                })
+            && super::payable_choice::payable_action_indices(
+                game,
+                source,
+                controller,
+                &forage_payments(reason == crate::costs::PaymentReason::CastSpell),
+            ).is_empty()
         {
             return Err(crate::effects::CostValidationError::NotEnoughCards);
         }

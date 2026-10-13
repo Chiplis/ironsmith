@@ -7,7 +7,7 @@ export function geometryModes(record) {
     const entry = record.last(name);
     if (!entry) return false;
     const source = entry.text();
-    if (!entry.inline && entry.block.length && !source.trimStart().startsWith('{') && entry.record().last('script')) return true;
+    if (source.startsWith('script:')) return true;
     if (/(^|[^\\])\{/.test(source)) return true;
     return name === 'width' || name === 'height' ? Math.abs(Number(source)) > 0.001 : Number(source) < 100000;
   };

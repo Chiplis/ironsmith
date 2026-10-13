@@ -10,38 +10,34 @@ pub(crate) fn with_temporary_card_copy(
     tag: TagKey,
     body: &Effect,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
-    let previous = ctx.tagged_objects.remove(&tag);
-    let result = super::execute_transaction(
-        game,
-        ctx,
-        || CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)),
-        |game, ctx| {
-            let id = game.new_object_id();
-            let mut copy = Object::token_copy_of(card, id, ctx.controller);
-            copy.zone = Zone::Exile;
-            game.add_object(copy);
-            let snapshot = crate::snapshot::ObjectSnapshot::from_object(
-                game.object(id).expect("materialized card copy"),
-                game,
-            );
-            ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
-            let outputs = body.0.execute_child_with_outputs(game, ctx)?;
-            // Only the unconsumed temporary incarnation belongs to this scope.
-            // Casting can create a different incarnation with the same stable ID.
-            if game
-                .object(id)
-                .is_some_and(|object| object.zone == Zone::Exile)
-            {
-                game.remove_object(id);
-            }
-            Ok(outputs)
-        },
-    );
-    ctx.tagged_objects.remove(&tag);
-    if let Some(previous) = previous {
-        ctx.tagged_objects.insert(tag, previous);
-    }
-    result
+    ctx.with_object_tags([tag.clone()], |ctx| {
+        super::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)),
+            |game, ctx| {
+                let id = game.new_object_id();
+                let mut copy = Object::token_copy_of(card, id, ctx.controller);
+                copy.zone = Zone::Exile;
+                game.add_object(copy);
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+                    game.object(id).expect("materialized card copy"),
+                    game,
+                );
+                ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
+                let outputs = body.0.execute_child_with_outputs(game, ctx)?;
+                // Only the unconsumed temporary incarnation belongs to this scope.
+                // Casting can create a different incarnation with the same stable ID.
+                if game
+                    .object(id)
+                    .is_some_and(|object| object.zone == Zone::Exile)
+                {
+                    game.remove_object(id);
+                }
+                Ok(outputs)
+            },
+        )
+    })
 }
 
 #[cfg(test)]

@@ -1,9 +1,11 @@
 //! Move an object to the top or bottom of its owner's library at a specified player's choice.
 
 use crate::decision::DecisionMaker;
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effects::CompletedEffectOutputs;
+#[cfg(test)]
+use crate::decisions::context::SelectOptionsContext;
+use crate::decisions::context::SelectableOption;
 use crate::effect::EffectOutcome;
+use crate::effects::CompletedEffectOutputs;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -11,7 +13,6 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
-
 
 pub type MoveToLibraryTopOrBottomChoiceEffect =
     ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect;
@@ -38,26 +39,23 @@ fn choose_library_position(
             ordinal_position(top_position + 1)
         )
     };
-    let options = vec![
-        SelectableOption::new(0, top_label),
-        SelectableOption::new(1, "Bottom of library"),
-    ];
-    let choice_ctx = SelectOptionsContext::new(
+    use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_menu};
+    select_typed_menu(
+        game,
+        decision_maker,
         chooser,
-        Some(source),
-        format!("Put {object_name} on the top or bottom of its owner's library"),
-        options,
-        1,
-        1,
-    );
-    match decision_maker
-        .decide_options(game, &choice_ctx)
-        .into_iter()
-        .next()
-    {
-        Some(1) => LibraryPositionChoice::Bottom,
-        _ => LibraryPositionChoice::Top,
-    }
+        source,
+        &format!("Put {object_name} on the top or bottom of its owner's library"),
+        &[
+            (LibraryPositionChoice::Top, top_label),
+            (LibraryPositionChoice::Bottom, "Bottom of library".into()),
+        ],
+        SingleChoicePolicy::FirstOrDefault,
+        |i, (_, label)| SelectableOption::new(i, label.clone()),
+    )
+    .expect("first-option policy cannot fail")
+    .map(|(position, _)| position)
+    .unwrap_or(LibraryPositionChoice::Top) // Caller checks suspension before moving anything.
 }
 
 fn ordinal_position(position: u32) -> String {
@@ -208,6 +206,8 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
+    #[cfg(test)]
+    use crate::decisions::context::SelectOptionsContext;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;

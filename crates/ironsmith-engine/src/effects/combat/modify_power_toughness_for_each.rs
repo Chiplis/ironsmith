@@ -1,9 +1,10 @@
 //! Modify power/toughness for each effect implementation.
 
-use crate::continuous::{EffectTarget, Modification};
+use crate::continuous::EffectTarget;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
-use crate::effects::{ApplyContinuousEffect, EffectExecutor};
+use crate::effects::EffectExecutor;
+use crate::effects::continuous::ResolvedPowerToughness;
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -47,9 +48,13 @@ impl EffectExecutor for ModifyPowerToughnessForEachEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let multiplier = resolve_value(game, &self.count, ctx)?;
-        let power_mod = self.power_per * multiplier;
-        let toughness_mod = self.toughness_per * multiplier;
+        let values = ResolvedPowerToughness::scaled(
+            game,
+            ctx,
+            self.power_per,
+            self.toughness_per,
+            &self.count,
+        )?;
 
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
@@ -58,14 +63,7 @@ impl EffectExecutor for ModifyPowerToughnessForEachEffect {
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
 
-        let apply = ApplyContinuousEffect::new(
-            EffectTarget::Specific(target_id),
-            Modification::ModifyPowerToughness {
-                power: power_mod,
-                toughness: toughness_mod,
-            },
-            self.duration.clone(),
-        );
+        let apply = values.additive(EffectTarget::Specific(target_id), self.duration.clone());
 
         execute_effect(game, &Effect::new(apply), ctx)
     }

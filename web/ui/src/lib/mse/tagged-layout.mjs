@@ -7,6 +7,7 @@ import { alignTextLines, textContentHeight } from './text-alignment.mjs';
 export async function layoutTaggedText(parsed, fonts, symbols, renderer, options) {
   const { width, height, paddingLeft = 0, paddingRight = 0, paddingTop = 0, paddingBottom = 0, previousScale = 1 } = options;
   const measured = new Map();
+  const wrappingOptions={...options,emptyClause:parsed.clauses?.at(-1)};
   const atScale = async scale => {
     if (!measured.has(scale)) measured.set(scale, await measureTaggedText(parsed, fonts, symbols, renderer, { scale, alwaysSymbol: options.alwaysSymbol }));
     return measured.get(scale);
@@ -14,7 +15,7 @@ export async function layoutTaggedText(parsed, fonts, symbols, renderer, options
   const initial = await atScale(previousScale);
   const result = await selectTextScaleAsync(async scale => {
     const measurement = await atScale(scale);
-    return { ...wrapTextCharacters(measurement.characters, options), measurement };
+    return { ...wrapTextCharacters(measurement.characters, wrappingOptions), measurement };
   }, { minScale: initial.minScale, scaleStep: initial.scaleStep, previousScale, height, paddingBottom });
   let wrapped = result;
   let offset = 0;
@@ -24,11 +25,12 @@ export async function layoutTaggedText(parsed, fonts, symbols, renderer, options
     const next = alignmentOffset(options.alignment, 0, height - paddingTop - paddingBottom, 0, textContentHeight(wrapped.lines)).y;
     if (Math.abs(next - offset) < 0.5 || seen.some(value => Math.abs(value - next) < 0.5)) break;
     seen.push(next); offset = next;
-    wrapped = wrapTextCharacters(result.measurement.characters, { ...options, topOffset: offset });
+    wrapped = wrapTextCharacters(result.measurement.characters, { ...wrappingOptions, topOffset: offset });
   }
   const lines = alignTextLines(wrapped.lines, result.measurement.characters, {
     ...options, width: width - paddingLeft - paddingRight, height: height - paddingTop - paddingBottom,
-    maskLeft: paddingLeft, maskRight: width - paddingRight, y: paddingTop,
+    maskLeft: paddingLeft, maskRight: width - paddingRight,
+    y: options.alignment & (512|1024)?paddingTop+(parsed.clauses?.[0]?.marginTop||0):wrapped.lines[0]?.top??paddingTop,
   });
   return { ...result, lines, width: Math.max(0, ...lines.map(l => l.width)), height: textContentHeight(lines) };
 }

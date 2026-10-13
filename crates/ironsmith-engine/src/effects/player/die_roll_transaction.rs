@@ -146,30 +146,34 @@ fn pay_mana_cost(
             EffectOutcome::resolved(),
         ));
     };
-    let original_source = ctx.source;
-    let original_controller = ctx.controller;
-    let original_snapshot = ctx.source_snapshot.clone();
-    ctx.source_snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, modifier.source);
-    ctx.source = modifier.source;
-    ctx.controller = player;
-    let outcome = PayManaEffect::new(cost, ChooseSpec::SpecificPlayer(player))
-        .execute_child_with_outputs(game, ctx)
-        .and_then(|mut outcome| {
-            if !ctx.decision_maker.awaiting_choice() {
-                crate::effects::runtime::capture_triggers_before_added_program(
-                    game,
-                    ctx,
-                    None,
-                    outcome.outcome.events.iter_mut(),
-                )?;
-            }
-            outcome.synchronize_observations();
-            Ok(outcome)
-        });
-    ctx.source = original_source;
-    ctx.controller = original_controller;
-    ctx.source_snapshot = original_snapshot;
-    outcome
+    let binding = (
+        modifier.source,
+        crate::snapshot::ObjectSnapshot::from_object_id(game, modifier.source),
+    );
+    crate::effects::composition::execute_with_source::with_source_binding(ctx, &binding, |ctx| {
+        crate::effects::composition::execute_with_source::with_actor_binding(
+            ctx,
+            player,
+            None,
+            |ctx| {
+                let outcome = PayManaEffect::new(cost, ChooseSpec::SpecificPlayer(player))
+                    .execute_child_with_outputs(game, ctx)
+                    .and_then(|mut outcome| {
+                        if !ctx.decision_maker.awaiting_choice() {
+                            crate::effects::runtime::capture_triggers_before_added_program(
+                                game,
+                                ctx,
+                                None,
+                                outcome.outcome.events.iter_mut(),
+                            )?;
+                        }
+                        outcome.synchronize_observations();
+                        Ok(outcome)
+                    });
+                outcome
+            },
+        )
+    })
 }
 
 fn mark_used(game: &mut GameState, modifier: &AvailableDieRollModifier) {

@@ -103,7 +103,10 @@ impl PreventNextTimeDamageEffect {
         }
     }
 
-    pub fn with_portion(mut self, portion: ironsmith_core::NextTimeDamagePreventionPortion) -> Self {
+    pub fn with_portion(
+        mut self,
+        portion: ironsmith_core::NextTimeDamagePreventionPortion,
+    ) -> Self {
         self.portion = portion;
         self
     }
@@ -179,17 +182,20 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             choice @ (PreventNextTimeDamageSource::Choice
             | PreventNextTimeDamageSource::ChoiceMatching(_)) => {
                 use crate::effects::combat::prevention_helpers::{
-                    choose_source_of_your_choice, choose_source_of_your_choice_matching_filter,
-                    SourceChoiceSelection,
+                    SourceChoiceSelection, choose_source_of_your_choice,
+                    choose_source_of_your_choice_matching_filter,
                 };
                 let selection = match choice {
-                    PreventNextTimeDamageSource::ChoiceMatching(filter) =>
-                        choose_source_of_your_choice_matching_filter(game, ctx, filter),
+                    PreventNextTimeDamageSource::ChoiceMatching(filter) => {
+                        choose_source_of_your_choice_matching_filter(game, ctx, filter)
+                    }
                     _ => choose_source_of_your_choice(game, ctx),
                 };
                 let chosen = match selection {
                     SourceChoiceSelection::Chosen(source) => source,
-                    SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
+                    SourceChoiceSelection::NoAvailableSource => {
+                        return Ok(EffectOutcome::resolved());
+                    }
                     SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
                 };
                 chosen_source = Some(chosen);
@@ -255,10 +261,8 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                     replacement_action,
                 )
             };
-            game.effect_store
-                .replacement_effects
-                .add_one_shot_effect(replacement);
-            return Ok(EffectOutcome::resolved());
+            return crate::effects::ApplyReplacementEffect::one_shot(replacement)
+                .execute_child(game, ctx);
         }
         // The shield prevents the damage (CR 615.1); what happens to the
         // prevented damage runs afterward as a prevention follow-up that reads
@@ -299,18 +303,10 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                 replacement_action,
             )
         } else {
-            ReplacementEffect::with_matcher(
-                ctx.source,
-                ctx.controller,
-                matcher,
-                replacement_action,
-            )
+            ReplacementEffect::with_matcher(ctx.source, ctx.controller, matcher, replacement_action)
         };
 
-        game.effect_store
-            .replacement_effects
-            .add_one_shot_effect(replacement);
-        Ok(EffectOutcome::resolved())
+        crate::effects::ApplyReplacementEffect::one_shot(replacement).execute_child(game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -430,7 +426,9 @@ mod tests {
             crate::events::cause::EventCause::effect(),
         );
         assert!(
-            !matcher.matches_event(&unpreventable, &ctx).expect("finite matcher fixture evaluates successfully"),
+            !matcher
+                .matches_event(&unpreventable, &ctx)
+                .expect("finite matcher fixture evaluates successfully"),
             "matcher should not match unpreventable damage"
         );
     }
@@ -529,15 +527,30 @@ mod tests {
     fn source_choice_empty_and_pending_do_not_register_and_replay_registers_once() {
         struct Pause(bool);
         impl crate::decision::DecisionMaker for Pause {
-            fn decide_objects(&mut self, _: &GameState, _: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
-                self.0 = true; vec![]
+            fn decide_objects(
+                &mut self,
+                _: &GameState,
+                _: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.0 = true;
+                vec![]
             }
-            fn awaiting_choice(&self) -> bool { self.0 }
+            fn awaiting_choice(&self) -> bool {
+                self.0
+            }
         }
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let source = game.new_object_id();
-        let effect = PreventNextTimeDamageEffect::new(PreventNextTimeDamageSource::Choice, PreventNextTimeDamageTarget::AnyTarget);
-        effect.execute(&mut game, &mut ExecutionContext::new_default(source, PlayerId(0))).unwrap();
+        let effect = PreventNextTimeDamageEffect::new(
+            PreventNextTimeDamageSource::Choice,
+            PreventNextTimeDamageTarget::AnyTarget,
+        );
+        effect
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new_default(source, PlayerId(0)),
+            )
+            .unwrap();
         assert!(game.effect_store.replacement_effects.effects().is_empty());
         game.battlefield.push(source);
         let mut dm = Pause(false);
@@ -546,8 +559,12 @@ mod tests {
         assert!(ctx.decision_maker.awaiting_choice());
         assert_eq!(output.count_or_zero(), 0);
         assert!(game.effect_store.replacement_effects.effects().is_empty());
-        effect.execute(&mut game, &mut ExecutionContext::new_default(source, PlayerId(0))).unwrap();
+        effect
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new_default(source, PlayerId(0)),
+            )
+            .unwrap();
         assert_eq!(game.effect_store.replacement_effects.effects().len(), 1);
     }
-
 }

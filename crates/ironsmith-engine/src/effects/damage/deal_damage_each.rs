@@ -127,8 +127,7 @@ impl ExecuteCapturedDamage for DealDamageEachEffect {
             .or_else(|| game.source_last_known_snapshot(ctx.source).cloned())
             .or_else(|| ctx.source_snapshot.clone());
         let tag = crate::tag::TagKey::from("__it__");
-        let previous = ctx.tagged_objects.remove(&tag);
-        let prepared = (|| {
+        let prepared = ctx.with_object_tags([tag.clone()], |ctx| {
             let mut events = Vec::new();
             for (recipient, snapshot) in matching {
                 ctx.set_tagged_objects(tag.clone(), vec![snapshot.clone()]);
@@ -152,12 +151,7 @@ impl ExecuteCapturedDamage for DealDamageEachEffect {
                 }
             }
             Ok::<_, ExecutionError>(events)
-        })();
-        if let Some(previous) = previous {
-            ctx.tagged_objects.insert(tag, previous);
-        } else {
-            ctx.tagged_objects.remove(&tag);
-        }
+        });
         Ok(super::deal_damage::DamageInstructionPlan::from_events(
             prepared?,
         ))

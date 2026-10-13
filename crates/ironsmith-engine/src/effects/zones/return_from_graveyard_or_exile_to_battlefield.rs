@@ -64,28 +64,18 @@ impl EffectExecutor for ReturnFromGraveyardOrExileToBattlefieldEffect {
             execute_effect(game, &Effect::new(put_effect), ctx)
         })?;
 
-        let EffectOutcome {
-            status,
-            value,
-            events,
-            execution_facts,
-            instruction_result,
-        } = outcome;
-
-        let mut outcome = match status {
-            // Preserve prior behavior: ETB prevented is treated as TargetInvalid.
-            crate::effect::OutcomeStatus::Impossible => EffectOutcome::target_invalid()
-                .with_events(events)
-                .with_execution_facts(execution_facts),
-            other => EffectOutcome::with_details(
-                other,
-                value,
-                events,
-                execution_facts,
+        Ok(
+            crate::effects::composition::original_observations::project_outcome_summary(
+                outcome,
+                |outcome| {
+                    if matches!(outcome.status, crate::effect::OutcomeStatus::Impossible) {
+                        Some(EffectOutcome::target_invalid())
+                    } else {
+                        None
+                    }
+                },
             ),
-        };
-        outcome.instruction_result = instruction_result;
-        Ok(outcome)
+        )
     }
 }
 

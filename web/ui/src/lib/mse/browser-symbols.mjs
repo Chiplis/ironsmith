@@ -1,3 +1,5 @@
+import { symbolDrawOrder } from './symbol-draw-order.mjs';
+import { combineSymbolMasks } from './symbol-mask.mjs';
 import { MseError } from './document.mjs';
 import { parseVectorSymbol, defaultVectorSymbol } from './vector-symbol.mjs';
 import { symbolBounds, symbolAspectRatio, symbolShapePolygon } from './symbol-geometry.mjs';
@@ -23,19 +25,12 @@ export function createBrowserSymbolRenderer({store,loadLocalSymbol,createCanvas=
     else if(ratio<aspect&&(aspect<1||(smaller&&w<h)))h=Math.trunc(w/aspect);
     const out=allocateRaster(w,h,true,maxPixels),zoom=Math.max(w,h),ox=-(zoom-w)/2,oy=-(zoom-h)/2;
     const borderWidth=Math.trunc(request.variation.borderRadius*Math.min(w,h));
-    const shapes=[];
-    const visit=part=>{
-      if(part.type==='group'){for(const p of [...part.parts].reverse())visit(p);return;}
-      if(part.type!=='shape')throw new MseError('symbol-symmetry','Symmetry rasterization is not implemented yet');
-      if(!['overlap','merge'].includes(part.combine))throw new MseError('symbol-combine',`Symbol combining is not implemented for ${part.combine}`);
-      shapes.push(part);
-    };
-    for(const p of [...symbol.parts].reverse())visit(p);
+    const shapes=symbolDrawOrder(symbol);
     const canvas=createCanvas(w,h),ctx=canvas.getContext('2d',{willReadFrequently:true});
-    const mask=(points,stroke)=>{
+    const mask=(points,stroke,fill=true)=>{
       ctx.clearRect(0,0,w,h);ctx.beginPath();
       points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();
-      ctx.fillStyle='white';ctx.fill('evenodd');
+      ctx.fillStyle='white';if(fill)ctx.fill('evenodd');
       if(stroke&&borderWidth>0){ctx.lineWidth=borderWidth;ctx.lineJoin='round';ctx.strokeStyle='white';ctx.stroke();}
       return ctx.getImageData(0,0,w,h).data;
     };
@@ -43,12 +38,13 @@ export function createBrowserSymbolRenderer({store,loadLocalSymbol,createCanvas=
     for(let i=0;i<w*h;i++)out.data.set([0,128,0,255],i*4);
     const flush=()=>{for(let i=0;i<w*h;i++){if(border[i])out.data.set([255,255,255,255],i*4);if(inside[i])out.data.set([0,0,0,255],i*4);}border.fill(0);inside.fill(0);};
     const round=v=>Math.trunc(v+(v>0?0.4999995:-0.4999995));
-    for(const shape of shapes){
-      if(shape.combine==='overlap')flush();
-      const points=symbolShapePolygon(shape,{transform:([x,y])=>[round(ox+x*zoom),round(oy+y*zoom)]});
+    for(const {shape,transform,allowOverlap} of shapes){
+      if(shape.combine==='overlap'&&allowOverlap)flush();
+      const points=symbolShapePolygon(shape,{transform:p=>{const [x,y]=transform(p);return [round(ox+x*zoom),round(oy+y*zoom)];}});
       if(points.length<3)continue;
       const fill=mask(points,false),outline=borderWidth>0?mask(points,true):null;
-      for(let i=0;i<w*h;i++){if(fill[i*4+3]>=128)inside[i]=1;if(outline&&outline[i*4+3]>=128)border[i]=1;}
+      const stroke=shape.combine==='subtract'&&borderWidth>0?mask(points,true,false):null;
+      combineSymbolMasks(border,inside,fill,outline,stroke,shape.combine);
     }
     flush();return filterSymbolRaster(out,request.variation);
   };

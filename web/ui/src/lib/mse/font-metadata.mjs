@@ -45,5 +45,9 @@ export function readFontMetadata(input) {
   let weight=400,italic=false;
   if(os2 && os2.length>=64) {weight=view.getUint16(os2.offset+4)||400;italic=Boolean(view.getUint16(os2.offset+62)&1);}
   else if(head && head.length>=46) {const style=view.getUint16(head.offset+44);weight=style&1?700:400;italic=Boolean(style&2);}
-  return {families,family:name(1)||name(16),subfamily:name(2),typographicFamily:name(16),typographicSubfamily:name(17),fullName:name(4),postscriptName:name(6),weight,style:italic?'italic':'normal'};
+  const post=tables.get('post'),decoration={};
+  if(head&&head.length>=20)decoration.unitsPerEm=view.getUint16(head.offset+18);
+  if(post&&post.length>=12){decoration.underlinePosition=view.getInt16(post.offset+8);decoration.underlineThickness=view.getInt16(post.offset+10);}
+  if(os2&&os2.length>=30){decoration.strikeThickness=view.getInt16(os2.offset+26);decoration.strikePosition=view.getInt16(os2.offset+28);}
+  return {families,family:name(1)||name(16),subfamily:name(2),typographicFamily:name(16),typographicSubfamily:name(17),fullName:name(4),postscriptName:name(6),weight,style:italic?'italic':'normal',decoration};
 }

@@ -113,80 +113,49 @@ fn lock_target_player_filters_for_player(
     filter: &mut crate::target::ObjectFilter,
     player: PlayerId,
 ) {
-    if let Some(controller) = &mut filter.controller {
-        lock_target_player_filter(controller, player);
-    }
-    if let Some(owner) = &mut filter.owner {
-        lock_target_player_filter(owner, player);
-    }
-    if let Some(cast_by) = &mut filter.cast_by {
-        lock_target_player_filter(cast_by, player);
-    }
-    if let Some(targets_player) = &mut filter.targets_player {
-        lock_target_player_filter(targets_player, player);
-    }
-    if let Some(targets_only_player) = &mut filter.targets_only_player {
-        lock_target_player_filter(targets_only_player, player);
-    }
-    if let Some(entered_controller) = &mut filter.entered_battlefield_controller {
-        lock_target_player_filter(entered_controller, player);
-    }
-    if let Some(constraint) = filter.counters_put_on_this_turn.as_mut() {
-        lock_target_player_filter(&mut constraint.source_controller, player);
-    }
-    if let Some(attached_to_player) = &mut filter.attached_to_player {
-        lock_target_player_filter(attached_to_player, player);
-    }
-    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
-        lock_target_player_filters_for_player(attached_to, player);
-    }
-    for nested in &mut filter.any_of {
-        lock_target_player_filters_for_player(nested, player);
-    }
+    use crate::effects::player_reference_binding::{
+        PlayerReferenceFields, walk_filter_references, walk_player_reference_wrappers,
+    };
+    walk_filter_references(
+        filter,
+        PlayerReferenceFields::AllAuthored,
+        &mut |reference| {
+            walk_player_reference_wrappers(reference, &mut |reference| {
+                if matches!(
+                    reference,
+                    crate::target::PlayerFilter::Target(_)
+                        | crate::target::PlayerFilter::AliasedTarget(_)
+                ) {
+                    *reference = crate::target::PlayerFilter::Specific(player);
+                }
+            });
+            Ok::<_, std::convert::Infallible>(())
+        },
+        &mut |_| Ok(()),
+    )
+    .unwrap();
 }
 
 /// Replace each `IteratedPlayer` reference in the filter's player facets with
 /// the concrete player iterated at resolution time.
-fn lock_iterated_player_filters(filter: &mut crate::target::ObjectFilter, iterated: Option<PlayerId>) {
+fn lock_iterated_player_filters(
+    filter: &mut crate::target::ObjectFilter,
+    iterated: Option<PlayerId>,
+) {
     let Some(iterated) = iterated else {
         return;
     };
-    for player_filter in [
-        filter.controller.as_mut(),
-        filter.owner.as_mut(),
-        filter.cast_by.as_mut(),
-        filter.targets_player.as_mut(),
-        filter.targets_only_player.as_mut(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if matches!(player_filter, crate::target::PlayerFilter::IteratedPlayer) {
-            *player_filter = crate::target::PlayerFilter::Specific(iterated);
-        }
-    }
-    for nested in &mut filter.any_of {
-        lock_iterated_player_filters(nested, Some(iterated));
-    }
-}
-
-fn lock_target_player_filter(filter: &mut crate::target::PlayerFilter, player: PlayerId) {
-    match filter {
-        crate::target::PlayerFilter::Target(_) | crate::target::PlayerFilter::AliasedTarget(_) => {
-            *filter = crate::target::PlayerFilter::Specific(player);
-        }
-        crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
-        | crate::target::PlayerFilter::HasMoreLifeThanYou { base }
-        | crate::target::PlayerFilter::LostLifeThisTurn { base }
-        | crate::target::PlayerFilter::OpponentOf(base)
-        | crate::target::PlayerFilter::PlayerToLeftOf(base)
-        | crate::target::PlayerFilter::MaxSpeed { base, .. } => {
-            lock_target_player_filter(base, player);
-        }
-        crate::target::PlayerFilter::Excluding { base, excluded } => {
-            lock_target_player_filter(base, player);
-            lock_target_player_filter(excluded, player);
-        }
-        _ => {}
-    }
+    use crate::effects::player_reference_binding::{PlayerReferenceFields, walk_filter_references};
+    walk_filter_references(
+        filter,
+        PlayerReferenceFields::SpellFacets,
+        &mut |reference| {
+            if matches!(reference, crate::target::PlayerFilter::IteratedPlayer) {
+                *reference = crate::target::PlayerFilter::Specific(iterated);
+            }
+            Ok::<_, std::convert::Infallible>(())
+        },
+        &mut |_| Ok(()),
+    )
+    .unwrap();
 }

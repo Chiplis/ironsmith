@@ -1171,6 +1171,43 @@ impl EffectExecutor for ManifestDreadEffect {
     }
 }
 
+/// Select privately or from a captured zone, then enter through the same
+/// face-down entry owner in a single replayable transaction.
+fn manifest_selected_card(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    cloak: bool,
+    select: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext,
+    ) -> Result<Option<ObjectId>, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(card) = select(game, ctx)? else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            };
+            manifest_card_with_outputs(
+                game,
+                ctx,
+                card,
+                ctx.controller,
+                cloak,
+                if cloak {
+                    KeywordActionKind::Cloak
+                } else {
+                    KeywordActionKind::Manifest
+                },
+            )
+        },
+    )
+}
+
 impl EffectExecutor for ManifestTopCardOfLibraryEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -1190,36 +1227,18 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
-            game,
-            ctx,
-            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let library_owner =
-                    crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
-                let Some(&card_id) = game
-                    .player(library_owner)
-                    .and_then(|player| player.library.last())
-                else {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
+        manifest_selected_card(game, ctx, self.cloak, |game, ctx| {
+            let library_owner =
+                crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
+            let Some(&card_id) = game
+                .player(library_owner)
+                .and_then(|player| player.library.last())
+            else {
+                return Ok(None);
+            };
 
-                manifest_card_with_outputs(
-                    game,
-                    ctx,
-                    card_id,
-                    ctx.controller,
-                    self.cloak,
-                    if self.cloak {
-                        KeywordActionKind::Cloak
-                    } else {
-                        KeywordActionKind::Manifest
-                    },
-                )
-            },
-        )
+            Ok(Some(card_id))
+        })
     }
 }
 
@@ -1242,22 +1261,16 @@ impl EffectExecutor for ManifestCardFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
-            game,
-            ctx,
-            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let hand = game
-                    .player(ctx.controller)
-                    .map(|player| player.hand.to_vec())
-                    .unwrap_or_default();
-                if hand.is_empty() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
+        manifest_selected_card(game, ctx, false, |game, ctx| {
+            let hand = game
+                .player(ctx.controller)
+                .map(|player| player.hand.to_vec())
+                .unwrap_or_default();
+            if hand.is_empty() {
+                return Ok(None);
+            }
 
-                let chosen = make_decision(
+            let chosen = make_decision(
             game,
             ctx.decision_maker,
             ctx.controller,
@@ -1274,31 +1287,19 @@ impl EffectExecutor for ManifestCardFromHandEffect {
                 crate::decisions::context::DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
             ),
         );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let Some(card_id) = chosen.into_iter().find(|id| {
-                    game.object(*id).is_some_and(|object| {
-                        object.zone == Zone::Hand && object.owner == ctx.controller
-                    })
-                }) else {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+            let Some(card_id) = chosen.into_iter().find(|id| {
+                game.object(*id).is_some_and(|object| {
+                    object.zone == Zone::Hand && object.owner == ctx.controller
+                })
+            }) else {
+                return Ok(None);
+            };
 
-                manifest_card_with_outputs(
-                    game,
-                    ctx,
-                    card_id,
-                    ctx.controller,
-                    false,
-                    KeywordActionKind::Manifest,
-                )
-            },
-        )
+            Ok(Some(card_id))
+        })
     }
 }
 

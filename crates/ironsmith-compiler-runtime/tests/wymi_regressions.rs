@@ -152,9 +152,8 @@ fn noted_name_copy_uses_printed_card_even_when_associated_object_is_face_down_in
         game.register_linked_face_definition(&printed);
         let id = game.create_object_from_definition(&printed, player, Zone::Battlefield);
         let note = ObjectSnapshot::from_object(game.object(id).unwrap(), &game);
-        game.object_mut(id).unwrap().name = "Face-down creature".into();
-        game.object_mut(id).unwrap().base_power = Some(ironsmith::card::PtValue::Fixed(3));
-        game.object_mut(id).unwrap().base_toughness = Some(ironsmith::card::PtValue::Fixed(3));
+        assert!(game.object_mut(id).unwrap().apply_face_down_cast_overlay());
+        assert_eq!(game.object(id).unwrap().power(), Some(2));
         let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
         let mut tags = std::collections::HashMap::new();
         tags.insert(TagKey::from("__noted_card_name__"), vec![note]);
@@ -329,18 +328,24 @@ fn leave_battlefield_exile_is_an_active_replacement_on_both_compiler_paths() {
 #[test]
 fn embalmed_entry_copy_retains_exceptions_only_when_embalmed() {
     std::thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(|| {
+        struct PickDonor(ironsmith::ObjectId);
+        impl DecisionMaker for PickDonor {
+            fn decide_options(&mut self, _game: &GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                vec![ctx.options.iter().find(|option| option.object_id == Some(self.0)).expect("donor copy option").index]
+            }
+        }
         for definition in definitions("Vizier of Many Faces", "Mana cost: {2}{U}{U}\nType: Creature — Shapeshifter Cleric\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any creature on the battlefield, except if this creature was embalmed, the token has no mana cost, it's white, and it's a Zombie in addition to its other types.") {
             for embalmed in [false, true] {
                 let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
                 let player = PlayerId::from_index(0);
                 let donor = definitions("Donor", "Mana cost: {2}{R}\nType: Creature — Bird\nPower/Toughness: 4/5\nFlying")[0].clone();
-                game.create_object_from_definition(&donor, player, Zone::Battlefield);
+                let donor_id = game.create_object_from_definition(&donor, player, Zone::Battlefield);
                 let id = game.create_object_from_definition(&definition, player, Zone::Command);
                 if embalmed {
                     game.object_mut(id).unwrap().kind = ironsmith::object::ObjectKind::Token;
                     game.object_mut(id).unwrap().token_creation_method = Some(ironsmith_core::effect::TokenCreationMethod::Embalm);
                 }
-                let receipt = game.move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut ironsmith::decision::SelectFirstDecisionMaker).unwrap();
+                let receipt = game.move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut PickDonor(donor_id)).unwrap();
                 assert!(!receipt.pending);
                 let copied = game.calculated_copiable_values(receipt.original.into_result().unwrap().new_id).unwrap();
                 assert_eq!(copied.name, "Donor");

@@ -18,6 +18,11 @@ test('package existence checks use a complete file index and distinguish missing
   assert.equal(store.exists('/test.mse-style/images/frame.png'), true);
   assert.equal(store.exists('//test.mse-style/images/frame.png'), true);
   assert.equal(store.exists('/test.mse-style/images/absent.png'), false);
+  assert.equal(store.exists('/test.mse-style/'),false);
+  assert.equal(store.exists('//test.mse-style/'),false);
+  assert.equal(store.exists('/test.mse-style/images/'),false);
+  assert.throws(()=>store.exists('/missing.mse-style/'),{code:'package-missing'});
+  assert.throws(()=>resolveMsePath('/test.mse-style/'),{code:'invalid-path'});
   assert.throws(() => store.exists('/missing.mse-style/file.png'), { code: 'package-missing' });
   assert.throws(() => store.exists('images/frame.png'), { code: 'package-path' });
   assert.throws(() => new MsePackageStore({}).exists('/test.mse-style/file'), { code: 'package-index' });

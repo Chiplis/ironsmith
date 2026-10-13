@@ -46,7 +46,7 @@ mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
 mod emit_keyword_action;
-mod execute_with_source;
+pub(crate) mod execute_with_source;
 mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
@@ -70,6 +70,7 @@ pub(crate) use repeat_effects::{
 pub(crate) mod original_observations;
 mod repeat_process;
 mod repeat_process_prompt;
+pub(crate) mod player_order;
 mod player_option_choice;
 mod secret_choice;
 mod sequence;
@@ -259,3 +260,8 @@ pub(crate) mod captured_selection;
 mod decomposition_regression_tests;
 
 pub(crate) mod receipt_binding;
+
+pub(crate) mod payable_choice;
+
+#[cfg(test)]
+mod remaining_contract_tests;
