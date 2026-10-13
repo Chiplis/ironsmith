@@ -15,6 +15,7 @@
 @import "./styles/priority-stops.css";
 @import "./styles/compact-desktop.css";
 @import "./styles/desktop-full-cards.css";
+@import "./styles/arena-ambience.css";
 
 .surrender-button,
 .table-shell button.surrender-button.table-zone-action-button,
