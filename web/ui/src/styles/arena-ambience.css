@@ -1,0 +1,343 @@
+/* Living arena: a quiet animation layer over gothic-floating-arena-v2.png
+   for the full-card desktop HUD, rendered by ArenaAmbience.jsx.
+
+   Lightning: four events in the sky, each on its own long clock (29, 43,
+   53 and 61 s, no shared factor). A "gate" opens the event for under a
+   second; inside it the bolt flickers through several return strokes on a
+   short clock of its own, while the cloud glow brightens and fades more
+   slowly, so no two flashes look alike.
+
+   Fires: six painted flames get a small tongue that dances fast from its
+   base, a slower breathing glow, and their own embers.
+
+   Motes: tiny, faint lights, mostly around the edges of the board, rise at
+   their own speeds, fading as they climb, and twinkle on their own beat.
+
+   Wet floor: the reflections and highlights painted into the floor are
+   brightened in place: the cliff fires' reflections breathe with their
+   flames, and each flash lights the stone beneath it, cooler and whiter. Every fire has its
+   own clocks and ember character (see FIRES in the component).
+
+   Cost: only transform and opacity animate, on small elements, which the
+   compositor runs off the main thread; the markup never re-renders; glows
+   are gradients painted once (no box-shadow or blur on moving pieces); and
+   the layer is `contain: strict`, so it never invalidates the game's
+   layout or paint.
+
+   Geometry: --arena-w/--arena-h are the size of the shell's
+   `background-size: cover` image (1672 x 941, centred), so a fraction of
+   the image lands on the same spot of the art at any window size. All of it
+   sits under the UI (z-index -1 in the isolated shell) and never takes
+   pointer input. */
+
+.arena-ambience {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .app-shell:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) {
+    --arena-w: max(100vw, calc(100vh * 1672 / 941));
+    --arena-h: max(100vh, calc(100vw * 941 / 1672));
+    isolation: isolate;
+  }
+
+  /* ---- fires --------------------------------------------------------- */
+
+  /* Out of the shell's grid flow: a fixed, viewport-sized layer under the UI. */
+  /* contain: strict keeps every change inside this layer: the browser never
+     re-runs layout, style or paint for the game because of it. */
+  .app-shell:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) > .arena-ambience {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    display: block;
+    overflow: hidden;
+    contain: strict;
+    pointer-events: none;
+  }
+
+  /* ---- ambient motes ------------------------------------------------- */
+
+  /* A mote climbs and fades (the element), while its point of light
+     twinkles on its own short beat (::before). The glow is part of the
+     gradient, painted once; only transform and opacity move. */
+  .arena-mote {
+    position: absolute;
+    top: var(--my);
+    left: var(--mx);
+    width: var(--ms);
+    height: var(--ms);
+    opacity: 0;
+    animation: arena-mote var(--md) linear var(--mdelay) infinite;
+  }
+
+  .arena-mote::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--mc) 0 20%, color-mix(in srgb, var(--mc) 30%, transparent) 40%, transparent 68%);
+    animation: arena-twinkle var(--mt) ease-in-out var(--mtdelay) infinite alternate;
+  }
+
+  /* A zero-size anchor on the flame's base in the artwork. */
+  .arena-fire {
+    position: absolute;
+    top: calc(50vh + (var(--by) - 0.5) * var(--arena-h));
+    left: calc(50vw + (var(--bx) - 0.5) * var(--arena-w));
+    width: 0;
+    height: 0;
+  }
+
+  /* The tongue stands on the anchor and dances from its base. */
+  .arena-flame {
+    position: absolute;
+    bottom: 0;
+    left: calc(var(--fw) * var(--arena-h) * -0.5);
+    width: calc(var(--fw) * var(--arena-h));
+    height: calc(var(--fh) * var(--arena-h));
+    transform-origin: 50% 100%;
+    background-repeat: no-repeat;
+    background-image:
+      radial-gradient(24% 30% at 50% 70%, rgba(255, 238, 186, 0.42), rgba(255, 170, 74, 0.26) 45%, rgba(255, 120, 44, 0.07) 75%, transparent),
+      radial-gradient(12% 22% at 50% 42%, rgba(255, 210, 140, 0.22), transparent),
+      radial-gradient(closest-side at 50% 82%, rgba(255, 140, 56, 0.12), rgba(255, 112, 40, 0.035) 65%, transparent);
+    animation:
+      var(--dance-name) var(--dance-duration) linear var(--dance-delay) infinite var(--dance-direction),
+      var(--glow-name) var(--glow-duration) linear var(--glow-delay) infinite;
+  }
+
+  /* Wider fires along the cliffs burn as two tongues. */
+  .arena-fire[data-tongues="2"] .arena-flame {
+    background-image:
+      radial-gradient(15% 30% at 38% 70%, rgba(255, 238, 186, 0.38), rgba(255, 170, 74, 0.22) 45%, rgba(255, 120, 44, 0.06) 75%, transparent),
+      radial-gradient(13% 25% at 63% 74%, rgba(255, 232, 176, 0.32), rgba(255, 165, 70, 0.2) 45%, transparent),
+      radial-gradient(9% 20% at 42% 44%, rgba(255, 210, 140, 0.2), transparent),
+      radial-gradient(closest-side at 50% 84%, rgba(255, 140, 56, 0.12), rgba(255, 112, 40, 0.035) 65%, transparent);
+  }
+
+  /* Embers leave from the upper part of the flame. */
+  .arena-ember {
+    position: absolute;
+    bottom: calc(var(--fh) * var(--arena-h) * 0.45);
+    left: var(--x);
+    width: calc(var(--size) * 1.8);
+    height: calc(var(--size) * 1.8);
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--color) 0 40%, color-mix(in srgb, var(--color) 45%, transparent) 58%, transparent 75%);
+    opacity: 0;
+    animation: arena-ember var(--duration) linear var(--delay) infinite;
+  }
+
+  /* ---- lightning ----------------------------------------------------- */
+
+  /* The event box: the bolt's top in the art, one third as wide as tall. */
+  .arena-strike {
+    position: absolute;
+    top: calc(50vh + (var(--sy) - 0.5) * var(--arena-h));
+    left: calc(50vw + (var(--sx) - 0.5) * var(--arena-w));
+    width: calc(var(--sh) * var(--arena-h) / 3);
+    height: calc(var(--sh) * var(--arena-h));
+    translate: -50% 0;
+    opacity: 0;
+    animation: arena-strike-gate var(--period) linear var(--delay) infinite;
+  }
+
+  /* Cloud light around where the bolt leaves the cloud base. */
+  .arena-strike-glow {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: calc(var(--glow-w) * var(--arena-h));
+    height: calc(var(--glow-h) * var(--arena-h));
+    translate: -50% -38%;
+    background: radial-gradient(closest-side, rgba(200, 190, 255, 0.2), rgba(165, 148, 255, 0.07) 55%, transparent);
+    animation: arena-strike-glow calc(var(--flicker) * 1.7) linear infinite;
+  }
+
+  .arena-strike-bolt {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    animation: arena-bolt-flicker var(--flicker) linear infinite;
+  }
+
+  /* ---- the wet floor ------------------------------------------------- */
+
+  /* The art already paints the fires' reflections and the stone's wet
+     highlights. A wet layer is a copy of one stretch of that painting,
+     aligned pixel for pixel with the backdrop and feathered at its edges, so
+     raising its opacity simply brightens what the painter put there: the
+     shapes never change, only their light. Its filter matches the shell's
+     own darkening (about half brightness on the floor) and adds the lift. */
+  .arena-wet {
+    position: absolute;
+    width: calc((var(--x1) - var(--x0)) * var(--arena-w));
+    height: calc((var(--y1) - var(--y0)) * var(--arena-h));
+    background-image: var(--game-arena-image);
+    background-repeat: no-repeat;
+    background-size: var(--arena-w) var(--arena-h);
+    background-position: calc(var(--x0) * var(--arena-w) * -1) calc(var(--y0) * var(--arena-h) * -1);
+    -webkit-mask-image: radial-gradient(closest-side, #000 35%, rgba(0, 0, 0, 0.55) 62%, transparent);
+    mask-image: radial-gradient(closest-side, #000 35%, rgba(0, 0, 0, 0.55) 62%, transparent);
+    pointer-events: none;
+  }
+
+  /* Firelight on its painted reflection: warmer, and on the fire's own glow
+     clock, so the reflection breathes exactly with its flame. */
+  .arena-fire > .arena-wet--fire {
+    top: calc((var(--y0) - var(--by)) * var(--arena-h));
+    left: calc((var(--x0) - var(--bx)) * var(--arena-w));
+    filter: brightness(0.72) saturate(1.3);
+    animation: var(--glow-name) var(--glow-duration) linear var(--glow-delay) infinite;
+  }
+
+  /* A flash on the floor below it: whiter and cooler, opened by the strike's
+     gate and answering like its cloud glow, so the stone's own highlights
+     catch the light as white points. */
+  .arena-strike > .arena-wet--strike {
+    top: calc((var(--y0) - var(--sy)) * var(--arena-h));
+    left: calc(50% + (var(--x0) - var(--sx)) * var(--arena-w));
+    filter: brightness(1.15) saturate(0.45) contrast(1.15);
+    animation: arena-strike-glow calc(var(--flicker) * 1.7) linear infinite;
+  }
+
+}
+
+/* Glow: two irregular breathing curves in a narrow, dim range. */
+@keyframes arena-flame-a {
+  0% { opacity: 0.66; }
+  9% { opacity: 0.8; }
+  17% { opacity: 0.6; }
+  26% { opacity: 0.86; }
+  34% { opacity: 0.72; }
+  47% { opacity: 0.58; }
+  55% { opacity: 0.82; }
+  63% { opacity: 0.7; }
+  74% { opacity: 0.88; }
+  82% { opacity: 0.62; }
+  91% { opacity: 0.78; }
+  100% { opacity: 0.66; }
+}
+
+@keyframes arena-flame-b {
+  0% { opacity: 0.74; }
+  12% { opacity: 0.6; }
+  19% { opacity: 0.84; }
+  31% { opacity: 0.68; }
+  39% { opacity: 0.9; }
+  50% { opacity: 0.64; }
+  58% { opacity: 0.76; }
+  69% { opacity: 0.56; }
+  77% { opacity: 0.82; }
+  88% { opacity: 0.7; }
+  100% { opacity: 0.74; }
+}
+
+/* Dance: fast, uneven licks; the tongue stretches, squashes and leans from
+   its base. Two shapes, used at different speeds and directions per fire. */
+@keyframes arena-dance-a {
+  0% { scale: 1 1; rotate: 0deg; }
+  9% { scale: 0.86 1.22; rotate: -5deg; }
+  21% { scale: 1.08 0.8; rotate: 3deg; }
+  33% { scale: 0.9 1.26; rotate: 6deg; }
+  44% { scale: 1.05 0.86; rotate: -2deg; }
+  57% { scale: 0.84 1.18; rotate: -6.5deg; }
+  70% { scale: 1.1 0.82; rotate: 2deg; }
+  84% { scale: 0.92 1.24; rotate: 5deg; }
+  100% { scale: 1 1; rotate: 0deg; }
+}
+
+@keyframes arena-dance-b {
+  0% { scale: 1 1.06; rotate: 2deg; }
+  12% { scale: 1.07 0.82; rotate: -4deg; }
+  26% { scale: 0.86 1.25; rotate: 5deg; }
+  38% { scale: 1.02 0.9; rotate: -6deg; }
+  51% { scale: 0.88 1.2; rotate: 1deg; }
+  63% { scale: 1.09 0.8; rotate: 6deg; }
+  78% { scale: 0.9 1.22; rotate: -3deg; }
+  100% { scale: 1 1.06; rotate: 2deg; }
+}
+
+/* An ember brightens at the flame, drifts up on a wavering line while it
+   dims and shrinks, and is gone by 72% of its cycle; the rest is a pause of
+   its own length, so every ember reappears on its own schedule. */
+@keyframes arena-ember {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1); }
+  6% { opacity: var(--peak); }
+  20% { transform: translate3d(calc(var(--drift) * 0.18 + var(--wobble)), calc(var(--rise) * var(--arena-h) * -0.22), 0) scale(0.95); }
+  38% { opacity: calc(var(--peak) * 0.82); transform: translate3d(calc(var(--drift) * 0.42 - var(--wobble)), calc(var(--rise) * var(--arena-h) * -0.5), 0) scale(0.82); }
+  55% { opacity: calc(var(--peak) * 0.5); transform: translate3d(calc(var(--drift) * 0.7 + var(--wobble) * 0.6), calc(var(--rise) * var(--arena-h) * -0.78), 0) scale(0.62); }
+  72% { opacity: 0; transform: translate3d(var(--drift), calc(var(--rise) * var(--arena-h) * -1), 0) scale(0.4); }
+  100% { opacity: 0; transform: translate3d(var(--drift), calc(var(--rise) * var(--arena-h) * -1), 0) scale(0.4); }
+}
+
+/* The gate opens an event for a moment of its long cycle (about 0.4-1.5 s
+   depending on the period) and lets it die away. */
+@keyframes arena-strike-gate {
+  0% { opacity: 0; }
+  0.12% { opacity: var(--intensity); }
+  1.2% { opacity: calc(var(--intensity) * 0.75); }
+  2.3% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* Return strokes: sharp pulses with near-dark gaps, then a pause. Its short
+   period never lines up with the gate, so each flash catches a different
+   part of the sequence. */
+@keyframes arena-bolt-flicker {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  11% { opacity: 0.14; }
+  17% { opacity: 0.88; }
+  24% { opacity: 0.05; }
+  36% { opacity: 0.66; }
+  44% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* The cloud answers each stroke more softly and lingers between them. */
+@keyframes arena-strike-glow {
+  0% { opacity: 0.4; }
+  6% { opacity: 1; }
+  16% { opacity: 0.6; }
+  24% { opacity: 0.92; }
+  38% { opacity: 0.55; }
+  52% { opacity: 0.78; }
+  74% { opacity: 0.45; }
+  100% { opacity: 0.4; }
+}
+
+/* A mote appears, rises on a slight sway and is gone before the top; the
+   long fade-out hides the restart. */
+@keyframes arena-mote {
+  0% { opacity: 0; transform: translate3d(0, 0, 0); }
+  12% { opacity: var(--mp); }
+  45% { opacity: calc(var(--mp) * 0.85); transform: translate3d(var(--mdx1), calc(var(--mdy) * 0.45), 0); }
+  100% { opacity: 0; transform: translate3d(var(--mdx2), var(--mdy), 0); }
+}
+
+/* Twinkle: the point brightens and dims unevenly. */
+@keyframes arena-twinkle {
+  0% { opacity: 0.35; }
+  30% { opacity: 1; }
+  55% { opacity: 0.5; }
+  80% { opacity: 0.9; }
+  100% { opacity: 0.25; }
+}
+
+/* Reduced motion: steady firelight, no embers, no lightning. */
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .arena-flame,
+  .arena-wet--fire {
+    animation: none !important;
+    opacity: 0.7;
+  }
+  .arena-ember,
+  .arena-strike,
+  .arena-mote {
+    display: none !important;
+  }
+}

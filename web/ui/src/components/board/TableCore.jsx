@@ -279,11 +279,6 @@ export default function TableCore({
       // choices, and Submit. When the pile column leaves less room than that,
       // anchorFloatingDock slides the dock beside it; longer lists scroll.
       const bottomLimit = window.innerHeight - DECISION_DOCK_BOTTOM_INSET;
-      const pilesBottom = protectedZones.reduce((bottom, rect) => Math.max(bottom, rect.bottom), -Infinity);
-      const minimumDecisionRoom = Math.min(280, Math.round(window.innerHeight * 0.6));
-      const maxHeight = Number.isFinite(pilesBottom)
-        ? Math.max(minimumDecisionRoom, Math.floor(bottomLimit - pilesBottom - 14))
-        : Math.round(window.innerHeight * 0.6);
       const maxWidth = Math.round(dockMaxWidth(window.innerWidth));
       const hand = document.querySelector(".hand-zone-row");
       observe(hand);
@@ -297,6 +292,19 @@ export default function TableCore({
         handBounds: visibleRect(hand),
       });
       if (!position) return;
+      // With full cards, only piles in the dock's own column cap its height:
+      // once the dock stands beside the pile column it may grow up past the
+      // piles' bottom, so long choice lists show without scrolling. The
+      // compact appearance keeps every pile as a ceiling.
+      const fullCards = table.querySelector('.battlefield-row[data-battlefield-style="full"]') != null;
+      const dockRight = position.left + dockWidth;
+      const pilesBottom = protectedZones
+        .filter(rect => !fullCards || (rect.left < dockRight && rect.right > position.left))
+        .reduce((bottom, rect) => Math.max(bottom, rect.bottom), -Infinity);
+      const minimumDecisionRoom = Math.min(280, Math.round(window.innerHeight * 0.6));
+      const maxHeight = Number.isFinite(pilesBottom)
+        ? Math.max(minimumDecisionRoom, Math.floor(bottomLimit - pilesBottom - 14))
+        : Math.round(window.innerHeight * 0.6);
       const next = { ...position, maxWidth, maxHeight };
       setHumanActionDockPosition((previous) => (
         previous?.left === next.left && previous?.top === next.top
